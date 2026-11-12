@@ -11,10 +11,17 @@
 //
 //   node verify.ts run --mechanism sandbox|filtered --oracle <manifest.json> --oracle-sha256 <hex> --repo <dir> --commit <sha>
 //                      --out <record.json> [--bwrap <path>] [--systemd-run <path>] [--node <path>]
-//   node verify.ts read <record.json> --oracle <manifest.json> --oracle-sha256 <hex>
+//   node verify.ts read <record.json> --oracle <manifest.json> --oracle-sha256 <hex> [--commit <sha>]
 //
 // The three path options exist only to exercise refusals (case 7): they can make a run BLOCKED, never weaker. Run it through run.sh,
 // which gives it an environment it builds rather than the caller's.
+//
+// Addendum 1 (addendum-1/ADDENDUM.md), after the recorded runs, which used this file as frozen at 9c8b6ff79:
+//   C1  Git reads the candidate's objects with replace objects and lazy fetches off. A candidate repository's `refs/replace` made
+//       "commit X" export another commit's tree, and its partial-clone configuration made `cat-file` run a command of its choosing in
+//       this process. Neither occurred in the recorded runs (their repositories had no replace refs and no promisor remote).
+//   C2  `read --commit <sha>` binds a record to the commit it is read for. Without it, a genuine PASS for one commit reads PASS when
+//       presented for another.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -173,6 +180,10 @@ const gitEnv = (): Record<string, string> => ({
 	GIT_CONFIG_NOSYSTEM: "1",
 	GIT_CONFIG_GLOBAL: "/dev/null",
 	GIT_TERMINAL_PROMPT: "0",
+	// Addendum 1, C1: as adapters/git/readonly-git.ts does. The repository is the candidate's, so its configuration is untrusted.
+	GIT_NO_REPLACE_OBJECTS: "1",
+	GIT_NO_LAZY_FETCH: "1",
+	GIT_OPTIONAL_LOCKS: "0",
 });
 const git = (repo: string, args: string[], maxBuffer = 1 << 20) =>
 	spawnSync(GIT, ["-C", repo, ...args], { env: gitEnv(), maxBuffer, timeout: 20_000 });
@@ -185,7 +196,7 @@ export interface CandidateExport {
 }
 
 /** Every file of `commit`, written read-only into `staging` (which must not exist). Refuses anything but regular files within bounds. */
-function exportCommit(
+export function exportCommit(
 	repo: string,
 	commit: string,
 	staging: string,
@@ -215,8 +226,8 @@ function exportCommit(
 			return { ok: false, reason: `unsupported-${mode}` };
 		if (!PLAIN.test(path)) return { ok: false, reason: "unsupported-path" };
 		const blob = git(repo, ["cat-file", "blob", oid], BOUNDS.maxFileBytes + 1);
-		if (blob.status !== 0 || blob.stdout.length > BOUNDS.maxFileBytes)
-			return { ok: false, reason: "unsupported-file-size" };
+		if (blob.status !== 0) return { ok: false, reason: "object-unreadable" };
+		if (blob.stdout.length > BOUNDS.maxFileBytes) return { ok: false, reason: "unsupported-file-size" };
 		// The object id, recomputed from the bytes: what is exported is what the commit names.
 		const algorithm = oid.length === 40 ? "sha1" : "sha256";
 		const id = createHash(algorithm)
@@ -579,7 +590,16 @@ async function run(argv: readonly string[]): Promise<number> {
 
 // ---- read: re-derive a record's class from its observations and the pinned oracle --------------------------------------------------------
 
-export function readRecord(file: string, oracleFile: string, pin: string): { class: ReadClass; reason: string | null } {
+/**
+ * `expect.commit` (addendum 1, C2) binds the record to the commit the reader asks about: a record of any other candidate reads UNKNOWN.
+ * Without it, the class says only that some candidate was observed, as the recorded runs' reader did.
+ */
+export function readRecord(
+	file: string,
+	oracleFile: string,
+	pin: string,
+	expect: { commit?: string } = {},
+): { class: ReadClass; reason: string | null } {
 	let text: string;
 	try {
 		text = readFileSync(file, "utf8");
@@ -596,6 +616,8 @@ export function readRecord(file: string, oracleFile: string, pin: string): { cla
 	}
 	if (r.schemaVersion !== RECORD_SCHEMA) return { class: "UNKNOWN", reason: "not-a-record" };
 	if (r.recordSha256 !== seal(r)) return { class: "UNKNOWN", reason: "seal-mismatch" };
+	if (expect.commit !== undefined && (r.candidate as { commit?: unknown } | null)?.commit !== expect.commit)
+		return { class: "UNKNOWN", reason: "candidate-mismatch" };
 	const loaded = loadOracle(oracleFile, pin);
 	if (!loaded.ok) return { class: "UNKNOWN", reason: `oracle: ${loaded.reason}` };
 	const oracle = loaded.oracle;
@@ -636,11 +658,19 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(
 	const [command, ...rest] = process.argv.slice(2);
 	if (command === "run") process.exitCode = await run(rest);
 	else if (command === "read" && rest[0] !== undefined) {
-		const got = readRecord(rest[0], arg(rest, "--oracle") ?? "", arg(rest, "--oracle-sha256") ?? "");
+		const commit = arg(rest, "--commit");
+		const got = readRecord(
+			rest[0],
+			arg(rest, "--oracle") ?? "",
+			arg(rest, "--oracle-sha256") ?? "",
+			commit === undefined ? {} : { commit },
+		);
 		process.stdout.write(`${JSON.stringify(got)}\n`);
 		process.exitCode = got.class === "PASS" ? 0 : 1;
 	} else {
-		process.stderr.write("usage: verify.ts run ... | verify.ts read <record> --oracle f --oracle-sha256 h\n");
+		process.stderr.write(
+			"usage: verify.ts run ... | verify.ts read <record> --oracle f --oracle-sha256 h [--commit c]\n",
+		);
 		process.exitCode = 64;
 	}
 }

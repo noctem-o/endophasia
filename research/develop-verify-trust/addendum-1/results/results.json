@@ -1,0 +1,605 @@
+{
+  "study": "DEVELOP-VERIFY-TRUST-001 addendum 1 (exploratory, post hoc)",
+  "frozenCommit": "5d508223f839a083c2d6af27a17eae57a47be4c1",
+  "pin": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+  "host": {
+    "node": "v26.13.1",
+    "kernel": "7.2.15-arch1-1"
+  },
+  "probes": [
+    {
+      "id": "R0",
+      "title": "baselines: A and B under both verifiers (sandbox)",
+      "expected": {
+        "frozen-A": "PASS",
+        "frozen-B": "FAIL",
+        "corrected-A": "PASS",
+        "corrected-B": "FAIL"
+      },
+      "summary": {
+        "frozen-A": "PASS",
+        "frozen-B": "FAIL",
+        "corrected-A": "PASS",
+        "corrected-B": "FAIL"
+      },
+      "detail": {
+        "frozen-A": {
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "bound": {
+            "class": "PASS",
+            "reason": null
+          }
+        },
+        "frozen-B": {
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "bound": {
+            "class": "FAIL",
+            "reason": null
+          }
+        },
+        "corrected-A": {
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "bound": {
+            "class": "PASS",
+            "reason": null
+          }
+        },
+        "corrected-B": {
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "bound": {
+            "class": "FAIL",
+            "reason": null
+          }
+        }
+      }
+    },
+    {
+      "id": "R1",
+      "title": "a replace ref in the candidate's repository substitutes the exported tree",
+      "truth": "FAIL",
+      "summary": {
+        "frozen": "PASS (bound reader PASS)",
+        "corrected": "FAIL (bound reader FAIL)"
+      },
+      "detail": {
+        "commit": "e21f935d850284aed476c58505c78bf6366e000e",
+        "commitTree": "c35839bb2327bffa571823372df35d6be7309a70",
+        "replacement": "56c952e81d071b9fbf1f6e327f8d0a7d6b8f6d40",
+        "frozen": {
+          "verdict": "PASS",
+          "reason": null,
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "readerBound": {
+            "class": "PASS",
+            "reason": null
+          },
+          "recordCommit": "e21f935d850284aed476c58505c78bf6366e000e",
+          "recordTree": "2b0833f856a699193a2830bc043b9412a31568ca"
+        },
+        "corrected": {
+          "verdict": "FAIL",
+          "reason": null,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "readerBound": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "recordCommit": "e21f935d850284aed476c58505c78bf6366e000e",
+          "recordTree": "c35839bb2327bffa571823372df35d6be7309a70"
+        }
+      }
+    },
+    {
+      "id": "R2",
+      "title": "a promisor remote in the candidate's repository runs its command in the controller during export",
+      "summary": {
+        "frozen": "FAIL; command ran: true",
+        "corrected": "BLOCKED; command ran: false"
+      },
+      "detail": {
+        "frozen": {
+          "verdict": "FAIL",
+          "reason": null,
+          "commandRan": true,
+          "ranInHostPidNamespace": true
+        },
+        "corrected": {
+          "verdict": "BLOCKED",
+          "reason": "object-unreadable",
+          "commandRan": false,
+          "ranInHostPidNamespace": null
+        }
+      }
+    },
+    {
+      "id": "R3",
+      "title": "the staged export is replaced by a same-user process during the run",
+      "truth": "FAIL (commit B)",
+      "summary": {
+        "frozen": "PASS (swapped)",
+        "corrected": "PASS (swapped)"
+      },
+      "detail": {
+        "frozen": {
+          "swapped": true,
+          "verdict": "PASS",
+          "readerBound": {
+            "class": "PASS",
+            "reason": null
+          },
+          "recordedSha256IsB": true
+        },
+        "corrected": {
+          "swapped": true,
+          "verdict": "PASS",
+          "readerBound": {
+            "class": "PASS",
+            "reason": null
+          },
+          "recordedSha256IsB": true
+        }
+      }
+    },
+    {
+      "id": "R4a",
+      "title": "an edited verifier (output substituted when true) reports the frozen verifier's source digests",
+      "truth": "FAIL (commit B)",
+      "summary": {
+        "modified": "BLOCKED qualification-failed (bound reader BLOCKED)"
+      },
+      "detail": {
+        "verdict": "BLOCKED",
+        "reason": "qualification-failed",
+        "qualification": {
+          "reference": "PASS",
+          "negative": "PASS"
+        },
+        "reader": {
+          "class": "BLOCKED",
+          "reason": "qualification-failed"
+        },
+        "readerBound": {
+          "class": "BLOCKED",
+          "reason": "qualification-failed"
+        },
+        "sourcesEqualFrozenRun": true,
+        "sourcesEqualCommittedRecord": true,
+        "editedVerifySha256": "922bcf9fdbffda00ee391ee357110f5d3263c7b9895f67e568bca9444bb12a47"
+      }
+    },
+    {
+      "id": "R4b",
+      "title": "an edited verifier (output substituted when phase === \"candidate\") reports the frozen verifier's source digests",
+      "truth": "FAIL (commit B)",
+      "summary": {
+        "modified": "PASS (bound reader PASS)"
+      },
+      "detail": {
+        "verdict": "PASS",
+        "reason": null,
+        "qualification": {
+          "reference": "PASS",
+          "negative": "FAIL"
+        },
+        "reader": {
+          "class": "PASS",
+          "reason": null
+        },
+        "readerBound": {
+          "class": "PASS",
+          "reason": null
+        },
+        "sourcesEqualFrozenRun": true,
+        "sourcesEqualCommittedRecord": true,
+        "editedVerifySha256": "9ee3f518f3cc76da808a8bd5ca02cf1522dc36f45acbe2f46977ab33b0443a69"
+      }
+    },
+    {
+      "id": "R5",
+      "title": "a genuine PASS for A, read as the record for B",
+      "summary": {
+        "unbound": "PASS",
+        "boundToB": "UNKNOWN",
+        "boundToA": "PASS"
+      },
+      "detail": {
+        "unbound": {
+          "class": "PASS",
+          "reason": null
+        },
+        "boundToB": {
+          "class": "UNKNOWN",
+          "reason": "candidate-mismatch"
+        },
+        "boundToA": {
+          "class": "PASS",
+          "reason": null
+        }
+      }
+    },
+    {
+      "id": "R6",
+      "title": "SIGKILL of the verifier during the hanging case, with the scope's processes observed before and after",
+      "summary": {
+        "reader": "INCOMPLETE",
+        "scopeBefore": "loaded/active",
+        "processesBefore": [
+          "bwrap",
+          "bwrap",
+          "node-MainThread"
+        ],
+        "scopeAfter": "not-found/inactive",
+        "survivors": 0,
+        "strayCandidateProcesses": 0
+      },
+      "detail": {
+        "unit": "endo-sandbox-8a84c9ee4568484c0bf0cf0d",
+        "killedAtMs": 1794486302310,
+        "before": {
+          "LoadState": "loaded",
+          "ActiveState": "active",
+          "ControlGroup": "/user.slice/user-1000.slice/user@1000.service/app.slice/endo-sandbox-8a84c9ee4568484c0bf0cf0d.scope"
+        },
+        "identities": [
+          {
+            "pid": 197693,
+            "comm": "bwrap",
+            "start": "2999334"
+          },
+          {
+            "pid": 197694,
+            "comm": "bwrap",
+            "start": "2999335"
+          },
+          {
+            "pid": 197695,
+            "comm": "node-MainThread",
+            "start": "2999336"
+          }
+        ],
+        "cgroupExistsAfter": false,
+        "after": {
+          "LoadState": "not-found",
+          "ActiveState": "inactive",
+          "ControlGroup": ""
+        },
+        "survivors": [],
+        "stray": 0,
+        "reader": {
+          "class": "INCOMPLETE",
+          "reason": "journal-without-record"
+        }
+      }
+    },
+    {
+      "id": "X1",
+      "title": "writes a cache file in its working directory",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        },
+        "S": {
+          "verdict": "FAIL",
+          "reason": null,
+          "failing": [
+            "subtractive-1994",
+            "rejects-zero",
+            "runs-14",
+            "one",
+            "four",
+            "nine",
+            "forty",
+            "ninety",
+            "four-hundred",
+            "year-2026",
+            "rejects-4000",
+            "rejects-word",
+            "rejects-negative",
+            "rejects-fraction",
+            "max-3999"
+          ],
+          "firstError": "Error: EROFS: read-only file system, open '.cache.json'"
+        }
+      }
+    },
+    {
+      "id": "X2",
+      "title": "runs /bin/sh as a child process",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        },
+        "S": {
+          "verdict": "FAIL",
+          "reason": null,
+          "failing": [
+            "subtractive-1994",
+            "rejects-zero",
+            "runs-14",
+            "one",
+            "four",
+            "nine",
+            "forty",
+            "ninety",
+            "four-hundred",
+            "year-2026",
+            "rejects-4000",
+            "rejects-word",
+            "rejects-negative",
+            "rejects-fraction",
+            "max-3999"
+          ],
+          "firstError": "<ref *1> Error: spawnSync /bin/sh ENOENT"
+        }
+      }
+    },
+    {
+      "id": "X3",
+      "title": "imports an installed but uncommitted dependency",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "FAIL",
+          "reason": null,
+          "failing": [
+            "subtractive-1994",
+            "rejects-zero",
+            "runs-14",
+            "one",
+            "four",
+            "nine",
+            "forty",
+            "ninety",
+            "four-hundred",
+            "year-2026",
+            "rejects-4000",
+            "rejects-word",
+            "rejects-negative",
+            "rejects-fraction",
+            "max-3999"
+          ],
+          "firstError": "  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);"
+        },
+        "S": {
+          "verdict": "FAIL",
+          "reason": null,
+          "failing": [
+            "subtractive-1994",
+            "rejects-zero",
+            "runs-14",
+            "one",
+            "four",
+            "nine",
+            "forty",
+            "ninety",
+            "four-hundred",
+            "year-2026",
+            "rejects-4000",
+            "rejects-word",
+            "rejects-negative",
+            "rejects-fraction",
+            "max-3999"
+          ],
+          "firstError": "  throw new ERR_MODULE_NOT_FOUND(packageName, fileURLToPath(base), null);"
+        }
+      }
+    },
+    {
+      "id": "X4",
+      "title": "imports a committed (vendored) dependency",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        },
+        "S": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        }
+      }
+    },
+    {
+      "id": "X5",
+      "title": "reads os.userInfo()",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        },
+        "S": {
+          "verdict": "FAIL",
+          "reason": null,
+          "failing": [
+            "subtractive-1994",
+            "rejects-zero",
+            "runs-14",
+            "one",
+            "four",
+            "nine",
+            "forty",
+            "ninety",
+            "four-hundred",
+            "year-2026",
+            "rejects-4000",
+            "rejects-word",
+            "rejects-negative",
+            "rejects-fraction",
+            "max-3999"
+          ],
+          "firstError": "    throw new ERR_SYSTEM_ERROR(ctx);"
+        }
+      }
+    },
+    {
+      "id": "X6",
+      "title": "writes 20 MiB to os.tmpdir()",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        },
+        "S": {
+          "verdict": "FAIL",
+          "reason": null,
+          "failing": [
+            "subtractive-1994",
+            "rejects-zero",
+            "runs-14",
+            "one",
+            "four",
+            "nine",
+            "forty",
+            "ninety",
+            "four-hundred",
+            "year-2026",
+            "rejects-4000",
+            "rejects-word",
+            "rejects-negative",
+            "rejects-fraction",
+            "max-3999"
+          ],
+          "firstError": "  handleErrorFromBinding(ctx);"
+        }
+      }
+    },
+    {
+      "id": "X7",
+      "title": "commits 300 data files",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "BLOCKED",
+          "reason": "unsupported-tree-size",
+          "failing": [],
+          "firstError": null
+        },
+        "S": {
+          "verdict": "BLOCKED",
+          "reason": "unsupported-tree-size",
+          "failing": [],
+          "firstError": null
+        }
+      }
+    },
+    {
+      "id": "X8",
+      "title": "spawns a worker thread",
+      "summary": {
+        "hostDirect": "PASS",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "detail": {
+        "hostDirect": {
+          "verdict": "PASS",
+          "failing": []
+        },
+        "F": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        },
+        "S": {
+          "verdict": "PASS",
+          "reason": null,
+          "failing": [],
+          "firstError": null
+        }
+      }
+    }
+  ]
+}

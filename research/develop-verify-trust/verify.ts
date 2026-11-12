@@ -22,6 +22,11 @@
 //       this process. Neither occurred in the recorded runs (their repositories had no replace refs and no promisor remote).
 //   C2  `read --commit <sha>` binds a record to the commit it is read for. Without it, a genuine PASS for one commit reads PASS when
 //       presented for another.
+// Addendum 1, version 1.1 (the independent review of the draft PR):
+//   C3  A new run removes any earlier record at --out before it writes its journal, so an interrupted retry reads INCOMPLETE, never the
+//       earlier verdict.
+//   C4  The sandbox applies F's output budget: standard output and standard error together, at most maxOutputBytes.
+//   C5  The reader classifies a record that parses to anything but an object as UNKNOWN instead of throwing.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -307,14 +312,17 @@ async function runCase(ctx: Context, tree: string, c: OracleCase, phase: string,
 			onScope: (unit) => ctx.journal({ event: "scope", phase, case: c.name, unit }),
 		});
 		stdout = run.stdout;
+		// Addendum 1, C4: one budget for both streams, as runCheckV0 enforces it under F.
+		const total = run.stdout.length + run.truncated.stdout + run.stderr.length + run.truncated.stderr;
+		const truncated = run.truncated.stdout > 0 || run.truncated.stderr > 0 || total > ctx.oracle.maxOutputBytes;
 		o = {
 			started: run.started,
 			exitCode: run.timedOut ? null : run.exitCode,
 			timedOut: run.timedOut,
-			truncated: run.truncated.stdout > 0,
+			truncated,
 			termination: run.termination,
 			stdoutBytes: run.stdout.length + run.truncated.stdout,
-			stdoutSha256: run.truncated.stdout > 0 ? null : sha256(run.stdout),
+			stdoutSha256: truncated ? null : sha256(run.stdout),
 			stderrHead: run.stderr.subarray(0, 256).toString("utf8"),
 			durationMs: run.durationMs,
 		};
@@ -440,6 +448,9 @@ async function run(argv: readonly string[]): Promise<number> {
 	const journalFile = `${out}.journal`;
 	rmSync(work, { recursive: true, force: true });
 	mkdirSync(work, { mode: 0o700 });
+	// Addendum 1, C3: an earlier record at this path must not outlive the start of this run.
+	rmSync(out, { force: true });
+	rmSync(`${out}.tmp`, { force: true });
 	writeFileSync(journalFile, "");
 	const journal = (event: Record<string, unknown>) =>
 		appendFileSync(journalFile, `${JSON.stringify({ atMs: Date.now(), ...event })}\n`);
@@ -614,6 +625,8 @@ export function readRecord(
 	} catch {
 		return { class: "UNKNOWN", reason: "unreadable" };
 	}
+	// Addendum 1, C5: valid JSON that is not a record object.
+	if (typeof r !== "object" || r === null || Array.isArray(r)) return { class: "UNKNOWN", reason: "not-a-record" };
 	if (r.schemaVersion !== RECORD_SCHEMA) return { class: "UNKNOWN", reason: "not-a-record" };
 	if (r.recordSha256 !== seal(r)) return { class: "UNKNOWN", reason: "seal-mismatch" };
 	if (expect.commit !== undefined && (r.candidate as { commit?: unknown } | null)?.commit !== expect.commit)

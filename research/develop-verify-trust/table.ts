@@ -75,8 +75,16 @@ const cases = results.rows.map((r) => ({
 					preflight: r.detail.sandbox.summary?.preflight?.status ?? null,
 					reread: reread[`${r.id}-sandbox`] ?? null,
 				},
+	// Reader-only rows: 9c and 9d are re-read here from their committed records (addendum 1, v1.1). 9a has no record by design (its
+	// journal is committed under another name), so its class is the run's.
 	reader:
-		r.id === "9a" ? r.detail.reader : r.id === "9d" ? reread["9d-forged"] : r.id === "9c" ? r.detail.variants : null,
+		r.id === "9a"
+			? r.detail.reader
+			: r.id === "9d"
+				? (reread["9d-forged"] ?? null)
+				: r.id === "9c"
+					? Object.fromEntries(Object.keys(r.detail.variants).map((v) => [v, reread[v] ?? null]))
+					: null,
 	expected: r.expected,
 	observed: r.observed,
 	agree: r.agree,
@@ -92,6 +100,13 @@ const mismatch = cases.flatMap((c) =>
 		})
 		.map((m) => `${c.id}-${m}`),
 );
+// And the reader-only controls: each re-read variant must say what the run's reader said of it.
+for (const r of results.rows) {
+	const recorded: Record<string, unknown> =
+		r.id === "9c" ? r.detail.variants : r.id === "9d" ? { "9d-forged": r.detail.reader } : {};
+	for (const [name, said] of Object.entries(recorded))
+		if (JSON.stringify(reread[name] ?? null) !== JSON.stringify(said)) mismatch.push(name);
+}
 writeFileSync(
 	join(run, "..", "cases.json"),
 	`${JSON.stringify({ source: run.split("/").at(-1), rereadMismatches: mismatch, cases }, null, 2)}\n`,

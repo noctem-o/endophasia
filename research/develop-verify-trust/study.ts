@@ -614,10 +614,15 @@ async function study(W: string): Promise<void> {
 	{
 		const { file, launch } = verifyArgs("9a", "sandbox", "D", {});
 		const child = spawn(launch[0], launch[1], { env: launch[2], cwd: W, stdio: "ignore" });
+		// Addendum 1, v1.1: observe an early exit (a refused run) instead of waiting on an exit that already happened.
+		let exitedEarly = false;
+		const exited = new Promise((r) => child.once("exit", r)).then(() => {
+			exitedEarly = true;
+		});
 		const journal = () => (existsSync(`${file}.journal`) ? readFileSync(`${file}.journal`, "utf8") : "");
 		const deadline = Date.now() + 120_000;
 		let armed = false;
-		while (Date.now() < deadline) {
+		while (Date.now() < deadline && !exitedEarly) {
 			if (journal().includes('"phase":"candidate","case":"max-3999"')) {
 				armed = true;
 				break;
@@ -627,7 +632,7 @@ async function study(W: string): Promise<void> {
 		await new Promise((r) => setTimeout(r, 1_000));
 		const killedAtMs = Date.now();
 		child.kill("SIGKILL");
-		await new Promise((r) => child.once("exit", r));
+		await exited;
 		await new Promise((r) => setTimeout(r, 3_000));
 		const units = [...journal().matchAll(/"unit":"(endo-sandbox-[0-9a-f]{24})"/g)].map((m) => m[1] as string);
 		const states = units.map((unit) => {

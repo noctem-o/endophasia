@@ -54,6 +54,10 @@ describe("DEVELOP-VERIFY-TRUST-001 committed evidence", () => {
 				text.replace(/"matched": false/g, '"matched": true'),
 				text.slice(0, 100),
 				"",
+				// Addendum 1, C5: valid JSON that is not a record.
+				"null",
+				"[]",
+				"1",
 			];
 			for (const [i, edited] of edits.entries()) {
 				const file = join(dir, `${i}.json`);

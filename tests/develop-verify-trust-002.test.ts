@@ -457,3 +457,37 @@ describe("DEVELOP-VERIFY-TRUST-002 installation", () => {
 		).toEqual(["no-passwd", "no-shell"]);
 	});
 });
+
+describe("DEVELOP-VERIFY-TRUST-002 committed evidence", () => {
+	const RESULTS = join(REPO, "research/develop-verify-trust-002/results");
+	const load = (run: string) =>
+		JSON.parse(readFileSync(join(RESULTS, run, "results.json"), "utf8")) as {
+			commit: string;
+			installationId: string;
+			acceptance: Record<string, boolean>;
+			records: { authoritative: number; authoritativeFalsePasses: string[]; overwritten: string[] };
+			rows: { id: string; held: boolean; observed: string; positiveControl: boolean }[];
+		};
+	it("holds every rehearsal acceptance condition, identically in both runs, with no authoritative record", () => {
+		const [a, b] = [load("run-1"), load("run-2")];
+		for (const r of [a, b]) {
+			expect(Object.values(r.acceptance).every(Boolean)).toBe(true);
+			expect(r.records).toMatchObject({ authoritative: 0, authoritativeFalsePasses: [], overwritten: [] });
+			expect(r.rows.every((row) => row.held)).toBe(true);
+			expect(r.commit).toBe("c968895fc608ba3552e15d745b585315a08eb6fd");
+		}
+		expect(a.installationId).toBe(b.installationId);
+		expect(a.rows.map((r) => [r.id, r.observed])).toEqual(b.rows.map((r) => [r.id, r.observed]));
+		expect(a.rows.filter((r) => r.positiveControl).map((r) => r.id)).toEqual(["T6", "T7", "T8", "E6"]);
+	});
+	it("keeps the committed record copies non-authoritative: they are copies, owned by whoever checked them out", () => {
+		const dir = join(RESULTS, "run-1/records");
+		const t1 = JSON.parse(readFileSync(join(dir, "T1-genuine-pass-A.json"), "utf8"));
+		const forged = JSON.parse(readFileSync(join(dir, "T8a-forged-pass-B.json"), "utf8"));
+		// Both are internally consistent: content alone cannot tell the forgery from the genuine record.
+		expect(t1.recordSha256).toBe(seal(t1));
+		expect(forged.recordSha256).toBe(seal(forged));
+		expect(forged.verdict).toBe("PASS");
+		expect(forged.candidate.commit).not.toBe(t1.candidate.commit);
+	});
+});

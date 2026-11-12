@@ -1,0 +1,133 @@
+{
+  "schemaVersion": "endo.research.dvt002.audit.v0",
+  "h0": false,
+  "closure": true,
+  "checks": [
+    {
+      "id": "h0-group-docker",
+      "observed": "member: root-equivalent through the Docker daemon",
+      "ok": false
+    },
+    {
+      "id": "h0-group-libvirt",
+      "observed": "member: system hypervisor management without a password (polkit)",
+      "ok": false
+    },
+    {
+      "id": "h0-group-empower",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-group-lxd",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-group-disk",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/docker.sock",
+      "observed": "writable",
+      "ok": false
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/libvirt-sock",
+      "observed": "writable",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/podman/podman.sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-sudoers-readable",
+      "path": "/etc/sudoers.d",
+      "observed": "EACCES: NOPASSWD cannot be ruled out by inspection",
+      "ok": true
+    },
+    {
+      "id": "h0-ptrace-scope",
+      "path": "/proc/sys/kernel/yama/ptrace_scope",
+      "observed": "1",
+      "ok": true
+    },
+    {
+      "id": "closure-node-runtime",
+      "observed": "ok: 43 files",
+      "ok": true
+    },
+    {
+      "id": "closure-tool",
+      "path": "/usr/bin/node",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "closure-tool",
+      "path": "/usr/bin/bwrap",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "closure-tool",
+      "path": "/usr/bin/systemd-run",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "closure-tool",
+      "path": "/usr/bin/systemctl",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "closure-tool",
+      "path": "/etc/ld.so.cache",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "closure-ld-preload-file",
+      "path": "/etc/ld.so.preload",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "target-parent",
+      "path": "/usr/local/lib",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "target-parent",
+      "path": "/etc/systemd/user",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "target-parent",
+      "path": "/var/lib",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "target-parent",
+      "path": "/var/lib/systemd/linger",
+      "observed": "ok",
+      "ok": true
+    },
+    {
+      "id": "target-parent",
+      "path": "/etc/tmpfiles.d",
+      "observed": "ok",
+      "ok": true
+    }
+  ]
+}

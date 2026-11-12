@@ -1,0 +1,501 @@
+{
+  "schemaVersion": "endo.research.dvt002.results.v0",
+  "target": "rehearsal",
+  "commit": "c968895fc608ba3552e15d745b585315a08eb6fd",
+  "installationId": "5635db3573fb9b2727a88d0275c8717db4af3366a061c38f57f829f73f48796a",
+  "host": {
+    "kernel": "7.2.15-arch1-1",
+    "node": "v26.13.1",
+    "uid": 1000,
+    "verifierUid": 1000
+  },
+  "wallMs": 83404,
+  "records": {
+    "total": 37,
+    "forgedByAttacker": 2,
+    "authoritative": 0,
+    "authoritativeFalsePasses": [],
+    "overwritten": []
+  },
+  "acceptance": {
+    "RA1": true,
+    "RA2": true,
+    "RA3": true,
+    "RA4": true,
+    "RA5": true,
+    "RA6": true,
+    "RA7": true
+  },
+  "rows": [
+    {
+      "id": "T1",
+      "title": "correct candidate, ordinary request",
+      "expected": "PASS, authoritative no",
+      "observed": "PASS/PASS, authoritative no (verifier-is-reader)",
+      "positiveControl": false,
+      "detail": {
+        "verdict": "PASS",
+        "reason": null,
+        "invocation": "eb0d32769aeb1db536da47b9111d95ec",
+        "class": "PASS",
+        "authoritative": false,
+        "readReason": "verifier-is-reader",
+        "requester": {
+          "pid": 386962,
+          "uid": 1000
+        },
+        "harnessPid": 386962
+      },
+      "held": true
+    },
+    {
+      "id": "T2",
+      "title": "incorrect output, exit 0",
+      "expected": "FAIL",
+      "observed": "FAIL/FAIL",
+      "positiveControl": false,
+      "detail": {
+        "verdict": "FAIL",
+        "reason": null,
+        "invocation": "420ff094344c04c7689b0fb0b5210037",
+        "class": "FAIL",
+        "authoritative": false,
+        "readReason": "verifier-is-reader"
+      },
+      "held": true
+    },
+    {
+      "id": "T3",
+      "title": "NODE_OPTIONS hook and PATH shim in the caller",
+      "expected": "FAIL; no hostile name in the verifier",
+      "observed": "FAIL/FAIL; verifier environment clean: true",
+      "positiveControl": false,
+      "detail": {
+        "response": {
+          "schemaVersion": "endo.research.dvt002.response.v0",
+          "invocation": "0b9cd2101ccd1bc09240cc1a1f38039e",
+          "verdict": "FAIL",
+          "reason": null,
+          "record": "records/0b9cd2101ccd1bc09240cc1a1f38039e.json",
+          "recordSha256": "77f54b2a375722d5a5c65667083fb5b81ae80c115873da51674efd447cd3100c"
+        },
+        "environment": {
+          "names": [
+            "CUDA_PATH",
+            "DBUS_SESSION_BUS_ADDRESS",
+            "DEBUGINFOD_URLS",
+            "DESKTOP_SESSION",
+            "DISPLAY",
+            "HOME",
+            "ICEAUTHORITY",
+            "INVOCATION_ID",
+            "JOURNAL_STREAM",
+            "KDE_APPLICATIONS_AS_SCOPE",
+            "KDE_FULL_SESSION",
+            "KDE_SESSION_UID",
+            "KDE_SESSION_VERSION",
+            "LANG",
+            "LOGNAME",
+            "MAIL",
+            "MANAGERPID",
+            "MANAGERPIDFDID",
+            "MEMORY_PRESSURE_WATCH",
+            "MEMORY_PRESSURE_WRITE",
+            "MOTD_SHOWN",
+            "NVCC_CCBIN",
+            "PAM_KWALLET5_LOGIN",
+            "PATH",
+            "PNPM_HOME",
+            "PROTON_ENABLE_WAYLAND",
+            "PWD",
+            "QT_WAYLAND_RECONNECT",
+            "SESSION_MANAGER",
+            "SHELL",
+            "SO_COOKIE",
+            "SYSTEMD_EXEC_PID",
+            "USER",
+            "VSSCRIPT_PATH",
+            "WAYLAND_DISPLAY",
+            "XAUTHORITY",
+            "XDG_CONFIG_DIRS",
+            "XDG_CURRENT_DESKTOP",
+            "XDG_DATA_DIRS",
+            "XDG_MENU_PREFIX",
+            "XDG_RUNTIME_DIR",
+            "XDG_SEAT",
+            "XDG_SEAT_PATH",
+            "XDG_SESSION_CLASS",
+            "XDG_SESSION_DESKTOP",
+            "XDG_SESSION_ID",
+            "XDG_SESSION_PATH",
+            "XDG_SESSION_TYPE",
+            "XDG_VTNR",
+            "XKB_DEFAULT_LAYOUT",
+            "XKB_DEFAULT_MODEL",
+            "XKB_DEFAULT_OPTIONS",
+            "_JAVA_AWT_WM_NONREPARENTING"
+          ],
+          "hostile": []
+        }
+      },
+      "held": true
+    },
+    {
+      "id": "T4",
+      "title": "LD_PRELOAD in the caller",
+      "expected": "B FAIL, A PASS; markers only from client processes",
+      "observed": "B FAIL, A PASS; markers 2, from a verifier 0; verifier environment clean: true",
+      "positiveControl": false,
+      "detail": {
+        "markers": [
+          "uid=1000 cmd=/usr/bin/node <home>/projects/endophasia-trust2/research/develop-verify-trust-002/client/client.ts submit --socket /run/user/1000/endo-dvt002/7b30a23d.sock --repo <W>/repos/B",
+          "uid=1000 cmd=/usr/bin/node <home>/projects/endophasia-trust2/research/develop-verify-trust-002/client/client.ts submit --socket /run/user/1000/endo-dvt002/7b30a23d.sock --repo <W>/repos/A"
+        ],
+        "fromVerifier": []
+      },
+      "held": true
+    },
+    {
+      "id": "T5a",
+      "title": "replace ref in the candidate repository, honest client",
+      "expected": "FAIL (B's own objects)",
+      "observed": "FAIL/FAIL; plain git shows A for B: true",
+      "positiveControl": false,
+      "detail": {
+        "verdict": "FAIL",
+        "plainGitSeesA": true
+      },
+      "held": true
+    },
+    {
+      "id": "T5b",
+      "title": "hostile client sends A's objects as B's commit",
+      "expected": "BLOCKED object-missing",
+      "observed": "BLOCKED object-missing",
+      "positiveControl": false,
+      "detail": {
+        "verdict": "BLOCKED",
+        "reason": "object-missing"
+      },
+      "held": true
+    },
+    {
+      "id": "T5c",
+      "title": "promisor remote with a marker upload-pack, blob missing",
+      "expected": "BLOCKED object-missing; no marker",
+      "observed": "client object-unreadable; BLOCKED object-missing; marker absent",
+      "positiveControl": false,
+      "detail": {
+        "honestClient": "object-unreadable",
+        "verdict": "BLOCKED",
+        "reason": "object-missing",
+        "markerWritten": false
+      },
+      "held": true
+    },
+    {
+      "id": "T6",
+      "title": "concurrent same-user swap of the staged candidate",
+      "expected": "tamper write succeeds; auth no",
+      "observed": "tamper ok; INCOMPLETE staging-changed; authoritative no",
+      "positiveControl": true,
+      "detail": {
+        "tamper": "ok",
+        "verdict": "INCOMPLETE",
+        "reason": "staging-changed",
+        "authoritative": false
+      },
+      "held": true
+    },
+    {
+      "id": "T7",
+      "title": "edited verifier through a unit drop-in; direct write to its code",
+      "expected": "writes succeed; PASS; auth no",
+      "observed": "code write ok; drop-in ok; PASS/UNKNOWN (installation-mismatch); authoritative no",
+      "positiveControl": true,
+      "detail": {
+        "directWrite": "ok",
+        "dropInWrite": "ok",
+        "verdict": "PASS",
+        "class": "UNKNOWN",
+        "readReason": "installation-mismatch"
+      },
+      "held": true
+    },
+    {
+      "id": "T8",
+      "title": "resealed forgery of T1's record for B: in records/, outside, as a link",
+      "expected": "(a) written, auth no; (b) refused; (c) refused",
+      "observed": "(a) write ok, read PASS auth no (verifier-is-reader); (b) auth no (not-root's: <W>/install/installation.json); (c) link ok, read UNKNOWN (symbolic-link)",
+      "positiveControl": true,
+      "detail": {
+        "writeA": "ok",
+        "readA": {
+          "class": "PASS",
+          "authoritative": false,
+          "reason": "verifier-is-reader"
+        },
+        "readB": {
+          "class": "PASS",
+          "authoritative": false,
+          "reason": "not-root's: <W>/install/installation.json"
+        },
+        "writeC": "ok",
+        "readC": {
+          "class": "UNKNOWN",
+          "reason": "symbolic-link"
+        }
+      },
+      "held": true
+    },
+    {
+      "id": "T9",
+      "title": "A's genuine PASS presented as B's",
+      "expected": "candidate-mismatch; consumer verdict for B not PASS",
+      "observed": "UNKNOWN candidate-mismatch; consumer B NONE; consumer A NONE",
+      "positiveControl": false,
+      "detail": {
+        "asB": {
+          "class": "UNKNOWN",
+          "reason": "candidate-mismatch"
+        },
+        "consumerB": {
+          "verdict": "NONE",
+          "records": [
+            {
+              "invocation": "001235eca3681338be0c51f7cb4aab71",
+              "class": "FAIL",
+              "authoritative": false
+            },
+            {
+              "invocation": "0b9cd2101ccd1bc09240cc1a1f38039e",
+              "class": "FAIL",
+              "authoritative": false
+            },
+            {
+              "invocation": "420ff094344c04c7689b0fb0b5210037",
+              "class": "FAIL",
+              "authoritative": false
+            },
+            {
+              "invocation": "5f39aecdeed6c53b1edb553cab2b77bd",
+              "class": "PASS",
+              "authoritative": false
+            },
+            {
+              "invocation": "6164fd463ecdcc0a06dfba6af50c3a5c",
+              "class": "INCOMPLETE",
+              "authoritative": false
+            },
+            {
+              "invocation": "9159396caafb413d06a25f41156b9f8b",
+              "class": "UNKNOWN",
+              "authoritative": false
+            },
+            {
+              "invocation": "ad434a8fd51c5b8beac846ca2ceb5614",
+              "class": "UNKNOWN",
+              "authoritative": false
+            }
+          ]
+        },
+        "consumerA": {
+          "verdict": "NONE",
+          "records": [
+            {
+              "invocation": "48fe37f05357527c3916486474599916",
+              "class": "PASS",
+              "authoritative": false
+            },
+            {
+              "invocation": "9159396caafb413d06a25f41156b9f8b",
+              "class": "UNKNOWN",
+              "authoritative": false
+            },
+            {
+              "invocation": "ad434a8fd51c5b8beac846ca2ceb5614",
+              "class": "UNKNOWN",
+              "authoritative": false
+            },
+            {
+              "invocation": "eb0d32769aeb1db536da47b9111d95ec",
+              "class": "PASS",
+              "authoritative": false
+            }
+          ]
+        }
+      },
+      "held": true
+    },
+    {
+      "id": "T10",
+      "title": "kill mid-run, then retry; client hangs up",
+      "expected": "kill ok; interrupted INCOMPLETE; retry PASS under a new id; hang-up record PASS",
+      "observed": "kill ok; first response none; interrupted INCOMPLETE (journal-without-record); retry PASS new id true; orphan work removed true; hang-up record PASS",
+      "positiveControl": false,
+      "detail": {
+        "kill": "ok",
+        "interrupted": {
+          "class": "INCOMPLETE",
+          "reason": "journal-without-record"
+        },
+        "retry": "PASS",
+        "hangUp": "PASS"
+      },
+      "held": true
+    },
+    {
+      "id": "T11",
+      "title": "no socket; wrong oracle pin; no containment; no bubblewrap",
+      "expected": "BLOCKED each, never PASS",
+      "observed": "{\"a\":\"service-unavailable: ENOENT\",\"b\":\"BLOCKED oracle-not-pinned\",\"c\":\"BLOCKED containment-unavailable\",\"d\":\"BLOCKED isolation-missing\"}",
+      "positiveControl": false,
+      "detail": {
+        "a": "service-unavailable: ENOENT",
+        "b": "BLOCKED oracle-not-pinned",
+        "c": "BLOCKED containment-unavailable",
+        "d": "BLOCKED isolation-missing"
+      },
+      "held": true
+    },
+    {
+      "id": "T12",
+      "title": "P (files, tmp, child node); X (writes its cwd); M (uncommitted dependency)",
+      "expected": "P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]",
+      "observed": "P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]",
+      "positiveControl": false,
+      "detail": {
+        "P": "PASS",
+        "X": {
+          "verdict": "FAIL",
+          "signals": "EROFS"
+        },
+        "M": {
+          "verdict": "FAIL",
+          "signals": "ERR_MODULE_NOT_FOUND"
+        },
+        "truth": {
+          "P": {
+            "correct": true,
+            "failing": [],
+            "stderrBytesMax": 36
+          },
+          "X": {
+            "correct": true,
+            "failing": [],
+            "stderrBytesMax": 36
+          },
+          "M": {
+            "correct": false,
+            "failing": [
+              "subtractive-1994",
+              "rejects-zero",
+              "runs-14",
+              "one",
+              "four",
+              "nine",
+              "forty",
+              "ninety",
+              "four-hundred",
+              "year-2026",
+              "rejects-4000",
+              "rejects-word",
+              "rejects-negative",
+              "rejects-fraction",
+              "max-3999"
+            ],
+            "stderrBytesMax": 1094
+          }
+        }
+      },
+      "held": true
+    },
+    {
+      "id": "E1",
+      "title": "symbolic link; submodule; entry named ..",
+      "expected": "BLOCKED unsupported-120000, unsupported-160000, unsupported-name",
+      "observed": "BLOCKED unsupported-120000; BLOCKED unsupported-160000; BLOCKED unsupported-name",
+      "positiveControl": false,
+      "detail": {
+        "link": "unsupported-120000",
+        "submodule": "unsupported-160000",
+        "dots": "unsupported-name"
+      },
+      "held": true
+    },
+    {
+      "id": "E2",
+      "title": "A and B at once",
+      "expected": "PASS and FAIL, distinct invocations",
+      "observed": "A PASS, B FAIL, distinct true",
+      "positiveControl": false,
+      "detail": {
+        "a": "PASS",
+        "b": "FAIL"
+      },
+      "held": true
+    },
+    {
+      "id": "E3",
+      "title": "instance stopped mid-run, then a new request",
+      "expected": "INCOMPLETE; the next instance removes the orphan",
+      "observed": "stop ok; INCOMPLETE (journal-without-record); next PASS; orphan collected by next true",
+      "positiveControl": false,
+      "detail": {
+        "stop": "ok",
+        "interrupted": "INCOMPLETE",
+        "next": "PASS",
+        "collected": true
+      },
+      "held": true
+    },
+    {
+      "id": "E4",
+      "title": "D hangs; E 1 MiB stdout; S 70,000 B stderr",
+      "expected": "FAIL each",
+      "observed": "D FAIL, E FAIL, S FAIL",
+      "positiveControl": false,
+      "detail": {
+        "D": "FAIL",
+        "E": "FAIL",
+        "S": "FAIL",
+        "truthS": {
+          "correct": true,
+          "failing": [],
+          "stderrBytesMax": 70036
+        }
+      },
+      "held": true
+    },
+    {
+      "id": "E5",
+      "title": "oversized; env, argv, expect keys; unreferenced object; unknown task; malformed",
+      "expected": "BLOCKED each, with its reason",
+      "observed": "{\"big\":\"request-too-large\",\"env\":\"request-invalid\",\"argv\":\"request-invalid\",\"expect\":\"request-invalid\",\"unreferenced\":\"object-unreferenced\",\"task\":\"task-unknown\",\"junk\":\"request-invalid\"}",
+      "positiveControl": false,
+      "detail": {
+        "big": "request-too-large",
+        "env": "request-invalid",
+        "argv": "request-invalid",
+        "expect": "request-invalid",
+        "unreferenced": "object-unreferenced",
+        "task": "task-unknown",
+        "junk": "request-invalid"
+      },
+      "held": true
+    },
+    {
+      "id": "E6",
+      "title": "read the oracle; read the instance's environ; signal it",
+      "expected": "ok, ok, ok",
+      "observed": "ok, ok, ok; run PASS",
+      "positiveControl": true,
+      "detail": {
+        "oracleRead": "ok",
+        "environ": "ok",
+        "signal": "ok"
+      },
+      "held": true
+    }
+  ]
+}

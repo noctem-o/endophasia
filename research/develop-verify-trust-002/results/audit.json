@@ -2,6 +2,15 @@
   "schemaVersion": "endo.research.dvt002.audit.v0",
   "h0": false,
   "closure": true,
+  "scope": "known routes only: a necessary check, not a proof of separation",
+  "limits": [
+    "sudo rules: /etc/sudoers and /etc/sudoers.d are not readable to the account; NOPASSWD and global timestamps are not inspected (the installed gate adds `sudo -n true`, which must fail)",
+    "polkit: rules are matched by text, not evaluated; unreadable rule directories are not inspected",
+    "other local daemons and their sockets (beyond docker, libvirt and podman), and ACLs on objects other than those sockets",
+    "setuid and file-capability programs and their own policies",
+    "credentials the account holds for root or for the verifier elsewhere (ssh keys, cached tokens), and scheduled jobs run by root from files the account can write",
+    "kernel and service vulnerabilities"
+  ],
   "checks": [
     {
       "id": "h0-group-docker",
@@ -44,6 +53,21 @@
       "id": "h0-socket",
       "path": "/run/podman/podman.sock",
       "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-polkit-yes",
+      "observed": "/usr/share/polkit-1/rules.d/50-libvirt.rules: YES for libvirt",
+      "ok": false
+    },
+    {
+      "id": "h0-polkit-review",
+      "observed": "passwordless grants to review: /usr/share/polkit-1/rules.d/org.freedesktop.Flatpak.rules: YES for wheel; /usr/share/polkit-1/rules.d/org.freedesktop.NetworkManager.rules: YES for wheel; /usr/share/polkit-1/rules.d/org.freedesktop.bolt.rules: YES for wheel; /usr/share/polkit-1/rules.d/org.freedesktop.fwupd.rules: YES for wheel",
+      "ok": true
+    },
+    {
+      "id": "h0-polkit-unread",
+      "observed": "/etc/polkit-1/rules.d: EACCES",
       "ok": true
     },
     {

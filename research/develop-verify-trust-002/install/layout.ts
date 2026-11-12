@@ -5,7 +5,7 @@
 // system user, linger) is INSTALL-PLAN.md's, and is not done here.
 //
 //   node layout.ts build --commit <id> --out <dir> --mode installed|rehearsal --operator-uid <uid> --operator-home <dir>
-//   node layout.ts package --commit <id> --out <file.tar> --operator-uid <uid> --operator-home <dir>
+//   node layout.ts package --commit <id> --out <file.tar> --operator-uid <uid> --operator-home <dir> --operator-group <group>
 //   node layout.ts units --mode installed|rehearsal [--install <dir> --state <dir> --socket <path>]
 
 import { spawnSync } from "node:child_process";
@@ -161,11 +161,19 @@ TasksMax=1024
 export const SYSUSERS = `# DEVELOP-VERIFY-TRUST-002 research verifier principal. Research only; removed by uninstall.sh.
 u! ${INSTALLED.user} - "DEVELOP-VERIFY-TRUST-002 research verifier" ${INSTALLED.state}-home /usr/bin/nologin
 `;
-/** The state directory (the verifier's) and the socket's directory (where its user manager creates the socket). */
-export const TMPFILES = `# DEVELOP-VERIFY-TRUST-002 research verifier. Research only; removed by uninstall.sh.
+const GROUP = /^[a-z_][a-z0-9_-]{0,31}$/;
+/**
+ * The state directory (the verifier's) and the socket's directory, where the verifier's user manager creates the socket. The socket file
+ * itself is 0666; the directory is the gate: `0750`, group `operatorGroup` (the operator's own primary group, with no other members), so
+ * that no other local account can reach the socket, let alone start an instance (operator review: the socket was world-reachable).
+ */
+export function tmpfilesConf(operatorGroup: string): string {
+	if (!GROUP.test(operatorGroup)) throw new Error(`not a group name: ${operatorGroup}`);
+	return `# DEVELOP-VERIFY-TRUST-002 research verifier. Research only; removed by uninstall.sh.
 d ${INSTALLED.state} 0755 ${INSTALLED.user} ${INSTALLED.user} -
-d ${dirname(INSTALLED.socket)} 0755 ${INSTALLED.user} ${INSTALLED.user} -
+d ${dirname(INSTALLED.socket)} 0750 ${INSTALLED.user} ${operatorGroup} -
 `;
+}
 
 /**
  * The installed phase's package: `lib/` (the installation tree, built from the commit's objects) and `system/` (units, sysusers, tmpfiles),
@@ -176,6 +184,7 @@ export function packageInstallation(options: {
 	out: string;
 	operatorUid: number;
 	operatorHome: string;
+	operatorGroup: string;
 }): string {
 	const stage = mkdtempSync(join(tmpdir(), "endo-verify-002-package-"));
 	try {
@@ -190,7 +199,7 @@ export function packageInstallation(options: {
 		for (const [name, text] of Object.entries(renderUnits({ ...INSTALLED, conditionUser: INSTALLED.user })))
 			writeFileSync(join(stage, "system", name), text);
 		writeFileSync(join(stage, "system", "sysusers.conf"), SYSUSERS);
-		writeFileSync(join(stage, "system", "tmpfiles.conf"), TMPFILES);
+		writeFileSync(join(stage, "system", "tmpfiles.conf"), tmpfilesConf(options.operatorGroup));
 		const tar = spawnSync(
 			"/usr/bin/tar",
 			[
@@ -243,6 +252,7 @@ if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(new UR
 			out: arg(rest, "--out") ?? "",
 			operatorUid: Number(arg(rest, "--operator-uid") ?? "-1"),
 			operatorHome: arg(rest, "--operator-home") ?? "",
+			operatorGroup: arg(rest, "--operator-group") ?? "",
 		});
 		process.stdout.write(`${JSON.stringify({ package: arg(rest, "--out"), sha256: digest })}\n`);
 	} else if (command === "units") {

@@ -20,9 +20,14 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { processStartTimeV0 } from "../adapters/sandbox/containment.ts";
-import { accountGroups, audit, look } from "../research/develop-verify-trust-002/audit.ts";
+import { accountGroups, audit, H0_LIMITS, look, polkitGrants } from "../research/develop-verify-trust-002/audit.ts";
 import { collectObjects, encodeRequest } from "../research/develop-verify-trust-002/client/client.ts";
-import { INSTALLED, importClosure, renderUnits } from "../research/develop-verify-trust-002/install/layout.ts";
+import {
+	INSTALLED,
+	importClosure,
+	renderUnits,
+	tmpfilesConf,
+} from "../research/develop-verify-trust-002/install/layout.ts";
 import { type ObjectType, objectId, resolveCandidate } from "../research/develop-verify-trust-002/service/objects.ts";
 import {
 	consumerVerdict,
@@ -522,6 +527,50 @@ describe("DEVELOP-VERIFY-TRUST-002 host audit (review V5)", () => {
 		} finally {
 			spawnSync("/usr/bin/chmod", ["700", locked]);
 		}
+	});
+});
+
+describe("DEVELOP-VERIFY-TRUST-002 operator review of the install plan", () => {
+	it("removes the whole private staging directory: the variable the exit trap names is never reassigned", () => {
+		const script = readFileSync(join(REPO, "research/develop-verify-trust-002/install/install.sh"), "utf8");
+		const trap = /^trap 'rm -rf "\$(\w+)"' EXIT$/m.exec(script);
+		expect(trap?.[1]).toBe("PRIVATE");
+		const after = script.slice((trap?.index ?? 0) + (trap?.[0].length ?? 0));
+		expect(after).not.toMatch(/^\s*PRIVATE=/m);
+		// The package copy lives in it, and nothing is extracted outside it.
+		expect(after).toContain('cp -- "$TARBALL" "$PRIVATE/package.tar"');
+		expect(after).toContain('STAGE="$PRIVATE/x"');
+	});
+	it("gates the socket by its directory: the verifier's, mode 0750, the operator's group", () => {
+		const conf = tmpfilesConf("noctem");
+		expect(conf).toContain("d /run/endo-verify-002 0750 endo-verify-002 noctem -");
+		expect(conf).toContain("d /var/lib/endo-verify-002 0755 endo-verify-002 endo-verify-002 -");
+		for (const bad of ["", "a b", "x;rm", "-x", "root\nd /etc 0777"]) expect(() => tmpfilesConf(bad), bad).toThrow();
+	});
+	it("finds polkit rules that give the account's groups YES, says what it could not read, and states its limits", () => {
+		const account = {
+			uid: 1500,
+			passwd: "agent:x:1500:1500::/home/agent:/bin/sh\n",
+			group: "agent:x:1500:\nlibvirt:x:954:agent\nwheel:x:998:agent\n",
+			status: "Groups:\t1500 954 998\n",
+		};
+		const files = (dir: string) =>
+			dir.startsWith("/etc")
+				? "EACCES"
+				: [
+						{ name: "50-libvirt.rules", text: 'if (subject.isInGroup("libvirt")) return polkit.Result.YES;' },
+						{ name: "50-default.rules", text: 'return ["unix-group:wheel"]; // auth_admin' },
+						{ name: "x.rules", text: 'if (subject.isInGroup("other")) return polkit.Result.YES;' },
+						{ name: "u.rules", text: 'if (subject.user == "agent") return polkit.Result.YES;' },
+					];
+		const got = polkitGrants(account, files);
+		expect(got.grants).toEqual([
+			"/usr/share/polkit-1/rules.d/50-libvirt.rules: YES for libvirt",
+			"/usr/share/polkit-1/rules.d/u.rules: YES for user agent",
+		]);
+		expect(got.unread).toEqual(["/etc/polkit-1/rules.d: EACCES"]);
+		expect(H0_LIMITS.join(" ")).toMatch(/sudo/);
+		expect(audit(false, account).scope).toMatch(/necessary check, not a proof/);
 	});
 });
 

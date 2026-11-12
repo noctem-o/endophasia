@@ -211,3 +211,18 @@ and are still never executed.
 **Effect on the decision.** None of these changes the decision. V1, V3 and V5 strengthen the unexecuted installed phase and its gate, and
 V2 makes its T10 runnable at all. V4 corrects a claim about a residual risk outside the property under test, and narrows the stated
 difference between A and B. The approval request in FOLLOW-UP.md now names `e1c52e02e` and its digests.
+
+## 10. Operator review of the install plan (after §9)
+
+The operator raised four points on `6ac17388e`. Each was checked; the corrections are in the commit after it.
+
+| # | Point | Check | Resolution |
+| :-- | :-- | :-- | :-- |
+| O1 | `install.sh`'s exit trap named `STAGE`, which was later pointed at a subdirectory, so the private directory and its `package.tar` were left behind | **Reproduced** with the same trap pattern in a scratch directory: the staging directory and the package remained | **Fixed.** The trap names `PRIVATE`, which is never reassigned. A regression test reads the script and fails on the old pattern (mutation-checked). |
+| O2 | The socket was reachable by every local account (`0666` in a `0755` directory, `MaxConnections=4`). The uid check came only after activation, so other accounts could consume instances | Confirmed: a denial-of-service concern, not a false-PASS route | **Fixed.** The socket's directory is now `endo-verify-002:<operator's primary group> 0750`, so other accounts cannot reach the socket at all. `install.sh` refuses a missing group and prints its members; `audit.ts --installed` checks owner, group, mode and that the group has no other member. On this host `noctem` has no other member. |
+| O3 | The H0 audit is necessary, not a proof of separation | Agreed. One correction to the premise: the audit did not check passwordless sudo, because it cannot read the sudo rules | **Stated and tightened.** The audit now reports `scope` and `limits`. It checks writability by `access(2)` as well as mode bits (ACLs) and scans readable polkit rules. The installed gate also requires `sudo -n true` to fail. The scan **found further passwordless polkit grants to `wheel`** (Flatpak, NetworkManager system settings, bolt, fwupd), which are listed for the operator to review (`h0-polkit-review`). H0 is unchanged: false. |
+| O4 | The installer has not been exercised; CI and the follow-up review do not validate installation | Agreed | **Stated** in INSTALL-PLAN §8 and here. The follow-up review was of `149d94c8e`. CI passed on `6ac17388e`, and covers the unprivileged code only. |
+
+None of this changes a recorded row: the verifier code and the harness's rehearsal path are unchanged, and only the installed path's gate
+gained the `sudo -n` check. Tests: 26 of 26. The approval request in FOLLOW-UP.md is reissued for the corrected commit, because the
+package (its `tmpfiles.conf`) and `install.sh` changed.

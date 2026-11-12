@@ -161,6 +161,16 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 			log(`IP0: H0 does not hold in this session; no trial runs. ${JSON.stringify(h0.checks.filter((c) => !c.ok))}`);
 			return 3;
 		}
+		// The audit cannot read sudo's rules. Here, in the installed phase only, sudo is asked never to prompt: it must refuse. A cached
+		// timestamp or a NOPASSWD rule would let it succeed, and either is a route the agent could use.
+		const sudo = exec("/usr/bin/sudo", ["-n", "true"], { env: { PATH: "/usr/bin" } });
+		writeFileSync(join(W, "sudo-n.json"), `${JSON.stringify({ status: sudo.status, refused: sudo.status !== 0 })}\n`);
+		if (sudo.status === 0) {
+			log(
+				"IP0: `sudo -n true` succeeded: a passwordless or cached sudo route exists in this session; no trial runs.",
+			);
+			return 3;
+		}
 		install = INSTALLED.install;
 		state = INSTALLED.state;
 		socket = INSTALLED.socket;

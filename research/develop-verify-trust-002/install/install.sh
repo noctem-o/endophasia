@@ -30,16 +30,24 @@ done
 
 # The package: first copied where only root can reach, then checked and extracted from that same private copy. Checking the
 # operator's file and then reading it again would let anything that can write it swap it in between (review V1).
-STAGE=$(mktemp -d /root/endo-verify-002.XXXXXX)
-trap 'rm -rf "$STAGE"' EXIT
-cp -- "$TARBALL" "$STAGE/package.tar"
-got=$(sha256sum -- "$STAGE/package.tar" | cut -d' ' -f1)
+# PRIVATE is never reassigned: the exit trap removes all of it, the package copy included (operator review: the trap used to name a
+# variable that was later pointed at a subdirectory, which left the package behind).
+PRIVATE=$(mktemp -d /root/endo-verify-002.XXXXXX)
+trap 'rm -rf "$PRIVATE"' EXIT
+cp -- "$TARBALL" "$PRIVATE/package.tar"
+got=$(sha256sum -- "$PRIVATE/package.tar" | cut -d' ' -f1)
 [ "$got" = "$EXPECTED" ] || { echo "install.sh: package digest $got, expected $EXPECTED" >&2; exit 65; }
-mkdir "$STAGE/x"
-tar -x --no-same-owner --no-same-permissions -C "$STAGE/x" -f "$STAGE/package.tar"
-STAGE="$STAGE/x"
+mkdir "$PRIVATE/x"
+tar -x --no-same-owner --no-same-permissions -C "$PRIVATE/x" -f "$PRIVATE/package.tar"
+STAGE="$PRIVATE/x"
 [ -z "$(find "$STAGE" ! -type f ! -type d)" ] || { echo "install.sh: the package holds something other than files and directories" >&2; exit 67; }
 [ "$(ls "$STAGE")" = "$(printf 'lib\nsystem')" ] || { echo "install.sh: unexpected package layout" >&2; exit 67; }
+
+# The socket directory's group (tmpfiles.conf): only its members can reach the socket. It must exist, and its members are listed for the
+# operator to confirm before anything is installed.
+SOCKET_GROUP=$(awk '$2 == "/run/endo-verify-002" { print $5 }' "$STAGE/system/tmpfiles.conf")
+getent group "$SOCKET_GROUP" >/dev/null || { echo "install.sh: socket group '$SOCKET_GROUP' does not exist" >&2; exit 68; }
+echo "install.sh: the socket will be reachable by root and by group $SOCKET_GROUP: $(getent group "$SOCKET_GROUP")"
 
 # 1. The principal: a locked system user, no login shell.
 created_sysusers_dir=no

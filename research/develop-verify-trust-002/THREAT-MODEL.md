@@ -80,6 +80,11 @@ non-invasively (group membership, socket permissions, readable polkit rules; no 
 | `wheel` group | present | `sudo` and polkit `auth_admin` normally ask for the password. `/etc/sudoers.d` is not readable here, so `NOPASSWD` or a global timestamp cannot be ruled out by inspection. |
 | `empower` polkit group (`run0 --empower`) | absent | |
 
+**The check is necessary, not sufficient.** `audit.ts` checks known routes only, and lists what it cannot see. A passing audit would make
+the installed result conditional on those limits, not prove that no route exists (INSTALL-PLAN §1). Its polkit scan also lists
+passwordless grants to `wheel` that are not known routes to root (Flatpak, NetworkManager system settings, bolt, fwupd). The operator
+reviews them; the study does not decide them.
+
 **H0 does not hold on this host as configured.** Every row of this study that depends on ownership (T6, T7, T8) is defeated on this host by
 any agent that uses the docker socket, whatever the verifier's design. This is a property of the operator account, not of the verifier,
 and the study does not exercise it: running a root-equivalent container is a privileged attack technique.

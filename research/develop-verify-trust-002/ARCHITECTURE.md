@@ -80,7 +80,7 @@ files, not from the language.
 | Units | `/etc/systemd/user/endo-verify-002.socket`, `/etc/systemd/user/endo-verify-002@.service` | `root:root 0644` | root. `ConditionUser=endo-verify-002` keeps every other user's manager from starting them. |
 | Principal and directories | `/etc/sysusers.d/endo-verify-002.conf`, `/etc/tmpfiles.d/endo-verify-002.conf` | `root:root 0644` | root |
 | Linger | `/var/lib/systemd/linger/endo-verify-002` (by `loginctl enable-linger`) | root | root |
-| Socket | `/run/endo-verify-002/verify.sock` | created by the verifier's manager; dir `endo-verify-002 0755`, socket `0666` | the verifier's manager. Any local uid may connect; the verifier serves only the installed operator uid (§5.5). |
+| Socket | `/run/endo-verify-002/verify.sock` | created by the verifier's manager; socket `0666` inside a directory `endo-verify-002:<operator's primary group> 0750` | the verifier's manager. The directory is the gate: only root and that group (the operator alone, checked at install and by the audit) can reach the socket, so no other local account can even start an instance. The verifier also serves only the installed operator uid (§5.5). (Narrowed after the operator's review: the directory was `0755`, so any local account could cause activations.) |
 | State directory | `/var/lib/endo-verify-002/` | `endo-verify-002 0755` | the verifier uid |
 | Working files (staged candidate, qualification copies) | `…/work/<invocation>/` | `0700`; staged files `0444`/`0555` | the verifier uid. The agent cannot list, read or swap them. |
 | Journals | `…/journal/<invocation>.jsonl` | `0644` | the verifier uid |

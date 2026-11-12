@@ -71,10 +71,11 @@ Nothing proceeds without that decision.
 ## Operator authorization request (for (a))
 
 > I approve the installed phase of DEVELOP-VERIFY-TRUST-002 on this workstation, as described in
-> `research/develop-verify-trust-002/INSTALL-PLAN.md` at commit `e1c52e02e879732f5c9a90e07570375b2da3bee8` (the reviewed corrections):
-> 1. Remove `noctem` from the `docker` and `libvirt` groups for the experiment, and log in again (INSTALL-PLAN §1).
-> 2. As root, run `install/install.sh` (SHA-256 `63f30eb0177e7f257d123dac0760d54fbe5cf33ae2f421e60d2d179e0c4fa561`) on the package built
->    from that commit for uid 1000 (SHA-256 `aa06885af5e30aa7434148b09df8b7172874f2d3c6f94f2947d8d4d5409ed55b`). It creates:
+> `research/develop-verify-trust-002/INSTALL-PLAN.md` at commit `c59bf5c2405e2482a2f4de33529ca0a74fd8f91d` (review and operator corrections):
+> 1. Remove `noctem` from the `docker` and `libvirt` groups for the experiment, and log in again. I have reviewed the passwordless polkit
+>    grants to `wheel` that `audit.ts` lists for review, and I accept that IP0 checks known routes only (INSTALL-PLAN §1).
+> 2. As root, run `install/install.sh` (SHA-256 `400d9cfec70e6f5156922f3cdc01678847a9200a3cebb700b759b5d0192ed94b`) on the package built
+>    from that commit for uid 1000 and group `noctem` (SHA-256 `2788936ab1e494d955110f27759df7ca072b83166ab8271a2dcb2159aa8ea0cb`). It creates:
 >    - the locked system user `endo-verify-002`;
 >    - `/usr/local/lib/endo-verify-002`, `/var/lib/endo-verify-002`, `/var/lib/endo-verify-002-home` and `/run/endo-verify-002`;
 >    - two units in `/etc/systemd/user`;
@@ -85,4 +86,4 @@ Nothing proceeds without that decision.
 >    `b58320b5a2824f5841c83c55464f1555fef044666fbe2e2c4da0d887eecc4727`), keeping an archive of the records.
 >    Restoring my groups is my own choice.
 
-The three digests are for `e1c52e02e`, which carries the review corrections (RESULTS §9). Build the package with `--commit e1c52e02e879732f5c9a90e07570375b2da3bee8`. Its installation manifest names its source commit, so a package built from any other commit (the PR's head included) has another digest. The later D3 fix is in `audit.ts`, which is not installed. Run the audit and the harness from the PR's head. They supersede the frozen commit's digests. Any later change to the prototype means recomputing them and reissuing this request.
+The three digests are for `c59bf5c24`. That commit carries the review corrections (RESULTS §9) and the operator's review of the install plan (RESULTS §10), and they supersede every earlier digest. Build the package with `--commit c59bf5c2405e2482a2f4de33529ca0a74fd8f91d --operator-uid 1000 --operator-home /home/noctem --operator-group noctem`. The manifest names its source commit, and the package carries the socket's group, so any other commit or group gives another digest. Run the audit and the harness from the PR's head.

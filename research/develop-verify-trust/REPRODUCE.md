@@ -52,3 +52,18 @@ Under `filtered`, the candidate can read it anyway; that is row 6x.
 
 The raw workspaces (9.6 MB, without the 65 MB user-owned node copies used by row 7d) stay in `../endophasia-research/`; they are not
 committed.
+
+## Addendum 1 (the review's reproducers)
+
+```sh
+W=$(mktemp -d -p ~/some/scratch/place)      # outside the repository
+env -i PATH=/usr/bin HOME=$HOME LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/$(id -u) \
+  /usr/bin/node research/develop-verify-trust/addendum-1/review.ts run "$W"
+# about 2 minutes. It extracts the frozen verifier (5d508223f) from Git objects into $W/frozen, runs probes R0-R6 and X1-X8 against
+# it and this revision's corrected verifier, and writes $W/out/results.json (sanitised) and $W/out/records/.
+```
+
+The same host prerequisites as above. R3 and R6 race a concurrent process against the verifier on purpose. On a much slower host,
+R3's swap could land after the first case: check `detail.*.swapped`. The corrected verifier's full-study confirmation is the
+ordinary `study.ts run` from this revision (`addendum-1/results/run-3-corrected/`). A record can be bound to its commit with
+`run.sh read <record> --oracle … --oracle-sha256 … --commit <sha>`.

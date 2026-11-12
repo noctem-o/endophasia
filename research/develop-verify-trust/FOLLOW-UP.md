@@ -1,5 +1,10 @@
 # DEVELOP-VERIFY-TRUST-001: the smallest follow-up
 
+> **Addendum 1 (2026-11-12):** this slice is **not** the recommended next step. The review ([addendum-1/ADDENDUM.md](addendum-1/ADDENDUM.md) §7)
+> found that the condition below, "the controlled runner is trusted code", also has to cover the runner's working files, its records
+> and its Git inputs (R1-R3). No same-user arrangement meets it. The slice stays as a design note for after a separate-principal
+> experiment. Any version of it needs C1 (hardened Git reads) and C2 (records bound to their commit).
+
 A design note, not an implementation. Nothing here is built, and READY is not authorisation for general integration. The slice exists to
 test one claim inside the product: an operator can ask for a **controlled check** of one planned behavioural check. They get an
 observation that the inherited environment, `PATH`, the live worktree and the candidate's view of the host could not decide. It is

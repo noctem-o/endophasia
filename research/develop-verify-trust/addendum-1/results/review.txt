@@ -1,0 +1,17 @@
+R0   {"frozen-A":"PASS","frozen-B":"FAIL","corrected-A":"PASS","corrected-B":"FAIL"}
+R1   {"frozen":"PASS (bound reader PASS)","corrected":"FAIL (bound reader FAIL)"}
+R2   {"frozen":"FAIL; command ran: true","corrected":"BLOCKED; command ran: false"}
+R3   {"frozen":"PASS (swapped)","corrected":"PASS (swapped)"}
+R4a  {"modified":"BLOCKED qualification-failed (bound reader BLOCKED)"}
+R4b  {"modified":"PASS (bound reader PASS)"}
+R5   {"unbound":"PASS","boundToB":"UNKNOWN","boundToA":"PASS"}
+R6   {"reader":"INCOMPLETE","scopeBefore":"loaded/active","processesBefore":["bwrap","bwrap","node-MainThread"],"scopeAfter":"not-found/inactive","survivors":0,"strayCandidateProcesses":0}
+X1   {"hostDirect":"PASS","F":"PASS","S":"FAIL"}
+X2   {"hostDirect":"PASS","F":"PASS","S":"FAIL"}
+X3   {"hostDirect":"PASS","F":"FAIL","S":"FAIL"}
+X4   {"hostDirect":"PASS","F":"PASS","S":"PASS"}
+X5   {"hostDirect":"PASS","F":"PASS","S":"FAIL"}
+X6   {"hostDirect":"PASS","F":"PASS","S":"FAIL"}
+X7   {"hostDirect":"PASS","F":"BLOCKED","S":"BLOCKED"}
+X8   {"hostDirect":"PASS","F":"PASS","S":"PASS"}
+results: <workspace>/out/results.json

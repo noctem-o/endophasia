@@ -1,5 +1,16 @@
 # DEVELOP-VERIFY-TRUST-001: can Endophasia's protected parts verify a Node program independently of the ordinary check environment?
 
+> **Addendum 1 (2026-11-12), [addendum-1/ADDENDUM.md](addendum-1/ADDENDUM.md).** The adversarial review keeps this report and its
+> decision as the historical result of the preregistered rule, and qualifies them.
+> - **What READY covers:** mechanism feasibility only.
+> - **Not established:** evidence authenticity. A same-user process produced reader-accepted false passes without editing any
+>   record: R3, R4b, and R1 with the frozen verifier.
+> - **Not ready:** product integration, for agents that run as the operator's user.
+> - **Withdrawn:** the recommendation to integrate option C, in favour of a separate-principal experiment.
+>
+> Claims corrected there: §2 (detail identity), §3.6, §3.9, §5 (false passes, false refusals, recommendation) and §6 (the second
+> "establishes" item, and items 1 and 5 of "does not establish"). The text below is unchanged.
+
 **Decision: READY FOR A BOUNDED INTEGRATION**, by the preregistered rule (R1 to R5 hold). The scope is one task class: a Node.js
 command-line program checked by exact argv, exit code and standard output. It is conditional on the residual trust stated in §6, of
 which the most important is this: **the verifier's own code must be out of the agent's reach.** This is not authorisation for general

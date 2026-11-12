@@ -1,0 +1,25 @@
+row 1          O:passed  F:PASS  S:PASS
+row 2          O:failed  F:FAIL  S:FAIL
+row 10         O:passed  F:PASS  S:PASS
+row 3          O:passed
+row 4a         F:FAIL  S:FAIL
+row 4b         S:BLOCKED
+row 4c         S:PASS
+row 4d         S:FAIL
+row 5          O:passed  F:FAIL  S:FAIL
+row 6          O:passed  F:FAIL (expected PASS)  S:FAIL
+row 6x         O:passed  F:PASS  S:FAIL
+row 7a         S:BLOCKED
+row 7b         S:BLOCKED
+row 7c         F:BLOCKED  S:BLOCKED
+row 7d         F:BLOCKED  S:BLOCKED
+row 7e         F:BLOCKED  S:BLOCKED
+row 8          O:passed  F:FAIL  S:FAIL
+row 9a         S:INCOMPLETE
+row 9b         O:passed  F:FAIL  S:FAIL
+row 9c         S:UNKNOWN
+row 9d         S:PASS
+
+acceptance: {"R1":true,"R2":true,"R3":true,"R4":null,"R5":true,"R6":false,"R6x":true}
+reader disagreements: [{"row":"4c","mechanism":"sandbox","verdict":"PASS","reader":{"class":"UNKNOWN","reason":"case-inconsistent: subtractive-1994"}}]
+wall 130932 ms; results: <workspace>/out/results.json

@@ -85,4 +85,4 @@ Nothing proceeds without that decision.
 >    `b58320b5a2824f5841c83c55464f1555fef044666fbe2e2c4da0d887eecc4727`), keeping an archive of the records.
 >    Restoring my groups is my own choice.
 
-The three digests are for `e1c52e02e`, which carries the review corrections (RESULTS §9). The package's content does not depend on the later D3 fix, which is in `audit.ts` and is not installed. Run the audit and the harness from the PR's head. They supersede the frozen commit's digests. Any later change to the prototype means recomputing them and reissuing this request.
+The three digests are for `e1c52e02e`, which carries the review corrections (RESULTS §9). Build the package with `--commit e1c52e02e879732f5c9a90e07570375b2da3bee8`. Its installation manifest names its source commit, so a package built from any other commit (the PR's head included) has another digest. The later D3 fix is in `audit.ts`, which is not installed. Run the audit and the harness from the PR's head. They supersede the frozen commit's digests. Any later change to the prototype means recomputing them and reissuing this request.

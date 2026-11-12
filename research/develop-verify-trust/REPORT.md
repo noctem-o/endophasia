@@ -8,7 +8,8 @@
 > - **Not ready:** product integration, for agents that run as the operator's user.
 > - **Withdrawn:** the recommendation to integrate option C, in favour of a separate-principal experiment.
 >
-> Claims corrected there: §2 (detail identity), §3.6, §3.9, §5 (false passes, false refusals, recommendation) and §6 (the second
+> Claims corrected there (version 1.1): §1 (the shared verdict rule's output budget), §2 (detail identity), §3.3 (the launcher's
+> clean start needs a trusted parent), §3.6, §3.9, §5 (false passes, false refusals, recommendation) and §6 (the second
 > "establishes" item, and items 1 and 5 of "does not establish"). The text below is unchanged.
 
 **Decision: READY FOR A BOUNDED INTEGRATION**, by the preregistered rule (R1 to R5 hold). The scope is one task class: a Node.js

@@ -1,6 +1,7 @@
 # DEVELOP-VERIFY-TRUST-001, addendum 1: adversarial review and trust-boundary qualification
 
-**Version 1, 2026-11-12.** This addendum reviews the study recorded at `5d508223f`. It does not change the protocol, the
+**Version 1.1, 2026-11-12.** Version 1 (`07d9ecb18`) was the author's own review. Version 1.1 adds the independent review of draft
+PR #146 (§9), its corrections C3-C5 and corrections A1.9 and A1.10. This addendum reviews the study recorded at `5d508223f`. It does not change the protocol, the
 preregistered expectations, the recorded runs or their records. [REPORT.md](../REPORT.md) and its decision stay as the historical
 result. Each correction below names the claim it qualifies. Everything here is **exploratory and post hoc**: none of it was
 preregistered, and none of it enters R1 to R6.
@@ -186,3 +187,38 @@ ordinary path. They are REPORT §9's follow-ups:
 | A1.6 | REPORT §6.1 | Out of the agent's reach must include the verifier's **working state and records**, not only its code (R3). |
 | A1.7 | REPORT §5, recommendation; decision paragraph | Integration of option C is withdrawn; READY is read as claim A (mechanism feasibility) only (§7). |
 | A1.8 | REPORT §2 | "Identical in both … classification and detail": identical up to receipt order and timestamps; `compare` checks classifications only (§1). |
+| A1.9 | REPORT §3.3, PROTOCOL §4 (launch discipline), `run.sh` header | `run.sh` makes the *verifier's* environment its own: `NODE_OPTIONS`, `PATH` and the like never reach `node`, which rows 4a, 4d and 5 show. It cannot protect itself from dynamic-loader variables (`LD_PRELOAD`, `LD_AUDIT`) in the caller's environment. Those load code into the launcher's own `sh` and its helpers before `env -i` runs (§9, V1). The clean start therefore requires a trusted parent, the same condition as 4c. No recorded row used a loader variable. |
+| A1.10 | REPORT §1 ("F and S share … the verdict rule") | Until C4, S bounded standard output only, while F bounded standard output and standard error together. A candidate with correct output and more than 64 KiB of standard error passed under S and failed under F (§9, V5). No recorded candidate wrote that much standard error. The confirmation run after C4 is in §9. |
+
+## 9. Independent review (version 1.1)
+
+The draft PR's one requested independent review was by the Codex GitHub reviewer, on head `07d9ecb18`. It reported one P1 and five P2
+findings. Each premise was checked against the code, and each finding was reproduced before any change was made. All were accepted.
+
+| # | Severity | Location (`07d9ecb18`) | Finding | Reproduction here | Impact on the claims | Resolution |
+| :-- | :-- | :-- | :-- | :-- | :-- | :-- |
+| V1 | P1 | `run.sh:8` | Dynamic-loader variables in the caller's environment run code in the launcher before `env -i` clears them | A preload library's constructor ran in 3 launcher processes (`sh` and helpers) for `run.sh read …` | The launcher's clean start holds only when its parent is trusted, as for 4c; the boundary claim narrows (A1.9). Recorded rows unaffected: none used loader variables | **Documented, not fixable in the launcher.** Code that runs before the launcher can also intercept it. Only a trusted parent, or a separate-principal service (§7), helps. |
+| V2 | P2 | `verify.ts:443` | An earlier record at `--out` survives the start of a new run, so an interrupted retry reads the old verdict | The row-1 PASS was copied to `--out`, and the new run was SIGKILLed after its `start` event. Frozen verifier: the bound reader gives **PASS**. Corrected: INCOMPLETE `journal-without-record`. | A false PASS from an interruption, contrary to PROTOCOL §1's "never PASS when … interrupted". Recorded runs unaffected: each wrote to a new path | **Fixed (C3).** |
+| V3 | P2 | `table.ts:79` | The 9c and 9d controls were copied from `results.json`, not re-read, and were left out of the mismatch count | 9c-flipped-resealed was replaced by row 1's PASS record in a disposable copy. Before: `mismatches: []`. After: `["9c-flipped-resealed"]` | REPORT's "0 mismatches" covered the 29 run records, not the 6 reader-only controls. The test suite did re-read those (`9c-*` UNKNOWN, `9d` PASS), so the committed evidence is consistent | **Fixed.** `table.ts` re-reads them; `cases.json` regenerates byte-identically. |
+| V4 | P2 | `study.ts:630` | If row 9a's verifier exits early (a refused run), the runner waited on an exit that had already happened and lost the results | Code reading. The recorded runs armed normally (`armed: true`) | Study robustness only: a host without isolation would have lost its BLOCKED observations instead of recording them | **Fixed.** The exit is observed from the spawn, and the loop stops on it. |
+| V5 | P2 | `verify.ts:317` | Output budgets differ: S bounded standard output only, F bounded both streams together | A candidate writing 70,000 bytes of standard error and then correct output. Frozen: S **PASS**, F FAIL. Corrected: S FAIL, F FAIL | A1.10. Recorded rows unaffected | **Fixed (C4).** |
+| V6 | P2 | `verify.ts:617` | A record that parses to `null` made the reader throw instead of returning UNKNOWN | `null`, `[]` and `1` are now in the edited-record test | A damaged-record class could crash the reader and `table.ts`. No committed record parses to a non-object | **Fixed (C5).** Test extended. |
+
+Also observed while reproducing V5, recorded as information:
+- **What happened.** The frozen copy, extracted outside any repository, had no `package.json` of its own. Node walked up to an unrelated
+  `package.json` in an ancestor directory to decide the module type of `verify.ts`.
+- **Effect.** It changes only how the file is parsed; nothing was loaded through it. Inside the repository, the repository's own
+  `package.json` (`"type": "module"`) ends that lookup.
+- **What it shows.** An installed verifier's behaviour depends on files above its directory, which a same-user agent can write.
+  That is one more instance of A1.6.
+
+**Confirmation after C3-C5.** The full study was run again from `3eab65228` (`raw/run-4-review`). Results are in `results/run-4-review/`.
+- **Classifications.** `study.ts compare` against run 1 gives `{"identical":true,"rows":21}`.
+- **Acceptance.** Unchanged.
+- **Detail.** After normalisation, the only differences are `repositoryHead` and row 9a's `killedAtMs`, plus `repositoryClean: false`.
+  That flag records two uncommitted documentation edits (this file and `REPORT.md`) that were in the working tree during the run.
+  The verifier and runner sources were exactly those of `3eab65228`.
+
+**Review status.** One bounded independent review was requested, and it completed. One focused follow-up review of the corrections
+was requested on the pushed head. Its status is reported on the PR, not here. Neither review approves anything: the PR stays a draft.
+

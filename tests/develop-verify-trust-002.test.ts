@@ -20,7 +20,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { processStartTimeV0 } from "../adapters/sandbox/containment.ts";
-import { accountGroups, audit } from "../research/develop-verify-trust-002/audit.ts";
+import { accountGroups, audit, look } from "../research/develop-verify-trust-002/audit.ts";
 import { collectObjects, encodeRequest } from "../research/develop-verify-trust-002/client/client.ts";
 import { INSTALLED, importClosure, renderUnits } from "../research/develop-verify-trust-002/install/layout.ts";
 import { type ObjectType, objectId, resolveCandidate } from "../research/develop-verify-trust-002/service/objects.ts";
@@ -512,6 +512,16 @@ describe("DEVELOP-VERIFY-TRUST-002 host audit (review V5)", () => {
 		expect(
 			audit(false, { ...account, group: "agent:x:1500:\n" }).checks.find((c) => c.id === "h0-group-docker")?.ok,
 		).toBe(true);
+	});
+	it("reports a path it cannot look up instead of failing (D3: CI's /run/podman is not searchable)", () => {
+		const locked = join(scratch, "locked");
+		mkdirSync(locked, { mode: 0o000 });
+		try {
+			// Root ignores the mode; the point is that look() never throws.
+			expect(["EACCES", "absent"]).toContain(look(join(locked, "x.sock")));
+		} finally {
+			spawnSync("/usr/bin/chmod", ["700", locked]);
+		}
 	});
 });
 

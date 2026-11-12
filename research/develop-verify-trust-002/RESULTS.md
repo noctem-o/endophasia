@@ -201,7 +201,11 @@ changed.
 | D1 | — | `service/verifier.ts` | A concurrent instance could collect a live instance's working directory in the moment between its creation and its owner file. That gives INCOMPLETE, never PASS, but it is wrong | Code reading | **Fixed.** The directory is made as `.new-<id>`, given its owner, then renamed. Half-made directories are collected only after 10 minutes. Test added. |
 | D2 | — | `service/verifier.ts` | A client that never closed its side held an instance until `RuntimeMaxSec` (900 s); four such clients block the service (denial of service only) | Reproduced: before the fix, the response came only when the client closed; after it, BLOCKED `request-timeout` at 30.1 s and the process exits | **Fixed.** A 30 s request deadline, then standard input is closed. |
 
-**Tests after the corrections.** `tests/develop-verify-trust-002.test.ts`: 22 of 22 (D1 and V5 added). The install scripts pass `sh -n`
+**D3, found by CI on `149d94c8e`.** The V5 test runs the real host audit. On the CI runner `/run/podman` cannot be searched, so
+`lstat` threw `EACCES` and shard 1 failed. A socket the account cannot even look up is one it cannot use. The audit now reports the error
+code instead of throwing. This host's audit output is unchanged; a regression test was added.
+
+**Tests after the corrections.** `tests/develop-verify-trust-002.test.ts`: 23 of 23 (D1, V5 and D3 added). The install scripts pass `sh -n`
 and are still never executed.
 
 **Effect on the decision.** None of these changes the decision. V1, V3 and V5 strengthen the unexecuted installed phase and its gate, and

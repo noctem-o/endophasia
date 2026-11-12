@@ -5,7 +5,17 @@
 // It reads file metadata, group membership and readable policy files. It runs no privileged command, contacts no daemon and exercises no
 // route. With --installed it also audits the installation's own paths (which must exist then).
 
-import { lstatSync, readFileSync } from "node:fs";
+import { lstatSync, readFileSync, type Stats } from "node:fs";
+
+/** lstat that reports an unreadable path by its error code instead of throwing (a socket in a directory this account cannot search). */
+export function look(path: string): Stats | "absent" | string {
+	try {
+		return lstatSync(path, { throwIfNoEntry: false }) ?? "absent";
+	} catch (e) {
+		return String((e as NodeJS.ErrnoException).code ?? "error");
+	}
+}
+
 import { dirname, resolve } from "node:path";
 import { resolveRuntimeV0 } from "../../adapters/sandbox/bubblewrap.ts";
 import { INSTALLED } from "./install/layout.ts";
@@ -14,12 +24,13 @@ type Check = { id: string; path?: string; observed: string; ok: boolean };
 
 /** Root-owned (or, with `uid`, owned by that uid) and not writable by group or others, with every ancestor root's. */
 function owned(path: string, uid = 0): string {
-	const s = lstatSync(path, { throwIfNoEntry: false });
-	if (s === undefined) return "absent";
+	const s = look(path);
+	if (typeof s === "string") return s;
 	if (s.uid !== uid) return `owner ${s.uid}`;
 	if ((s.mode & 0o022) !== 0) return `mode ${(s.mode & 0o7777).toString(8)}`;
 	for (let d = dirname(path); ; d = dirname(d)) {
-		const a = lstatSync(d);
+		const a = look(d);
+		if (typeof a === "string") return `ancestor ${d} ${a}`;
 		if (a.uid !== 0 || (a.mode & 0o022) !== 0)
 			return `ancestor ${d} owner ${a.uid} mode ${(a.mode & 0o7777).toString(8)}`;
 		if (d === "/") break;
@@ -69,8 +80,8 @@ export function accountGroups(a: AccountSource): { gid: number; name: string; he
 }
 
 function writable(path: string, account: AccountSource): string {
-	const s = lstatSync(path, { throwIfNoEntry: false });
-	if (s === undefined) return "absent";
+	const s = look(path);
+	if (typeof s === "string") return s;
 	const gids = new Set(accountGroups(account).map((g) => g.gid));
 	const uid = account.uid;
 	const w = s.uid === uid ? s.mode & 0o200 : gids.has(s.gid) ? s.mode & 0o020 : s.mode & 0o002;

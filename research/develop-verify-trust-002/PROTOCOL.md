@@ -144,4 +144,13 @@ No outcome of this phase is "production ready".
 
 ## 9. Amendments
 
-None yet.
+**Before the freeze** (no trial had run; development runs only):
+1. The principal's home is a root-owned directory holding masks, not `/`. A lingering manager starts every globally enabled user unit
+   (six on this host, from PipeWire to the GNOME keyring); the masks keep them from running as the principal (INSTALL-PLAN §2).
+2. `MaxConnections=4`, and systemd refuses (does not queue) connections beyond it (ARCHITECTURE §5.6).
+3. Reading rule 2 also requires the installation manifest the reader compares against, and its directories, to be root's
+   (`records.ts`).
+4. T8 (b) is read with a uid that is neither the reader's nor root's (61234), so that rule 2 rather than rule 3 decides it in the
+   rehearsal.
+5. The installed target checks gate IP0 itself (`audit.ts`) and stops before any trial. T10 and E3 there wait for the operator's own
+   interruption, with the commands in INSTALL-PLAN §6.

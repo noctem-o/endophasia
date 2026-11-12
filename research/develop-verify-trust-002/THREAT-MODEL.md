@@ -26,7 +26,7 @@ results. Who asked, and whether a human approved, are separate questions (§5).
 | :-- | :-- | :-- | :-- |
 | **root** | uid 0 | installing, updating and removing the verifier; the kernel's and the system manager's configuration | everything |
 | **System manager** | PID 1 | starting the verifier principal's user manager (lingering) with an environment root configured | start and stop units |
-| **Verifier principal** | `endo-verify-002`, a system uid with no login shell, home `/` and no supplementary groups | running the verifier; owning its working state and records | write `/var/lib/endo-verify-002` only; create user namespaces (bubblewrap) |
+| **Verifier principal** | `endo-verify-002`, a locked system uid with no login shell, a root-owned home and no supplementary groups | running the verifier; owning its working state and records | write `/var/lib/endo-verify-002` only; create user namespaces (bubblewrap) |
 | **Verifier user manager** | `systemd --user` for that uid, started by PID 1 because of a root-created linger file | socket activation of one verifier instance per request; the per-case scopes | start units as that uid |
 | **Operator** | the workstation user (`noctem`, uid 1000) | deciding what to install and which records to rely on | everything the account can do |
 | **Agent** (the attacker) | **the operator's uid**, unsandboxed: Pi, Codex, Claude Code or a shell, launched by Endophasia or not | nothing | everything the operator's account can do without a password |

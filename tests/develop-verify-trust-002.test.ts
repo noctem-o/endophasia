@@ -1,0 +1,459 @@
+// DEVELOP-VERIFY-TRUST-002 (research/develop-verify-trust-002/): the parts of the separate-principal design that need no sandbox and no
+// second uid. The request parser, the object verifier, the record reader's authority rules (with another uid's files stood in for by an
+// injected file system), the installation's import closure and its units.
+
+import { spawnSync } from "node:child_process";
+import { createHash, randomBytes } from "node:crypto";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, type Stats, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, describe, expect, it } from "vitest";
+import { collectObjects, encodeRequest } from "../research/develop-verify-trust-002/client/client.ts";
+import { INSTALLED, importClosure, renderUnits } from "../research/develop-verify-trust-002/install/layout.ts";
+import { type ObjectType, objectId, resolveCandidate } from "../research/develop-verify-trust-002/service/objects.ts";
+import {
+	consumerVerdict,
+	type FileSystem,
+	hostFileSystem,
+	readAuthoritative,
+} from "../research/develop-verify-trust-002/service/records.ts";
+import { MAX_REQUEST_BYTES, parsePeer, parseRequest } from "../research/develop-verify-trust-002/service/request.ts";
+import {
+	compatibilitySignals,
+	INSTALLATION_SCHEMA,
+	type Observation,
+	RECORD_SCHEMA,
+	seal,
+} from "../research/develop-verify-trust-002/service/verifier.ts";
+
+const REPO = fileURLToPath(new URL("..", import.meta.url));
+const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+const scratch = mkdtempSync(join(tmpdir(), "dvt002-test-"));
+afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+
+const GIT_TRUSTED = (() => {
+	try {
+		return statSync("/usr/bin/git").uid === 0;
+	} catch {
+		return false;
+	}
+})();
+
+const blob = Buffer.from('console.log("I");\n');
+const tree = (entries: [string, string, Buffer][]) =>
+	Buffer.concat(entries.map(([mode, name, id]) => Buffer.concat([Buffer.from(`${mode} ${name}\0`), id])));
+const commitOf = (treeId: string) =>
+	Buffer.from(`tree ${treeId}\nauthor t <t@example.invalid> 0 +0000\ncommitter t <t@example.invalid> 0 +0000\n\nc\n`);
+/** A commit with the given root entries, as objects. */
+function crafted(entries: [string, string, string][], extra: { type: ObjectType; data: Buffer }[] = []) {
+	const t = tree(entries.map(([m, n, id]) => [m, n, Buffer.from(id, "hex")]));
+	const c = commitOf(objectId("sha1", "tree", t));
+	return {
+		commit: objectId("sha1", "commit", c),
+		objects: [
+			{ type: "commit" as ObjectType, data: c },
+			{ type: "tree" as ObjectType, data: t },
+			{ type: "blob" as ObjectType, data: blob },
+			...extra,
+		],
+	};
+}
+const blobId = objectId("sha1", "blob", blob);
+
+describe("DEVELOP-VERIFY-TRUST-002 object transfer", () => {
+	it("resolves a commit from its own objects, with object and byte identity", () => {
+		const c = crafted([["100644", "roman.mjs", blobId]]);
+		const r = resolveCandidate("sha1", c.commit, c.objects);
+		expect(r.ok).toBe(true);
+		if (!r.ok) return;
+		expect(r.candidate.files.map((f) => [f.path, f.mode, f.sha256])).toEqual([["roman.mjs", "100644", sha256(blob)]]);
+		expect(r.candidate.exportSha256).toMatch(/^[0-9a-f]{64}$/);
+	});
+
+	it("refuses substituted, missing, extra, duplicated and wrong-typed objects", () => {
+		const c = crafted([["100644", "roman.mjs", blobId]]);
+		const other = { type: "blob" as ObjectType, data: Buffer.from("other\n") };
+		// The tree names a blob the request does not carry; the bytes it carries instead hash to another id.
+		expect(resolveCandidate("sha1", c.commit, [c.objects[0], c.objects[1], other] as never)).toEqual({
+			ok: false,
+			reason: "object-missing",
+		});
+		expect(resolveCandidate("sha1", c.commit, [...c.objects, other])).toEqual({
+			ok: false,
+			reason: "object-unreferenced",
+		});
+		expect(resolveCandidate("sha1", c.commit, [...c.objects, c.objects[2] as never])).toEqual({
+			ok: false,
+			reason: "object-duplicate",
+		});
+		const asTree = c.objects.map((o) => (o.type === "blob" ? { ...o, type: "tree" as ObjectType } : o));
+		expect(resolveCandidate("sha1", c.commit, asTree).ok).toBe(false);
+		expect(resolveCandidate("sha1", "0".repeat(40), c.objects)).toEqual({ ok: false, reason: "object-missing" });
+	});
+
+	it("refuses links, submodules, unplain and colliding names", () => {
+		const reason = (entries: [string, string, string][]) => {
+			const r = resolveCandidate("sha1", crafted(entries).commit, crafted(entries).objects);
+			return r.ok ? "ok" : r.reason;
+		};
+		expect(reason([["120000", "link", blobId]])).toBe("unsupported-120000");
+		expect(
+			reason([
+				["100644", "a", blobId],
+				["160000", "sub", "1".repeat(40)],
+			]),
+		).toBe("unsupported-160000");
+		for (const name of ["..", ".", ".git", ".GIT", "a b", "a\\b"])
+			expect(reason([["100644", name, blobId]]), name).toBe("unsupported-name");
+		expect(
+			reason([
+				["100644", "A", blobId],
+				["100644", "a", blobId],
+			]),
+		).toBe("unsupported-name");
+	});
+
+	it.skipIf(!GIT_TRUSTED)("exports a real repository's commit exactly, SHA-1 and SHA-256 alike", () => {
+		for (const format of ["sha1", "sha256"] as const) {
+			const dir = join(scratch, `repo-${format}`);
+			const env = {
+				PATH: "/usr/bin",
+				HOME: "/nonexistent",
+				GIT_CONFIG_NOSYSTEM: "1",
+				GIT_CONFIG_GLOBAL: "/dev/null",
+			};
+			const git = (...a: string[]) => {
+				const r = spawnSync(
+					"/usr/bin/git",
+					["-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", ...a],
+					{ env },
+				);
+				if (r.status !== 0) throw new Error(r.stderr.toString());
+				return r.stdout.toString().trim();
+			};
+			mkdirSync(join(dir, "lib"), { recursive: true });
+			writeFileSync(join(dir, "roman.mjs"), 'import "./lib/x.mjs";\n');
+			writeFileSync(join(dir, "lib/x.mjs"), "export {};\n", { mode: 0o755 });
+			git("init", "-q", `--object-format=${format}`);
+			git("add", "-A");
+			git("commit", "-q", "-m", "c");
+			const commit = git("rev-parse", "HEAD");
+			const got = collectObjects(dir, commit);
+			expect(got.ok).toBe(true);
+			if (!got.ok) continue;
+			const r = resolveCandidate(format, commit, got.objects);
+			expect(r.ok, format).toBe(true);
+			if (!r.ok) continue;
+			expect(r.candidate.files.map((f) => `${f.mode} ${f.path}`)).toEqual(["100755 lib/x.mjs", "100644 roman.mjs"]);
+			expect(r.candidate.tree).toBe(git("rev-parse", "HEAD^{tree}"));
+		}
+	});
+});
+
+describe("DEVELOP-VERIFY-TRUST-002 request", () => {
+	const c = crafted([["100644", "roman.mjs", blobId]]);
+	const good = () => encodeRequest("roman-numerals-cli", "sha1", c.commit, c.objects);
+	it("accepts exactly the request format", () => {
+		const r = parseRequest(good());
+		expect(r.ok).toBe(true);
+	});
+	it("refuses every field that could carry a program, a path, an environment, an option or an expected result", () => {
+		for (const key of [
+			"env",
+			"argv",
+			"executable",
+			"command",
+			"path",
+			"oracle",
+			"expect",
+			"timeoutMs",
+			"options",
+			"cwd",
+		]) {
+			expect(
+				parseRequest(encodeRequest("roman-numerals-cli", "sha1", c.commit, c.objects, { [key]: "x" })),
+				key,
+			).toEqual({
+				ok: false,
+				reason: "request-invalid",
+			});
+		}
+		const withObjectKey = JSON.parse(good().toString()) as Record<string, any>;
+		withObjectKey.objects[0].path = "../x";
+		expect(parseRequest(Buffer.from(JSON.stringify(withObjectKey))).ok).toBe(false);
+	});
+	it("refuses paths as tasks, malformed ids, non-canonical base64, invalid UTF-8 and oversize", () => {
+		expect(parseRequest(encodeRequest("../oracle", "sha1", c.commit, c.objects)).ok).toBe(false);
+		expect(parseRequest(encodeRequest("roman-numerals-cli", "sha1", c.commit.toUpperCase(), c.objects)).ok).toBe(
+			false,
+		);
+		const nonCanonical = JSON.parse(good().toString()) as Record<string, any>;
+		nonCanonical.objects[2].data = `${nonCanonical.objects[2].data.slice(0, -2)}x=`;
+		expect(parseRequest(Buffer.from(JSON.stringify(nonCanonical))).ok).toBe(false);
+		expect(parseRequest(Buffer.from([0x7b, 0xff, 0x7d])).ok).toBe(false);
+		expect(parseRequest(Buffer.alloc(MAX_REQUEST_BYTES + 1, 0x20))).toEqual({
+			ok: false,
+			reason: "request-too-large",
+		});
+	});
+	it("reads the requester's pid and uid from systemd's instance name, and nothing else", () => {
+		expect(parsePeer("0-72-362663_385246-1000")).toEqual({ pid: 362663, uid: 1000 });
+		expect(parsePeer("3-12345-1000")).toEqual({ pid: 12345, uid: 1000 });
+		for (const bad of ["", "x", "0-1-2-3-4", "0-12-a-1000", "0-1-2_3-1000; rm"])
+			expect(parsePeer(bad), bad).toBeNull();
+	});
+});
+
+// ---- the reader's authority rules, with ownership stood in for ----------------------------------------------------------------------
+
+const VERIFIER = 4242;
+const READER = 1000;
+function setup(name: string) {
+	const root = join(scratch, name);
+	const install = join(root, "install");
+	const state = join(root, "state");
+	for (const d of [install, join(state, "records"), join(state, "journal")]) mkdirSync(d, { recursive: true });
+	const pins = {
+		dir: "oracle/t",
+		manifestSha256: "a".repeat(64),
+		referenceSha256: "b".repeat(64),
+		negativeSha256: "c".repeat(64),
+	};
+	const installation = { schemaVersion: INSTALLATION_SCHEMA, mode: "installed", tasks: { t: pins }, files: [] };
+	writeFileSync(join(install, "installation.json"), JSON.stringify(installation));
+	const installationId = sha256(readFileSync(join(install, "installation.json")));
+	const write = (verdict: "PASS" | "FAIL", commit = "1".repeat(40), exportSha256 = "e".repeat(64)) => {
+		const id = randomBytes(16).toString("hex");
+		const matched = verdict === "PASS";
+		const cases: Observation[] = Array.from({ length: 3 }, (_, i) => ({
+			name: `c${i}`,
+			started: true,
+			exitCode: 0,
+			timedOut: false,
+			truncated: false,
+			termination: "confirmed",
+			stdoutBytes: 1,
+			stdoutSha256: "0".repeat(64),
+			stderrHead: "",
+			durationMs: 1,
+			matched: i === 0 ? matched : true,
+		}));
+		const record: Record<string, unknown> = {
+			schemaVersion: RECORD_SCHEMA,
+			verdict,
+			reason: null,
+			invocation: { id },
+			installation: { id: installationId },
+			oracle: {
+				task: "t",
+				manifestSha256: pins.manifestSha256,
+				referenceSha256: pins.referenceSha256,
+				negativeSha256: pins.negativeSha256,
+				cases: 3,
+			},
+			candidate: { commit, exportSha256 },
+			qualification: { reference: "PASS", negative: "FAIL" },
+			cases,
+			recordSha256: null,
+		};
+		record.recordSha256 = seal(record);
+		writeFileSync(join(state, "records", `${id}.json`), JSON.stringify(record));
+		return id;
+	};
+	return { root, install, state, write };
+}
+/** The host's file system, except that ownership and modes are what `owner` says: root above, the verifier's below. */
+function standIn(
+	s: { install: string; state: string },
+	change: (path: string, st: Stats) => Partial<Stats> = () => ({}),
+): FileSystem {
+	const as = (path: string, real: Stats): Stats => {
+		const verifiers = path === s.state || path.startsWith(`${s.state}/`);
+		const base = { uid: verifiers ? VERIFIER : 0, mode: real.mode & ~0o022, nlink: real.isFile() ? 1 : real.nlink };
+		return Object.assign(Object.create(Object.getPrototypeOf(real)), real, base, change(path, real)) as Stats;
+	};
+	return {
+		lstat: (path) => {
+			const real = hostFileSystem.lstat(path);
+			return real === undefined ? undefined : as(path, real);
+		},
+		readNoFollow: (path) => {
+			const got = hostFileSystem.readNoFollow(path);
+			return "error" in got ? got : { stat: as(path, got.stat), bytes: got.bytes };
+		},
+		uid: () => READER,
+	};
+}
+
+describe("DEVELOP-VERIFY-TRUST-002 record authority", () => {
+	const s = setup("authority");
+	const pass = s.write("PASS");
+	const read = (fs: FileSystem, invocation = pass, verifierUid = VERIFIER, expect = {}) =>
+		readAuthoritative({ state: s.state, installDir: s.install, verifierUid, invocation, expect }, fs);
+
+	it("accepts a record only where the verifier's ownership is complete (positive control of the rule)", () => {
+		expect(read(standIn(s))).toMatchObject({ class: "PASS", authoritative: true });
+	});
+	it("never treats the reader's own files, or root's, as the verifier's", () => {
+		expect(read(standIn(s), pass, READER)).toMatchObject({ authoritative: false, reason: "verifier-is-reader" });
+		expect(read(standIn(s), pass, 0)).toMatchObject({ authoritative: false, reason: "verifier-is-root" });
+		// The host as it is: everything here belongs to the user running the test.
+		const own = hostFileSystem.uid();
+		expect(read(hostFileSystem, pass, own)).toMatchObject({
+			class: "PASS",
+			authoritative: false,
+			reason: "verifier-is-reader",
+		});
+	});
+	it("refuses a record whose file, directory or ancestors anyone else could have written", () => {
+		const file = join(s.state, "records", `${pass}.json`);
+		const records = join(s.state, "records");
+		const cases: [string, (p: string, st: Stats) => Partial<Stats>, RegExp][] = [
+			["file owned by the reader", (p) => (p === file ? { uid: READER } : {}), /file-not-the-verifier's/],
+			["file group-writable", (p, st) => (p === file ? { mode: st.mode | 0o020 } : {}), /file-not-the-verifier's/],
+			["file with a second link", (p) => (p === file ? { nlink: 2 } : {}), /file-not-the-verifier's/],
+			["records directory owned by the reader", (p) => (p === records ? { uid: READER } : {}), /not-the-verifier's/],
+			[
+				"records directory writable by others",
+				(p, st) => (p === records ? { mode: st.mode | 0o002 } : {}),
+				/not-the-verifier's/,
+			],
+			["state root's parent not root's", (p) => (p === dirname(s.state) ? { uid: READER } : {}), /not-root's/],
+			[
+				"installation manifest not root's",
+				(p) => (p === join(s.install, "installation.json") ? { uid: READER } : {}),
+				/not-root's/,
+			],
+		];
+		for (const [name, change, reason] of cases) {
+			const r = read(standIn(s, change));
+			expect(r.authoritative, name).toBe(false);
+			expect(r.reason, name).toMatch(reason);
+		}
+	});
+	it("refuses a symbolic link, a forged id, an edited record and a record of another installation", () => {
+		const link = randomBytes(16).toString("hex");
+		spawnSync("/usr/bin/ln", [
+			"-s",
+			join(s.state, "records", `${pass}.json`),
+			join(s.state, "records", `${link}.json`),
+		]);
+		expect(read(standIn(s), link)).toMatchObject({ class: "UNKNOWN", reason: "symbolic-link" });
+		expect(read(standIn(s), "../../x")).toMatchObject({ class: "UNKNOWN", reason: "invocation-invalid" });
+		const copy = randomBytes(16).toString("hex");
+		writeFileSync(join(s.state, "records", `${copy}.json`), readFileSync(join(s.state, "records", `${pass}.json`)));
+		expect(read(standIn(s), copy)).toMatchObject({ class: "UNKNOWN", reason: "invocation-mismatch" });
+		const edited = JSON.parse(readFileSync(join(s.state, "records", `${pass}.json`), "utf8"));
+		edited.verdict = "FAIL";
+		writeFileSync(join(s.state, "records", `${pass}.json`), JSON.stringify(edited));
+		expect(read(standIn(s))).toMatchObject({ class: "UNKNOWN", reason: "seal-mismatch" });
+		edited.verdict = "PASS";
+		edited.installation.id = "f".repeat(64);
+		edited.recordSha256 = seal(edited);
+		writeFileSync(join(s.state, "records", `${pass}.json`), JSON.stringify(edited));
+		expect(read(standIn(s))).toMatchObject({ class: "UNKNOWN", reason: "installation-mismatch" });
+	});
+	it("binds a record to the commit and the export digest it is read for", () => {
+		const t = setup("binding");
+		const id = t.write("PASS", "2".repeat(40), "d".repeat(64));
+		const r = (expect: Record<string, string>) =>
+			readAuthoritative(
+				{ state: t.state, installDir: t.install, verifierUid: VERIFIER, invocation: id, expect },
+				standIn(t),
+			);
+		expect(r({ commit: "2".repeat(40), exportSha256: "d".repeat(64) })).toMatchObject({
+			class: "PASS",
+			authoritative: true,
+		});
+		expect(r({ commit: "3".repeat(40) })).toMatchObject({ class: "UNKNOWN", reason: "candidate-mismatch" });
+		expect(r({ commit: "2".repeat(40), exportSha256: "9".repeat(64) })).toMatchObject({
+			class: "UNKNOWN",
+			reason: "export-mismatch",
+		});
+	});
+	it("reads an invocation with a journal and no record as INCOMPLETE, never PASS", () => {
+		const t = setup("incomplete");
+		const id = randomBytes(16).toString("hex");
+		writeFileSync(join(t.state, "journal", `${id}.jsonl`), "{}\n");
+		expect(
+			readAuthoritative(
+				{ state: t.state, installDir: t.install, verifierUid: VERIFIER, invocation: id },
+				standIn(t),
+			),
+		).toMatchObject({
+			class: "INCOMPLETE",
+			authoritative: false,
+		});
+	});
+	it("gives a commit PASS only with an authoritative PASS and no authoritative FAIL for the same binding", () => {
+		const t = setup("consumer");
+		const q = {
+			state: t.state,
+			installDir: t.install,
+			verifierUid: VERIFIER,
+			commit: "5".repeat(40),
+			exportSha256: "e".repeat(64),
+		};
+		expect(consumerVerdict(q, standIn(t)).verdict).toBe("NONE");
+		t.write("PASS", q.commit);
+		t.write("PASS", "6".repeat(40));
+		expect(consumerVerdict(q, standIn(t)).verdict).toBe("PASS");
+		t.write("FAIL", q.commit);
+		expect(consumerVerdict(q, standIn(t)).verdict).toBe("FAIL");
+		expect(consumerVerdict({ ...q, verifierUid: READER }, standIn(t)).verdict).toBe("NONE");
+	});
+});
+
+describe("DEVELOP-VERIFY-TRUST-002 installation", () => {
+	it("installs the verifier's whole value-import closure and nothing it only imports for types", () => {
+		const closure = importClosure(
+			(p) => readFileSync(join(REPO, p), "utf8"),
+			[
+				"research/develop-verify-trust-002/service/verifier.ts",
+				"research/develop-verify-trust-002/service/records.ts",
+			],
+		);
+		expect(closure).toEqual([
+			"adapters/sandbox/bubblewrap.ts",
+			"adapters/sandbox/containment.ts",
+			"adapters/sandbox/preflight.ts",
+			"research/develop-verify-trust-002/service/objects.ts",
+			"research/develop-verify-trust-002/service/records.ts",
+			"research/develop-verify-trust-002/service/request.ts",
+			"research/develop-verify-trust-002/service/verifier.ts",
+			"runtime/contracts/canonical-json.ts",
+		]);
+		// Everything Node would load: the closure's value imports are relative and stay inside it; no bare specifier, so no node_modules.
+		for (const f of closure) {
+			const text = readFileSync(join(REPO, f), "utf8");
+			for (const m of text.matchAll(/^import\s+(?!type\s)[^;]*?from\s+"([^"]+)";/gms)) {
+				const spec = m[1] as string;
+				if (spec.startsWith("node:")) continue;
+				expect(closure, `${f} imports ${spec}`).toContain(relative(REPO, resolve(REPO, dirname(f), spec)));
+			}
+		}
+	});
+	it("renders units whose program, arguments and environment come only from the unit", () => {
+		const units = renderUnits({ ...INSTALLED, conditionUser: INSTALLED.user });
+		const service = units[`${INSTALLED.unit}@.service`] as string;
+		expect(units[`${INSTALLED.unit}.socket`]).toContain("Accept=yes");
+		expect(service).toContain(`ConditionUser=${INSTALLED.user}`);
+		expect(service).toMatch(
+			/^ExecStart=\/usr\/bin\/node \/usr\/local\/lib\/endo-verify-002\/\S+ serve --install \S+ --state \S+ --peer %i$/m,
+		);
+		expect(service).toContain("UnsetEnvironment=NODE_OPTIONS NODE_PATH LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT");
+		expect(service).not.toMatch(/%h|%S|\/home\/|sh -c|EnvironmentFile/);
+		expect(lstatSync(join(REPO, "research/develop-verify-trust-002/install")).isDirectory()).toBe(true);
+	});
+	it("reads compatibility signals from failing cases only, as advice", () => {
+		const o = (stderrHead: string, matched = false) => ({ stderrHead, matched }) as Observation;
+		expect(compatibilitySignals([o("Error: EROFS: read-only file system"), o("ENOSPC", true)])).toEqual(["EROFS"]);
+		expect(
+			compatibilitySignals([o("Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'x'"), o("spawn /bin/sh ENOENT")]),
+		).toEqual(["ERR_MODULE_NOT_FOUND", "no-shell"]);
+		expect(
+			compatibilitySignals([o("Error: spawnSync /bin/sh ENOENT"), o("uv_os_get_passwd returned ENOENT")]),
+		).toEqual(["no-passwd", "no-shell"]);
+	});
+});

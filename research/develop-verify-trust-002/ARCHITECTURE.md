@@ -32,7 +32,7 @@ operator's user manager cannot be it. The candidates were:
 
 | Starter | Verdict |
 | :-- | :-- |
-| **The verifier uid's own user manager**, started by PID 1 because root created its linger file | **Selected.** The environment is root's configuration (PAM and `/etc/systemd`); the verifier has no writable home (`/`). Its per-case scopes are in its own delegated cgroup subtree, so 001's `containment.ts` and `runSandboxV0` are reused **unchanged**. |
+| **The verifier uid's own user manager**, started by PID 1 because root created its linger file | **Selected.** The environment is root's configuration (PAM and `/etc/systemd`); the verifier's home is root's. Its per-case scopes are in its own delegated cgroup subtree, so 001's `containment.ts` and `runSandboxV0` are reused **unchanged**. |
 | A system socket and template service (`User=endo-verify-002`) under PID 1 | Rejected **for now**. The instance would sit under `system.slice`, so a `systemd-run --user --scope` from it would have to move processes across a root-owned common ancestor, which cgroup v2 refuses. It would need new containment code on a delegated cgroup (`Delegate=yes`, `cgroup.kill`, `cgroup.events`). That is feasible but untested, and it is not 001's mechanism. |
 | A setuid helper | Rejected. It inherits the caller's environment, file descriptors, limits, working directory and signals, and it needs native code. |
 | A `sudo` or `run0` rule | Rejected. It needs `/etc/sudoers` or polkit changes, and the environment is partly the caller's. A `NOPASSWD` rule is one more route to another uid. |
@@ -94,10 +94,10 @@ files, not from the language.
 | :-- | :-- |
 | Who is trusted to initiate the verifier? | The verifier's user manager, per connection. Any local process can cause a start by connecting; none can choose what runs. |
 | Who can replace its binaries? | root (installation, `pacman` for `node`, `bwrap` and systemd). |
-| Who can modify its service configuration? | root (`/etc/systemd/user`, sysusers, tmpfiles, linger). The verifier uid's own user configuration directory would be `/.config/systemd/user`, which does not exist and is root's to create. |
+| Who can modify its service configuration? | root (`/etc/systemd/user`, sysusers, tmpfiles, linger). The principal's home, `/var/lib/endo-verify-002-home`, is root's and holds only masks for the user units every user's manager would otherwise start (INSTALL-PLAN §2), so neither the principal nor anyone else can add user configuration for it. |
 | Who can stop or interfere with it? | root; the verifier uid itself. The operator can only with its password: `systemctl stop user@<uid>.service` and `loginctl disable-linger` are polkit `auth_admin`. The agent can stop its own client, which does not stop the instance. |
 | Can the agent inspect the verifier process? | It can see that it runs and its `cmdline`, which holds no secret. It cannot read its `environ`, `mem` or file descriptors, `ptrace` it or signal it (different uid). |
-| Does the verifier read user-writable scripts, libraries or configuration? | No, by design: its code, runtime closure, oracle and configuration are root-owned; its home is `/`; its environment comes from the unit; the candidate arrives as bytes on the socket. RESULTS.md reports the audit of the runtime closure on this host (`audit.ts`). |
+| Does the verifier read user-writable scripts, libraries or configuration? | No, by design: its code, runtime closure, oracle and configuration are root-owned; its home is root's; its environment comes from the unit and its manager; the candidate arrives as bytes on the socket. RESULTS.md reports the audit of the runtime closure on this host (`audit.ts`). |
 | How do consumers tell service evidence from a forged copy? | By location and owner, never by content: §6. |
 
 ## 5. The request protocol and candidate transfer
@@ -168,7 +168,7 @@ record says "approved".
 | Stale PASS | Impossible by layout: records are named by invocation id, written once, never replaced (001's V2 needed a reused path). |
 | Replay | A record is bound to its commit and export digest; presented for another commit, it reads `candidate-mismatch`. |
 | Retry until a flaky PASS | The consumer rule (§6) refuses a binding that has any complete FAIL. |
-| Concurrency | Each instance has its own id, working directory, journal and record. `MaxConnections=2` bounds parallel instances; more connections wait. |
+| Concurrency | Each instance has its own id, working directory, journal and record. `MaxConnections=4` bounds parallel instances; systemd refuses further connections until one ends (the client reports BLOCKED `service-unavailable`). |
 | Partial writes | The record is written to `records/.<id>.tmp` (`wx`) and renamed. A reader never sees half a record, and ignores dotfiles. |
 
 ## 6. Records and their authority

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "endo.research.trust-oracle.v0",
+  "task": "roman-numerals-cli",
+  "description": "Prints the Roman numeral (standard subtractive notation) for a whole number from 1 to 3999, then a newline, exit 0. Anything else: nothing on stdout, exit 2. Standard error is not compared.",
+  "timeoutMs": 5000,
+  "maxOutputBytes": 65536,
+  "reference": "reference/roman.mjs",
+  "negative": "negative/roman.mjs",
+  "cases": [
+    { "name": "subtractive-1994", "visible": true, "argv": ["node", "roman.mjs", "1994"], "expect": { "exitCode": 0, "stdout": "MCMXCIV\n" } },
+    { "name": "rejects-zero", "visible": true, "argv": ["node", "roman.mjs", "0"], "expect": { "exitCode": 2, "stdout": "" } },
+    { "name": "runs-14", "visible": true, "argv": ["node", "roman.mjs", "14"], "expect": { "exitCode": 0, "stdout": "XIV\n" } },
+    { "name": "one", "visible": false, "argv": ["node", "roman.mjs", "1"], "expect": { "exitCode": 0, "stdout": "I\n" } },
+    { "name": "four", "visible": false, "argv": ["node", "roman.mjs", "4"], "expect": { "exitCode": 0, "stdout": "IV\n" } },
+    { "name": "nine", "visible": false, "argv": ["node", "roman.mjs", "9"], "expect": { "exitCode": 0, "stdout": "IX\n" } },
+    { "name": "forty", "visible": false, "argv": ["node", "roman.mjs", "40"], "expect": { "exitCode": 0, "stdout": "XL\n" } },
+    { "name": "ninety", "visible": false, "argv": ["node", "roman.mjs", "90"], "expect": { "exitCode": 0, "stdout": "XC\n" } },
+    { "name": "four-hundred", "visible": false, "argv": ["node", "roman.mjs", "400"], "expect": { "exitCode": 0, "stdout": "CD\n" } },
+    { "name": "year-2026", "visible": false, "argv": ["node", "roman.mjs", "2026"], "expect": { "exitCode": 0, "stdout": "MMXXVI\n" } },
+    { "name": "rejects-4000", "visible": false, "argv": ["node", "roman.mjs", "4000"], "expect": { "exitCode": 2, "stdout": "" } },
+    { "name": "rejects-word", "visible": false, "argv": ["node", "roman.mjs", "abc"], "expect": { "exitCode": 2, "stdout": "" } },
+    { "name": "rejects-negative", "visible": false, "argv": ["node", "roman.mjs", "-5"], "expect": { "exitCode": 2, "stdout": "" } },
+    { "name": "rejects-fraction", "visible": false, "argv": ["node", "roman.mjs", "1.5"], "expect": { "exitCode": 2, "stdout": "" } },
+    { "name": "max-3999", "visible": false, "argv": ["node", "roman.mjs", "3999"], "expect": { "exitCode": 0, "stdout": "MMMCMXCIX\n" } }
+  ]
+}

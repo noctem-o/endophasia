@@ -1,0 +1,17 @@
+ok   1 -> I
+ok   4 -> IV
+ok   9 -> IX
+ok   14 -> XIV
+ok   40 -> XL
+ok   90 -> XC
+ok   400 -> CD
+ok   1994 -> MCMXCIV
+FAIL 2026 -> 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx … [cut here: this line is 1048627 bytes; the raw run data keeps it whole]
+ok   3999 -> MMMCMXCIX
+ok   '0' refused
+ok   '4000' refused
+ok   'abc' refused
+ok   '-5' refused
+ORACLE FAIL
+
+[exit 0]

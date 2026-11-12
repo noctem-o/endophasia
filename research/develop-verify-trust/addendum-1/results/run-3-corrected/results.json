@@ -1,0 +1,2942 @@
+{
+  "study": "DEVELOP-VERIFY-TRUST-001",
+  "pin": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+  "host": {
+    "kernel": "7.2.15-arch1-1",
+    "node": "v26.13.1",
+    "git": "git version 2.56.1",
+    "bubblewrap": "bubblewrap 0.13.1",
+    "systemd": "systemd 262 (262.2-1-arch)",
+    "repositoryHead": "50bb49a6311a2dfa84a2c46eece74d929f384e4b",
+    "repositoryClean": true
+  },
+  "commits": {
+    "A": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+    "B": "ebc8326d49fab0d465111e240de31205c5da58b9",
+    "C": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+    "C2": "287a9a2d33dc204de2dd676899f83a07f7699217",
+    "D": "33a60292f00e8661b11a91e0234b510b91cc1d9e",
+    "E": "02fdb2cb58a0a2fd289c9b7c07172b5d5c3ce5c5",
+    "P": "49b03e807849746d68a18c0e1fa3e4fcefc080cf",
+    "A-link": "05eabcaaf1b1a1dd541395e9f61db32808aa177b"
+  },
+  "truth": {
+    "A": "PASS",
+    "B": "FAIL",
+    "C": "FAIL",
+    "C2": "FAIL",
+    "D": "FAIL (hung: killed after 20 s)",
+    "E": "FAIL",
+    "P": "PASS"
+  },
+  "rows": [
+    {
+      "id": "1",
+      "title": "correct, clean",
+      "candidate": "A",
+      "condition": "clean",
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "detail": {
+        "truth": "PASS",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 3,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "PASS",
+          "exit": 0,
+          "wallMs": 3039,
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "PASS",
+            "reason": null,
+            "commit": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+            "candidateSha256": "3f86d29ae7b4b38895e7c882df1fb5b64b4ce90c38426152188de026460d753f",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 2858
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "PASS",
+          "exit": 0,
+          "wallMs": 3224,
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "PASS",
+            "reason": null,
+            "commit": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+            "candidateSha256": "3f86d29ae7b4b38895e7c882df1fb5b64b4ce90c38426152188de026460d753f",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3041
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "2",
+      "title": "incorrect, clean",
+      "candidate": "B",
+      "condition": "clean",
+      "expected": {
+        "O": "failed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "failed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "ordinary": {
+          "ledger": "failed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "failed",
+              "label": "Failed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "failed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 3,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3094,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "subtractive-1994",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 16
+              },
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 2902
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3216,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "subtractive-1994",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 16
+              },
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3035
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "10",
+      "title": "positive control",
+      "candidate": "P",
+      "condition": "clean",
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "detail": {
+        "truth": "PASS",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 3,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 49b03e807849746d68a18c0e1fa3e4fcefc080cf"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at 49b03e807849746d68a18c0e1fa3e4fcefc080cf"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 49b03e807849746d68a18c0e1fa3e4fcefc080cf"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "PASS",
+          "exit": 0,
+          "wallMs": 3334,
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "PASS",
+            "reason": null,
+            "commit": "49b03e807849746d68a18c0e1fa3e4fcefc080cf",
+            "candidateSha256": "19a312d6163bedb0fa41eafa83d63b3848da2c5265c4985cff450eb485ef4e66",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3149
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "PASS",
+          "exit": 0,
+          "wallMs": 3467,
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "PASS",
+            "reason": null,
+            "commit": "49b03e807849746d68a18c0e1fa3e4fcefc080cf",
+            "candidateSha256": "19a312d6163bedb0fa41eafa83d63b3848da2c5265c4985cff450eb485ef4e66",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3285
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "3",
+      "title": "F1 reproduction",
+      "candidate": "B",
+      "condition": "NODE_OPTIONS=--import=<env-hook.mjs> (outside the repository)",
+      "expected": {
+        "O": "passed"
+      },
+      "observed": {
+        "O": "passed"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 3,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            }
+          ]
+        }
+      },
+      "agree": {
+        "O": true
+      }
+    },
+    {
+      "id": "4a",
+      "title": "F1, controlled (through run.sh)",
+      "candidate": "B",
+      "condition": "caller has NODE_OPTIONS=--import=<env-hook.mjs>",
+      "expected": {
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "filtered": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3045,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "subtractive-1994",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 16
+              },
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 2857
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3207,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "subtractive-1994",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 16
+              },
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3019
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "4b",
+      "title": "hostile controller env, no launcher",
+      "candidate": "B",
+      "condition": "verify.ts started directly with NODE_OPTIONS=--import=<env-hook.mjs>",
+      "expected": {
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "S": "BLOCKED"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "sandbox": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 189,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "controller-environment"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "controller-environment",
+            "commit": null,
+            "candidateSha256": null,
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [
+              "NODE_OPTIONS"
+            ],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "NODE_OPTIONS",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 7
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "S": true
+      }
+    },
+    {
+      "id": "4c",
+      "title": "self-hiding controller hook, no launcher",
+      "candidate": "B",
+      "condition": "verify.ts started directly with NODE_OPTIONS=--import=<controller-forge.mjs>",
+      "expected": {
+        "S": "PASS"
+      },
+      "observed": {
+        "S": "PASS"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "sandbox": {
+          "verdict": "PASS",
+          "exit": 0,
+          "wallMs": 3231,
+          "reader": {
+            "class": "UNKNOWN",
+            "reason": "case-inconsistent: subtractive-1994"
+          },
+          "summary": {
+            "verdict": "PASS",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3047
+          },
+          "stderr": ""
+        },
+        "note": "expected PASS is a false pass: it demonstrates that the controller is trusted"
+      },
+      "agree": {
+        "S": true
+      }
+    },
+    {
+      "id": "4d",
+      "title": "the 4c hook, through run.sh",
+      "candidate": "B",
+      "condition": "caller has NODE_OPTIONS=--import=<controller-forge.mjs>",
+      "expected": {
+        "S": "FAIL"
+      },
+      "observed": {
+        "S": "FAIL"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3223,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "subtractive-1994",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 16
+              },
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3043
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "S": true
+      }
+    },
+    {
+      "id": "5",
+      "title": "shadowed PATH",
+      "candidate": "B",
+      "condition": "PATH=<workspace>/agent-bin:/usr/bin; agent-bin/node loads the F1 hook",
+      "expected": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 3,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "<workspace>/agent-bin/node",
+              "realExecutable": "<workspace>/agent-bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "<workspace>/agent-bin/node",
+              "realExecutable": "<workspace>/agent-bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "<workspace>/agent-bin/node",
+              "realExecutable": "<workspace>/agent-bin/node",
+              "outcome": "failed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at ebc8326d49fab0d465111e240de31205c5da58b9"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3037,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "subtractive-1994",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 16
+              },
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 2853
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3239,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+            "candidateSha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "subtractive-1994",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 16
+              },
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3056
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "6",
+      "title": "candidate-modified tests and oracle; host lookup",
+      "candidate": "C",
+      "condition": "clean",
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 4,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "--test"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 61c0a8da8afd66f5a5562369cd78c6b0d6164897"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at 61c0a8da8afd66f5a5562369cd78c6b0d6164897"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 61c0a8da8afd66f5a5562369cd78c6b0d6164897"
+            },
+            {
+              "argv": [
+                "node",
+                "--test"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 61c0a8da8afd66f5a5562369cd78c6b0d6164897"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3065,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+            "candidateSha256": "74d8f0acbd25d5088d770561f47bec963801e47f4584224ce0e2bdef4b74e43a",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 2876
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3218,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+            "candidateSha256": "74d8f0acbd25d5088d770561f47bec963801e47f4584224ce0e2bdef4b74e43a",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3031
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": false,
+        "S": true
+      }
+    },
+    {
+      "id": "6x",
+      "title": "EXPLORATORY: C2, ancestor lookup",
+      "candidate": "C2",
+      "condition": "clean",
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "detail": {
+        "exploratory": true,
+        "truth": "FAIL",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 4,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "--test"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 287a9a2d33dc204de2dd676899f83a07f7699217"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at 287a9a2d33dc204de2dd676899f83a07f7699217"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 287a9a2d33dc204de2dd676899f83a07f7699217"
+            },
+            {
+              "argv": [
+                "node",
+                "--test"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 287a9a2d33dc204de2dd676899f83a07f7699217"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "PASS",
+          "exit": 0,
+          "wallMs": 3029,
+          "reader": {
+            "class": "PASS",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "PASS",
+            "reason": null,
+            "commit": "287a9a2d33dc204de2dd676899f83a07f7699217",
+            "candidateSha256": "b92d74d159b9fb7023ddd07e21215c003dcf08e18aafc7265428db261a902ac7",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 2843
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3315,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "287a9a2d33dc204de2dd676899f83a07f7699217",
+            "candidateSha256": "b92d74d159b9fb7023ddd07e21215c003dcf08e18aafc7265428db261a902ac7",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "runs-14",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "nine",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "forty",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "ninety",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 6
+              },
+              {
+                "name": "four-hundred",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 5
+              },
+              {
+                "name": "max-3999",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": false,
+                "stdoutBytes": 19
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3128
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "7a",
+      "title": "bubblewrap missing",
+      "candidate": "A",
+      "condition": "--bwrap /nonexistent/bwrap",
+      "expected": {
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "S": "BLOCKED"
+      },
+      "detail": {
+        "truth": "PASS",
+        "sandbox": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 315,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "isolation-missing"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "isolation-missing",
+            "commit": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+            "candidateSha256": "3f86d29ae7b4b38895e7c882df1fb5b64b4ce90c38426152188de026460d753f",
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 130
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "S": true
+      }
+    },
+    {
+      "id": "7b",
+      "title": "containment missing",
+      "candidate": "A",
+      "condition": "--systemd-run /nonexistent/systemd-run",
+      "expected": {
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "S": "BLOCKED"
+      },
+      "detail": {
+        "truth": "PASS",
+        "sandbox": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 319,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "containment-unavailable"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "containment-unavailable",
+            "commit": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+            "candidateSha256": "3f86d29ae7b4b38895e7c882df1fb5b64b4ce90c38426152188de026460d753f",
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 134
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "S": true
+      }
+    },
+    {
+      "id": "7c",
+      "title": "oracle not the pinned one",
+      "candidate": "A",
+      "condition": "the workspace oracle copy says 4 is IIII",
+      "expected": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "detail": {
+        "truth": "PASS",
+        "filtered": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 195,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "oracle-not-pinned"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "oracle-not-pinned",
+            "commit": null,
+            "candidateSha256": null,
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 7
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 193,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "oracle-not-pinned"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "oracle-not-pinned",
+            "commit": null,
+            "candidateSha256": null,
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 8
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "7d",
+      "title": "runtime not trusted",
+      "candidate": "A",
+      "condition": "--node <workspace>/user-node/node (a user-owned copy)",
+      "expected": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "detail": {
+        "truth": "PASS",
+        "filtered": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 200,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "runtime-runtime-unacceptable"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "runtime-runtime-unacceptable",
+            "commit": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+            "candidateSha256": "3f86d29ae7b4b38895e7c882df1fb5b64b4ce90c38426152188de026460d753f",
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 16
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 198,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "runtime-runtime-unacceptable"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "runtime-runtime-unacceptable",
+            "commit": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+            "candidateSha256": "3f86d29ae7b4b38895e7c882df1fb5b64b4ce90c38426152188de026460d753f",
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 15
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "7e",
+      "title": "unsupported candidate (a symbolic link)",
+      "candidate": "A-link",
+      "condition": "clean",
+      "expected": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "detail": {
+        "truth": "PASS",
+        "filtered": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 192,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "unsupported-120000"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "unsupported-120000",
+            "commit": null,
+            "candidateSha256": null,
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 12
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "BLOCKED",
+          "exit": 3,
+          "wallMs": 195,
+          "reader": {
+            "class": "BLOCKED",
+            "reason": "unsupported-120000"
+          },
+          "summary": {
+            "verdict": "BLOCKED",
+            "reason": "unsupported-120000",
+            "commit": null,
+            "candidateSha256": null,
+            "preflight": null,
+            "qualification": null,
+            "mismatched": [],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 12
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "8",
+      "title": "timeout",
+      "candidate": "D",
+      "condition": "clean",
+      "expected": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "detail": {
+        "truth": "FAIL (hung: killed after 20 s)",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 4,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "3999"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "inconclusive",
+              "reasons": [
+                "timed-out"
+              ]
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 33a60292f00e8661b11a91e0234b510b91cc1d9e"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at 33a60292f00e8661b11a91e0234b510b91cc1d9e"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 33a60292f00e8661b11a91e0234b510b91cc1d9e"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "3999"
+              ],
+              "exit": 4,
+              "recorded": "recorded: Inconclusive (it ran past its time limit and was stopped), at 33a60292f00e8661b11a91e0234b510b91cc1d9e"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 7961,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "33a60292f00e8661b11a91e0234b510b91cc1d9e",
+            "candidateSha256": "a5e3df19dc2ef7d9c8962fc908f3526d18a0f9ef5ac1607506450739c2470a26",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "max-3999",
+                "exitCode": null,
+                "timedOut": true,
+                "truncated": false,
+                "stdoutBytes": 0
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 7770
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 8228,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "33a60292f00e8661b11a91e0234b510b91cc1d9e",
+            "candidateSha256": "a5e3df19dc2ef7d9c8962fc908f3526d18a0f9ef5ac1607506450739c2470a26",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "max-3999",
+                "exitCode": null,
+                "timedOut": true,
+                "truncated": false,
+                "stdoutBytes": 0
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 8043
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "9a",
+      "title": "interrupted (SIGKILL while 3999 runs)",
+      "candidate": "D",
+      "condition": "the verifier is killed mid-case",
+      "expected": {
+        "S": "INCOMPLETE"
+      },
+      "observed": {
+        "S": "INCOMPLETE"
+      },
+      "detail": {
+        "truth": "FAIL (hung: killed after 20 s)",
+        "armed": true,
+        "killedAtMs": 1794486554832,
+        "recordWritten": false,
+        "reader": {
+          "class": "INCOMPLETE",
+          "reason": "journal-without-record"
+        },
+        "scopesRecorded": 46,
+        "scopesStillActive": [],
+        "lastScope": {
+          "unit": "endo-sandbox-6ba3a7a27d41998578a08293",
+          "state": "LoadState=not-found ActiveState=inactive"
+        }
+      },
+      "agree": {
+        "S": true
+      }
+    },
+    {
+      "id": "9b",
+      "title": "incomplete output (1 MiB before the answer)",
+      "candidate": "E",
+      "condition": "clean",
+      "expected": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "ordinary": {
+          "ledger": "passed",
+          "checks": [
+            {
+              "name": "subtractive-1994",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "rejects-zero",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            },
+            {
+              "name": "runs",
+              "state": "passed",
+              "label": "Passed at HEAD"
+            }
+          ],
+          "criteria": [
+            "passed",
+            "passed",
+            "passed",
+            "judgment"
+          ],
+          "problems": 0,
+          "receiptCount": 3,
+          "receipts": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "failed",
+              "reasons": []
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "executable": "/usr/bin/node",
+              "realExecutable": "/usr/bin/node",
+              "outcome": "passed",
+              "reasons": []
+            }
+          ],
+          "runs": [
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "1994"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 02fdb2cb58a0a2fd289c9b7c07172b5d5c3ce5c5"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "0"
+              ],
+              "exit": 3,
+              "recorded": "recorded: Observed check failed, at 02fdb2cb58a0a2fd289c9b7c07172b5d5c3ce5c5"
+            },
+            {
+              "argv": [
+                "node",
+                "roman.mjs",
+                "14"
+              ],
+              "exit": 0,
+              "recorded": "recorded: Observed check passed, at 02fdb2cb58a0a2fd289c9b7c07172b5d5c3ce5c5"
+            }
+          ]
+        },
+        "filtered": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3019,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "02fdb2cb58a0a2fd289c9b7c07172b5d5c3ce5c5",
+            "candidateSha256": "175163d31bde4d4b04a7828f9bae8b3f382dfcc2862c13b5aa6c221293760859",
+            "preflight": null,
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "year-2026",
+                "exitCode": null,
+                "timedOut": false,
+                "truncated": true,
+                "stdoutBytes": 255808
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 2827
+          },
+          "stderr": ""
+        },
+        "sandbox": {
+          "verdict": "FAIL",
+          "exit": 1,
+          "wallMs": 3272,
+          "reader": {
+            "class": "FAIL",
+            "reason": null
+          },
+          "summary": {
+            "verdict": "FAIL",
+            "reason": null,
+            "commit": "02fdb2cb58a0a2fd289c9b7c07172b5d5c3ce5c5",
+            "candidateSha256": "175163d31bde4d4b04a7828f9bae8b3f382dfcc2862c13b5aa6c221293760859",
+            "preflight": {
+              "status": "established",
+              "probes": 27,
+              "failed": []
+            },
+            "qualification": {
+              "reference": "PASS",
+              "negative": "FAIL"
+            },
+            "mismatched": [
+              {
+                "name": "year-2026",
+                "exitCode": 0,
+                "timedOut": false,
+                "truncated": true,
+                "stdoutBytes": 1048583
+              }
+            ],
+            "hostileVariables": [],
+            "environmentNames": [
+              "DBUS_SESSION_BUS_ADDRESS",
+              "HOME",
+              "LANG",
+              "PATH",
+              "XDG_RUNTIME_DIR"
+            ],
+            "durationMs": 3087
+          },
+          "stderr": ""
+        }
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      }
+    },
+    {
+      "id": "9c",
+      "title": "damaged records (five variants of row 2's record)",
+      "candidate": "B",
+      "condition": "record edited after the run",
+      "expected": {
+        "S": "UNKNOWN"
+      },
+      "observed": {
+        "S": "UNKNOWN"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "variants": {
+          "9c-verdict-flipped": {
+            "class": "UNKNOWN",
+            "reason": "seal-mismatch"
+          },
+          "9c-flipped-resealed": {
+            "class": "UNKNOWN",
+            "reason": "verdict-inconsistent"
+          },
+          "9c-case-removed": {
+            "class": "UNKNOWN",
+            "reason": "case-set"
+          },
+          "9c-truncated": {
+            "class": "UNKNOWN",
+            "reason": "unreadable"
+          },
+          "9c-other-oracle": {
+            "class": "UNKNOWN",
+            "reason": "oracle-mismatch"
+          }
+        }
+      },
+      "agree": {
+        "S": true
+      }
+    },
+    {
+      "id": "9d",
+      "title": "consistent forgery of row 2's record",
+      "candidate": "B",
+      "condition": "every observation rewritten, resealed",
+      "expected": {
+        "S": "PASS"
+      },
+      "observed": {
+        "S": "PASS"
+      },
+      "detail": {
+        "truth": "FAIL",
+        "reader": {
+          "class": "PASS",
+          "reason": null
+        },
+        "note": "expected PASS is undetectable forgery of an unsigned local record (as C8)"
+      },
+      "agree": {
+        "S": true
+      }
+    }
+  ],
+  "readerDisagreements": [
+    {
+      "row": "4c",
+      "mechanism": "sandbox",
+      "verdict": "PASS",
+      "reader": {
+        "class": "UNKNOWN",
+        "reason": "case-inconsistent: subtractive-1994"
+      }
+    }
+  ],
+  "acceptance": {
+    "R1": {
+      "holds": true,
+      "detail": "row 3: planned checks passed at HEAD for B; every receipt readable"
+    },
+    "R2": {
+      "holds": true,
+      "detail": "S: A and P pass; B, C, D, E fail, under the launcher"
+    },
+    "R3": {
+      "holds": true,
+      "detail": "S: refused, interrupted and damaged rows have their expected class, never PASS"
+    },
+    "R4": {
+      "holds": null,
+      "detail": "needs a second run: study.ts compare"
+    },
+    "R5": {
+      "holds": true,
+      "detail": "S per-candidate duration, max 8043 ms"
+    },
+    "R6": {
+      "holds": false,
+      "detail": "row 6: F PASS (false), S FAIL"
+    },
+    "R6x": {
+      "holds": true,
+      "detail": "EXPLORATORY row 6x (not a preregistered criterion): F PASS (false), S FAIL"
+    }
+  },
+  "wallMs": 130932
+}

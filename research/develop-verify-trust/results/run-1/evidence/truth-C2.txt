@@ -1,0 +1,17 @@
+ok   1 -> I
+FAIL 4 -> 'IIII' exit 0 (want 'IV' exit 0)
+FAIL 9 -> 'VIIII' exit 0 (want 'IX' exit 0)
+FAIL 14 -> 'XIIII' exit 0 (want 'XIV' exit 0)
+FAIL 40 -> 'XXXX' exit 0 (want 'XL' exit 0)
+FAIL 90 -> 'LXXXX' exit 0 (want 'XC' exit 0)
+FAIL 400 -> 'CCCC' exit 0 (want 'CD' exit 0)
+ok   1994 -> MCMXCIV
+ok   2026 -> MMXXVI
+FAIL 3999 -> 'MMMDCCCCLXXXXVIIII' exit 0 (want 'MMMCMXCIX' exit 0)
+ok   '0' refused
+ok   '4000' refused
+ok   'abc' refused
+ok   '-5' refused
+ORACLE FAIL
+
+[exit 0]

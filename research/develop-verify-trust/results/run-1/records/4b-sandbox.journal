@@ -1,0 +1,2 @@
+{"atMs":1794467776359,"event":"start","mechanism":"sandbox","commit":"ebc8326d49fab0d465111e240de31205c5da58b9"}
+{"atMs":1794467776360,"event":"end","verdict":"BLOCKED","reason":"controller-environment"}

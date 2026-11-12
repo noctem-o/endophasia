@@ -222,6 +222,42 @@ for (const appearance of ["instrument", "field"] as const) {
 			);
 		});
 
+		it("reveals a newly read block as it grows, and the conversation follows the reveal at the bottom (Codex, #145)", async () => {
+			const { page, session } = await live(appearance, 1366, 560);
+			await page.click("[data-testid=reasoning-shown]");
+			for (const event of SYNTHETIC_OPEN) session.live_(event);
+			await reread(page);
+			await page.waitFor("document.querySelector('[data-testid=turn-open] [data-testid=reasoning-text]')");
+			await page.eval(
+				"(() => { const s = document.querySelector('.live-scroll'); s.scrollTop = s.scrollHeight; s.dispatchEvent(new Event('scroll')); })()",
+			);
+			// Under the open trace's clamp (CLAMP_CHARS), so the whole block is on screen, and taller than this window, so following matters.
+			const block = ` ${"Read the next token, compare it with the one before, and keep the running count. ".repeat(16)}`;
+			session.live_(thinkingDelta(0, block));
+			await reread(page);
+			// Sample through the reveal: the trace grows over several frames, and the scroller stays at the bottom the whole time.
+			const samples: { gap: number; length: number }[] = [];
+			for (let i = 0; i < 14; i += 1) {
+				samples.push(
+					await page.eval<{ gap: number; length: number }>(
+						"(() => { const s = document.querySelector('.live-scroll'); const t = document.querySelector('[data-testid=turn-open] [data-testid=reasoning-text]'); return { gap: s.scrollHeight - s.scrollTop - s.clientHeight, length: t.textContent.length }; })()",
+					),
+				);
+				await new Promise((r) => setTimeout(r, 60));
+			}
+			const lengths = samples.map((x) => x.length);
+			expect(new Set(lengths).size, "the block appears over several frames").toBeGreaterThan(2);
+			for (const x of samples) expect(x.gap, JSON.stringify(samples)).toBeLessThan(24);
+			await page.waitFor(
+				"document.querySelector('[data-testid=turn-open] [data-testid=reasoning-text]').textContent.trimEnd().endsWith('running count.')",
+			);
+			expect(
+				await page.eval<number>(
+					"(() => { const s = document.querySelector('.live-scroll'); return s.scrollHeight - s.scrollTop - s.clientHeight; })()",
+				),
+			).toBeLessThan(24);
+		});
+
 		it("keeps the reader's place: opening a trace above and new arrivals below never move what is being read", async () => {
 			const { page, session } = await live(appearance, 1366, 768);
 			await page.click("[data-testid=reasoning-shown]");

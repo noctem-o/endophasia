@@ -1,6 +1,6 @@
 // The project context's reads: one list, one diff, only when asked. A read happens when the operator asks (Refresh, choosing a file, the
-// next or previous file), and ONCE on its own when this page first holds a grant for a live launch, so the worktree is there when the
-// operator looks. Nothing polls, nothing reads while the page is hidden or another workspace is shown, nothing repeats a failed read,
+// next or previous file, opening the Changes tab), ONCE on its own when this page first holds a grant for a live launch, so the worktree
+// is there when the operator looks, and once when a run ends (App.tsx), since that is when the agent's changes are there to see. Nothing polls, nothing reads while the page is hidden or another workspace is shown, nothing repeats a failed read,
 // and a stale answer is shown as stale, never refreshed behind the operator's back. The grant is used from the workbench hook's state
 // and never stored; everything here is memory only, and goes with the page or with the launch.
 import { useCallback, useEffect, useReducer, useRef } from "react";
@@ -25,9 +25,14 @@ export interface ProjectApi {
 	setView(view: ProjectView): void;
 }
 
+/** A list read this recently is not read again just because Changes was opened. */
+const FRESH_MS = 10_000;
+
 export function useProject(grant: string | null, launchId: string | null, active: boolean): ProjectApi {
 	const [state, dispatch] = useReducer(reduceProject, undefined, initialProject);
 	const latest = useRef(state);
+	// When the worktree list was last asked for (the page's clock): opening Changes reads it again only when it is older than FRESH_MS.
+	const lastRead = useRef(0);
 	latest.current = state;
 	const readSeq = useRef(0);
 	const diffSeq = useRef(0);
@@ -91,6 +96,7 @@ export function useProject(grant: string | null, launchId: string | null, active
 	const read = useCallback(async () => {
 		const { grant: g } = held.current;
 		if (g === null) return;
+		lastRead.current = Date.now();
 		readSeq.current += 1;
 		const seq = readSeq.current;
 		dispatch({ type: "read-start", seq });
@@ -140,6 +146,19 @@ export function useProject(grant: string | null, launchId: string | null, active
 			const project = latest.current.project;
 			if (project !== null) void loadDiff(project, key);
 		},
-		setView: (view) => dispatch({ type: "view", view }),
+		setView: (view) => {
+			// Opening Changes is asking to see the worktree: read it then, rather than show a list from before the run. Not while a read is
+			// running, and not when the list is fresh (read in the last ten seconds): a new list replaces the snapshot a diff is being read from.
+			const opening = view === "changes" && latest.current.view !== "changes";
+			dispatch({ type: "view", view });
+			if (
+				opening &&
+				grant !== null &&
+				launchId !== null &&
+				!running.current &&
+				Date.now() - lastRead.current > FRESH_MS
+			)
+				void read();
+		},
 	};
 }

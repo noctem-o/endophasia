@@ -2215,7 +2215,7 @@ table.fields thead th {
 }
 
 .chain li::before {
-	content: "□ ";
+	content: "○ ";
 }
 
 .chain li[data-done="true"] {
@@ -2223,7 +2223,7 @@ table.fields thead th {
 }
 
 .chain li[data-done="true"]::before {
-	content: "■ ";
+	content: "✓ ";
 }
 
 .composer {
@@ -2568,6 +2568,13 @@ table.fields thead th {
 	line-clamp: 1;
 	overflow: hidden;
 	max-width: 34ch;
+}
+
+/* Why stop cannot be requested is read in full, not cut to one line (up to three; the whole sentence is also its title). */
+.stop-control .small[data-supersedes=""][data-offered="false"] {
+	-webkit-line-clamp: 3;
+	line-clamp: 3;
+	max-width: 56ch;
 }
 
 /* The context column: the facts that matter first, the standing prose folded away. */

@@ -72,6 +72,17 @@ describe("what is offered, and why not", () => {
 		expect((await t.status()).offers.steer.reason).toContain("has ended");
 	});
 
+	it("says plainly when a control is unavailable because Pi changed since it was verified, and how to end a run meanwhile", async () => {
+		const t = setup();
+		t.desk.admitted.stop =
+			"steering.stop is not admitted: earlier evidence invalid: recorded against a different runtime fingerprint; needs a live study";
+		const { offers } = await t.status();
+		expect(offers.stop.offered).toBe(false);
+		expect(offers.stop.reason).toBe(
+			"Not available: Pi has changed since this control was last verified, so that evidence no longer applies. A live study (endo harness study, which uses the model) verifies it again. Until then, end a run with Ctrl-C in the attached terminal.",
+		);
+	});
+
 	it("explains a capability the runtime's evidence does not admit, per operation", async () => {
 		const t = setup();
 		t.desk.admitted.steer = "steering.steer is not admitted by conformance evidence for this runtime";

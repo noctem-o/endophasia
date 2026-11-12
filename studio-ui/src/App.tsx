@@ -1,6 +1,6 @@
 // Studio shell: read-only Observe, Compare and Develop workspaces with persistent, separate request state.
 // Capabilities and Evolve remain explicit placeholders.
-import { lazy, type ReactElement, Suspense, useEffect, useState } from "react";
+import { lazy, type ReactElement, Suspense, useEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../protocol/cockpit-develop.ts";
 import { CompareWorkspace } from "./compare/CompareWorkspace.tsx";
 import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
@@ -58,6 +58,15 @@ export function App(): ReactElement {
 	// The worktree context belongs to the live launch, so it is held here beside the workbench's state: switching workspaces does not drop it,
 	// and losing the grant or changing launch does.
 	const project = useProject(workbench.state.grant, launchId, workspace === "develop");
+	// When a run ends, the worktree is read once: the agent's changes are then there to see, and the Changes list would otherwise still show
+	// the tree from before the run. One read on the transition, never polling.
+	const run = workbench.state.status?.run ?? null;
+	const lastRun = useRef(run);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: only the moment a run ends, once
+	useEffect(() => {
+		if (lastRun.current === "active" && run === "idle" && workspace === "develop") project.refresh();
+		lastRun.current = run;
+	}, [run]);
 	// The operator's project and tasks: metadata, held beside the workbench for the same reason as the worktree context. Choosing a task here
 	// sends nothing and changes no session, worktree or status.
 	const tasks = useWorkspace(workbench.state.grant, launchId, workspace === "develop");

@@ -334,7 +334,12 @@ export class WorkbenchInterventionsV0 {
 			);
 		const admission = this.#h.desk.admissionFor(operation);
 		if (!admission.admitted)
-			return no(`Not admitted for this runtime by its conformance evidence: ${admission.reason.slice(0, 200)}`);
+			return no(
+				// The common case after a Pi upgrade, said plainly: the evidence was for another Pi, what re-verifies it, and how to end a run now.
+				admission.reason.includes("different runtime fingerprint")
+					? "Not available: Pi has changed since this control was last verified, so that evidence no longer applies. A live study (endo harness study, which uses the model) verifies it again. Until then, end a run with Ctrl-C in the attached terminal."
+					: `Not admitted for this runtime by its conformance evidence: ${admission.reason.slice(0, 200)}`,
+			);
 		const stop = this.#stopInFlight();
 		if (stop !== null)
 			return no(

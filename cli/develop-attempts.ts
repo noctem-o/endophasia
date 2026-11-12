@@ -22,6 +22,7 @@
 
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
+import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import { ENDO_ATTEMPT_RUN_LABELS_V0, ENDO_ATTEMPT_SEND_LABELS_V0 } from "../protocol/develop-attempt-execution.ts";
 import {
@@ -414,6 +415,40 @@ const receiptShown = (
 	receipt: terminalSafe(receipt),
 });
 
+/**
+ * What is not committed in `directory`, and the commands that would commit it. Read through the hardened read-only Git layer the page's
+ * Changes list uses (GitProjectInspectorV0): it never runs a program the repository's configuration names (`core.fsmonitor`, a clean
+ * filter, a hook), so a refused check really did run nothing. At most ten paths, display-safe. Empty when Git cannot say (Codex, #145).
+ */
+async function uncommittedHelp(directory: string): Promise<string> {
+	const inspector = new GitProjectInspectorV0({ cwd: directory });
+	let overview: Awaited<ReturnType<GitProjectInspectorV0["overview"]>>;
+	try {
+		overview = await inspector.overview();
+	} catch {
+		return "";
+	} finally {
+		inspector.dispose();
+	}
+	const files = overview.state === "ready" && overview.changes.state === "ready" ? overview.changes.files : [];
+	if (files.length === 0) return "";
+	const area = (f: (typeof files)[number]) =>
+		f.area === "untracked" ? "untracked" : f.area === "conflicted" ? "conflicted" : `${f.status} (${f.area})`;
+	const shown = files.slice(0, 10).map((f) => `  ${area(f).padEnd(20)} ${endoShownOutputV0(f.path)}`);
+	const total = files.length + (overview.changes.filesTruncated ? 1 : 0);
+	const more = total > 10 ? [`  … and more (${overview.changes.filesTruncated ? "at least " : ""}${total - 10})`] : [];
+	const at = JSON.stringify(directory);
+	return [
+		`Not committed in ${directory}:`,
+		...shown,
+		...more,
+		"To check the work as it is, commit it first, for example:",
+		`  git -C ${at} add -A && git -C ${at} commit -m "<message>"`,
+		"(or remove the changes you do not want checked), then run this check again.",
+		"",
+	].join("\n");
+}
+
 /** Exit codes of `check`: what was observed, or that nothing ran. */
 export const ENDO_CHECK_EXIT_CODES_V0 = Object.freeze({
 	passed: 0,
@@ -462,6 +497,11 @@ async function check(argv: readonly string[]): Promise<void> {
 		process.stderr.write(
 			`${CHECK_REFUSALS[planned.code]}${why === "" ? "" : ` (${why})`}. Nothing was run and nothing was recorded.\n`,
 		);
+		// What is not committed, and how to commit it: read-only, so the operator need not work out which Git step is missing.
+		if (planned.code === "not-clean") {
+			const directory = cwd ?? service.defaultDirectory(attemptOf(flags));
+			if (directory !== null) process.stderr.write(await uncommittedHelp(directory));
+		}
 		process.exitCode = ENDO_CHECK_EXIT_CODES_V0.refused;
 		return;
 	}

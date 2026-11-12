@@ -15,6 +15,7 @@
 
 import type { EndoReceiptOutcomeV0 } from "../../../protocol/develop-receipts.ts";
 import type { EndoPlannedCheckStateV0 } from "../../../protocol/develop-verification.ts";
+import { shortAttempt } from "./attempt-request.ts";
 import type { LaunchReadState } from "./attempts-reader.ts";
 import { ATTEMPT_LABELS, PLANNED_CHECK_LABELS } from "./attempts-wire.ts";
 import type { AttentionCheck, AttentionPlanned, AttentionTask, AttentionView } from "./attention-wire.ts";
@@ -251,7 +252,7 @@ function plannedLine(p: AttentionPlanned, review: boolean, attempt: boolean): Li
 		parts: [
 			"Planned check ",
 			{ code: p.name },
-			`: ${PLANNED_CHECK_LABELS[p.state]}${detail}${away}${by}${attempt ? ` (attempt ${p.attemptId.slice(13, 20)})` : ""}.`,
+			`: ${PLANNED_CHECK_LABELS[p.state]}${detail}${away}${by}${attempt ? ` (attempt ${shortAttempt(p.attemptId)})` : ""}.`,
 		],
 		// The row opens the run that raised it: the one elsewhere when that is what did.
 		...(raised

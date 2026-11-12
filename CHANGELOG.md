@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Fixed
+- **Workbench polish, from the first real-task session (2026-11-11).**
+  - Model-provided reasoning and the message still being written now appear as they grow, instead of in three-second blocks. While a
+    message is being written, Follow reads every second, and each newly read block is revealed over about a second. Display only: nothing
+    unread is shown, the labels still say "as of the last read", and reduced motion draws text at once.
+  - `endo attempt check` refused on an uncommitted tree now lists what is not committed (read-only `git status --short`, at most ten
+    paths) and the commands that would commit it.
+  - When Pi has changed since Stop, Steer or Queue were verified, the page says so in a sentence (and how to end a run meanwhile)
+    instead of a truncated technical reason; an unavailable reason now wraps to three lines.
+  - The Changes list is read when you open the Changes tab (if older than ten seconds) and once when a run ends, so it no longer shows
+    the tree from before the run. It still never polls.
+  - The request steps use ✓ and ○ instead of filled and empty squares, which were easy to misread at that size.
+  - The overview names an attempt by the same short id as the rest of the page (its last eight characters).
 - **DEVELOP-ATTENTION-002: the attention overview reads a planned check as its attempt's ledger does** (U1, B1 and F1 of
   [DEVELOP-VALIDATION-001](research/develop-validation/DEVELOP-VALIDATION-001.md); follow-up result in
   [DEVELOP-VALIDATION-002](research/develop-validation/DEVELOP-VALIDATION-002.md)).

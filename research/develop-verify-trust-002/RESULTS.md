@@ -15,6 +15,9 @@
 | Freeze: prototype, harness, unit tests, install artifacts; pre-freeze amendments in PROTOCOL §9 | `c968895fc` | 19:09:04 |
 | Rehearsal run 1 (research worktree) | — | after the freeze, 83 s |
 | Rehearsal run 2 (fresh `git clone --no-local`, checked out at `c968895fc`) | — | 83 s |
+| Results, draft PR #147 | `239b7481e` | |
+| Corrections after the independent review (§9) | `e1c52e02e` | |
+| Confirmation run 3 (worktree, from `e1c52e02e`): identical on 20 rows | — | 84 s |
 
 Development runs (unrecorded) preceded the freeze. One of them found that the unit's `WorkingDirectory` must exist before the first
 request; the harness now creates the state directory, as `tmpfiles.d` does when installed.
@@ -147,7 +150,7 @@ touched nothing.
 
 ## 7. Committed evidence and raw data
 
-- **Committed:** both runs' `results.json` and `rehearsal.txt` (the harness log, renamed because `*.log` is ignored), the host audit, and eight representative files from run 1 in
+- **Committed:** both runs' (and the confirmation run 3's, §9) `results.json` and `rehearsal.txt` (the harness log, renamed because `*.log` is ignored), the host audit, and eight representative files from run 1 in
   [`results/run-1/records/`](results/run-1/records/):
   - T1's genuine PASS;
   - T2's FAIL;
@@ -179,3 +182,28 @@ npx vitest --run tests/develop-verify-trust-002.test.ts
 
 The rehearsal adds two runtime units to the operator's user manager (`$XDG_RUNTIME_DIR/systemd/user`) and removes them at the end.
 Tested on Linux 7.2.15-arch1-1, Node 26.13.1, bubblewrap 0.13.1, systemd 262.
+
+## 9. Independent review and corrections (after the recorded runs)
+
+One bounded review was requested on the draft PR, from the Codex GitHub reviewer, on `239b7481e`. It reported one P1 and four P2
+findings. Each premise was checked against the code. All were accepted, and each was fixed or corrected in `e1c52e02e`. Two defects
+found by the author while waiting are listed as D1 and D2. None changes a recorded result: confirmation run 3, built from `e1c52e02e`,
+is identical to run 1 on all 20 rows (`results/run-3-corrected/`). Its installation identity differs, as it should, because the code
+changed.
+
+| # | Severity | Where (`239b7481e`) | Finding | Check | Resolution |
+| :-- | :-- | :-- | :-- | :-- | :-- |
+| V1 | P1 | `install/install.sh` | The package's digest was checked on the operator-writable file, then the file was read again for extraction: the agent could swap it in between, and root would install unchecked code and units | Confirmed by reading: two separate opens. Not run: the script needs root | **Fixed.** Root copies the package into its private staging directory first, then checks and extracts that one copy. |
+| V2 | P2 | `rehearsal.ts` T10 (installed target) | The operator's interruption prompt came only after awaiting the response, so the run had already finished with PASS | Confirmed by reading. A second problem was found with it: a request takes about 3 s, too short for anyone to interrupt by hand | **Fixed.** In the installed target, the prompt comes before the await, and the interrupted request is a slow but correct copy of A (4 s per case), counted as correct for IA3. The rehearsal is unchanged. |
+| V3 | P2 | `install/uninstall.sh` | A failed archive did not stop the removal, so the evidence was deleted anyway | Confirmed: the script has no fail-fast, and a failed `tar` only suppressed the message | **Fixed.** Removal stops, deleting nothing, unless the archive is written and readable. |
+| V4 | P2 | `FOLLOW-UP.md`, `ARCHITECTURE.md` §3, `INSTALL-PLAN.md` §8 | **Request-triggered code execution persists.** The principal owns its user manager's runtime directory, so compromised code can add runtime drop-ins or environment for every later instance. The claim "lasts one request" was wrong. | Confirmed: `/run/user/<uid>` and `$XDG_RUNTIME_DIR/systemd/user` belong to the principal, and nothing in the unit isolates the instance from its manager | **Corrected in the documents.** B's advantage over A on this point is withdrawn. Closing it would take an instance that cannot reach its manager, which is not designed here. The threat model already listed request-triggered execution as a residual risk; its consequence is now stated correctly. |
+| V5 | P2 | `audit.ts` | H0 checked the groups this process holds, not the groups the account is configured for. A session started with the groups dropped would pass IP0 although `newgrp` gives them back | Confirmed by reading. A fixture account (member of `docker` and `libvirt` in `/etc/group`, neither held) is now a test | **Fixed.** Groups held **or** configured (`/etc/group`, the primary group in `/etc/passwd`). This host's audit is unchanged: H0 false. |
+| D1 | — | `service/verifier.ts` | A concurrent instance could collect a live instance's working directory in the moment between its creation and its owner file. That gives INCOMPLETE, never PASS, but it is wrong | Code reading | **Fixed.** The directory is made as `.new-<id>`, given its owner, then renamed. Half-made directories are collected only after 10 minutes. Test added. |
+| D2 | — | `service/verifier.ts` | A client that never closed its side held an instance until `RuntimeMaxSec` (900 s); four such clients block the service (denial of service only) | Reproduced: before the fix, the response came only when the client closed; after it, BLOCKED `request-timeout` at 30.1 s and the process exits | **Fixed.** A 30 s request deadline, then standard input is closed. |
+
+**Tests after the corrections.** `tests/develop-verify-trust-002.test.ts`: 22 of 22 (D1 and V5 added). The install scripts pass `sh -n`
+and are still never executed.
+
+**Effect on the decision.** None of these changes the decision. V1, V3 and V5 strengthen the unexecuted installed phase and its gate, and
+V2 makes its T10 runnable at all. V4 corrects a claim about a residual risk outside the property under test, and narrows the stated
+difference between A and B. The approval request in FOLLOW-UP.md now names `e1c52e02e` and its digests.

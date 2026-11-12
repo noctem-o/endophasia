@@ -71,10 +71,10 @@ Nothing proceeds without that decision.
 ## Operator authorization request (for (a))
 
 > I approve the installed phase of DEVELOP-VERIFY-TRUST-002 on this workstation, as described in
-> `research/develop-verify-trust-002/INSTALL-PLAN.md` at commit `c968895fc608ba3552e15d745b585315a08eb6fd`:
+> `research/develop-verify-trust-002/INSTALL-PLAN.md` at commit `e1c52e02e879732f5c9a90e07570375b2da3bee8` (the reviewed corrections):
 > 1. Remove `noctem` from the `docker` and `libvirt` groups for the experiment, and log in again (INSTALL-PLAN §1).
-> 2. As root, run `install/install.sh` (SHA-256 `f200376f2acefab3a6bfcb9dc3260a8dc2c908d7629628d3c2454712f9dc73df`) on the package built
->    from that commit for uid 1000 (SHA-256 `05ddf464c4d939c192b6d726b3ac2f0e046a35da3a437e19ee7f6caaf0b9369f`). It creates:
+> 2. As root, run `install/install.sh` (SHA-256 `63f30eb0177e7f257d123dac0760d54fbe5cf33ae2f421e60d2d179e0c4fa561`) on the package built
+>    from that commit for uid 1000 (SHA-256 `aa06885af5e30aa7434148b09df8b7172874f2d3c6f94f2947d8d4d5409ed55b`). It creates:
 >    - the locked system user `endo-verify-002`;
 >    - `/usr/local/lib/endo-verify-002`, `/var/lib/endo-verify-002`, `/var/lib/endo-verify-002-home` and `/run/endo-verify-002`;
 >    - two units in `/etc/systemd/user`;
@@ -82,7 +82,7 @@ Nothing proceeds without that decision.
 >    - linger for that user.
 > 3. Run the installed matrix twice from a fresh session. When prompted, perform the two root interruptions in INSTALL-PLAN §6.
 > 4. Afterwards, remove everything with `install/uninstall.sh` (SHA-256
->    `cfb61114b6257a9fcdeab35982281d8c33994248fd16728d22b39db90d5f15c7`), keeping an archive of the records.
+>    `b58320b5a2824f5841c83c55464f1555fef044666fbe2e2c4da0d887eecc4727`), keeping an archive of the records.
 >    Restoring my groups is my own choice.
 
-The three digests are for the frozen commit. If review changes the prototype, they are recomputed and the request is reissued.
+The three digests are for `e1c52e02e`, which carries the review corrections (RESULTS §9). They supersede the frozen commit's digests. Any later change to the prototype means recomputing them and reissuing this request.

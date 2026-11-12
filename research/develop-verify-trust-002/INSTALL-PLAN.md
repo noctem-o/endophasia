@@ -107,7 +107,7 @@ env -i PATH=/usr/bin HOME=$HOME LANG=C.UTF-8 XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
   --commit <frozen commit> --target installed
 ```
 
-Two rows need the operator's own interruption, because the agent's `kill` is expected to fail (`EPERM`). When the harness prints
+Two rows need the operator's own interruption, because the agent's `kill` is expected to fail (`EPERM`). For those rows the harness submits a slow but correct copy of A (4 s per case, about 60 s), so that there is time to act. When the harness prints
 `T10: interrupt …` and later `E3: restart …`, run within 120 seconds, as root in a second terminal:
 - **T10:** `pkill -KILL -u endo-verify-002 -f 'verifier.ts serve'`
 - **E3:** `systemctl restart user@$(id -u endo-verify-002).service`

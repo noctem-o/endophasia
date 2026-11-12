@@ -536,6 +536,12 @@ describe("DEVELOP-VERIFY-TRUST-002 committed evidence", () => {
 		expect(a.installationId).toBe(b.installationId);
 		expect(a.rows.map((r) => [r.id, r.observed])).toEqual(b.rows.map((r) => [r.id, r.observed]));
 		expect(a.rows.filter((r) => r.positiveControl).map((r) => r.id)).toEqual(["T6", "T7", "T8", "E6"]);
+		// The confirmation run after the review corrections: another installation, the same observations.
+		const c = load("run-3-corrected");
+		expect(c.commit).toBe("e1c52e02e879732f5c9a90e07570375b2da3bee8");
+		expect(Object.values(c.acceptance).every(Boolean)).toBe(true);
+		expect(c.installationId).not.toBe(a.installationId);
+		expect(c.rows.map((r) => [r.id, r.observed])).toEqual(a.rows.map((r) => [r.id, r.observed]));
 	});
 	it("keeps the committed record copies non-authoritative: they are copies, owned by whoever checked them out", () => {
 		const dir = join(RESULTS, "run-1/records");

@@ -1,0 +1,934 @@
+{
+  "source": "run-1",
+  "rereadMismatches": [],
+  "cases": [
+    {
+      "id": "1",
+      "title": "correct, clean",
+      "exploratory": false,
+      "candidate": "A",
+      "condition": "clean",
+      "truth": "PASS",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "PASS",
+        "reason": null,
+        "reread": {
+          "class": "PASS",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "PASS",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "PASS",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-1-evidence.json",
+        "results/run-1/records/1-filtered.json",
+        "results/run-1/records/1-sandbox.json",
+        "results/run-1/evidence/truth-A.txt"
+      ]
+    },
+    {
+      "id": "2",
+      "title": "incorrect, clean",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "clean",
+      "truth": "FAIL",
+      "ordinary": {
+        "ledger": "failed",
+        "criteria": [
+          "failed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "FAIL",
+        "reason": null,
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "failed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "failed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-2-evidence.json",
+        "results/run-1/records/2-filtered.json",
+        "results/run-1/records/2-sandbox.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "10",
+      "title": "positive control",
+      "exploratory": false,
+      "candidate": "P",
+      "condition": "clean",
+      "truth": "PASS",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "PASS",
+        "reason": null,
+        "reread": {
+          "class": "PASS",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "PASS",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "PASS",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "PASS"
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-10-evidence.json",
+        "results/run-1/records/10-filtered.json",
+        "results/run-1/records/10-sandbox.json",
+        "results/run-1/evidence/truth-P.txt"
+      ]
+    },
+    {
+      "id": "3",
+      "title": "F1 reproduction",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "NODE_OPTIONS=--import=<env-hook.mjs> (outside the repository)",
+      "truth": "FAIL",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": null,
+      "sandbox": null,
+      "reader": null,
+      "expected": {
+        "O": "passed"
+      },
+      "observed": {
+        "O": "passed"
+      },
+      "agree": {
+        "O": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-3-evidence.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "4a",
+      "title": "F1, controlled (through run.sh)",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "caller has NODE_OPTIONS=--import=<env-hook.mjs>",
+      "truth": "FAIL",
+      "ordinary": null,
+      "filtered": {
+        "verdict": "FAIL",
+        "reason": null,
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/4a-filtered.json",
+        "results/run-1/records/4a-sandbox.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "4b",
+      "title": "hostile controller env, no launcher",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "verify.ts started directly with NODE_OPTIONS=--import=<env-hook.mjs>",
+      "truth": "FAIL",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": {
+        "verdict": "BLOCKED",
+        "reason": "controller-environment",
+        "preflight": null,
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "controller-environment"
+        }
+      },
+      "reader": null,
+      "expected": {
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "S": "BLOCKED"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/4b-sandbox.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "4c",
+      "title": "self-hiding controller hook, no launcher",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "verify.ts started directly with NODE_OPTIONS=--import=<controller-forge.mjs>",
+      "truth": "FAIL",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": {
+        "verdict": "PASS",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "UNKNOWN",
+          "reason": "case-inconsistent: subtractive-1994"
+        }
+      },
+      "reader": null,
+      "expected": {
+        "S": "PASS"
+      },
+      "observed": {
+        "S": "PASS"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/4c-sandbox.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "4d",
+      "title": "the 4c hook, through run.sh",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "caller has NODE_OPTIONS=--import=<controller-forge.mjs>",
+      "truth": "FAIL",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "S": "FAIL"
+      },
+      "observed": {
+        "S": "FAIL"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/4d-sandbox.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "5",
+      "title": "shadowed PATH",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "PATH=<workspace>/agent-bin:/usr/bin; agent-bin/node loads the F1 hook",
+      "truth": "FAIL",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "FAIL",
+        "reason": null,
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-5-evidence.json",
+        "results/run-1/records/5-filtered.json",
+        "results/run-1/records/5-sandbox.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "6",
+      "title": "candidate-modified tests and oracle; host lookup",
+      "exploratory": false,
+      "candidate": "C",
+      "condition": "clean",
+      "truth": "FAIL",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "FAIL",
+        "reason": null,
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "agree": {
+        "O": true,
+        "F": false,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-6-evidence.json",
+        "results/run-1/records/6-filtered.json",
+        "results/run-1/records/6-sandbox.json",
+        "results/run-1/evidence/truth-C.txt"
+      ]
+    },
+    {
+      "id": "6x",
+      "title": "EXPLORATORY: C2, ancestor lookup",
+      "exploratory": true,
+      "candidate": "C2",
+      "condition": "clean",
+      "truth": "FAIL",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "PASS",
+        "reason": null,
+        "reread": {
+          "class": "PASS",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "PASS",
+        "S": "FAIL"
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-6x-evidence.json",
+        "results/run-1/records/6x-filtered.json",
+        "results/run-1/records/6x-sandbox.json",
+        "results/run-1/evidence/truth-C2.txt"
+      ]
+    },
+    {
+      "id": "7a",
+      "title": "bubblewrap missing",
+      "exploratory": false,
+      "candidate": "A",
+      "condition": "--bwrap /nonexistent/bwrap",
+      "truth": "PASS",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": {
+        "verdict": "BLOCKED",
+        "reason": "isolation-missing",
+        "preflight": null,
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "isolation-missing"
+        }
+      },
+      "reader": null,
+      "expected": {
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "S": "BLOCKED"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/7a-sandbox.json",
+        "results/run-1/evidence/truth-A.txt"
+      ]
+    },
+    {
+      "id": "7b",
+      "title": "containment missing",
+      "exploratory": false,
+      "candidate": "A",
+      "condition": "--systemd-run /nonexistent/systemd-run",
+      "truth": "PASS",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": {
+        "verdict": "BLOCKED",
+        "reason": "containment-unavailable",
+        "preflight": null,
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "containment-unavailable"
+        }
+      },
+      "reader": null,
+      "expected": {
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "S": "BLOCKED"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/7b-sandbox.json",
+        "results/run-1/evidence/truth-A.txt"
+      ]
+    },
+    {
+      "id": "7c",
+      "title": "oracle not the pinned one",
+      "exploratory": false,
+      "candidate": "A",
+      "condition": "the workspace oracle copy says 4 is IIII",
+      "truth": "PASS",
+      "ordinary": null,
+      "filtered": {
+        "verdict": "BLOCKED",
+        "reason": "oracle-not-pinned",
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "oracle-not-pinned"
+        }
+      },
+      "sandbox": {
+        "verdict": "BLOCKED",
+        "reason": "oracle-not-pinned",
+        "preflight": null,
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "oracle-not-pinned"
+        }
+      },
+      "reader": null,
+      "expected": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/7c-filtered.json",
+        "results/run-1/records/7c-sandbox.json",
+        "results/run-1/evidence/truth-A.txt"
+      ]
+    },
+    {
+      "id": "7d",
+      "title": "runtime not trusted",
+      "exploratory": false,
+      "candidate": "A",
+      "condition": "--node <workspace>/user-node/node (a user-owned copy)",
+      "truth": "PASS",
+      "ordinary": null,
+      "filtered": {
+        "verdict": "BLOCKED",
+        "reason": "runtime-runtime-unacceptable",
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "runtime-runtime-unacceptable"
+        }
+      },
+      "sandbox": {
+        "verdict": "BLOCKED",
+        "reason": "runtime-runtime-unacceptable",
+        "preflight": null,
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "runtime-runtime-unacceptable"
+        }
+      },
+      "reader": null,
+      "expected": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/7d-filtered.json",
+        "results/run-1/records/7d-sandbox.json",
+        "results/run-1/evidence/truth-A.txt"
+      ]
+    },
+    {
+      "id": "7e",
+      "title": "unsupported candidate (a symbolic link)",
+      "exploratory": false,
+      "candidate": "A-link",
+      "condition": "clean",
+      "truth": "PASS",
+      "ordinary": null,
+      "filtered": {
+        "verdict": "BLOCKED",
+        "reason": "unsupported-120000",
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "unsupported-120000"
+        }
+      },
+      "sandbox": {
+        "verdict": "BLOCKED",
+        "reason": "unsupported-120000",
+        "preflight": null,
+        "reread": {
+          "class": "BLOCKED",
+          "reason": "unsupported-120000"
+        }
+      },
+      "reader": null,
+      "expected": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "observed": {
+        "F": "BLOCKED",
+        "S": "BLOCKED"
+      },
+      "agree": {
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/7e-filtered.json",
+        "results/run-1/records/7e-sandbox.json",
+        "results/run-1/evidence/truth-A.txt"
+      ]
+    },
+    {
+      "id": "8",
+      "title": "timeout",
+      "exploratory": false,
+      "candidate": "D",
+      "condition": "clean",
+      "truth": "FAIL (hung: killed after 20 s)",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "FAIL",
+        "reason": null,
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-8-evidence.json",
+        "results/run-1/records/8-filtered.json",
+        "results/run-1/records/8-sandbox.json",
+        "results/run-1/evidence/truth-D.txt"
+      ]
+    },
+    {
+      "id": "9a",
+      "title": "interrupted (SIGKILL while 3999 runs)",
+      "exploratory": false,
+      "candidate": "D",
+      "condition": "the verifier is killed mid-case",
+      "truth": "FAIL (hung: killed after 20 s)",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": null,
+      "reader": {
+        "class": "INCOMPLETE",
+        "reason": "journal-without-record"
+      },
+      "expected": {
+        "S": "INCOMPLETE"
+      },
+      "observed": {
+        "S": "INCOMPLETE"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/9a-sandbox.journal",
+        "results/run-1/evidence/truth-D.txt"
+      ]
+    },
+    {
+      "id": "9b",
+      "title": "incomplete output (1 MiB before the answer)",
+      "exploratory": false,
+      "candidate": "E",
+      "condition": "clean",
+      "truth": "FAIL",
+      "ordinary": {
+        "ledger": "passed",
+        "criteria": [
+          "passed",
+          "passed",
+          "passed",
+          "judgment"
+        ]
+      },
+      "filtered": {
+        "verdict": "FAIL",
+        "reason": null,
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "sandbox": {
+        "verdict": "FAIL",
+        "reason": null,
+        "preflight": "established",
+        "reread": {
+          "class": "FAIL",
+          "reason": null
+        }
+      },
+      "reader": null,
+      "expected": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "observed": {
+        "O": "passed",
+        "F": "FAIL",
+        "S": "FAIL"
+      },
+      "agree": {
+        "O": true,
+        "F": true,
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/evidence/ordinary-9b-evidence.json",
+        "results/run-1/records/9b-filtered.json",
+        "results/run-1/records/9b-sandbox.json",
+        "results/run-1/evidence/truth-E.txt"
+      ]
+    },
+    {
+      "id": "9c",
+      "title": "damaged records (five variants of row 2's record)",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "record edited after the run",
+      "truth": "FAIL",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": null,
+      "reader": {
+        "9c-verdict-flipped": {
+          "class": "UNKNOWN",
+          "reason": "seal-mismatch"
+        },
+        "9c-flipped-resealed": {
+          "class": "UNKNOWN",
+          "reason": "verdict-inconsistent"
+        },
+        "9c-case-removed": {
+          "class": "UNKNOWN",
+          "reason": "case-set"
+        },
+        "9c-truncated": {
+          "class": "UNKNOWN",
+          "reason": "unreadable"
+        },
+        "9c-other-oracle": {
+          "class": "UNKNOWN",
+          "reason": "oracle-mismatch"
+        }
+      },
+      "expected": {
+        "S": "UNKNOWN"
+      },
+      "observed": {
+        "S": "UNKNOWN"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/9c-verdict-flipped.json",
+        "results/run-1/records/9c-flipped-resealed.json",
+        "results/run-1/records/9c-case-removed.json",
+        "results/run-1/records/9c-truncated.json",
+        "results/run-1/records/9c-other-oracle.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    },
+    {
+      "id": "9d",
+      "title": "consistent forgery of row 2's record",
+      "exploratory": false,
+      "candidate": "B",
+      "condition": "every observation rewritten, resealed",
+      "truth": "FAIL",
+      "ordinary": null,
+      "filtered": null,
+      "sandbox": null,
+      "reader": {
+        "class": "PASS",
+        "reason": null
+      },
+      "expected": {
+        "S": "PASS"
+      },
+      "observed": {
+        "S": "PASS"
+      },
+      "agree": {
+        "S": true
+      },
+      "evidence": [
+        "results/run-1/records/9d-forged.json",
+        "results/run-1/evidence/truth-B.txt"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,315 @@
+{
+	"evidence": {
+		"attempt": {
+			"handoff": null,
+			"id": "endo.attempt.60c8590f4db4bdf6fb3fa367c91d4cf7",
+			"objective": "Make roman.mjs subtractive",
+			"outcome": null,
+			"preparedAtMs": 1794467792288,
+			"projectId": "endo.project.515ecbcaeedc6d8aa8358351b84c58fb",
+			"source": "operator",
+			"taskId": "endo.task.571ec9ebe459e7750ea4873d7a038a00",
+			"taskRevision": 0
+		},
+		"candidate": {
+			"checkedCommits": [
+				"61c0a8da8afd66f5a5562369cd78c6b0d6164897"
+			],
+			"recorded": false,
+			"source": "none",
+			"text": "No record names a candidate revision for this attempt. The commits below are where the operator ran checks for it; the link from a check to the attempt is the operator's."
+		},
+		"checks": {
+			"comparedWith": "<workspace>/repos/C",
+			"current": {
+				"clean": true,
+				"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897"
+			},
+			"latest": [
+				{
+					"authorization": null,
+					"command": "node roman.mjs 0",
+					"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+					"label": "Observed check failed",
+					"others": {
+						"failed": 0,
+						"inconclusive": 0,
+						"passed": 0
+					},
+					"outcome": "failed",
+					"plannedBehaviour": true,
+					"reasons": [],
+					"receiptId": "endo.receipt.51298958a9b2069379c75e881e890fab",
+					"relation": "at-head",
+					"relationLabel": "Recorded at this working tree's current HEAD",
+					"startedAtMs": 1794467793029
+				},
+				{
+					"authorization": null,
+					"command": "node --test",
+					"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+					"label": "Observed check passed",
+					"others": {
+						"failed": 0,
+						"inconclusive": 0,
+						"passed": 0
+					},
+					"outcome": "passed",
+					"plannedBehaviour": false,
+					"reasons": [],
+					"receiptId": "endo.receipt.d44cf7411928c5e4ec594b5b196336b6",
+					"relation": "at-head",
+					"relationLabel": "Recorded at this working tree's current HEAD",
+					"startedAtMs": 1794467793882
+				},
+				{
+					"authorization": null,
+					"command": "node roman.mjs 14",
+					"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+					"label": "Observed check passed",
+					"others": {
+						"failed": 0,
+						"inconclusive": 0,
+						"passed": 0
+					},
+					"outcome": "passed",
+					"plannedBehaviour": false,
+					"reasons": [],
+					"receiptId": "endo.receipt.574708fa99b33ee65aa65bade804969b",
+					"relation": "at-head",
+					"relationLabel": "Recorded at this working tree's current HEAD",
+					"startedAtMs": 1794467793456
+				},
+				{
+					"authorization": null,
+					"command": "node roman.mjs 1994",
+					"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+					"label": "Observed check passed",
+					"others": {
+						"failed": 0,
+						"inconclusive": 0,
+						"passed": 0
+					},
+					"outcome": "passed",
+					"plannedBehaviour": true,
+					"reasons": [],
+					"receiptId": "endo.receipt.361ae8341b2aee943dab822d563ea6f5",
+					"relation": "at-head",
+					"relationLabel": "Recorded at this working tree's current HEAD",
+					"startedAtMs": 1794467792605
+				}
+			],
+			"linkedBy": "operator",
+			"problems": 0,
+			"receipts": 4,
+			"source": "observed",
+			"state": "ready"
+		},
+		"gaps": [
+			{
+				"code": "not-authorized",
+				"text": "No send to Pi was authorised on the workbench terminal for this attempt. Anything said about handing it over is the operator's statement."
+			},
+			{
+				"code": "not-accepted",
+				"text": "The task's status is not done: the operator has not recorded accepting it."
+			}
+		],
+		"notEstablished": [
+			"Which revision the attempt's work produced. No record names one; a receipt names the commit the operator checked, linked to the attempt by the operator.",
+			"Who or what wrote any changed byte: Pi, the operator, or another process. A difference between two commits is not authorship.",
+			"That nothing else wrote the working tree between the observations shown here.",
+			"That a passing check satisfies the acceptance criteria: the command decides what is checked.",
+			"That Pi's report of its run is true. It is what Pi reported, not verified.",
+			"Which revision the operator looked at when moving the task's status: the history records the move and its note, no revision and no actor.",
+			"That each record was written only by its named writer: they are local, unsigned files, and anything that can write the store can write them.",
+			"That a check's environment could not change its result. A receipt records the command's exit status and a digest of its standard output (the output itself only with --keep-output); the comparison with your plan is made when it is read. The environment it ran in (variables such as NODE_OPTIONS or PATH, tool versions, the home directory) was inherited and not recorded, and nothing established it was trustworthy. Its requestedBy names who the record says asked for the check, not who ran it: anything that can run endo as you, an agent included, can record one."
+		],
+		"operator": {
+			"history": [
+				{
+					"atMs": 1794467792009,
+					"from": null,
+					"note": null,
+					"to": "open"
+				}
+			],
+			"movedToDone": null,
+			"source": "operator",
+			"state": "present",
+			"status": "open"
+		},
+		"pi": {
+			"disposition": null,
+			"run": null,
+			"runLabel": "No run is attributed: no send through the workbench was authorised",
+			"source": "none"
+		},
+		"readAtMs": 1794467794326,
+		"schemaVersion": "endo.develop-attempt-evidence.v3",
+		"sent": {
+			"approvedOn": null,
+			"authorizationRecord": "absent",
+			"authorizedAtMs": null,
+			"brief": null,
+			"damaged": [],
+			"evidence": null,
+			"send": null,
+			"sendLabel": "No send to Pi through the workbench was authorised for this attempt",
+			"session": null,
+			"source": "observed",
+			"unattributedWorkbenchSends": null
+		},
+		"verification": {
+			"checks": [
+				{
+					"argv": [
+						"node",
+						"roman.mjs",
+						"1994"
+					],
+					"atHead": {
+						"failed": 0,
+						"inconclusive": 0,
+						"passed": 1
+					},
+					"behaviour": {
+						"expected": {
+							"exitCode": 0,
+							"stdout": "MCMXCIV\n",
+							"stdoutSha256": "a97c1fe678c130d42f8f6205a4e0a07cb93c6373fb2de7ec16cd0d36de2c664d"
+						},
+						"observed": {
+							"exitCode": 0,
+							"kept": {
+								"state": "text",
+								"text": "MCMXCIV\n",
+								"truncated": false
+							},
+							"receiptId": "endo.receipt.361ae8341b2aee943dab822d563ea6f5",
+							"stdoutBytes": 8,
+							"stdoutSha256": "a97c1fe678c130d42f8f6205a4e0a07cb93c6373fb2de7ec16cd0d36de2c664d"
+						}
+					},
+					"current": {
+						"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+						"endedAtMs": 1794467792669,
+						"outcome": "passed",
+						"receiptId": "endo.receipt.361ae8341b2aee943dab822d563ea6f5",
+						"startedAtMs": 1794467792605
+					},
+					"label": "Passed at HEAD",
+					"name": "subtractive-1994",
+					"otherCommit": null,
+					"runs": 1,
+					"shows": "standard subtractive notation",
+					"state": "passed"
+				},
+				{
+					"argv": [
+						"node",
+						"roman.mjs",
+						"0"
+					],
+					"atHead": {
+						"failed": 0,
+						"inconclusive": 0,
+						"passed": 1
+					},
+					"behaviour": {
+						"expected": {
+							"exitCode": 2,
+							"stdout": "",
+							"stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+						},
+						"observed": {
+							"exitCode": 2,
+							"kept": {
+								"state": "text",
+								"text": "",
+								"truncated": false
+							},
+							"receiptId": "endo.receipt.51298958a9b2069379c75e881e890fab",
+							"stdoutBytes": 0,
+							"stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+						}
+					},
+					"current": {
+						"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+						"endedAtMs": 1794467793092,
+						"outcome": "passed",
+						"receiptId": "endo.receipt.51298958a9b2069379c75e881e890fab",
+						"startedAtMs": 1794467793029
+					},
+					"label": "Passed at HEAD",
+					"name": "rejects-zero",
+					"otherCommit": null,
+					"runs": 1,
+					"shows": "out-of-range input is refused with nothing on stdout",
+					"state": "passed"
+				},
+				{
+					"argv": [
+						"node",
+						"roman.mjs",
+						"14"
+					],
+					"atHead": {
+						"failed": 0,
+						"inconclusive": 0,
+						"passed": 1
+					},
+					"behaviour": null,
+					"current": {
+						"commit": "61c0a8da8afd66f5a5562369cd78c6b0d6164897",
+						"endedAtMs": 1794467793520,
+						"outcome": "passed",
+						"receiptId": "endo.receipt.574708fa99b33ee65aa65bade804969b",
+						"startedAtMs": 1794467793456
+					},
+					"label": "Passed at HEAD",
+					"name": "runs",
+					"otherCommit": null,
+					"runs": 1,
+					"shows": "the program runs for ordinary input",
+					"state": "passed"
+				}
+			],
+			"criteria": [
+				{
+					"checks": [
+						"subtractive-1994"
+					],
+					"label": "Planned checks passed at HEAD",
+					"state": "passed",
+					"text": "Numerals use standard subtractive notation (1994 is MCMXCIV)"
+				},
+				{
+					"checks": [
+						"rejects-zero"
+					],
+					"label": "Planned checks passed at HEAD",
+					"state": "passed",
+					"text": "Input outside 1..3999 is refused with exit 2 and nothing on stdout"
+				},
+				{
+					"checks": [
+						"runs"
+					],
+					"label": "Planned checks passed at HEAD",
+					"state": "passed",
+					"text": "The program still runs for ordinary input"
+				},
+				{
+					"checks": [],
+					"label": "Your judgment",
+					"state": "judgment",
+					"text": "It stays one small file with no dependencies"
+				}
+			],
+			"source": "operator-plan",
+			"unplanned": 1
+		}
+	}
+}
+

@@ -1,0 +1,11 @@
+ok   1 -> I
+ok   4 -> IV
+ok   9 -> IX
+ok   14 -> XIV
+ok   40 -> XL
+ok   90 -> XC
+ok   400 -> CD
+ok   1994 -> MCMXCIV
+ok   2026 -> MMXXVI
+
+[exit 124]

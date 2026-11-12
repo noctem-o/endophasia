@@ -1,0 +1,353 @@
+{
+  "schemaVersion": "endo.research.trust-verification.v0",
+  "mechanism": "filtered",
+  "verdict": "FAIL",
+  "reason": null,
+  "oracle": {
+    "pinned": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+    "sha256": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+    "task": "roman-numerals-cli",
+    "cases": 15
+  },
+  "candidate": {
+    "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+    "tree": "c35839bb2327bffa571823372df35d6be7309a70",
+    "files": [
+      {
+        "path": "roman.mjs",
+        "bytes": 669,
+        "sha256": "d94b3fe060c97500a257e9a33c9c0b7140a9b62f1f178a0fa6741b7f623c878a",
+        "mode": "100644"
+      }
+    ],
+    "sha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407"
+  },
+  "runtime": {
+    "node": "/usr/bin/node",
+    "sha256": "9c0877ec24a32343f70470a95f595576855a91ec3f1b36d5d13368664309aaa1",
+    "version": "v26.13.1",
+    "files": 43
+  },
+  "isolation": {
+    "mechanism": "none",
+    "environment": [
+      "HOME",
+      "LANG",
+      "PATH",
+      "TMPDIR"
+    ],
+    "executable": "/usr/bin/node"
+  },
+  "preflight": null,
+  "qualification": {
+    "reference": "PASS",
+    "negative": "FAIL"
+  },
+  "cases": [
+    {
+      "name": "subtractive-1994",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 16,
+      "stdoutSha256": "e827a2ee39aab4703d66e6ab797754345c9a9f926e7ac354c3e9966da54a13af",
+      "stderrHead": "",
+      "durationMs": 56,
+      "matched": false
+    },
+    {
+      "name": "rejects-zero",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"0\"\n",
+      "durationMs": 57,
+      "matched": true
+    },
+    {
+      "name": "runs-14",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 6,
+      "stdoutSha256": "0942690044843779b54da6927cd0134a023c42727ce45541870a6b2b7a89f077",
+      "stderrHead": "",
+      "durationMs": 56,
+      "matched": false
+    },
+    {
+      "name": "one",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 2,
+      "stdoutSha256": "7fdca686b46a12886513de3f6166c815efcb501bbe0f6ecda4acd20c6d48fed7",
+      "stderrHead": "",
+      "durationMs": 62,
+      "matched": true
+    },
+    {
+      "name": "four",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 5,
+      "stdoutSha256": "e89e6dd99fa37446f68fda480b23cbbb7d907f3324029aa2f75cefe6b1f17572",
+      "stderrHead": "",
+      "durationMs": 57,
+      "matched": false
+    },
+    {
+      "name": "nine",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 6,
+      "stdoutSha256": "bf594b96ed20e19067463aaf52eaa68e96cba37ac53a6d7b93d12a2734621a1c",
+      "stderrHead": "",
+      "durationMs": 59,
+      "matched": false
+    },
+    {
+      "name": "forty",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 5,
+      "stdoutSha256": "11861eaa2e70e8ac73d9d20cd172b6a5396cb0116fed5bfe432ca075144b2d48",
+      "stderrHead": "",
+      "durationMs": 58,
+      "matched": false
+    },
+    {
+      "name": "ninety",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 6,
+      "stdoutSha256": "8a65811bcacab4186b9634942fc4ef163e0bfeb3cd68e79f514e2cb247e763c7",
+      "stderrHead": "",
+      "durationMs": 55,
+      "matched": false
+    },
+    {
+      "name": "four-hundred",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 5,
+      "stdoutSha256": "bb0423110c09eff0fac8cd5fb76e922a771b9be066ffa3bf672ae4d31b2696c8",
+      "stderrHead": "",
+      "durationMs": 57,
+      "matched": false
+    },
+    {
+      "name": "year-2026",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 7,
+      "stdoutSha256": "43e47127c91814c24c59fe70677f3121d2f55ab954db3ed4069ec5d1c9258e6f",
+      "stderrHead": "",
+      "durationMs": 60,
+      "matched": true
+    },
+    {
+      "name": "rejects-4000",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"4000\"\n",
+      "durationMs": 62,
+      "matched": true
+    },
+    {
+      "name": "rejects-word",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"abc\"\n",
+      "durationMs": 55,
+      "matched": true
+    },
+    {
+      "name": "rejects-negative",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"-5\"\n",
+      "durationMs": 56,
+      "matched": true
+    },
+    {
+      "name": "rejects-fraction",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"1.5\"\n",
+      "durationMs": 58,
+      "matched": true
+    },
+    {
+      "name": "max-3999",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 19,
+      "stdoutSha256": "17486e36231d4dc7df97eea2487141ad52fd791e7223b242fbe2f90ee61ef2b4",
+      "stderrHead": "",
+      "durationMs": 58,
+      "matched": false
+    }
+  ],
+  "controller": {
+    "launch": {
+      "hostileVariables": [],
+      "execArgv": 0
+    },
+    "environmentNames": [
+      "DBUS_SESSION_BUS_ADDRESS",
+      "HOME",
+      "LANG",
+      "PATH",
+      "XDG_RUNTIME_DIR"
+    ],
+    "sources": [
+      {
+        "path": "adapters/develop/check-runner.ts",
+        "sha256": "7013de241bb7c79a1781c86904b9093e8ce2584b22aafbad238654313a53db9b"
+      },
+      {
+        "path": "adapters/rpc-jsonl/process-group.ts",
+        "sha256": "ebd2d58ca4ffabcc5b3be2ecef8aafe7dedfa775250d0687c1fdfdaf8fc31564"
+      },
+      {
+        "path": "adapters/sandbox/bubblewrap.ts",
+        "sha256": "c9f5144abe8e97f02b20999451312fee3d74c03c0523580ca93cd1f829fa44fd"
+      },
+      {
+        "path": "adapters/sandbox/containment.ts",
+        "sha256": "0658b4ecd400d92e87dcb507aaa5f1b925738f5ed409537d2f820824c0062123"
+      },
+      {
+        "path": "adapters/sandbox/preflight.ts",
+        "sha256": "b9209707b8df4afd3f712526872e34a0bc08874db0485a89a0dd4318dc0e1ccd"
+      },
+      {
+        "path": "adapters/sandbox/submission.ts",
+        "sha256": "50203f6bcee703e7d70875104f3a91b471ca832c86a1ae7039c9043284393726"
+      },
+      {
+        "path": "protocol/develop-attempt-execution.ts",
+        "sha256": "be6ccaba0c95ff9996991dd11f6ca25bfdbc7e8d00773be9293d78f7ceb5aa22"
+      },
+      {
+        "path": "protocol/develop-attempts.ts",
+        "sha256": "7a7edf98fd471fd97bb6c4e5b16dc01c957970e1a70ba0812ad013a5ba497f70"
+      },
+      {
+        "path": "protocol/develop-provenance.ts",
+        "sha256": "aa35c3debdcb06d2e8c291fef7d5039eb1926500e2713c74748b70c8761dbdea"
+      },
+      {
+        "path": "protocol/develop-receipts.ts",
+        "sha256": "54f297f810ac67f3099884ea86c5dff1d79c48c12a027abcfe6c3b2a7c3e6810"
+      },
+      {
+        "path": "protocol/develop-tasks.ts",
+        "sha256": "498ecb8c42d3da991dc7db9e896b1c52f06726b61f08321a1d0fe94fa4c2219c"
+      },
+      {
+        "path": "protocol/develop-verification.ts",
+        "sha256": "306af213550b8cd37436e6e64592ab801f3df49267e87b5d3482f29df8a30686"
+      },
+      {
+        "path": "protocol/identity.ts",
+        "sha256": "b7c8b5d6fec4995930d601fd302c4d11e1beb8894beb1cc81ef84e3223fbd5e6"
+      },
+      {
+        "path": "protocol/omp-observation.ts",
+        "sha256": "e73f667eba1d24be0e7d41377c7f5d558e7b6aaddf50b24e3cc71c0a12203c37"
+      },
+      {
+        "path": "protocol/primitives.ts",
+        "sha256": "57e8b62ca2f94249b398f73439a2dc6a8bf57400084b48af815162d8442df589"
+      },
+      {
+        "path": "protocol/protected-experiment.ts",
+        "sha256": "f5106c712dc5548c23d9dd68dac9c61838d372481ed8270138655604fe0021c6"
+      },
+      {
+        "path": "protocol/versioned.ts",
+        "sha256": "7532de00acb6f0b2b5af6036916692db7aa7ebe74ea15755426f92f8e219c675"
+      },
+      {
+        "path": "protocol/workbench.ts",
+        "sha256": "daee073ae06c6e1541cddb384ea0c0cc3b522c3f11b4d829937a0da7a209097c"
+      },
+      {
+        "path": "research/develop-verify-trust/run.sh",
+        "sha256": "81ab5e26296a2e0f829c7986e69a31653c4cb347199ef7b67ed2e3164cd2082b"
+      },
+      {
+        "path": "research/develop-verify-trust/verify.ts",
+        "sha256": "c2510d625fe0b11b64b1464e2e2c66d2cbf8ffa980b03d9c9da89346b177048f"
+      },
+      {
+        "path": "runtime/contracts/canonical-json.ts",
+        "sha256": "281dca45e510dcc3b2db2a98993059c905be71369e6bdc46262309e89cd18fb5"
+      },
+      {
+        "path": "runtime/contracts/write-all.ts",
+        "sha256": "c548e2b15b6a283d461622c078d7b5a2831ef13ff4a6c480538b4252fba2252c"
+      }
+    ],
+    "git": {
+      "path": "/usr/bin/git",
+      "sha256": "022c1f8ad9730bcd06f9fd4426a627be1579f2173d8ea31c33e66a11d6faad60"
+    }
+  },
+  "startedAtMs": 1794467752463,
+  "endedAtMs": 1794467755217,
+  "recordSha256": "cc608fc972422046499a6a69e49bd9859f9885388fa5ebedf28de0e47743acc5"
+}

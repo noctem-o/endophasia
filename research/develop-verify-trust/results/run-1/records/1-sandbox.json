@@ -1,0 +1,806 @@
+{
+  "schemaVersion": "endo.research.trust-verification.v0",
+  "mechanism": "sandbox",
+  "verdict": "PASS",
+  "reason": null,
+  "oracle": {
+    "pinned": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+    "sha256": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+    "task": "roman-numerals-cli",
+    "cases": 15
+  },
+  "candidate": {
+    "commit": "f1c63d60301e1d5a9d7b02e402d86cf6e1d1389b",
+    "tree": "2b0833f856a699193a2830bc043b9412a31568ca",
+    "files": [
+      {
+        "path": "roman.mjs",
+        "bytes": 760,
+        "sha256": "1bdbca84c1c1532b5391e514bc291e2a944fb65b8dfd456de8f2c55be7d789ea",
+        "mode": "100644"
+      }
+    ],
+    "sha256": "3f86d29ae7b4b38895e7c882df1fb5b64b4ce90c38426152188de026460d753f"
+  },
+  "runtime": {
+    "node": "/usr/bin/node",
+    "sha256": "9c0877ec24a32343f70470a95f595576855a91ec3f1b36d5d13368664309aaa1",
+    "version": "v26.13.1",
+    "files": 43
+  },
+  "isolation": {
+    "mechanism": "bubblewrap+systemd-user-scope",
+    "bubblewrap": {
+      "path": "/usr/bin/bwrap",
+      "version": "0.13.1",
+      "sha256": "33516b9cd1fa6432307ad71f23765fa30604b0a8d769dac0d2ba054e85aeec83"
+    },
+    "containment": {
+      "version": "262",
+      "systemdRunSha256": "aef6c1677ae93f9d44d32dbbd12bb5958854013806b207599843bbc520010865",
+      "tasksMax": 512
+    },
+    "profileSha256": "4a91573c0eaa1ecaa5e89b3ad18b4fe7ea662a3e9b3565f22c0a1ece348c3d30",
+    "profile": {
+      "namespaces": [
+        "cgroup",
+        "ipc",
+        "mnt",
+        "net",
+        "pid",
+        "user",
+        "uts"
+      ],
+      "network": "none",
+      "rootReadOnly": true,
+      "userNamespacesDisabled": true,
+      "environment": [
+        "HOME",
+        "PATH",
+        "TMPDIR"
+      ],
+      "mounts": [
+        {
+          "target": "/dev",
+          "kind": "dev",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/home/agent",
+          "kind": "tmpfs",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/lib64/ld-linux-x86-64.so.2",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f5e11cc62f8f2c24dff532982559f4303dba3b17e7450551372a88c8e7ea8757"
+        },
+        {
+          "target": "/proc",
+          "kind": "proc",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/submission",
+          "kind": "ro-dir",
+          "role": "candidate-export",
+          "sha256": null
+        },
+        {
+          "target": "/tmp",
+          "kind": "tmpfs",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/usr/bin/node",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "9c0877ec24a32343f70470a95f595576855a91ec3f1b36d5d13368664309aaa1"
+        },
+        {
+          "target": "/usr/lib/libabsl_base.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "aaa819ecb33a12007b208e77d5ee8ee1232f43889e001ca298835ee9c7fbf5bf"
+        },
+        {
+          "target": "/usr/lib/libabsl_city.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "0754d548c6d68e47c0c83177dfbfefedb11366e656e219bdb87c29bcad5d5e98"
+        },
+        {
+          "target": "/usr/lib/libabsl_debugging_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "1b829833e321f1c1b7cc36a2ab2a38854ff5bcb3eace9097b2753f0f90f36d8f"
+        },
+        {
+          "target": "/usr/lib/libabsl_hash.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "b22dff85657e932992dc0c0469488065cc186c7fc39ff8b2c437ccdb19d1d22b"
+        },
+        {
+          "target": "/usr/lib/libabsl_hashtablez_sampler.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "0d7eab85fc581ac6e3a324baa32916fce42d2932a648b411e8e99e41243bb6fd"
+        },
+        {
+          "target": "/usr/lib/libabsl_int128.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "90d57b0ac0124b362f688410c9b88bf5068913300c5c3df886260b7588d861a3"
+        },
+        {
+          "target": "/usr/lib/libabsl_kernel_timeout_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "819ac2d6ad9e8346afafa7ece408e9089dcc5a277943552fd70906b28f9af7c3"
+        },
+        {
+          "target": "/usr/lib/libabsl_malloc_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "3201e3be384f57133412c2e71c4c2802582d82d4a74611c276bce116181d2fe9"
+        },
+        {
+          "target": "/usr/lib/libabsl_raw_hash_set.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f0ef532f17e04c58b7a03749e2333a3c256a036fabe55711cb7d64f06342af5c"
+        },
+        {
+          "target": "/usr/lib/libabsl_raw_logging_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "2493f7f39d50633f75a4d55e9c59340d2d1c0f5a2b96b6ae5918b4232ee79cc9"
+        },
+        {
+          "target": "/usr/lib/libabsl_spinlock_wait.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "374dace6df1fe274ccae67b3e669525608465900b983c2a7cb8bb75f206bc0ce"
+        },
+        {
+          "target": "/usr/lib/libabsl_stacktrace.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "70dd7230e9ce37f873e0bb54ce91afa3b3139e5cf33ac4b97f7e78d063928c05"
+        },
+        {
+          "target": "/usr/lib/libabsl_str_format_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "133198aebd522f30bcfe37ddc545de69ae140347babf21f7e3faa9c328154c49"
+        },
+        {
+          "target": "/usr/lib/libabsl_strings.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "efdfdfc88c32220057feb660ce841965dda3da1197d4f9708511380fc27ae848"
+        },
+        {
+          "target": "/usr/lib/libabsl_strings_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "b96bb375e9b70d341313c9d42989d23a62e415c09000148c364887622ce59279"
+        },
+        {
+          "target": "/usr/lib/libabsl_synchronization.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "eaf783670b946fe9ef486605b8ad0b15cd64947055a96cc6ff842fc6d9ee709b"
+        },
+        {
+          "target": "/usr/lib/libabsl_throw_delegate.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "c69240bdb4bc8e74ce86e31554749fb2c306dc00196b838d273d8d8f6744ea3c"
+        },
+        {
+          "target": "/usr/lib/libabsl_time.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "148d849d1c495cab8fe271a0835b12f9360a55f74377b3efc7636743af21f5dd"
+        },
+        {
+          "target": "/usr/lib/libabsl_time_zone.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "e0137398be730d751e6c75fc6ab3c9ce37e83f252d23f577cea27d7bd4807594"
+        },
+        {
+          "target": "/usr/lib/libabsl_tracing_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "873e46b34eb12597e02caeafef6f0e9df21b54aa11db23be8cc153d2e126cd21"
+        },
+        {
+          "target": "/usr/lib/libada.so.4",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "07d2bc1d02d7b8252cb4301a63421351abc1a24e31050a12361a45e46c285546"
+        },
+        {
+          "target": "/usr/lib/libbrotlicommon.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "98826693f4a8c563890f89ed04ab255d871948e07eabf314d10f79c895e0f03c"
+        },
+        {
+          "target": "/usr/lib/libbrotlidec.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "380ec042c35705a2dbfcb3e0ed392ce7e1262d62b7e626252cd8bce4adad43f2"
+        },
+        {
+          "target": "/usr/lib/libbrotlienc.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "036fd3cac00bc8a28de8b9e01380a8872e034203b81222ee3c4f92510593805f"
+        },
+        {
+          "target": "/usr/lib/libc.so.6",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "02c8c3d06180beee9c7d0392aa85736c7d19f274a81e7f8f0b3d9e28e0641524"
+        },
+        {
+          "target": "/usr/lib/libcares.so.2",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "5e710ac7dec08a43f909edea171b5a8ba8496874aaf125876a57f818f059d639"
+        },
+        {
+          "target": "/usr/lib/libcrypto.so.4",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "2d6cb0b466c46ac0f853e63c9473a582a17bc525f30a7beb6de187019187d746"
+        },
+        {
+          "target": "/usr/lib/libffi.so.8",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "b38bb3a55ba04dfbb5be68e881a72385d6c30010afffb1cf1dfc373b72c2278c"
+        },
+        {
+          "target": "/usr/lib/libgcc_s.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "e618cb9c90c2eb3a1dad1cfea5b6c1eebcf2e799ad805976f4ae47bdd61c716a"
+        },
+        {
+          "target": "/usr/lib/libicudata.so.78",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "d72003b08760852bee4c80cff32c1e6248ae6b1fda5bd313482733a4d5e70dc9"
+        },
+        {
+          "target": "/usr/lib/libicui18n.so.78",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "60d7ad7b3f8e6e1c42895c03379954ee46008948dcdb2e556fa8e4c875742c60"
+        },
+        {
+          "target": "/usr/lib/libicuuc.so.78",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "c99f0dd0c797c07f9ab64413d36c595393cdded6fa04cc4edd6f6a521fd155ca"
+        },
+        {
+          "target": "/usr/lib/libm.so.6",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "965106704753eefe8c31ae7da6daba3ead3d18c52b19b5fcc41178bcc4aa999d"
+        },
+        {
+          "target": "/usr/lib/libnghttp2.so.14",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "08b19458ffaa03e7fed45b545fee9c98721c5db111c1a066960a46d7cdb8b4b7"
+        },
+        {
+          "target": "/usr/lib/libsimdjson.so.36",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "91076cff417372801f17339b43c990c34b786ad178057ad9ed3bff43b549c2f9"
+        },
+        {
+          "target": "/usr/lib/libssl.so.4",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "1dbcc9610f379782c8653d8c3974f9e9038dfbeb7e6d2676a4b46258c081f9a3"
+        },
+        {
+          "target": "/usr/lib/libstdc++.so.6",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f5fc7380f2ae46fa4053a64be04e7b98109f1066a4bbfff3c37042488aa0be0e"
+        },
+        {
+          "target": "/usr/lib/libuv.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "412809d72c26a538292acdf5b62f057a569019cab61f8f9c04e004d4bd1ca727"
+        },
+        {
+          "target": "/usr/lib/libz.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "c2c5f54b3ec754b47e843ca661ada7448d73a33d7fa241f342550f1ed87c7f82"
+        },
+        {
+          "target": "/usr/lib/libzstd.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f023d49e85fb22057bfdd21857263d2638b73356c06f3b342f678a75212379f8"
+        },
+        {
+          "target": "/usr/lib64/ld-linux-x86-64.so.2",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f5e11cc62f8f2c24dff532982559f4303dba3b17e7450551372a88c8e7ea8757"
+        }
+      ]
+    }
+  },
+  "preflight": {
+    "status": "established",
+    "probes": [
+      {
+        "id": "env-minimal",
+        "passed": true,
+        "observed": "ok"
+      },
+      {
+        "id": "fds-inherited",
+        "passed": true,
+        "observed": "unexpected:0"
+      },
+      {
+        "id": "fs-canary-read",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-dev-readonly",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-hidden-candidate-repository",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-hidden-host-home",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-hidden-oracle-directory",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-hidden-record-directory",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-hidden-verifier-directory",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-readonly-mount-0",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-readonly-mount-1",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-readonly-runtime-0",
+        "passed": true,
+        "observed": "EACCES"
+      },
+      {
+        "id": "fs-root-readonly",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-tmp-private",
+        "passed": true,
+        "observed": "entries:0"
+      },
+      {
+        "id": "fs-workspace-writable",
+        "passed": true,
+        "observed": "ok"
+      },
+      {
+        "id": "net-external",
+        "passed": true,
+        "observed": "ENETUNREACH"
+      },
+      {
+        "id": "net-host-abstract-socket",
+        "passed": true,
+        "observed": "ECONNREFUSED"
+      },
+      {
+        "id": "net-host-loopback",
+        "passed": true,
+        "observed": "ECONNREFUSED"
+      },
+      {
+        "id": "net-host-path-socket",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "net-interfaces",
+        "passed": true,
+        "observed": "lo-only"
+      },
+      {
+        "id": "proc-private",
+        "passed": true,
+        "observed": "pids:2 pidns:own"
+      },
+      {
+        "id": "socket-hidden-0",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-1",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-2",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-3",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-4",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-5",
+        "passed": true,
+        "observed": "ENOENT"
+      }
+    ],
+    "reason": null
+  },
+  "qualification": {
+    "reference": "PASS",
+    "negative": "FAIL"
+  },
+  "cases": [
+    {
+      "name": "subtractive-1994",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 8,
+      "stdoutSha256": "a97c1fe678c130d42f8f6205a4e0a07cb93c6373fb2de7ec16cd0d36de2c664d",
+      "stderrHead": "",
+      "durationMs": 62,
+      "matched": true
+    },
+    {
+      "name": "rejects-zero",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"0\"\n",
+      "durationMs": 60,
+      "matched": true
+    },
+    {
+      "name": "runs-14",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 4,
+      "stdoutSha256": "2a0e0a1262b85cd27bf1b704a0e79d346361ecc9d8cafe774021b1d35efbe8c2",
+      "stderrHead": "",
+      "durationMs": 60,
+      "matched": true
+    },
+    {
+      "name": "one",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 2,
+      "stdoutSha256": "7fdca686b46a12886513de3f6166c815efcb501bbe0f6ecda4acd20c6d48fed7",
+      "stderrHead": "",
+      "durationMs": 61,
+      "matched": true
+    },
+    {
+      "name": "four",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "9f9ca51f7a737c738e38c63cb4f1b8bec9250eb2a217e92d8e155bc47936b934",
+      "stderrHead": "",
+      "durationMs": 57,
+      "matched": true
+    },
+    {
+      "name": "nine",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "2e22ca64c6647723956fecb4743cfed2e6ea415bd963d76dfe4329cf206140e7",
+      "stderrHead": "",
+      "durationMs": 65,
+      "matched": true
+    },
+    {
+      "name": "forty",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "f822bad383279c84f866c3d6b2686a0ae7962125cb2c49a0c01dcf91ba045097",
+      "stderrHead": "",
+      "durationMs": 69,
+      "matched": true
+    },
+    {
+      "name": "ninety",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "acda4af6be7cc940b7b2f074c924669c75296c9c3d1413c1691d81877aa5a65f",
+      "stderrHead": "",
+      "durationMs": 57,
+      "matched": true
+    },
+    {
+      "name": "four-hundred",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "622bcd2e827544f4d26749b33ef93060d5c5c12812fe9f83ba8382bd1df7ebdf",
+      "stderrHead": "",
+      "durationMs": 67,
+      "matched": true
+    },
+    {
+      "name": "year-2026",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 7,
+      "stdoutSha256": "43e47127c91814c24c59fe70677f3121d2f55ab954db3ed4069ec5d1c9258e6f",
+      "stderrHead": "",
+      "durationMs": 62,
+      "matched": true
+    },
+    {
+      "name": "rejects-4000",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"4000\"\n",
+      "durationMs": 60,
+      "matched": true
+    },
+    {
+      "name": "rejects-word",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"abc\"\n",
+      "durationMs": 60,
+      "matched": true
+    },
+    {
+      "name": "rejects-negative",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"-5\"\n",
+      "durationMs": 56,
+      "matched": true
+    },
+    {
+      "name": "rejects-fraction",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"1.5\"\n",
+      "durationMs": 58,
+      "matched": true
+    },
+    {
+      "name": "max-3999",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 10,
+      "stdoutSha256": "dd7bc9b2a0c549139081e6be79e1d1a3f77fafbbf76fa491969b227e2ad06e07",
+      "stderrHead": "",
+      "durationMs": 58,
+      "matched": true
+    }
+  ],
+  "controller": {
+    "launch": {
+      "hostileVariables": [],
+      "execArgv": 0
+    },
+    "environmentNames": [
+      "DBUS_SESSION_BUS_ADDRESS",
+      "HOME",
+      "LANG",
+      "PATH",
+      "XDG_RUNTIME_DIR"
+    ],
+    "sources": [
+      {
+        "path": "adapters/develop/check-runner.ts",
+        "sha256": "7013de241bb7c79a1781c86904b9093e8ce2584b22aafbad238654313a53db9b"
+      },
+      {
+        "path": "adapters/rpc-jsonl/process-group.ts",
+        "sha256": "ebd2d58ca4ffabcc5b3be2ecef8aafe7dedfa775250d0687c1fdfdaf8fc31564"
+      },
+      {
+        "path": "adapters/sandbox/bubblewrap.ts",
+        "sha256": "c9f5144abe8e97f02b20999451312fee3d74c03c0523580ca93cd1f829fa44fd"
+      },
+      {
+        "path": "adapters/sandbox/containment.ts",
+        "sha256": "0658b4ecd400d92e87dcb507aaa5f1b925738f5ed409537d2f820824c0062123"
+      },
+      {
+        "path": "adapters/sandbox/preflight.ts",
+        "sha256": "b9209707b8df4afd3f712526872e34a0bc08874db0485a89a0dd4318dc0e1ccd"
+      },
+      {
+        "path": "adapters/sandbox/submission.ts",
+        "sha256": "50203f6bcee703e7d70875104f3a91b471ca832c86a1ae7039c9043284393726"
+      },
+      {
+        "path": "protocol/develop-attempt-execution.ts",
+        "sha256": "be6ccaba0c95ff9996991dd11f6ca25bfdbc7e8d00773be9293d78f7ceb5aa22"
+      },
+      {
+        "path": "protocol/develop-attempts.ts",
+        "sha256": "7a7edf98fd471fd97bb6c4e5b16dc01c957970e1a70ba0812ad013a5ba497f70"
+      },
+      {
+        "path": "protocol/develop-provenance.ts",
+        "sha256": "aa35c3debdcb06d2e8c291fef7d5039eb1926500e2713c74748b70c8761dbdea"
+      },
+      {
+        "path": "protocol/develop-receipts.ts",
+        "sha256": "54f297f810ac67f3099884ea86c5dff1d79c48c12a027abcfe6c3b2a7c3e6810"
+      },
+      {
+        "path": "protocol/develop-tasks.ts",
+        "sha256": "498ecb8c42d3da991dc7db9e896b1c52f06726b61f08321a1d0fe94fa4c2219c"
+      },
+      {
+        "path": "protocol/develop-verification.ts",
+        "sha256": "306af213550b8cd37436e6e64592ab801f3df49267e87b5d3482f29df8a30686"
+      },
+      {
+        "path": "protocol/identity.ts",
+        "sha256": "b7c8b5d6fec4995930d601fd302c4d11e1beb8894beb1cc81ef84e3223fbd5e6"
+      },
+      {
+        "path": "protocol/omp-observation.ts",
+        "sha256": "e73f667eba1d24be0e7d41377c7f5d558e7b6aaddf50b24e3cc71c0a12203c37"
+      },
+      {
+        "path": "protocol/primitives.ts",
+        "sha256": "57e8b62ca2f94249b398f73439a2dc6a8bf57400084b48af815162d8442df589"
+      },
+      {
+        "path": "protocol/protected-experiment.ts",
+        "sha256": "f5106c712dc5548c23d9dd68dac9c61838d372481ed8270138655604fe0021c6"
+      },
+      {
+        "path": "protocol/versioned.ts",
+        "sha256": "7532de00acb6f0b2b5af6036916692db7aa7ebe74ea15755426f92f8e219c675"
+      },
+      {
+        "path": "protocol/workbench.ts",
+        "sha256": "daee073ae06c6e1541cddb384ea0c0cc3b522c3f11b4d829937a0da7a209097c"
+      },
+      {
+        "path": "research/develop-verify-trust/run.sh",
+        "sha256": "81ab5e26296a2e0f829c7986e69a31653c4cb347199ef7b67ed2e3164cd2082b"
+      },
+      {
+        "path": "research/develop-verify-trust/verify.ts",
+        "sha256": "c2510d625fe0b11b64b1464e2e2c66d2cbf8ffa980b03d9c9da89346b177048f"
+      },
+      {
+        "path": "runtime/contracts/canonical-json.ts",
+        "sha256": "281dca45e510dcc3b2db2a98993059c905be71369e6bdc46262309e89cd18fb5"
+      },
+      {
+        "path": "runtime/contracts/write-all.ts",
+        "sha256": "c548e2b15b6a283d461622c078d7b5a2831ef13ff4a6c480538b4252fba2252c"
+      }
+    ],
+    "git": {
+      "path": "/usr/bin/git",
+      "sha256": "022c1f8ad9730bcd06f9fd4426a627be1579f2173d8ea31c33e66a11d6faad60"
+    }
+  },
+  "startedAtMs": 1794467746868,
+  "endedAtMs": 1794467749876,
+  "recordSha256": "426504bd6feb57e5c79c6491eedd8ef17481b8c6e73a2ddd6fa3f81d8b457fdf"
+}

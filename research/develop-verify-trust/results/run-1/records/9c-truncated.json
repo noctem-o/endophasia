@@ -1,0 +1,365 @@
+{
+  "schemaVersion": "endo.research.trust-verification.v0",
+  "mechanism": "sandbox",
+  "verdict": "FAIL",
+  "reason": null,
+  "oracle": {
+    "pinned": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+    "sha256": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+    "task": "roman-numerals-cli",
+    "cases": 15
+  },
+  "candidate": {
+    "commit": "ebc8326d49fab0d465111e240de31205c5da58b9",
+    "tree": "c35839bb2327bffa571823372df35d6be7309a70",
+    "files": [
+      {
+        "path": "roman.mjs",
+        "bytes": 669,
+        "sha256": "d94b3fe060c97500a257e9a33c9c0b7140a9b62f1f178a0fa6741b7f623c878a",
+        "mode": "100644"
+      }
+    ],
+    "sha256": "f600bbc5d201e8e5da1a4fc32c4a7484bcd9e3f31e0d35fcd61ca855bdf49407"
+  },
+  "runtime": {
+    "node": "/usr/bin/node",
+    "sha256": "9c0877ec24a32343f70470a95f595576855a91ec3f1b36d5d13368664309aaa1",
+    "version": "v26.13.1",
+    "files": 43
+  },
+  "isolation": {
+    "mechanism": "bubblewrap+systemd-user-scope",
+    "bubblewrap": {
+      "path": "/usr/bin/bwrap",
+      "version": "0.13.1",
+      "sha256": "33516b9cd1fa6432307ad71f23765fa30604b0a8d769dac0d2ba054e85aeec83"
+    },
+    "containment": {
+      "version": "262",
+      "systemdRunSha256": "aef6c1677ae93f9d44d32dbbd12bb5958854013806b207599843bbc520010865",
+      "tasksMax": 512
+    },
+    "profileSha256": "a5f67b2e4584d876af86fa0f2192dbf9e19cc128dfa1a3a5fbd0f3a8ac0c0c21",
+    "profile": {
+      "namespaces": [
+        "cgroup",
+        "ipc",
+        "mnt",
+        "net",
+        "pid",
+        "user",
+        "uts"
+      ],
+      "network": "none",
+      "rootReadOnly": true,
+      "userNamespacesDisabled": true,
+      "environment": [
+        "HOME",
+        "PATH",
+        "TMPDIR"
+      ],
+      "mounts": [
+        {
+          "target": "/dev",
+          "kind": "dev",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/home/agent",
+          "kind": "tmpfs",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/lib64/ld-linux-x86-64.so.2",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f5e11cc62f8f2c24dff532982559f4303dba3b17e7450551372a88c8e7ea8757"
+        },
+        {
+          "target": "/proc",
+          "kind": "proc",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/submission",
+          "kind": "ro-dir",
+          "role": "candidate-export",
+          "sha256": null
+        },
+        {
+          "target": "/tmp",
+          "kind": "tmpfs",
+          "role": null,
+          "sha256": null
+        },
+        {
+          "target": "/usr/bin/node",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "9c0877ec24a32343f70470a95f595576855a91ec3f1b36d5d13368664309aaa1"
+        },
+        {
+          "target": "/usr/lib/libabsl_base.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "aaa819ecb33a12007b208e77d5ee8ee1232f43889e001ca298835ee9c7fbf5bf"
+        },
+        {
+          "target": "/usr/lib/libabsl_city.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "0754d548c6d68e47c0c83177dfbfefedb11366e656e219bdb87c29bcad5d5e98"
+        },
+        {
+          "target": "/usr/lib/libabsl_debugging_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "1b829833e321f1c1b7cc36a2ab2a38854ff5bcb3eace9097b2753f0f90f36d8f"
+        },
+        {
+          "target": "/usr/lib/libabsl_hash.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "b22dff85657e932992dc0c0469488065cc186c7fc39ff8b2c437ccdb19d1d22b"
+        },
+        {
+          "target": "/usr/lib/libabsl_hashtablez_sampler.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "0d7eab85fc581ac6e3a324baa32916fce42d2932a648b411e8e99e41243bb6fd"
+        },
+        {
+          "target": "/usr/lib/libabsl_int128.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "90d57b0ac0124b362f688410c9b88bf5068913300c5c3df886260b7588d861a3"
+        },
+        {
+          "target": "/usr/lib/libabsl_kernel_timeout_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "819ac2d6ad9e8346afafa7ece408e9089dcc5a277943552fd70906b28f9af7c3"
+        },
+        {
+          "target": "/usr/lib/libabsl_malloc_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "3201e3be384f57133412c2e71c4c2802582d82d4a74611c276bce116181d2fe9"
+        },
+        {
+          "target": "/usr/lib/libabsl_raw_hash_set.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f0ef532f17e04c58b7a03749e2333a3c256a036fabe55711cb7d64f06342af5c"
+        },
+        {
+          "target": "/usr/lib/libabsl_raw_logging_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "2493f7f39d50633f75a4d55e9c59340d2d1c0f5a2b96b6ae5918b4232ee79cc9"
+        },
+        {
+          "target": "/usr/lib/libabsl_spinlock_wait.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "374dace6df1fe274ccae67b3e669525608465900b983c2a7cb8bb75f206bc0ce"
+        },
+        {
+          "target": "/usr/lib/libabsl_stacktrace.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "70dd7230e9ce37f873e0bb54ce91afa3b3139e5cf33ac4b97f7e78d063928c05"
+        },
+        {
+          "target": "/usr/lib/libabsl_str_format_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "133198aebd522f30bcfe37ddc545de69ae140347babf21f7e3faa9c328154c49"
+        },
+        {
+          "target": "/usr/lib/libabsl_strings.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "efdfdfc88c32220057feb660ce841965dda3da1197d4f9708511380fc27ae848"
+        },
+        {
+          "target": "/usr/lib/libabsl_strings_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "b96bb375e9b70d341313c9d42989d23a62e415c09000148c364887622ce59279"
+        },
+        {
+          "target": "/usr/lib/libabsl_synchronization.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "eaf783670b946fe9ef486605b8ad0b15cd64947055a96cc6ff842fc6d9ee709b"
+        },
+        {
+          "target": "/usr/lib/libabsl_throw_delegate.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "c69240bdb4bc8e74ce86e31554749fb2c306dc00196b838d273d8d8f6744ea3c"
+        },
+        {
+          "target": "/usr/lib/libabsl_time.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "148d849d1c495cab8fe271a0835b12f9360a55f74377b3efc7636743af21f5dd"
+        },
+        {
+          "target": "/usr/lib/libabsl_time_zone.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "e0137398be730d751e6c75fc6ab3c9ce37e83f252d23f577cea27d7bd4807594"
+        },
+        {
+          "target": "/usr/lib/libabsl_tracing_internal.so.2608.0.0",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "873e46b34eb12597e02caeafef6f0e9df21b54aa11db23be8cc153d2e126cd21"
+        },
+        {
+          "target": "/usr/lib/libada.so.4",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "07d2bc1d02d7b8252cb4301a63421351abc1a24e31050a12361a45e46c285546"
+        },
+        {
+          "target": "/usr/lib/libbrotlicommon.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "98826693f4a8c563890f89ed04ab255d871948e07eabf314d10f79c895e0f03c"
+        },
+        {
+          "target": "/usr/lib/libbrotlidec.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "380ec042c35705a2dbfcb3e0ed392ce7e1262d62b7e626252cd8bce4adad43f2"
+        },
+        {
+          "target": "/usr/lib/libbrotlienc.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "036fd3cac00bc8a28de8b9e01380a8872e034203b81222ee3c4f92510593805f"
+        },
+        {
+          "target": "/usr/lib/libc.so.6",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "02c8c3d06180beee9c7d0392aa85736c7d19f274a81e7f8f0b3d9e28e0641524"
+        },
+        {
+          "target": "/usr/lib/libcares.so.2",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "5e710ac7dec08a43f909edea171b5a8ba8496874aaf125876a57f818f059d639"
+        },
+        {
+          "target": "/usr/lib/libcrypto.so.4",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "2d6cb0b466c46ac0f853e63c9473a582a17bc525f30a7beb6de187019187d746"
+        },
+        {
+          "target": "/usr/lib/libffi.so.8",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "b38bb3a55ba04dfbb5be68e881a72385d6c30010afffb1cf1dfc373b72c2278c"
+        },
+        {
+          "target": "/usr/lib/libgcc_s.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "e618cb9c90c2eb3a1dad1cfea5b6c1eebcf2e799ad805976f4ae47bdd61c716a"
+        },
+        {
+          "target": "/usr/lib/libicudata.so.78",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "d72003b08760852bee4c80cff32c1e6248ae6b1fda5bd313482733a4d5e70dc9"
+        },
+        {
+          "target": "/usr/lib/libicui18n.so.78",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "60d7ad7b3f8e6e1c42895c03379954ee46008948dcdb2e556fa8e4c875742c60"
+        },
+        {
+          "target": "/usr/lib/libicuuc.so.78",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "c99f0dd0c797c07f9ab64413d36c595393cdded6fa04cc4edd6f6a521fd155ca"
+        },
+        {
+          "target": "/usr/lib/libm.so.6",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "965106704753eefe8c31ae7da6daba3ead3d18c52b19b5fcc41178bcc4aa999d"
+        },
+        {
+          "target": "/usr/lib/libnghttp2.so.14",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "08b19458ffaa03e7fed45b545fee9c98721c5db111c1a066960a46d7cdb8b4b7"
+        },
+        {
+          "target": "/usr/lib/libsimdjson.so.36",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "91076cff417372801f17339b43c990c34b786ad178057ad9ed3bff43b549c2f9"
+        },
+        {
+          "target": "/usr/lib/libssl.so.4",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "1dbcc9610f379782c8653d8c3974f9e9038dfbeb7e6d2676a4b46258c081f9a3"
+        },
+        {
+          "target": "/usr/lib/libstdc++.so.6",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f5fc7380f2ae46fa4053a64be04e7b98109f1066a4bbfff3c37042488aa0be0e"
+        },
+        {
+          "target": "/usr/lib/libuv.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "412809d72c26a538292acdf5b62f057a569019cab61f8f9c04e004d4bd1ca727"
+        },
+        {
+          "target": "/usr/lib/libz.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "c2c5f54b3ec754b47e843ca661ada7448d73a33d7fa241f342550f1ed87c7f82"
+        },
+        {
+          "target": "/usr/lib/libzstd.so.1",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f023d49e85fb22057bfdd21857263d2638b73356c06f3b342f678a75212379f8"
+        },
+        {
+          "target": "/usr/lib64/ld-linux-x86-64.so.2",
+          "kind": "ro-file",
+          "role": "runtime",
+          "sha256": "f5e11cc62f8f2c24dff532982559f4303dba3b17e7450551372a88c8e7ea8757"
+        }
+      ]
+    }
+  },
+  "preflight": {
+    "status": "established",
+    "probes": [
+      {
+        "id": "env-minimal",
+        "passed": true,
+        "observed": "ok"
+      },
+      {
+        "id": "fds-inherited",
+        "passed": true,
+        

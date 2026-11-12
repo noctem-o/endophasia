@@ -128,8 +128,9 @@ Then run it a second time into `installed-2`, and remove (§5).
 - **Trusted:** root, the kernel, PID 1, logind, PAM, the package-managed `node`, `bwrap` and systemd, and the install moment (§3).
 - **H0 must keep holding.** Re-adding the operator to `docker` or `libvirt`, a `NOPASSWD` rule, or a polkit `YES` rule for the operator
   voids the boundary silently.
-- **Request-triggered code execution in the verifier** would give the attacker the verifier uid for that request. It could then write
-  forged records, which would be authoritative. The request parser and object verifier are the surface; the candidate itself runs only
+- **Request-triggered code execution in the verifier** would give the attacker the verifier principal, **persistently**. It could write
+  forged records, which would be authoritative. It could also add runtime drop-ins or environment to the principal's own user manager
+  (`/run/user/<uid>/systemd/user`), which later instances would run until reboot or removal (review V4). The request parser and object verifier are the surface; the candidate itself runs only
   inside Bubblewrap.
 - **Consumers running as the operator's uid** can be subverted by the agent: an edited `PATH`, `.bashrc` or reader script makes any
   verdict look like anything. The evidence stays authentic, but the operator's view of it does not. ARCHITECTURE §6's reading rule

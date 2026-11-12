@@ -48,7 +48,7 @@ verification outside it, as the operator's uid.
 | :-- | :-- | :-- | :-- |
 | **Enforced against an unsandboxed agent** (Pi, Codex, Claude Code run directly by the operator) | Code, staging and records out of the agent's reach, **if H0 holds** | The same, **if H0 holds** | **Nothing**: such an agent is never in the sandbox, and the verifier is its own uid |
 | **Enforced against an agent Endophasia launches** | As above | As above | The sandbox hides the verifier, its records and the docker and user-bus sockets (001's preflight checks them). This holds **even without H0**. |
-| **Remaining attack paths** | Code execution in the daemon from a hostile request persists across requests; H0; the install step | Code execution from a hostile request lasts one request (its writes to `records/` would persist); H0; the install step | **The workspace is a channel back to the operator's uid.** An agent that writes `.git/hooks`, `.git/config` (`core.fsmonitor`, `core.hooksPath`), `package.json` scripts, `.envrc` or editor tasks runs code as the operator the next time the operator uses that worktree. From there it can forge any same-uid record (001's 9d). C holds only until agent-written content first runs unsandboxed. |
+| **Remaining attack paths** | Code execution in the daemon from a hostile request persists across requests; H0; the install step | Code execution from a hostile request **compromises the verifier principal persistently**, as in A. That code runs as the principal, which owns its user manager's runtime directory (`/run/user/<uid>`), so it can add a runtime drop-in or environment for later instances. It also owns `records/`. (Corrected after review V4: an earlier version said such a compromise lasts one request.) Also H0, and the install step. | **The workspace is a channel back to the operator's uid.** An agent that writes `.git/hooks`, `.git/config` (`core.fsmonitor`, `core.hooksPath`), `package.json` scripts, `.envrc` or editor tasks runs code as the operator the next time the operator uses that worktree. From there it can forge any same-uid record (001's 9d). C holds only until agent-written content first runs unsandboxed. |
 | **Harness integration** | Any harness: a client is a small program that sends objects to a socket | The same | Only harnesses Endophasia can run inside bubblewrap: Pi today (EVAL-ISO-002/003, local model through a relay). Codex and Claude Code would need their own network relays and tools inside the sandbox. |
 | **Local-first** | Yes | Yes | Yes |
 | **Start-up per request** | None | One `node` start (~0.1 s) plus the work | None for verification |
@@ -59,7 +59,7 @@ verification outside it, as the operator's uid.
 | **Portability** | Linux with systemd (as all three: bubblewrap and cgroup v2) | The same | The same |
 
 **Recommendation: B.** It is the smallest arrangement that addresses the stated threat (an agent with the operator's uid, launched by
-anything). It adds no resident code and reuses 001's isolation unchanged. A is B plus a process that has to be kept alive. C does not
+anything). It adds no resident code and reuses 001's isolation unchanged. A is B plus a process that has to be kept alive (both lose the principal to one request that achieves code execution: review V4). C does not
 address agents started outside Endophasia, and for those it does start it holds only until the workspace is used. C remains the right
 **complement** on a host where H0 fails, because the sandbox hides the root-equivalent sockets.
 

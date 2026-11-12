@@ -4,11 +4,23 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, type Stats, statSync, writeFileSync } from "node:fs";
+import {
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	type Stats,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { processStartTimeV0 } from "../adapters/sandbox/containment.ts";
+import { accountGroups, audit } from "../research/develop-verify-trust-002/audit.ts";
 import { collectObjects, encodeRequest } from "../research/develop-verify-trust-002/client/client.ts";
 import { INSTALLED, importClosure, renderUnits } from "../research/develop-verify-trust-002/install/layout.ts";
 import { type ObjectType, objectId, resolveCandidate } from "../research/develop-verify-trust-002/service/objects.ts";
@@ -20,6 +32,7 @@ import {
 } from "../research/develop-verify-trust-002/service/records.ts";
 import { MAX_REQUEST_BYTES, parsePeer, parseRequest } from "../research/develop-verify-trust-002/service/request.ts";
 import {
+	collectOrphans,
 	compatibilitySignals,
 	INSTALLATION_SCHEMA,
 	type Observation,
@@ -455,6 +468,50 @@ describe("DEVELOP-VERIFY-TRUST-002 installation", () => {
 		expect(
 			compatibilitySignals([o("Error: spawnSync /bin/sh ENOENT"), o("uv_os_get_passwd returned ENOENT")]),
 		).toEqual(["no-passwd", "no-shell"]);
+	});
+});
+
+describe("DEVELOP-VERIFY-TRUST-002 working directories (correction D1)", () => {
+	it("collects only the directories of instances that are gone, and never one still being made", () => {
+		const work = join(scratch, "work-d1");
+		mkdirSync(work);
+		const id = () => randomBytes(16).toString("hex");
+		const startTime = processStartTimeV0(process.pid);
+		const make = (name: string, owner?: object) => {
+			mkdirSync(join(work, name));
+			if (owner !== undefined) writeFileSync(join(work, name, "owner.json"), JSON.stringify(owner));
+			return name;
+		};
+		const own = make(id(), { pid: process.pid, startTime });
+		const live = make(id(), { pid: process.pid, startTime });
+		const dead = make(id(), { pid: process.pid, startTime: "0" });
+		const halfMade = make(`.new-${id()}`);
+		const removed = collectOrphans(work, own);
+		expect(removed).toEqual([dead]);
+		expect(readdirSync(work).sort()).toEqual([own, live, halfMade].sort());
+		// A half-made directory is collected only once no instance can still be making it.
+		expect(collectOrphans(work, own, Date.now() + 11 * 60_000)).toEqual([halfMade]);
+	});
+});
+
+describe("DEVELOP-VERIFY-TRUST-002 host audit (review V5)", () => {
+	it("counts groups the account is configured for, not only those this process holds", () => {
+		const account = {
+			uid: 1500,
+			passwd: "agent:x:1500:1500::/home/agent:/bin/sh\n",
+			group: "agent:x:1500:\ndocker:x:962:other,agent\nlibvirt:x:954:agent\nwheel:x:998:\n",
+			// The groups were dropped from this process (setpriv --clear-groups); newgrp would give them back.
+			status: "Name:\tx\nGroups:\t1500 \n",
+		};
+		const groups = accountGroups(account);
+		expect(groups.find((g) => g.name === "docker")).toMatchObject({ held: false, configured: true });
+		expect(groups.map((g) => g.name).sort()).toEqual(["agent", "docker", "libvirt"]);
+		const checks = audit(false, account).checks;
+		expect(checks.find((c) => c.id === "h0-group-docker")?.ok).toBe(false);
+		expect(checks.find((c) => c.id === "h0-group-libvirt")?.ok).toBe(false);
+		expect(
+			audit(false, { ...account, group: "agent:x:1500:\n" }).checks.find((c) => c.id === "h0-group-docker")?.ok,
+		).toBe(true);
 	});
 });
 

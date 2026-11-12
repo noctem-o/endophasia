@@ -246,6 +246,14 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 		const R: Record<string, { dir: string; commit: string }> = {};
 		for (const c of ["A", "B", "D", "E", "P", "S", "X", "M"]) R[c] = repo(c, fixtureDir(c));
 		R.L = repo("L", fixtureDir("A"), (d) => symlinkSync("roman.mjs", join(d, "link.mjs")));
+		// Installed target only (review V2): A, but 4 s per case, so that an operator has time to interrupt it by hand (about 60 s).
+		R.Aslow = repo("Aslow", fixtureDir("A"), (d) => {
+			const f = join(d, "roman.mjs");
+			writeFileSync(
+				f,
+				`Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 4000);\n${readFileSync(f, "utf8")}`,
+			);
+		});
 
 		const objectsOf = (r: { dir: string; commit: string }) => {
 			const got = collectObjects(r.dir, r.commit);
@@ -358,7 +366,7 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 				t2.verdict === "FAIL" && t2.class === "FAIL" && t2.authoritative === wantAuthPass,
 			);
 		}
-		correctCommits.add(R.A.commit).add(R.P.commit);
+		correctCommits.add(R.A.commit).add(R.P.commit).add(R.Aslow.commit);
 
 		// ---- T3, T4: the caller's environment ----
 		const clientIn = (env: Record<string, string>, r: { dir: string; commit: string }) => {
@@ -727,16 +735,17 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 		// ---- T10: interruption and retry; a client that hangs up ----
 		{
 			const before = journals();
-			const pending = submit(requestFor(R.A));
+			const pending = submit(requestFor(target === "installed" ? R.Aslow : R.A));
 			const inv = await waitFor(before, /"phase":"candidate"/);
 			const pid = instancePid();
 			const kill = pid === null ? "no-instance" : errCode(() => process.kill(pid, "SIGKILL"));
-			const first = await pending;
-			// In the installed phase the agent's kill fails; the operator's approved interruption (INSTALL-PLAN.md §6) happens here instead.
+			// In the installed phase the agent's kill fails; the operator's approved interruption (INSTALL-PLAN.md §6) happens now, while
+			// the slow candidate is still running, and before the response is awaited (review V2).
 			if (target === "installed" && kill !== "ok") {
 				log("T10: interrupt the instance now with the approved operator command; waiting up to 120 s");
 				for (let i = 0; i < 1200 && instancePid() !== null; i++) await sleep(100);
 			}
+			const first = await pending;
 			await sleep(200);
 			const interrupted = inv === null ? null : read(inv);
 			const retry = await submit(requestFor(R.A));
@@ -919,7 +928,7 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 		// ---- E3: the instance stopped mid-run (a restart), then a new request ----
 		{
 			const before = journals();
-			const pending = submit(requestFor(R.A));
+			const pending = submit(requestFor(target === "installed" ? R.Aslow : R.A));
 			const inv = await waitFor(before, /"phase":"candidate"/);
 			let stop = "not-applicable";
 			if (target === "rehearsal") {

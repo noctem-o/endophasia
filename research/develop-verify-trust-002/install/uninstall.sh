@@ -22,7 +22,13 @@ ARCHIVE=${1:-}
 uid=$(id -u "$USER_NAME" 2>/dev/null || true)
 
 if [ -n "$ARCHIVE" ] && [ -d "$STATE" ]; then
-	tar -C "$STATE" -czf "$ARCHIVE" records journal && echo "uninstall.sh: records and journals saved to $ARCHIVE"
+	# The evidence is kept unless it was saved: a failed archive stops the removal before anything is deleted (review V3).
+	if tar -C "$STATE" -czf "$ARCHIVE" records journal && tar -tzf "$ARCHIVE" >/dev/null; then
+		echo "uninstall.sh: records and journals saved to $ARCHIVE"
+	else
+		echo "uninstall.sh: could not save the records to $ARCHIVE; nothing was removed" >&2
+		exit 70
+	fi
 fi
 
 # 1. Stop everything the principal runs: its user manager, its instances, their scopes and sandboxes.

@@ -19,6 +19,7 @@ import {
 	chmodSync,
 	closeSync,
 	existsSync,
+	lstatSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
@@ -315,16 +316,33 @@ async function runAll(
 
 // ---- state ---------------------------------------------------------------------------------------------------------------------------
 
-/** Remove working directories whose instance is gone (an interrupted run). Their journals stay: that invocation reads INCOMPLETE. */
-function collectOrphans(work: string, own: string): string[] {
+/** How long a half-made working directory (`.new-<id>`, before its rename) is left alone: its instance may still be creating it. */
+const HALF_MADE_MS = 10 * 60_000;
+
+/**
+ * Remove working directories whose instance is gone (an interrupted run). Their journals stay: that invocation reads INCOMPLETE. A working
+ * directory appears under its id only after its owner file is in it (made as `.new-<id>`, then renamed), so a live instance's directory
+ * always names its owner (correction D1).
+ */
+export function collectOrphans(work: string, own: string, now = Date.now()): string[] {
 	const removed: string[] = [];
 	for (const id of readdirSync(work)) {
-		if (id === own || !INVOCATION.test(id)) continue;
+		if (id === own) continue;
+		if (/^\.new-[0-9a-f]{32}$/.test(id)) {
+			// Interrupted between creating and naming it. Removed only once old enough that no instance can still be making it.
+			const age = now - (lstatSync(join(work, id), { throwIfNoEntry: false })?.mtimeMs ?? now);
+			if (age > HALF_MADE_MS) {
+				rmSync(join(work, id), { recursive: true, force: true });
+				removed.push(id);
+			}
+			continue;
+		}
+		if (!INVOCATION.test(id)) continue;
 		let owner: { pid?: unknown; startTime?: unknown } = {};
 		try {
 			owner = JSON.parse(readFileSync(join(work, id, "owner.json"), "utf8"));
 		} catch {
-			// no owner file: the instance died between creating the directory and writing it
+			// Cannot happen for a directory this version made; an unreadable owner is treated as gone.
 		}
 		const alive = typeof owner.pid === "number" && processStartTimeV0(owner.pid) === owner.startTime;
 		if (alive) continue;
@@ -335,15 +353,32 @@ function collectOrphans(work: string, own: string): string[] {
 	return removed;
 }
 
-async function readInput(limit: number): Promise<Buffer | null> {
+/** How long a client has to send its request and close its side (correction D2): an idle connection otherwise holds an instance. */
+export const REQUEST_DEADLINE_MS = 30_000;
+
+async function readInput(limit: number, deadlineMs: number): Promise<Buffer | "too-large" | "timeout"> {
 	const chunks: Buffer[] = [];
 	let size = 0;
-	for await (const chunk of process.stdin) {
-		size += (chunk as Buffer).length;
-		if (size > limit) return null;
-		chunks.push(chunk as Buffer);
+	let timer: NodeJS.Timeout | undefined;
+	const deadline = new Promise<"timeout">((done) => {
+		timer = setTimeout(() => done("timeout"), deadlineMs);
+	});
+	const read = (async () => {
+		for await (const chunk of process.stdin) {
+			size += (chunk as Buffer).length;
+			if (size > limit) return "too-large" as const;
+			chunks.push(chunk as Buffer);
+		}
+		return Buffer.concat(chunks);
+	})();
+	try {
+		const got = await Promise.race([read, deadline]);
+		// Stop reading: an open connection must not keep this process alive once its answer is decided.
+		if (!Buffer.isBuffer(got)) process.stdin.destroy();
+		return got;
+	} finally {
+		clearTimeout(timer);
 	}
-	return Buffer.concat(chunks);
 }
 
 function arg(argv: readonly string[], name: string): string | undefined {
@@ -364,14 +399,17 @@ export async function serve(argv: readonly string[]): Promise<number> {
 	for (const d of [state, journalDir, records]) mkdirSync(d, { recursive: true, mode: 0o755 });
 	mkdirSync(work, { recursive: true, mode: 0o700 });
 	const mine = join(work, invocation);
-	mkdirSync(mine, { mode: 0o700 });
+	// D1: the directory gets its id only once it names its owner, so a concurrent instance never takes it for an orphan.
+	const halfMade = join(work, `.new-${invocation}`);
+	mkdirSync(halfMade, { mode: 0o700 });
 	writeFileSync(
-		join(mine, "owner.json"),
+		join(halfMade, "owner.json"),
 		JSON.stringify({ pid: process.pid, startTime: processStartTimeV0(process.pid) }),
 		{
 			flag: "wx",
 		},
 	);
+	renameSync(halfMade, mine);
 	const journalFd = openSync(join(journalDir, `${invocation}.jsonl`), "wx", 0o644);
 	const journal = (event: Record<string, unknown>) =>
 		writeSync(journalFd, `${JSON.stringify({ atMs: Date.now(), invocation, ...event })}\n`);
@@ -449,8 +487,9 @@ export async function serve(argv: readonly string[]): Promise<number> {
 		record.installation = { id: inst.id, mode: installation.mode, sourceCommit: installation.sourceCommit };
 		if (peer === null || peer.uid !== installation.operatorUid) return finish("BLOCKED", "requester-not-permitted");
 		// 3. The request.
-		const bytes = await readInput(MAX_REQUEST_BYTES);
-		if (bytes === null) return finish("BLOCKED", "request-too-large");
+		const bytes = await readInput(MAX_REQUEST_BYTES, REQUEST_DEADLINE_MS);
+		if (bytes === "too-large") return finish("BLOCKED", "request-too-large");
+		if (bytes === "timeout") return finish("BLOCKED", "request-timeout");
 		(record.invocation as Record<string, unknown>).requestSha256 = sha256(bytes);
 		const parsed = parseRequest(bytes);
 		if (!parsed.ok) return finish("BLOCKED", parsed.reason);

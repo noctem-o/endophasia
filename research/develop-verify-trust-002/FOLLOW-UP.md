@@ -34,8 +34,10 @@ On this host, as configured, isolation is the only one that can work. It covers 
 
 **5. What risks would remain after successful isolation?**
 - **H0 drift:** a group, sudo rule or polkit rule added later voids the boundary silently.
-- **Code execution in the verifier through a request:** the parser, the object verifier, or Node itself. It would last one request, but
-  its record would be authoritative.
+- **Code execution in the verifier through a request:** the parser, the object verifier, or Node itself. It compromises the verifier
+  principal **persistently**, not for one request. It could write authoritative records directly, or add a runtime drop-in to its own
+  user manager for every later instance. (Review V4. Closing this would need an instance that cannot reach its manager: a system
+  service with a delegated cgroup, or the request parser in a sandbox of its own. Neither is designed here.)
 - **Consumers running as the operator's uid can be subverted:** authentic evidence, untrustworthy view.
 - **The install moment** trusts the operator's view of the source.
 - **The verifier certifies a uid, not a person:** no human attribution.

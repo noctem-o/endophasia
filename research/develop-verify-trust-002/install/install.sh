@@ -22,19 +22,22 @@ UNITS=/etc/systemd/user
 TARBALL=$1
 EXPECTED=$2
 
-got=$(sha256sum -- "$TARBALL" | cut -d' ' -f1)
-[ "$got" = "$EXPECTED" ] || { echo "install.sh: package digest $got, expected $EXPECTED" >&2; exit 65; }
-
 for p in "$LIB" "$STATE" "$HOME_DIR" "$RUN_DIR" "$UNITS/$USER_NAME.socket" "$UNITS/$USER_NAME@.service" \
 	"/etc/sysusers.d/$USER_NAME.conf" "/etc/tmpfiles.d/$USER_NAME.conf" "/var/lib/systemd/linger/$USER_NAME"; do
 	[ ! -e "$p" ] || { echo "install.sh: $p exists; refusing to overwrite (run uninstall.sh first)" >&2; exit 66; }
 done
 ! getent passwd "$USER_NAME" >/dev/null || { echo "install.sh: user $USER_NAME exists" >&2; exit 66; }
 
-# The package, extracted where only root can reach, as root's files; regular files and directories only.
+# The package: first copied where only root can reach, then checked and extracted from that same private copy. Checking the
+# operator's file and then reading it again would let anything that can write it swap it in between (review V1).
 STAGE=$(mktemp -d /root/endo-verify-002.XXXXXX)
 trap 'rm -rf "$STAGE"' EXIT
-tar -x --no-same-owner --no-same-permissions -C "$STAGE" -f "$TARBALL"
+cp -- "$TARBALL" "$STAGE/package.tar"
+got=$(sha256sum -- "$STAGE/package.tar" | cut -d' ' -f1)
+[ "$got" = "$EXPECTED" ] || { echo "install.sh: package digest $got, expected $EXPECTED" >&2; exit 65; }
+mkdir "$STAGE/x"
+tar -x --no-same-owner --no-same-permissions -C "$STAGE/x" -f "$STAGE/package.tar"
+STAGE="$STAGE/x"
 [ -z "$(find "$STAGE" ! -type f ! -type d)" ] || { echo "install.sh: the package holds something other than files and directories" >&2; exit 67; }
 [ "$(ls "$STAGE")" = "$(printf 'lib\nsystem')" ] || { echo "install.sh: unexpected package layout" >&2; exit 67; }
 

@@ -27,33 +27,63 @@ function owned(path: string, uid = 0): string {
 	return "ok";
 }
 
-function groups(): { gid: number; name: string }[] {
-	const mine = new Set(
-		(readFileSync("/proc/self/status", "utf8").match(/^Groups:\s*(.*)$/m)?.[1] ?? "")
-			.split(/\s+/)
-			.filter(Boolean)
-			.map(Number),
-	);
-	return readFileSync("/etc/group", "utf8")
+/** Where the audit reads the account from; injectable so that tests can describe another account. */
+export interface AccountSource {
+	/** `/proc/self/status`: the groups this process holds now. */
+	status: string;
+	/** `/etc/group`. */
+	group: string;
+	/** `/etc/passwd`. */
+	passwd: string;
+	uid: number;
+}
+const hostAccount = (): AccountSource => ({
+	status: readFileSync("/proc/self/status", "utf8"),
+	group: readFileSync("/etc/group", "utf8"),
+	passwd: readFileSync("/etc/passwd", "utf8"),
+	uid: process.getuid?.() ?? -1,
+});
+
+/**
+ * The account's groups: those this process holds **and** those `/etc/group` and `/etc/passwd` give the account. A member listed in
+ * `/etc/group` regains a group without a password (`newgrp`, `sg`, a new login), so dropping it from one process proves nothing (review V5).
+ */
+export function accountGroups(a: AccountSource): { gid: number; name: string; held: boolean; configured: boolean }[] {
+	const held = new Set((a.status.match(/^Groups:\s*(.*)$/m)?.[1] ?? "").split(/\s+/).filter(Boolean).map(Number));
+	const me = a.passwd
 		.split("\n")
 		.map((l) => l.split(":"))
-		.filter((f) => f.length >= 3 && mine.has(Number(f[2])))
-		.map((f) => ({ gid: Number(f[2]), name: f[0] as string }));
+		.find((f) => f.length >= 4 && Number(f[2]) === a.uid);
+	const user = me?.[0];
+	const primary = me === undefined ? Number.NaN : Number(me[3]);
+	return a.group
+		.split("\n")
+		.map((l) => l.split(":"))
+		.filter((f) => f.length >= 4)
+		.map((f) => {
+			const gid = Number(f[2]);
+			const configured = gid === primary || (user !== undefined && (f[3] ?? "").split(",").includes(user));
+			return { gid, name: f[0] as string, held: held.has(gid), configured };
+		})
+		.filter((g) => g.held || g.configured);
 }
 
-function writable(path: string): string {
+function writable(path: string, account: AccountSource): string {
 	const s = lstatSync(path, { throwIfNoEntry: false });
 	if (s === undefined) return "absent";
-	const gids = new Set(groups().map((g) => g.gid));
-	const uid = process.getuid?.() ?? -1;
+	const gids = new Set(accountGroups(account).map((g) => g.gid));
+	const uid = account.uid;
 	const w = s.uid === uid ? s.mode & 0o200 : gids.has(s.gid) ? s.mode & 0o020 : s.mode & 0o002;
 	return w !== 0 ? "writable" : "not-writable";
 }
 
-export function audit(installed: boolean): { h0: boolean; closure: boolean; checks: Check[] } {
+export function audit(
+	installed: boolean,
+	account: AccountSource = hostAccount(),
+): { h0: boolean; closure: boolean; checks: Check[] } {
 	const checks: Check[] = [];
-	// H0: no unauthenticated route to root or another uid for this account.
-	const g = groups().map((x) => x.name);
+	// H0: no unauthenticated route to root or another uid for this account, held now or configured.
+	const g = accountGroups(account).map((x) => x.name);
 	for (const [name, meaning] of [
 		["docker", "root-equivalent through the Docker daemon"],
 		["libvirt", "system hypervisor management without a password (polkit)"],
@@ -70,8 +100,8 @@ export function audit(installed: boolean): { h0: boolean; closure: boolean; chec
 		checks.push({
 			id: "h0-socket",
 			path: p,
-			observed: writable(p),
-			ok: writable(p) !== "writable" || p.includes("libvirt-sock"),
+			observed: writable(p, account),
+			ok: writable(p, account) !== "writable" || p.includes("libvirt-sock"),
 		});
 	checks.push({
 		id: "h0-sudoers-readable",

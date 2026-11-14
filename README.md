@@ -186,12 +186,21 @@ terminals are refused.
 
 ```sh
 endo doctor
-endo project add --name "My project" --path /path/to/project      # once per project
-endo harness attach --cwd /path/to/project --control --workbench --project endo.project.<id>
+cd /path/to/project
+endo develop
 ```
 
-1. Open the private address printed in the terminal, choose **Develop**, and pair the page with the one-time code
-   shown in that terminal. Type `pair` there for a new code.
+`endo develop` is `endo harness attach --control --workbench` in one word, with the same approvals (it takes no
+`--prompt`: every prompt is asked from the page and approved in the terminal). A session needs no registered project and no task. When you want tasks, attempts and receipts beside
+the conversation, register the project once and name it:
+
+```sh
+endo project add --name "My project" --path /path/to/project      # once per project
+endo develop --project endo.project.<id>
+```
+
+1. Open the private address printed in the terminal (the page opens on **Develop**) and pair it with the one-time
+   code shown in that terminal. Type `pair` there for a new code.
 2. Ask for a **Prompt** from the page when the session is idle. During a run, **Steer**, **Queue** and **Request
    stop** appear when the broker offers them.
 3. Each request waits until you type its exact approval phrase, such as `APPROVE PROMPT <digest>`, in the
@@ -369,7 +378,7 @@ behind a private per-launch address.
 | :--- | :--- | :--- | :--- |
 | `endo studio [<root>]` | A store | Read recorded evidence in Observe, Compare and recorded-session Develop | Write the store or request anything |
 | `endo workspace open --project <id>` | A registered project. No Pi, model or provider | After pairing: create and edit tasks and move their statuses; read attempts, receipts, the ledger, provenance and the attention overview | Prompt, steer or stop an agent, or run anything |
-| `endo harness attach --control --workbench` | Pi, on Linux with a controlling terminal | After pairing: all of the above, plus the live conversation, model-provided reasoning, Git change review, and *requests* for PROMPT, STEER, QUEUE, STOP or an attempt's send | Approve its own request. Approval is typed in the terminal |
+| `endo develop` (`endo harness attach --control --workbench`) | Pi, on Linux with a controlling terminal | After pairing: all of the above, plus the live conversation, model-provided reasoning, Git change review, and *requests* for PROMPT, STEER, QUEUE, STOP or an attempt's send | Approve its own request. Approval is typed in the terminal |
 
 | Workspace | What it shows |
 | :--- | :--- |

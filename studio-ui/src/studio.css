@@ -1,8 +1,10 @@
 /* The Studio frontend's style sheet. Plain CSS over custom properties, compiled by esbuild into one hashed file; nothing is fetched.
 
-   Design language (docs/studio-ui-architecture.md, section 10, ports the concept at endophasia-studio-concept): a quiet specimen-cabinet
-   instrument. Warm graphite surfaces, ivory type, mono for identifiers and recorded values. Colour is a scarce resource and each channel
-   carries one thing:
+   Design language (docs/studio-ui-architecture.md, section 10; revised by DEVELOP-UX-001, research/develop-ux/): a nocturne. The
+   specimen cabinet is kept, and read by lamplight: ink-dark ground with one faint, hueless glow above the work, bone type, mono for
+   identifiers and recorded values, soft-cornered plates separated by hairlines instead of boxes inside boxes, and one sigil beside the
+   name. Movement is transitions on the thing the pointer or focus is on, never an animation of its own. Colour is a scarce resource and
+   each channel carries one thing:
      hue        provenance (observed teal, reported blue, derived violet, unavailable slate) and attention / fault (amber, red)
      shape      every provenance class has its own: disc, half disc, diamond, dashed ring; conditions and statuses are squares
      texture    solid = recorded, hollow = nothing presented, hatched = withheld, dashed = unavailable
@@ -36,28 +38,34 @@
 }
 
 :root {
-	--surface-0: #0c0d0f;
-	--surface-1: #121316;
-	--surface-2: #181a1e;
-	--surface-3: #1f2227;
-	--surface-4: #2a2e35;
-	--line-subtle: #22252b;
-	--line: #2e323a;
-	--line-strong: #454a55;
-	--fg-1: #ece8df;
-	--fg-2: #bdb9af;
-	--fg-3: #9a978f;
-	--fg-4: #6a6964;
-	--obs: #4fd1c1;
-	--rep: #7fa8f5;
-	--der: #b49cf7;
-	--na: #8a95a5;
-	--attention: #e3b04b;
-	--fault: #f0716a;
-	--select: #f2eee4;
+	--surface-0: #08090c;
+	--surface-1: #0e1014;
+	--surface-2: #14161c;
+	--surface-3: #1b1e26;
+	--surface-4: #272b36;
+	--line-subtle: #1b1e26;
+	--line: #272b35;
+	--line-strong: #414756;
+	--fg-1: #ede8dc;
+	--fg-2: #bcb8ad;
+	--fg-3: #98958d;
+	--fg-4: #6b6a68;
+	--obs: #56d6c4;
+	--rep: #86adf7;
+	--der: #b8a1f8;
+	--na: #8c97a8;
+	--attention: #e6b352;
+	--fault: #f2766e;
+	--select: #f4efe3;
 	--sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
 	--mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-	--radius: 3px;
+	--radius: 6px;
+	/* A plate (a panel, a card, the composer) is rounder than a control on it. */
+	--radius-plate: 10px;
+	/* The lift under a plate: a hairline of light on its upper edge and a soft, close shadow. No hue. */
+	--lift: inset 0 1px 0 rgb(255 255 255 / 0.035), 0 14px 30px -22px rgb(0 0 0 / 0.9);
+	--ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+	--quick: 130ms;
 	color-scheme: dark;
 }
 
@@ -66,7 +74,10 @@
 }
 
 html {
-	background: var(--surface-0);
+	/* The lamp: one hueless glow above the work, fixed, so the ground under the text is the same wherever the page is scrolled. */
+	background:
+		radial-gradient(1200px 520px at 50% -180px, rgb(237 232 220 / 0.055), transparent 70%) fixed,
+		var(--surface-0);
 	/* The page's scrollbar appearing (an inspector taller than the screen) must not reflow the columns: that would move the table under the pointer. */
 	scrollbar-gutter: stable;
 }
@@ -74,12 +85,19 @@ html {
 body {
 	margin: 0;
 	min-height: 100vh;
-	background: var(--surface-0);
+	background: none;
 	color: var(--fg-1);
 	font-family: var(--sans);
 	font-size: 13px;
 	line-height: 1.5;
 	-webkit-font-smoothing: antialiased;
+	text-rendering: optimizeLegibility;
+	scrollbar-color: var(--line-strong) transparent;
+	scrollbar-width: thin;
+}
+
+::selection {
+	background: rgb(244 239 227 / 0.22);
 }
 
 fieldset {
@@ -171,16 +189,27 @@ code,
 	flex-wrap: wrap;
 	align-items: center;
 	gap: 8px 16px;
-	padding: 8px 16px;
-	background: var(--surface-1);
-	border-bottom: 1px solid var(--line);
+	padding: 9px 18px;
+	background: rgb(14 16 20 / 0.82);
+	/* A meridian instead of a rule: the line under the bar fades out toward both ends. */
+	border-bottom: 1px solid transparent;
+	border-image: linear-gradient(90deg, transparent, var(--line-strong) 18%, var(--line-strong) 82%, transparent) 1;
 }
 
 .wordmark {
-	font-size: 13px;
+	display: inline-flex;
+	align-items: center;
+	gap: 9px;
+	font-size: 12.5px;
 	font-weight: 600;
-	letter-spacing: 0.22em;
+	letter-spacing: 0.26em;
 	text-transform: uppercase;
+}
+
+/* The sigil: a ring, the word held inside it. Drawn in the text colour; it is a name, not a status. */
+.sigil {
+	flex: none;
+	color: var(--fg-2);
 }
 
 .workspaces {
@@ -192,13 +221,19 @@ code,
 	background: none;
 	border: 0;
 	border-bottom: 2px solid transparent;
-	padding: 4px 10px;
+	border-radius: var(--radius) var(--radius) 0 0;
+	padding: 4px 11px;
 	cursor: pointer;
 	color: var(--fg-3);
+	transition:
+		color var(--quick) var(--ease),
+		background-color var(--quick) var(--ease),
+		border-color var(--quick) var(--ease);
 }
 
 .workspace:hover {
 	color: var(--fg-1);
+	background: rgb(237 232 220 / 0.04);
 }
 
 .workspace[aria-current="page"] {
@@ -220,8 +255,8 @@ code,
 	align-items: center;
 	gap: 5px;
 	border: 1px solid var(--line-strong);
-	border-radius: var(--radius);
-	padding: 0 7px;
+	border-radius: 999px;
+	padding: 1px 10px 1px 8px;
 	font-size: 11px;
 	color: var(--fg-2);
 }
@@ -237,10 +272,21 @@ code,
 	border-radius: var(--radius);
 	padding: 3px 12px;
 	cursor: pointer;
+	box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+	transition:
+		background-color var(--quick) var(--ease),
+		border-color var(--quick) var(--ease),
+		color var(--quick) var(--ease),
+		transform var(--quick) var(--ease);
 }
 
 .btn:hover:not(:disabled) {
 	background: var(--surface-4);
+	border-color: var(--fg-4);
+}
+
+.btn:active:not(:disabled) {
+	transform: translateY(0.5px);
 }
 
 .btn:disabled {
@@ -250,23 +296,24 @@ code,
 
 .btn.quiet {
 	background: none;
+	box-shadow: none;
 	border-color: transparent;
 	text-decoration: underline;
 	color: var(--fg-2);
 }
 
 main {
-	padding: 12px 16px 24px;
+	padding: 14px 18px 24px;
 }
 
 /* --- notes, banner and the sources that need attention ------------------------------------------------------------------- */
 
 .note {
-	border: 1px solid var(--line-strong);
-	border-left-width: 3px;
+	border: 1px solid var(--line);
+	border-left: 3px solid var(--line-strong);
 	border-radius: var(--radius);
 	background: var(--surface-2);
-	padding: 6px 10px;
+	padding: 7px 12px;
 	color: var(--fg-2);
 	margin: 6px 0;
 }
@@ -374,7 +421,8 @@ main {
 	position: relative;
 	background: var(--surface-1);
 	border: 1px solid var(--line);
-	border-radius: var(--radius);
+	border-radius: var(--radius-plate);
+	box-shadow: var(--lift);
 	min-width: 0;
 }
 
@@ -383,7 +431,7 @@ main {
 	align-items: center;
 	justify-content: space-between;
 	gap: 8px;
-	padding: 8px 12px;
+	padding: 9px 14px;
 	border-bottom: 1px solid var(--line-subtle);
 }
 
@@ -395,8 +443,8 @@ main {
 }
 
 .panel-head h2 {
-	font-size: 12px;
-	letter-spacing: 0.1em;
+	font-size: 11.5px;
+	letter-spacing: 0.16em;
 	text-transform: uppercase;
 }
 
@@ -412,7 +460,7 @@ main {
 }
 
 .panel-body {
-	padding: 10px 12px;
+	padding: 12px 14px;
 }
 
 .block {
@@ -420,8 +468,10 @@ main {
 }
 
 .block h3 {
-	font-size: 11px;
-	letter-spacing: 0.08em;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	font-weight: 400;
+	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--fg-3);
 	margin-bottom: 6px;
@@ -696,11 +746,20 @@ main {
 
 .search {
 	max-width: 100%;
-	background: var(--surface-2);
+	background: var(--surface-0);
 	border: 1px solid var(--line-strong);
 	border-radius: var(--radius);
-	padding: 3px 8px;
+	padding: 4px 10px;
 	min-width: 12rem;
+	transition: border-color var(--quick) var(--ease);
+}
+
+.search:hover {
+	border-color: var(--fg-4);
+}
+
+.search::placeholder {
+	color: var(--fg-3);
 }
 
 .chips {
@@ -712,10 +771,17 @@ main {
 .chip {
 	background: var(--surface-2);
 	border: 1px solid var(--line-strong);
-	border-radius: 10px;
-	padding: 0 8px;
+	border-radius: 999px;
+	padding: 0 9px;
 	font-size: 11.5px;
 	cursor: pointer;
+	transition:
+		background-color var(--quick) var(--ease),
+		border-color var(--quick) var(--ease);
+}
+
+.chip:hover {
+	background: var(--surface-3);
 }
 
 .chip[aria-pressed="true"] {
@@ -959,8 +1025,8 @@ button.seq {
 	gap: 5px;
 	height: 20px;
 	border: 1px solid var(--line-strong);
-	border-radius: var(--radius);
-	padding: 0 6px;
+	border-radius: 999px;
+	padding: 0 8px;
 	font-family: var(--mono);
 	font-size: 10.5px;
 	font-weight: 600;
@@ -1265,8 +1331,14 @@ table.fields thead th {
 	background: none;
 	border: 0;
 	border-bottom: 1px solid var(--line-subtle);
+	border-radius: var(--radius);
 	padding: 4px 2px;
 	cursor: pointer;
+	transition: background-color var(--quick) var(--ease);
+}
+
+.caprow:hover:not(.is-static, [aria-pressed="true"]) {
+	background: rgb(237 232 220 / 0.035);
 }
 
 .caprow[aria-pressed="true"] {
@@ -1407,6 +1479,18 @@ table.fields thead th {
 	}
 	.omark-wrap {
 		transition: none;
+	}
+	.btn,
+	.workspace,
+	.chip,
+	.mode,
+	.caprow,
+	.search,
+	.composer textarea {
+		transition: none;
+	}
+	.btn:active:not(:disabled) {
+		transform: none;
 	}
 }
 
@@ -1565,9 +1649,11 @@ table.fields thead th {
 	z-index: 1;
 	background: var(--surface-1);
 	margin: 0;
-	padding: 6px 2px 4px;
-	font-size: 11px;
-	letter-spacing: 0.08em;
+	padding: 8px 2px 5px;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	font-weight: 400;
+	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--fg-3);
 	border-bottom: 1px solid var(--line);
@@ -1581,7 +1667,7 @@ table.fields thead th {
 		"meta"
 		"reason";
 	gap: 3px 0;
-	padding: 6px 4px 6px 6px;
+	padding: 8px 6px 8px 9px;
 }
 
 .session-row .session-name {
@@ -1906,20 +1992,26 @@ table.fields thead th {
 	display: grid;
 	grid-template-columns: 4.5rem minmax(0, 1fr);
 	gap: 8px;
-	padding-left: 8px;
+	padding-left: 10px;
 	border-left: 2px solid var(--line-strong);
 }
 
 .turn-role {
-	font-size: 11px;
-	letter-spacing: 0.08em;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	letter-spacing: 0.14em;
 	text-transform: uppercase;
 	color: var(--fg-3);
-	padding-top: 2px;
+	padding-top: 3px;
 }
 
+/* The operator's own words sit on a lifted plate, under the selection's ivory rule; the agent's are set on the page. */
 .turn-user {
 	border-left-color: var(--select);
+	background: linear-gradient(90deg, rgb(237 232 220 / 0.055), transparent 70%);
+	border-radius: 0 var(--radius) var(--radius) 0;
+	padding-top: 5px;
+	padding-bottom: 5px;
 }
 
 .turn-user .turn-role {
@@ -2193,25 +2285,38 @@ table.fields thead th {
 
 .command-card {
 	border: 1px solid var(--line-strong);
-	border-radius: var(--radius);
-	padding: 8px 10px;
+	border-radius: var(--radius-plate);
+	padding: 10px 12px;
 	margin-bottom: 10px;
 	background: var(--surface-2);
+	box-shadow: var(--lift);
 }
 
 .command-card[data-state="refused"] {
 	border-color: var(--attention);
 }
 
+/* The chain is a row of stations: each is reached or not, and the words say which. None is merged with its neighbour. */
 .chain {
 	display: flex;
 	flex-wrap: wrap;
-	gap: 4px 14px;
+	gap: 4px 6px;
 	list-style: none;
-	margin: 6px 0;
+	margin: 8px 0;
 	padding: 0;
 	font-size: 11.5px;
 	color: var(--fg-3);
+}
+
+.chain li {
+	padding: 1px 9px 1px 7px;
+	border: 1px solid var(--line);
+	border-radius: 999px;
+}
+
+.chain li[data-done="true"] {
+	border-color: var(--line-strong);
+	background: var(--surface-3);
 }
 
 .chain li::before {
@@ -2237,12 +2342,24 @@ table.fields thead th {
 .composer textarea {
 	width: 100%;
 	resize: vertical;
-	background: var(--surface-2);
+	background: var(--surface-0);
 	border: 1px solid var(--line-strong);
-	border-radius: var(--radius);
-	padding: 6px 8px;
+	border-radius: var(--radius-plate);
+	padding: 8px 11px;
 	font: inherit;
+	font-size: 13.5px;
 	color: var(--fg-1);
+	transition:
+		border-color var(--quick) var(--ease),
+		background-color var(--quick) var(--ease);
+}
+
+.composer textarea:hover:not(:disabled) {
+	border-color: var(--fg-4);
+}
+
+.composer textarea::placeholder {
+	color: var(--fg-3);
 }
 
 .composer textarea:disabled {
@@ -2280,14 +2397,25 @@ table.fields thead th {
 	align-items: center;
 	gap: 5px;
 	font-size: 12.5px;
-	padding: 2px 8px;
+	padding: 2px 11px 2px 8px;
 	border: 1px solid var(--line);
-	border-radius: var(--radius);
+	border-radius: 999px;
 	cursor: pointer;
+	color: var(--fg-2);
+	transition:
+		border-color var(--quick) var(--ease),
+		background-color var(--quick) var(--ease),
+		color var(--quick) var(--ease);
+}
+
+.mode:hover {
+	border-color: var(--line-strong);
+	color: var(--fg-1);
 }
 
 .mode[data-selected="true"] {
 	border-color: var(--select);
+	background: rgb(244 239 227 / 0.07);
 	color: var(--fg-1);
 }
 
@@ -2306,8 +2434,9 @@ table.fields thead th {
 
 .turn-intervention {
 	border-left: 2px dashed var(--attention);
+	border-radius: 0 var(--radius-plate) var(--radius-plate) 0;
 	background: var(--surface-2);
-	padding: 6px 8px;
+	padding: 9px 12px 9px 10px;
 }
 
 .turn-intervention[data-state="refused"] {
@@ -3163,7 +3292,21 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	position: relative;
 	z-index: 2;
 	background: rgba(3, 4, 5, 0.92);
+	border-image: none;
 	border-bottom-color: rgba(206, 218, 238, 0.07);
+}
+
+/* Field has its own surfaces: the Instrument's plate fills, lifts and washes do not follow it there. */
+.develop[data-appearance="field"] .chain li[data-done="true"] {
+	background: none;
+}
+
+.develop[data-appearance="field"] .mode[data-selected="true"] {
+	background: none;
+}
+
+.develop[data-appearance="field"] .command-card {
+	box-shadow: none;
 }
 
 /* The field: fixed behind everything in DEVELOP, never above the top bar, never a target. The gradient and dot grid are what is seen
@@ -3504,6 +3647,13 @@ body:has(.develop[data-appearance="field"]) .topbar {
 }
 
 /* The operator's own words sit on a lifted plate; the agent's are set on the page. */
+/* Field draws the operator's plate on the body alone, so the row's own wash is off here. */
+.develop[data-appearance="field"] .turn-user {
+	background: none;
+	padding-top: 0;
+	padding-bottom: 0;
+}
+
 .develop[data-appearance="field"] .turn-user .turn-body {
 	background: linear-gradient(180deg, rgba(206, 218, 238, 0.055), rgba(206, 218, 238, 0.03));
 	border: 1px solid var(--f-hair);

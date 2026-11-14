@@ -221,12 +221,32 @@ function summarize(
 }
 
 /** `harness attach [<root> | --root dir] [selection] [--prompt text] [--wait ms]` — record a session; optionally send one prompt. */
-export async function harnessAttachCommand(argv: readonly string[]): Promise<void> {
+export function harnessAttachCommand(argv: readonly string[]): Promise<void> {
+	return attach(argv, false);
+}
+
+/**
+ * `everyday` is `endo develop`: the two switches are added to what was PARSED, never to the argument list, so a value that happens to
+ * spell a switch, or a value flag left without its value, cannot stand in for one (DEVELOP-UX-001, review finding 1).
+ */
+async function attach(argv: readonly string[], everyday: boolean): Promise<void> {
 	const parsed = parse(
 		argv,
-		"usage: endo harness attach [<root> | --root dir] [--pi path] [--prompt text] [--wait ms] [--control [--workbench [--project id]]]",
+		everyday
+			? "usage: endo develop [<root> | --root dir] [--pi path] [--cwd dir] [--project id] [--provider p --model m]"
+			: "usage: endo harness attach [<root> | --root dir] [--pi path] [--prompt text] [--wait ms] [--control [--workbench [--project id]]]",
 		true,
 	);
+	if (everyday) {
+		// A prompt given at launch is sent on the strength of the command line, with no phrase. That stays `harness attach --prompt`:
+		// under this name every prompt is one the terminal was asked to approve.
+		if (parsed.flags.has("--prompt"))
+			throw new TypeError(
+				"endo develop takes no --prompt: ask from the paired page and approve it here (or use `endo harness attach --prompt`)",
+			);
+		parsed.switches.add("--control");
+		parsed.switches.add("--workbench");
+	}
 	const wait = parsed.flags.has("--wait") ? Number(parsed.flags.get("--wait")) : 120_000;
 	if (!Number.isSafeInteger(wait) || wait < 0) throw new TypeError("--wait must be a non-negative integer");
 	// The workbench is checked before anything runs: not even Pi is identified without a terminal to approve on.
@@ -333,6 +353,15 @@ async function attachWithControl(
 	});
 	// The control path does not wait for the run to settle: acceptance is all it can report.
 	summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled: null }, 0);
+}
+
+/**
+ * `endo develop [...]`: the everyday spelling of `endo harness attach [...] --control --workbench` (DEVELOP-UX-001): the same parser, the
+ * same controlling-terminal check before anything runs, the same broker, pairing and typed approvals. One difference, and it is
+ * stricter: no `--prompt` at launch. `--project` stays optional, so a session needs no registered project and no task.
+ */
+export function developCommand(argv: readonly string[]): Promise<void> {
+	return attach(argv, true);
 }
 
 export const HARNESS_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]) => Promise<void>>> = {

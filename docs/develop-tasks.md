@@ -26,7 +26,7 @@ endo project add --root ./recordings --name "Parser work" --path /path/to/projec
 endo harness attach ./recordings --cwd /path/to/project --control --workbench --project endo.project.<id>
 ```
 
-1. Open the workbench address, choose **Develop**, pair. The bar above the run strip names the **project** and whether its directory matches
+1. Open the workbench address (the page opens on **Develop**) and pair. The bar above the run strip names the **project** and whether its directory matches
    (`✓ matches`, or `⚠ other directory`, `⚠ path missing`, `⚠ other worktree`).
 2. Press **T** or open the **Task** picker in the bar, choose **+ New task…** (or open the **Task** tab), write a title and, optionally, a
    description and acceptance criteria, and **Create task**. Creating a task selects it. It sends nothing.

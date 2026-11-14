@@ -31,7 +31,7 @@ import { doctorCommand } from "./doctor.ts";
 import { DSH_COMMANDS_V0 } from "./dsh.ts";
 import { EXPERIMENT_COMMANDS_V0 } from "./experiment.ts";
 import { experimentProtectedReportCommand, experimentProtectedRunCommand } from "./experiment-protected.ts";
-import { HARNESS_COMMANDS_V0 } from "./harness.ts";
+import { developCommand, HARNESS_COMMANDS_V0 } from "./harness.ts";
 import { ENDO_USAGE_LINE_V0, endoHelpV0, endoVersionV0 } from "./help.ts";
 import { PROXY_COMMANDS_V0, replayCommand } from "./replay.ts";
 import { STEER_COMMANDS_V0 } from "./steer.ts";
@@ -58,6 +58,8 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	ledger: ledgerCommand,
 	artifacts: artifactsCommand,
 	harness: family(HARNESS_COMMANDS_V0, "usage: endo harness <status|overview|identify|check|study|attach> <root> ..."),
+	// The live workbench in one word: `harness attach --control --workbench`, unchanged (cli/harness.ts).
+	develop: developCommand,
 	"digest-key": digestKeyCommand,
 	dsh: family(DSH_COMMANDS_V0, "usage: endo dsh <import|loss-accounting> ..."),
 	studio: (argv) => import("./studio.ts").then((module) => module.studioCommand(argv)),

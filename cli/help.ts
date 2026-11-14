@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -107,6 +107,9 @@ Commands that write to a store:
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:
+  develop [<root> | --root dir] [--cwd dir] [--project id] [--pi path] ...
+                                     the live workbench, in one word: "harness attach ... --control --workbench", without --prompt.
+                                     Needs no registered project and no task; every prompt, steer and stop is approved on this terminal
   harness attach <root> ...          start a Pi session
                                      with --control --workbench --project <id>, type "attempt <id>" on that terminal, or use the
                                      paired page's Task view, to ask to send a prepared attempt's brief to this Pi session as a new

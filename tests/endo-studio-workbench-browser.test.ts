@@ -341,21 +341,29 @@ suite("the DEVELOP workbench", () => {
 		).toBe(true);
 	});
 
-	it("follows the session only when asked, from a bounded timer, and shows a lost broker as unknown, never as ended", async () => {
+	it("follows the session from a bounded timer until switched off, and shows a lost broker as unknown, never as ended", async () => {
 		const { page, session, broker, server } = await open();
 		await pairWith(page, broker);
 		const reads = () => page.seen.requests.filter((r) => r.includes("/workbench/status")).length;
 		const before = reads();
-		await settle(3500);
-		expect(reads()).toBe(before); // off by default: nothing polls
-		await page.click("[data-testid=follow]");
+		// On when the page opens (the operator's decision of 2026-11-14): a message arrives with no click.
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=follow]').checked")).toBe(true);
 		session.live_(textMessage("assistant", "arrived while following"));
 		await page.waitFor(
 			"document.querySelector('[data-testid=transcript]')?.textContent.includes('arrived while following')",
 			12_000,
 		);
+		// The timer keeps reading: another status read follows without a click.
+		for (let i = 0; i < 100 && reads() <= before; i++) await settle(100);
 		expect(reads()).toBeGreaterThan(before);
+		// Switched off, nothing polls: a read already running may finish, and then the count stands still.
 		await page.click("[data-testid=follow]");
+		await settle(1500);
+		const stopped = reads();
+		session.live_(textMessage("assistant", "said while not following"));
+		await settle(3500);
+		expect(reads()).toBe(stopped);
+		expect(await page.text("[data-testid=transcript]")).not.toContain("said while not following");
 		await server.close();
 		await refresh(page);
 		await page.waitFor(
@@ -370,7 +378,6 @@ suite("the DEVELOP workbench", () => {
 	it("resumes following when the operator comes back to DEVELOP, and a tool outcome reaches a page that saw it running", async () => {
 		const { page, session, broker } = await open();
 		await pairWith(page, broker);
-		await page.click("[data-testid=follow]");
 		session.live_({ type: "tool_execution_start", record: { toolCallId: "t1", toolName: "bash" } });
 		await page.waitFor("document.querySelector('[data-testid=tool-row]')?.textContent.includes('running')", 12_000);
 		// Leave DEVELOP (the timer is cleared); the tool fails and more is said meanwhile; come back.
@@ -397,7 +404,6 @@ suite("the DEVELOP workbench", () => {
 	it("does not start polling again when a read that was running while the operator left DEVELOP finishes", async () => {
 		const { page, broker, server } = await open();
 		await pairWith(page, broker);
-		await page.click("[data-testid=follow]");
 		const reads = () => page.seen.requests.filter((r) => r.includes("/workbench/")).length;
 		// Make the next reads slow, so one is in flight at the moment the workspace is left.
 		const handle = broker.handle.bind(broker);

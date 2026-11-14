@@ -150,7 +150,6 @@ describe.runIf(out !== "" && executable !== null && haveGit)("DEVELOP screenshot
 			);
 			await shot(page, `${a}-07-reasoning-long-clamped-1440`);
 			for (const event of [...tool("c5", "bash"), ...SYNTHETIC_OPEN]) session.live_(event);
-			await page.click("[data-testid=follow]");
 			await reread(page);
 			await page.waitFor("document.querySelector('[data-testid=turn-open]')");
 			await toBottom(page);
@@ -215,6 +214,15 @@ describe.runIf(out !== "" && executable !== null && haveGit)("DEVELOP screenshot
 			);
 			await phone.page.eval("document.querySelectorAll('[data-testid=reasoning-toggle]')[0].click()");
 			await shot(phone.page, `${a}-17-phone-reasoning-390`);
+			// The widths between: a tablet upright, the narrowest three-pane width, and a 4K panel.
+			const tablet = await open(a, 768, 1024);
+			await shot(tablet.page, `${a}-19-tablet-768`);
+			const small = await open(a, 1024, 768);
+			await toBottom(small.page);
+			await shot(small.page, `${a}-20-small-desktop-1024`);
+			const uhd = await open(a, 3840, 2160);
+			await toBottom(uhd.page);
+			await shot(uhd.page, `${a}-21-uhd-3840`);
 			const reduced = await open(a, 1440, 900, { reduced: true });
 			await toBottom(reduced.page);
 			await shot(reduced.page, `${a}-18-reduced-motion-1440`);

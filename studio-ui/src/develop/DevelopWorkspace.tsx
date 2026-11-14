@@ -7,6 +7,7 @@
 // field shows, the ledger where there is nothing to read, and a beacon while something waits for the terminal.
 import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../../protocol/cockpit-develop.ts";
+import { attemptCourse, courseAttempt, liveCourse, recordedCourse } from "../model/course.ts";
 import { eventDetail } from "../model/detail.ts";
 import type { DevelopStage, LifecycleState } from "../model/develop.ts";
 import { type FieldSurface, fieldSignal } from "../model/field.ts";
@@ -21,6 +22,7 @@ import type { ProjectApi } from "../use-project.ts";
 import type { WorkspaceApi } from "../use-workspace.ts";
 import { Activity } from "./Activity.tsx";
 import { projectView } from "./Changes.tsx";
+import { Course, type CourseSize, type CourseSubject } from "./Course.tsx";
 import { WorkspaceContext, WorkspaceDesk, WorkspaceRow } from "./Desk.tsx";
 import { Arrival, Beacon, FieldLayer, FieldLegend, useReducedMotion } from "./Field.tsx";
 import { LiveContext, LiveConversation, LiveRow, shortSession, type Workbench } from "./Live.tsx";
@@ -179,6 +181,20 @@ export function DevelopWorkspace({
 	const [drawer, setDrawer] = useState(false);
 	// Field only: the dock beside a live conversation (changes, then context) can be closed for a focused reading width. Memory only.
 	const [dock, setDock] = useState(true);
+	// The course under the sessions: one of three heights. Memory only, like every other choice on this page.
+	const [courseSize, setCourseSize] = useState<CourseSize>("fit");
+	// A held run the operator asked to be shown: once the conversation is drawn again its marker is brought into view and takes focus.
+	// Reading only, and no timer: the effect runs after the render that shows the conversation.
+	const [shownRun, setShownRun] = useState<number | null>(null);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: the view and the stage stand for "the conversation is drawn now"
+	useEffect(() => {
+		if (shownRun === null) return;
+		// Asked once, answered once: a marker that is no longer held is not waited for, so a later view never jumps to another one.
+		const marker = document.querySelector<HTMLElement>(`[data-run-seq="${shownRun}"]`);
+		marker?.scrollIntoView({ block: "center" });
+		marker?.focus({ preventScroll: true });
+		setShownRun(null);
+	}, [shownRun, project.state.view, state.stage]);
 	// The live conversation, or the workspace desk (a host with no harness): both are the operator's own surface, beside the recordings.
 	const deskShown = workbench.state.availability === "workspace" && workbench.state.view === "live";
 	const liveShown = (workbench.state.availability === "available" || deskShown) && workbench.state.view === "live";
@@ -372,6 +388,76 @@ export function DevelopWorkspace({
 					? "…"
 					: shortAlias(detail.session.session);
 
+	// The course of what is selected (model/course.ts): read from state already held, and from nothing else. An attempt's stages are
+	// shown only on a host that serves the task's attempts; a session of another source is not charted, and the region says so.
+	const latest = hosted ? courseAttempt(workspace.attempts.view, workbench.state.command) : null;
+	const attemptOf = latest === null ? null : attemptCourse(latest, workbench.state.command);
+	const readClock = (at: Date | null) =>
+		at === null ? "not read yet" : `read ${at.toLocaleTimeString([], { hour12: false })} (browser clock)`;
+	const none = { live: null, attempt: null, recorded: null, event: null, empty: null };
+	const subject: CourseSubject = liveMode
+		? {
+				...none,
+				name: crumbName,
+				asOf: workbench.state.unreachable
+					? `broker not answering; last ${readClock(workbench.state.statusAt)}`
+					: readClock(workbench.state.statusAt),
+				live: liveCourse(workbench.state),
+				attempt: attemptOf,
+			}
+		: deskMode
+			? {
+					...none,
+					name: crumbName,
+					asOf: "from the task's records",
+					attempt: attemptOf,
+					empty: {
+						title: "No attempt to chart",
+						text: "No agent is attached here. When the selected task has a prepared attempt, its stages are drawn from its records.",
+					},
+				}
+			: ompMode
+				? {
+						...none,
+						name: crumbName,
+						asOf: "a saved file",
+						empty: {
+							title: "Not charted for this source",
+							text: "Oh My Pi's saved sessions are read as files. This page holds no run or request state for them, so it draws none.",
+						},
+					}
+				: detail !== null
+					? {
+							...none,
+							name: crumbName,
+							asOf: "as recorded",
+							recorded: recordedCourse(detail),
+							event: state.event,
+							empty: {
+								title: "Not inspectable",
+								text: "This recording could not be qualified for inspection, so no course is drawn from it.",
+							},
+						}
+					: { ...none, name: null, asOf: "no session open" };
+	const course = (
+		<Course
+			subject={subject}
+			size={courseSize}
+			onSize={setCourseSize}
+			resizable={!narrow && (liveMode || deskMode)}
+			onEvent={(sequence) => dispatch({ type: "event", sequence })}
+			onShowRun={
+				liveMode
+					? (seq) => {
+							project.setView("conversation");
+							if (narrow) dispatch({ type: "stage", stage: "activity" });
+							setShownRun(seq);
+						}
+					: undefined
+			}
+		/>
+	);
+
 	// Field: what the field and the ledger are built from. Typed state and counts only; no text reaches the renderer.
 	const field = appearance === "field";
 	const reduced = useReducedMotion();
@@ -507,6 +593,7 @@ export function DevelopWorkspace({
 					{inList ? (
 						<>
 							{arrival}
+							{course}
 							{navigator}
 						</>
 					) : state.stage === "activity" ? (
@@ -526,14 +613,19 @@ export function DevelopWorkspace({
 						) : (
 							open
 						)
-					) : deskMode ? (
-						deskContext
-					) : liveMode ? (
-						liveContext
-					) : ompMode ? (
-						<OmpInspector omp={omp} />
 					) : (
-						inspector
+						<>
+							{course}
+							{deskMode ? (
+								deskContext
+							) : liveMode ? (
+								liveContext
+							) : ompMode ? (
+								<OmpInspector omp={omp} />
+							) : (
+								inspector
+							)}
+						</>
 					)}
 					<EventDialog
 						open={state.event !== null && eventModel !== null && !liveMode}
@@ -547,7 +639,13 @@ export function DevelopWorkspace({
 					</EventDialog>
 				</>
 			) : (
-				<div className="develop-grid" data-drawer={drawer ? "open" : "closed"}>
+				<div
+					className="develop-grid"
+					data-drawer={drawer ? "open" : "closed"}
+					data-course={courseSize}
+					data-course-rail=""
+				>
+					{course}
 					<div className="develop-nav-wrap" id="develop-nav-wrap">
 						{navigator}
 					</div>

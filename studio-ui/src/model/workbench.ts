@@ -47,7 +47,10 @@ export interface WorkbenchState {
 	problem: string | null;
 	/** The last attempt did not reach the broker at all. It says nothing about whether the session ended. */
 	unreachable: boolean;
-	/** Opt-in, bounded following of the live session: a read every few seconds while on. */
+	/**
+	 * Bounded following of the live session: a read every few seconds while on. On when the page opens (the operator's decision of
+	 * 2026-11-14: a conversation that does not move reads as broken); the operator can switch it off, and a hidden page reads nothing.
+	 */
 	follow: boolean;
 	/** Which surface DEVELOP shows: the live conversation, or a recorded session. */
 	view: "live" | "recorded";
@@ -71,7 +74,7 @@ export const initialWorkbench = (): WorkbenchState => ({
 	busy: false,
 	problem: null,
 	unreachable: false,
-	follow: false,
+	follow: true,
 	view: "live",
 });
 

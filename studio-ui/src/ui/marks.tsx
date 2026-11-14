@@ -25,6 +25,14 @@ export function ProvGlyph({ kind, size = 12 }: { kind: string; size?: number }):
 				return <path d="M6 1.4 11 6 6 10.6 1 6z" {...RING} />;
 			case "unavailable":
 				return <circle cx="6" cy="6" r="4" {...RING} strokeDasharray="2 1.7" />;
+			// The operator's own record: a ring signed with a line. Not evidence, so it takes no provenance hue.
+			case "declared":
+				return (
+					<>
+						<circle cx="6" cy="6" r="4" {...RING} />
+						<path d="M3.9 6h4.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+					</>
+				);
 			case "mixed":
 				return (
 					<>

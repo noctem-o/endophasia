@@ -8,7 +8,7 @@
  * or a redirected stream cannot approve a prompt. The same rule as the terminal-governed A/A operator, written here for production
  * code (production `cli/` never imports `research/`).
  */
-import { fstatSync, readFileSync } from "node:fs";
+import { fstatSync, readFileSync, realpathSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import type { PiSessionAttachmentV0 } from "../adapters/pi/attachment.ts";
@@ -236,6 +236,9 @@ export async function startWorkbenchV0(
 			root: session.owner.options.root,
 			uiDirectory,
 			workbench: broker,
+			// The workbench is where the operator works: its page opens on DEVELOP, as the workspace host's does (DEVELOP-UX-001, F3). Said
+			// in the page itself; it changes no route, grant or approval, and Observe and Compare are one click away as before.
+			start: "develop",
 			onKey: (key) => {
 				if (key.created) write(`workbench: created the cockpit's own digest key ${key.path}\n`);
 			},
@@ -332,6 +335,29 @@ export async function startWorkbenchV0(
 					? "workbench: --project names no project in this store (endo project list); the page will show no tasks.\n"
 					: `workbench: the task file cannot be used (${workspace.reason ?? "unreadable"}); it was not changed and the page will show no tasks.\n`,
 		);
+	// No project was named. If this very directory is one the operator registered, say how to see its tasks; nothing is selected for them
+	// (a project is named, never inferred), and a store with no task file, or one that cannot be read, says nothing.
+	else {
+		try {
+			const here = realpathSync(options.cwd);
+			const file = endoDevelopServiceV0(session.owner.options.root).read();
+			const registered = file.ok
+				? file.value.projects.filter((p) => {
+						try {
+							return realpathSync(p.path) === here;
+						} catch {
+							return false;
+						}
+					})
+				: [];
+			if (registered.length === 1)
+				write(
+					`workbench: no project was named, so the page shows no tasks. The task file registers this directory as "${registered[0]?.name}" (${registered[0]?.id}). Check it with \`endo project list\`, then start with --project <id> when you want its tasks.\n`,
+				);
+		} catch {
+			// The hint is a convenience; its absence changes nothing.
+		}
+	}
 	return {
 		address: `${launched.server.baseUrl}/`,
 		broker,

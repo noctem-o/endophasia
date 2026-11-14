@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Added
+- **DEVELOP-UX-001: an everyday start, and a redrawn interface** ([audit, model, boundaries and review](research/develop-ux/DEVELOP-UX-001.md)).
+  - `endo develop [...]` is `endo harness attach [...] --control --workbench` in one word, with the same controlling-terminal
+    check, pairing and typed approvals, and without `--prompt` (which sends at launch with no phrase). A session needs no registered project and no task.
+  - The workbench's page opens on Develop. When the launch directory is a registered project and `--project` was not given, the
+    terminal says so once, with the flag to use; it selects nothing.
+  - The interface is redrawn: an ink ground with one hueless glow, soft-cornered plates, mono labels, the operator's turns on a wash,
+    a request waiting for the terminal as a lifted plate with its chain as stations, and eased hover and focus. Every label, mark,
+    sentence and behaviour is unchanged, the colour grammar is unchanged, and nothing animates by itself. Field is kept.
+  - **Not changed:** every prompt, steer, queue, stop and attempt is still approved by its phrase on the controlling terminal. The
+    document measures that cost and leaves what to do about it as the operator's decision.
+
 ### Fixed
 - **Workbench polish, from the first real-task session (2026-11-11).**
   - Model-provided reasoning and the message still being written now appear as they grow, instead of in three-second blocks. While a

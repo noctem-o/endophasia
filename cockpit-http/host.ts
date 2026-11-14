@@ -55,7 +55,7 @@ export interface EndoCockpitLaunchOptionsV0 {
 	 */
 	omp?: { root: string; open(key: EndoDigestKeyV0): EndoOmpObserverV0 };
 	/**
-	 * The workspace the page opens on, said in the page itself (`endo workspace open` gives `develop`; `endo studio` gives nothing and its
+	 * The workspace the page opens on, said in the page itself (`endo workspace open` and the live workbench give `develop`; `endo studio` gives nothing and its
 	 * page is served byte for byte as built). It costs no request, and the page never reads its own address to decide.
 	 */
 	start?: "develop";

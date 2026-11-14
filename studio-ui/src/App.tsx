@@ -39,7 +39,7 @@ export function App(): ReactElement {
 	const observe = useObserve();
 	const { state } = observe;
 	// The page opens on Observe, or on DEVELOP when the server that served it says so in the page (`data-start`, set by
-	// `endo workspace open`). Read once; no request, and never the page's own address.
+	// `endo workspace open` and by the live workbench). Read once; no request, and never the page's own address.
 	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>(() =>
 		document.documentElement.dataset.start === "develop" ? "develop" : "observe",
 	);
@@ -183,7 +183,21 @@ export function App(): ReactElement {
 				Skip to the content
 			</a>
 			<header className="topbar">
-				<span className="wordmark">Endophasia</span>
+				<span className="wordmark">
+					{/* The sigil: inner speech, a word held inside a ring. Decoration only, in the text colour. */}
+					<svg className="sigil" width="17" height="17" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+						<circle cx="10" cy="10" r="8.6" fill="none" stroke="currentColor" strokeWidth="1.1" />
+						<path
+							d="M4.6 10c1.5-2.6 3.3-3.9 5.4-3.9s3.9 1.3 5.4 3.9c-1.5 2.6-3.3 3.9-5.4 3.9S6.1 12.6 4.6 10Z"
+							fill="none"
+							stroke="currentColor"
+							strokeWidth="1.1"
+							strokeLinejoin="round"
+						/>
+						<path d="M7.4 10h5.2" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+					</svg>
+					Endophasia
+				</span>
 				<nav className="workspaces" aria-label="Workspaces">
 					{WORKSPACES.map((w) => (
 						<button

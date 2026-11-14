@@ -1,0 +1,476 @@
+{
+  "schemaVersion": "endo.research.dvt002.record.v0",
+  "verdict": "INCOMPLETE",
+  "reason": "staging-changed",
+  "invocation": {
+    "id": "6164fd463ecdcc0a06dfba6af50c3a5c",
+    "requestSha256": "6ab083aa09e8aad3e52e78b218ca1676c4dc0c77ce106e162fb7132edc32a46b",
+    "requester": {
+      "pid": 386962,
+      "uid": 1000
+    },
+    "instance": "8-28712-386962_417819-1000",
+    "startedAtMs": 1794510581929
+  },
+  "installation": {
+    "id": "5635db3573fb9b2727a88d0275c8717db4af3366a061c38f57f829f73f48796a",
+    "mode": "rehearsal",
+    "sourceCommit": "c968895fc608ba3552e15d745b585315a08eb6fd"
+  },
+  "oracle": {
+    "task": "roman-numerals-cli",
+    "manifestSha256": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+    "referenceSha256": "31d17c480665262bbb34c03e4ff2f1bd00271a20e6b56de456ac1dfc1c726780",
+    "negativeSha256": "325acc0c59672b7e31f66df74710d0c0410ecd566d334dd31edc5d4f3b7099ad",
+    "cases": 15
+  },
+  "candidate": {
+    "objectFormat": "sha1",
+    "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+    "tree": "c35839bb2327bffa571823372df35d6be7309a70",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "files": [
+      {
+        "path": "roman.mjs",
+        "mode": "100644",
+        "bytes": 669,
+        "sha256": "d94b3fe060c97500a257e9a33c9c0b7140a9b62f1f178a0fa6741b7f623c878a"
+      }
+    ]
+  },
+  "runtime": {
+    "node": "/usr/bin/node",
+    "sha256": "9c0877ec24a32343f70470a95f595576855a91ec3f1b36d5d13368664309aaa1",
+    "version": "v26.13.1",
+    "files": 43
+  },
+  "isolation": {
+    "mechanism": "bubblewrap+systemd-user-scope",
+    "bubblewrap": {
+      "path": "/usr/bin/bwrap",
+      "version": "0.13.1",
+      "sha256": "33516b9cd1fa6432307ad71f23765fa30604b0a8d769dac0d2ba054e85aeec83"
+    },
+    "containment": {
+      "version": "262",
+      "systemdRunSha256": "aef6c1677ae93f9d44d32dbbd12bb5958854013806b207599843bbc520010865",
+      "tasksMax": 512
+    },
+    "profileSha256": "a5f67b2e4584d876af86fa0f2192dbf9e19cc128dfa1a3a5fbd0f3a8ac0c0c21"
+  },
+  "preflight": {
+    "status": "established",
+    "probes": [
+      {
+        "id": "env-minimal",
+        "passed": true,
+        "observed": "ok"
+      },
+      {
+        "id": "fds-inherited",
+        "passed": true,
+        "observed": "unexpected:0"
+      },
+      {
+        "id": "fs-canary-read",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-dev-readonly",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-hidden-installation-directory",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-hidden-operator-home",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-hidden-oracle-directory",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-hidden-state-directory",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "fs-readonly-mount-0",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-readonly-mount-1",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-readonly-runtime-0",
+        "passed": true,
+        "observed": "EACCES"
+      },
+      {
+        "id": "fs-root-readonly",
+        "passed": true,
+        "observed": "EROFS"
+      },
+      {
+        "id": "fs-tmp-private",
+        "passed": true,
+        "observed": "entries:0"
+      },
+      {
+        "id": "fs-workspace-writable",
+        "passed": true,
+        "observed": "ok"
+      },
+      {
+        "id": "net-external",
+        "passed": true,
+        "observed": "ENETUNREACH"
+      },
+      {
+        "id": "net-host-abstract-socket",
+        "passed": true,
+        "observed": "ECONNREFUSED"
+      },
+      {
+        "id": "net-host-loopback",
+        "passed": true,
+        "observed": "ECONNREFUSED"
+      },
+      {
+        "id": "net-host-path-socket",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "net-interfaces",
+        "passed": true,
+        "observed": "lo-only"
+      },
+      {
+        "id": "proc-private",
+        "passed": true,
+        "observed": "pids:2 pidns:own"
+      },
+      {
+        "id": "socket-hidden-0",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-1",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-2",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-3",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-4",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-5",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-6",
+        "passed": true,
+        "observed": "ENOENT"
+      },
+      {
+        "id": "socket-hidden-7",
+        "passed": true,
+        "observed": "ENOENT"
+      }
+    ],
+    "reason": null
+  },
+  "qualification": {
+    "reference": "PASS",
+    "negative": "FAIL"
+  },
+  "staging": {
+    "before": "676319d8760ab8ffb4cd2208f7392dfb5a6f24cdbdc734a2811c89a06fbe847d",
+    "after": "15ecdf8f65b964cace1015514fe032d21dca366302676fb86dbb4dbab5103950"
+  },
+  "cases": [
+    {
+      "name": "subtractive-1994",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 8,
+      "stdoutSha256": "a97c1fe678c130d42f8f6205a4e0a07cb93c6373fb2de7ec16cd0d36de2c664d",
+      "stderrHead": "",
+      "durationMs": 65,
+      "matched": true
+    },
+    {
+      "name": "rejects-zero",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"0\"\n",
+      "durationMs": 60,
+      "matched": true
+    },
+    {
+      "name": "runs-14",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 4,
+      "stdoutSha256": "2a0e0a1262b85cd27bf1b704a0e79d346361ecc9d8cafe774021b1d35efbe8c2",
+      "stderrHead": "",
+      "durationMs": 58,
+      "matched": true
+    },
+    {
+      "name": "one",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 2,
+      "stdoutSha256": "7fdca686b46a12886513de3f6166c815efcb501bbe0f6ecda4acd20c6d48fed7",
+      "stderrHead": "",
+      "durationMs": 64,
+      "matched": true
+    },
+    {
+      "name": "four",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "9f9ca51f7a737c738e38c63cb4f1b8bec9250eb2a217e92d8e155bc47936b934",
+      "stderrHead": "",
+      "durationMs": 59,
+      "matched": true
+    },
+    {
+      "name": "nine",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "2e22ca64c6647723956fecb4743cfed2e6ea415bd963d76dfe4329cf206140e7",
+      "stderrHead": "",
+      "durationMs": 65,
+      "matched": true
+    },
+    {
+      "name": "forty",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "f822bad383279c84f866c3d6b2686a0ae7962125cb2c49a0c01dcf91ba045097",
+      "stderrHead": "",
+      "durationMs": 65,
+      "matched": true
+    },
+    {
+      "name": "ninety",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "acda4af6be7cc940b7b2f074c924669c75296c9c3d1413c1691d81877aa5a65f",
+      "stderrHead": "",
+      "durationMs": 68,
+      "matched": true
+    },
+    {
+      "name": "four-hundred",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 3,
+      "stdoutSha256": "622bcd2e827544f4d26749b33ef93060d5c5c12812fe9f83ba8382bd1df7ebdf",
+      "stderrHead": "",
+      "durationMs": 61,
+      "matched": true
+    },
+    {
+      "name": "year-2026",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 7,
+      "stdoutSha256": "43e47127c91814c24c59fe70677f3121d2f55ab954db3ed4069ec5d1c9258e6f",
+      "stderrHead": "",
+      "durationMs": 61,
+      "matched": true
+    },
+    {
+      "name": "rejects-4000",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"4000\"\n",
+      "durationMs": 64,
+      "matched": true
+    },
+    {
+      "name": "rejects-word",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"abc\"\n",
+      "durationMs": 63,
+      "matched": true
+    },
+    {
+      "name": "rejects-negative",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"-5\"\n",
+      "durationMs": 63,
+      "matched": true
+    },
+    {
+      "name": "rejects-fraction",
+      "started": true,
+      "exitCode": 2,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 0,
+      "stdoutSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderrHead": "not a number from 1 to 3999: \"1.5\"\n",
+      "durationMs": 66,
+      "matched": true
+    },
+    {
+      "name": "max-3999",
+      "started": true,
+      "exitCode": 0,
+      "timedOut": false,
+      "truncated": false,
+      "termination": "confirmed",
+      "stdoutBytes": 10,
+      "stdoutSha256": "dd7bc9b2a0c549139081e6be79e1d1a3f77fafbbf76fa491969b227e2ad06e07",
+      "stderrHead": "",
+      "durationMs": 66,
+      "matched": true
+    }
+  ],
+  "compatibility": [],
+  "controller": {
+    "uid": 1000,
+    "pid": 392456,
+    "hostileVariables": [],
+    "execArgv": 0,
+    "environmentNames": [
+      "CUDA_PATH",
+      "DBUS_SESSION_BUS_ADDRESS",
+      "DEBUGINFOD_URLS",
+      "DESKTOP_SESSION",
+      "DISPLAY",
+      "HOME",
+      "ICEAUTHORITY",
+      "INVOCATION_ID",
+      "JOURNAL_STREAM",
+      "KDE_APPLICATIONS_AS_SCOPE",
+      "KDE_FULL_SESSION",
+      "KDE_SESSION_UID",
+      "KDE_SESSION_VERSION",
+      "LANG",
+      "LOGNAME",
+      "MAIL",
+      "MANAGERPID",
+      "MANAGERPIDFDID",
+      "MEMORY_PRESSURE_WATCH",
+      "MEMORY_PRESSURE_WRITE",
+      "MOTD_SHOWN",
+      "NVCC_CCBIN",
+      "PAM_KWALLET5_LOGIN",
+      "PATH",
+      "PNPM_HOME",
+      "PROTON_ENABLE_WAYLAND",
+      "PWD",
+      "QT_WAYLAND_RECONNECT",
+      "SESSION_MANAGER",
+      "SHELL",
+      "SO_COOKIE",
+      "SYSTEMD_EXEC_PID",
+      "USER",
+      "VSSCRIPT_PATH",
+      "WAYLAND_DISPLAY",
+      "XAUTHORITY",
+      "XDG_CONFIG_DIRS",
+      "XDG_CURRENT_DESKTOP",
+      "XDG_DATA_DIRS",
+      "XDG_MENU_PREFIX",
+      "XDG_RUNTIME_DIR",
+      "XDG_SEAT",
+      "XDG_SEAT_PATH",
+      "XDG_SESSION_CLASS",
+      "XDG_SESSION_DESKTOP",
+      "XDG_SESSION_ID",
+      "XDG_SESSION_PATH",
+      "XDG_SESSION_TYPE",
+      "XDG_VTNR",
+      "XKB_DEFAULT_LAYOUT",
+      "XKB_DEFAULT_MODEL",
+      "XKB_DEFAULT_OPTIONS",
+      "_JAVA_AWT_WM_NONREPARENTING"
+    ]
+  },
+  "endedAtMs": 1794510585015,
+  "recordSha256": "b89ab8d8ed6a79cc165859a696a3c3bb69f926f10ea083f5d3e181b23aa7c883"
+}

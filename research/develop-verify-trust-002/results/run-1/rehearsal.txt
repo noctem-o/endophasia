@@ -1,0 +1,24 @@
+DEVELOP-VERIFY-TRUST-002 rehearsal run; installation 5635db3573fb9b2727a88d0275c8717db4af3366a061c38f57f829f73f48796a; commit c968895fc608ba3552e15d745b585315a08eb6fd
+truth: {"A":"correct","B":"incorrect(8)","D":"incorrect(1)","E":"incorrect(1)","P":"correct","S":"correct","X":"correct","M":"incorrect(15)"}
+held   T1: PASS/PASS, authoritative no (verifier-is-reader)   (expected PASS, authoritative no)
+held   T2: FAIL/FAIL   (expected FAIL)
+held   T3: FAIL/FAIL; verifier environment clean: true   (expected FAIL; no hostile name in the verifier)
+held   T4: B FAIL, A PASS; markers 2, from a verifier 0; verifier environment clean: true   (expected B FAIL, A PASS; markers only from client processes)
+held   T5a: FAIL/FAIL; plain git shows A for B: true   (expected FAIL (B's own objects))
+held   T5b: BLOCKED object-missing   (expected BLOCKED object-missing)
+held   T5c: client object-unreadable; BLOCKED object-missing; marker absent   (expected BLOCKED object-missing; no marker)
+held   T6: tamper ok; INCOMPLETE staging-changed; authoritative no   (expected tamper write succeeds; auth no)
+held   T7: code write ok; drop-in ok; PASS/UNKNOWN (installation-mismatch); authoritative no   (expected writes succeed; PASS; auth no)
+held   T8: (a) write ok, read PASS auth no (verifier-is-reader); (b) auth no (not-root's: <W>/install/installation.json); (c) link ok, read UNKNOWN (symbolic-link)   (expected (a) written, auth no; (b) refused; (c) refused)
+held   T9: UNKNOWN candidate-mismatch; consumer B NONE; consumer A NONE   (expected candidate-mismatch; consumer verdict for B not PASS)
+held   T10: kill ok; first response none; interrupted INCOMPLETE (journal-without-record); retry PASS new id true; orphan work removed true; hang-up record PASS   (expected kill ok; interrupted INCOMPLETE; retry PASS under a new id; hang-up record PASS)
+held   T11: {"a":"service-unavailable: ENOENT","b":"BLOCKED oracle-not-pinned","c":"BLOCKED containment-unavailable","d":"BLOCKED isolation-missing"}   (expected BLOCKED each, never PASS)
+held   T12: P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]   (expected P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND])
+held   E1: BLOCKED unsupported-120000; BLOCKED unsupported-160000; BLOCKED unsupported-name   (expected BLOCKED unsupported-120000, unsupported-160000, unsupported-name)
+held   E2: A PASS, B FAIL, distinct true   (expected PASS and FAIL, distinct invocations)
+held   E3: stop ok; INCOMPLETE (journal-without-record); next PASS; orphan collected by next true   (expected INCOMPLETE; the next instance removes the orphan)
+held   E4: D FAIL, E FAIL, S FAIL   (expected FAIL each)
+held   E5: {"big":"request-too-large","env":"request-invalid","argv":"request-invalid","expect":"request-invalid","unreferenced":"object-unreferenced","task":"task-unknown","junk":"request-invalid"}   (expected BLOCKED each, with its reason)
+held   E6: ok, ok, ok; run PASS   (expected ok, ok, ok)
+acceptance: {"RA1":true,"RA2":true,"RA3":true,"RA4":true,"RA5":true,"RA6":true,"RA7":true}
+records: {"total":37,"forgedByAttacker":2,"authoritative":0,"authoritativeFalsePasses":[],"overwritten":[]}; wall 83404 ms

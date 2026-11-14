@@ -274,9 +274,11 @@ suite("DEVELOP drawn as Field", () => {
 	it("on an unpaired workbench, the only input in the arrival is the real pairing form", async () => {
 		const { page } = await live(1440, 900, { pair: false, empty: true });
 		await field(page);
-		// Nothing is being re-read (Follow is off, nothing is open), so the status is said in the past, as last read.
-		expect(await page.text("[data-testid=arrival-statement]")).toContain(
-			"was connected, with a run open, at the last read",
+		// Follow is on when the page opens, so the status is current; switched off, nothing is re-read and it is said in the past.
+		expect(await page.text("[data-testid=arrival-statement]")).toContain("is connected, with");
+		await page.click("[data-testid=follow]");
+		await page.waitFor(
+			"document.querySelector('[data-testid=arrival-statement]').textContent.includes('was connected, with a run open, at the last read')",
 		);
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=pair-code]').length")).toBe(1);
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=composer]').length")).toBe(0);

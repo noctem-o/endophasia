@@ -244,8 +244,8 @@ watermark facts, flags and anomaly lists, capability conformance detail, raw dig
 filters. DEVELOP links to them and never re-renders them.
 
 **Rejected:** a terminal or PTY, colour-only status dots, PWA/push notifications, any raw-RPC "advanced" field, streaming through
-unbounded buffers, new dependencies (virtual lists, markdown renderers), persisted drafts, and auto-following by default (following is
-opt-in, bounded and pausable).
+unbounded buffers, new dependencies (virtual lists, markdown renderers), and persisted drafts. Auto-following by default was rejected here too; the operator reversed that on
+2026-11-14 (Follow is on when the page opens; it stays bounded and can be switched off).
 
 ## 12. Decisions taken, and what slice A actually does
 
@@ -268,7 +268,8 @@ The operator approved (1) the broker serves the workbench page itself, (2) termi
 - **One constant answer on the read-only server.** `endo studio` has no workbench; so the page can ask quietly (a 404 would be logged by
   every browser as a failed request), the read-only server answers `GET api/v0/workbench/status` with the constant
   `{"available":false,…}` and nothing else under that prefix exists there. Every POST is still refused (405).
-- **Follow is opt-in and bounded.** The page reads the broker's memory every 3 s only if the operator switches Follow on, and every
+- **Follow is on by default and bounded** (the operator's decision of 2026-11-14, reversing "opt-in": a conversation that does not
+  move reads as broken). The page reads the broker's memory every 3 s while Follow is on, which it is when the page opens, and every
   1.5 s only while a prompt waits for approval; never while the tab is hidden, never both in flight. The cockpit store reader remains
   explicit-refresh only.
 - **A real model run is not part of the automated tests.** They use the fake Pi (a real child process speaking Pi's RPC) and a stand-in

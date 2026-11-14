@@ -195,7 +195,13 @@ const Turn = memo(function Turn({
 }): ReactElement {
 	if (item.kind === "run")
 		return (
-			<li className="turn-run" data-testid="run-marker">
+			<li
+				className="turn-run"
+				data-testid="run-marker"
+				data-run-seq={item.seq}
+				data-run-state={item.state}
+				tabIndex={-1}
+			>
 				<span>{item.state === "started" ? "run started" : "run ended"}</span>
 			</li>
 		);
@@ -1024,7 +1030,7 @@ export function LiveConversation({
 						<ReasoningPreference view={reasoning} relay={state.reasoning} />
 						<label
 							className="check"
-							title="Reads the broker's memory every few seconds while on. Off by default."
+							title="Reads the broker's memory every few seconds while on. On when the page opens; switch it off to read only when you ask."
 						>
 							<input
 								type="checkbox"

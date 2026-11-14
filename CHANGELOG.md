@@ -3,6 +3,20 @@
 ## Unreleased
 
 ### Added
+- **The Living Instrument: the course, and DEVELOP as one ruled sheet** ([what it is](docs/develop-course.md), [design record and reviews](research/develop-living-instrument/DESIGN.md)).
+  - **Course**, a new region above the sessions: where the selected session stands, drawn as two gauges (Run, Request) with the state in
+    words and how it is known; a prepared attempt's six stages (Brief, Assent, Send, Run, Check, Judge), each read from its own record;
+    a recording's loaded events as a strip tied to the activity table. It has three heights set by a keyboard-operable separator, and a
+    larger chart with the runs the page holds. It is a picture of state the page already holds: it sends nothing, governs nothing,
+    stores nothing and verifies nothing, and there is no workflow engine behind it.
+  - Where the sessions are a drawer (a laptop's width, and Field), the course stays in view above the context.
+  - Instrument: sessions, work and context are columns of one sheet where DEVELOP fills the window; session rows are three short lines;
+    headings are set as text (capitals and tracking stay on the wordmark and provenance codes); the composer is held to the measure of
+    the text. Field keeps its own drawing and gains the course.
+  - **Follow is on when the page opens** (the operator's decision; it was opt-in). It is still bounded, never runs on a hidden page, and
+    can be switched off. The worktree is still read only when asked.
+  - **Fixed, from #148:** a request's stations inside a task were drawn as tall empty ovals.
+  - **Not changed:** pairing, approval, the broker, the protocol, storage and every record format.
 - **DEVELOP-UX-001: an everyday start, and a redrawn interface** ([audit, model, boundaries and review](research/develop-ux/DEVELOP-UX-001.md)).
   - `endo develop [...]` is `endo harness attach [...] --control --workbench` in one word, with the same controlling-terminal
     check, pairing and typed approvals, and without `--prompt` (which sends at launch with no phrase). A session needs no registered project and no task.

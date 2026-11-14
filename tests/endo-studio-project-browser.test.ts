@@ -314,7 +314,8 @@ suite("the worktree beside the conversation", () => {
 	it("does not read again by itself: not while following, not after a long wait, and a refresh is one explicit read", async () => {
 		const { page, source } = await open(1440, 900);
 		await ready(page);
-		await page.eval("document.querySelector('[data-testid=follow]').click()");
+		// Follow is on when the page opens: it reads the session, never the worktree.
+		expect(await page.eval<boolean>("document.querySelector('[data-testid=follow]').checked")).toBe(true);
 		await new Promise((resolve) => setTimeout(resolve, 3600));
 		expect(source?.overviews).toBe(1);
 		await page.click("[data-testid=project-refresh]");

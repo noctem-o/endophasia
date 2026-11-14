@@ -5575,3 +5575,1070 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	padding: 4px 0;
 	border-bottom: 1px solid var(--line-subtle);
 }
+
+/* === The Living Instrument (docs/develop-course.md) ==================================================================================
+   DEVELOP as one ruled sheet instead of three cards, with one gauge on it: the course above the sessions. The rules that hold here:
+   hue is provenance (on the small mark beside a statement), attention and fault, and nothing else; where a session stands is drawn in
+   the text colour, amber when it waits for the operator, red when it broke; ivory is selection and focus. Nothing moves unless a
+   state changed (colour and opacity, at most 130ms, none under reduced motion): the page knows a session as of its last read, so it
+   does not pretend to breathe. And a mark never stands alone: the state is always named in words beside its track. */
+
+/* --- the course: the panel ---------------------------------------------------------------------------------------------------------- */
+.develop-course {
+	grid-area: course;
+	/* Above its neighbour, so the grip on its lower edge can be taken hold of across the rule between them. */
+	z-index: 1;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	align-self: start;
+	background: var(--surface-0);
+}
+
+.develop-course .course-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	overscroll-behavior: contain;
+	padding: 10px 14px 12px;
+	display: flex;
+	flex-direction: column;
+	gap: 9px;
+}
+
+.develop-course .course-body[hidden] {
+	display: none;
+}
+
+.develop-course[data-size="closed"] .course-head {
+	border-bottom-color: transparent;
+}
+
+.course-head {
+	gap: 8px;
+	padding: 6px 10px 6px 8px;
+}
+
+.course-fold {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	margin-right: auto;
+	background: none;
+	border: 0;
+	border-radius: var(--radius);
+	padding: 3px 5px;
+	color: var(--fg-1);
+	cursor: pointer;
+}
+
+.course-fold svg {
+	color: var(--fg-3);
+	transition: transform var(--quick) var(--ease);
+}
+
+.course-fold[aria-expanded="false"] svg {
+	transform: rotate(-90deg);
+}
+
+.course-of {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 8px;
+	min-width: 0;
+	margin: 0;
+	font-size: 12px;
+	color: var(--fg-3);
+}
+
+.course-of .mono {
+	color: var(--fg-2);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
+.course-flag {
+	font-size: 12px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.course-flag[data-attention="waiting"] {
+	color: var(--attention);
+}
+
+.course-flag[data-attention="fault"] {
+	color: var(--fault);
+}
+
+/* The separator: a grip on the course's lower edge, nine pixels to take hold of. It sets one of three heights, so nothing is a style. */
+.course-split {
+	position: absolute;
+	z-index: 2;
+	left: 0;
+	right: 0;
+	bottom: -5px;
+	height: 9px;
+	cursor: row-resize;
+	touch-action: none;
+}
+
+.course-split::after {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 3px;
+	width: 28px;
+	height: 3px;
+	margin-left: -14px;
+	border-radius: 2px;
+	background: var(--line-strong);
+	transition: background-color var(--quick) var(--ease);
+}
+
+.course-split:hover::after,
+.course-split:focus-visible::after {
+	background: var(--select);
+}
+
+.course-split:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: -2px;
+}
+
+/* --- the course: a lane is a gauge ---------------------------------------------------------------------------------------------------
+   A scale of ticks, one for each state the session can be in, and a needle on the one it is at. The state is named beside it. */
+.course-live,
+.course-recorded,
+.course-attempt {
+	display: flex;
+	flex-direction: column;
+	gap: 7px;
+	min-width: 0;
+}
+
+.course-lane {
+	display: grid;
+	grid-template-columns: 3.6rem auto minmax(0, 1fr);
+	gap: 3px 10px;
+	align-items: center;
+}
+
+.course-lane-name {
+	font-size: 12px;
+	color: var(--fg-3);
+}
+
+.course-nodes,
+.course-stages,
+.course-runs {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.course-nodes {
+	display: flex;
+	align-items: center;
+	height: 16px;
+	background: linear-gradient(var(--line-strong), var(--line-strong)) left center / 100% 1px no-repeat;
+}
+
+.course-node {
+	display: inline-flex;
+	align-items: center;
+	color: var(--fg-3);
+	font-size: 12px;
+	white-space: nowrap;
+}
+
+.course-node + .course-node {
+	margin-left: 14px;
+}
+
+.course-dot {
+	width: 1px;
+	height: 7px;
+	background: var(--fg-4);
+	transition:
+		background-color var(--quick) var(--ease),
+		height var(--quick) var(--ease);
+}
+
+.course-node[data-on="true"] .course-dot {
+	width: 3px;
+	height: 14px;
+	border-radius: 1.5px;
+	background: var(--fg-1);
+}
+
+.course-node[data-on="true"][data-status="waiting"] .course-dot {
+	background: var(--attention);
+}
+
+.course-node[data-on="true"][data-status="interrupted"] .course-dot {
+	background: var(--fault);
+}
+
+/* A lane that is not known (the broker did not answer, or nothing was read) has no needle: the scale is dashed and nothing is lit. */
+.course-lane[data-status="unknown"] .course-nodes {
+	background-image: repeating-linear-gradient(90deg, var(--na) 0 4px, transparent 4px 8px);
+}
+
+.course-lane[data-status="unknown"] .course-node[data-on="true"] .course-dot {
+	width: 1px;
+	height: 7px;
+	background: var(--fg-4);
+}
+
+/* In the rail the ticks carry no words: the state is named once, beside the scale. The chart names every tick. */
+.course-body .course-node-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* A long state wraps under itself; it is never cut. */
+.course-state {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 6px;
+	min-width: 0;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--fg-1);
+}
+
+
+.course-lane[data-status="waiting"] .course-state {
+	color: var(--attention);
+}
+
+.course-lane[data-status="interrupted"] .course-state {
+	color: var(--fault);
+}
+
+.course-lane[data-status="unknown"] .course-state {
+	color: var(--fg-2);
+	font-weight: 400;
+}
+
+.course-line {
+	grid-column: 1 / -1;
+	margin: 0;
+	font-size: 12px;
+	line-height: 1.45;
+	color: var(--fg-2);
+}
+
+.course-basis {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 12px;
+	font-weight: 400;
+	color: var(--fg-3);
+	white-space: nowrap;
+	vertical-align: -1px;
+}
+
+.course-basis[data-basis="declared"] .glyph {
+	color: var(--fg-2);
+}
+
+.course-counts {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px 12px;
+	margin: 0;
+	font-size: 12px;
+	color: var(--fg-3);
+}
+
+.course-counts b {
+	color: var(--fg-1);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.course-counts [data-tone="fault"] b {
+	color: var(--fault);
+}
+
+.course-counts [data-tone="attention"] b {
+	color: var(--attention);
+}
+
+.course-plain {
+	margin: 0;
+}
+
+/* --- the course: an attempt's stages ------------------------------------------------------------------------------------------------
+   The one structure the records have, so it leads when there is one. Six equal columns on one line; what happened is filled. */
+.course-attempt + .course-live {
+	padding-top: 9px;
+	border-top: 1px solid var(--line-subtle);
+}
+
+.course-attempt-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 8px;
+	margin: 0;
+}
+
+.course-stages {
+	display: grid;
+	grid-template-columns: repeat(6, minmax(0, 1fr));
+	position: relative;
+}
+
+.course-stages::before {
+	content: "";
+	position: absolute;
+	left: 8.33%;
+	right: 8.33%;
+	top: 7px;
+	height: 1px;
+	background: var(--line-strong);
+}
+
+.course-stage {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 3px;
+	min-width: 0;
+	font-size: 11px;
+	color: var(--fg-3);
+}
+
+.course-stage-mark {
+	display: grid;
+	place-items: center;
+	width: 15px;
+	height: 15px;
+	border-radius: 50%;
+	background: var(--surface-0);
+	font-size: 12px;
+	line-height: 1;
+	color: var(--fg-4);
+}
+
+.course-stage[data-status="done"] .course-stage-mark,
+.course-stage[data-status="current"] .course-stage-mark {
+	color: var(--fg-1);
+}
+
+.course-stage[data-status="waiting"] .course-stage-mark {
+	color: var(--attention);
+}
+
+.course-stage[data-status="failed"] .course-stage-mark,
+.course-stage[data-status="interrupted"] .course-stage-mark {
+	color: var(--fault);
+}
+
+.course-stage[data-status="unknown"] .course-stage-mark {
+	color: var(--na);
+}
+
+/* The stage the attempt stands at is marked by colour and a rule, not by weight, so its name keeps its width. */
+.course-stage[aria-current="step"] .course-stage-name {
+	color: var(--fg-1);
+	box-shadow: 0 1px 0 var(--fg-1);
+}
+
+.course-empty {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+}
+
+.course-empty-title {
+	margin: 0;
+	font-size: 12.5px;
+	color: var(--fg-2);
+}
+
+.course-empty p {
+	margin: 0;
+}
+
+/* --- the course: a recording's strip ----------------------------------------------------------------------------------------------- */
+.course-strip {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 8px;
+	align-items: stretch;
+}
+
+.course-strip-rows {
+	display: grid;
+	font-size: 10px;
+	line-height: 1.05;
+	color: var(--fg-3);
+	align-content: space-between;
+}
+
+.course-strip-marks {
+	width: 100%;
+	display: block;
+}
+
+.course-strip-rule {
+	stroke: var(--line-subtle);
+	stroke-width: 1;
+	vector-effect: non-scaling-stroke;
+}
+
+.course-mark {
+	fill: currentColor;
+	opacity: 0.55;
+	cursor: pointer;
+}
+
+.course-mark[data-flagged="true"] {
+	opacity: 1;
+}
+
+.course-mark[data-selected="true"] {
+	fill: var(--select);
+	opacity: 1;
+}
+
+/* --- the course: the chart ---------------------------------------------------------------------------------------------------------- */
+.course-chart {
+	width: min(46rem, calc(100vw - 24px));
+}
+
+.course-chart .panel-body {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	padding: 16px 18px 18px;
+}
+
+.course-chart .course-lane {
+	grid-template-columns: 5rem minmax(0, 1fr);
+	gap: 4px 10px;
+}
+
+.course-chart .course-nodes {
+	height: auto;
+	flex-wrap: wrap;
+	gap: 4px 18px;
+	background: none;
+}
+
+.course-chart .course-node {
+	gap: 6px;
+}
+
+.course-chart .course-node + .course-node {
+	margin-left: 0;
+}
+
+.course-chart .course-node[data-on="true"] {
+	color: var(--fg-1);
+}
+
+.course-chart .course-state {
+	display: none;
+}
+
+.course-chart .course-line {
+	font-size: 13px;
+	grid-column: 2;
+}
+
+.course-chart .course-stages {
+	display: flex;
+	flex-direction: column;
+}
+
+.course-chart .course-stages::before {
+	left: 7px;
+	right: auto;
+	top: 12px;
+	bottom: 12px;
+	width: 1px;
+	height: auto;
+}
+
+.course-chart .course-stage {
+	display: grid;
+	grid-template-columns: 15px 4.5rem 5.5rem minmax(0, 1fr);
+	align-items: baseline;
+	justify-items: start;
+	gap: 0 10px;
+	padding: 5px 0;
+	font-size: 12.5px;
+}
+
+.course-chart .course-stage-mark {
+	align-self: center;
+}
+
+.course-stage-status {
+	color: var(--fg-3);
+}
+
+.course-stage-text {
+	color: var(--fg-2);
+}
+
+.course-history h3,
+.course-legend h3 {
+	margin: 0 0 6px;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: var(--fg-2);
+}
+
+.course-runs li {
+	display: grid;
+	grid-template-columns: minmax(0, 11rem) minmax(0, 1fr) auto;
+	gap: 2px 12px;
+	align-items: baseline;
+	padding: 6px 0;
+	border-bottom: 1px solid var(--line-subtle);
+	font-size: 12.5px;
+}
+
+.course-run-name {
+	color: var(--fg-1);
+}
+
+.course-run-words {
+	color: var(--fg-3);
+}
+
+.course-legend dl {
+	display: grid;
+	gap: 4px;
+	margin: 0 0 8px;
+}
+
+.course-legend dl > div {
+	display: grid;
+	grid-template-columns: 6.5rem minmax(0, 1fr);
+	gap: 10px;
+	font-size: 12.5px;
+}
+
+.course-legend dd {
+	margin: 0;
+	color: var(--fg-2);
+}
+
+.turn-run:focus {
+	outline: none;
+}
+
+.turn-run:focus-visible {
+	outline: 1px solid var(--select);
+	outline-offset: 3px;
+}
+
+/* --- the course: where it sits ------------------------------------------------------------------------------------------------------
+   Its own cell of the grid, so it is never inside the sessions' drawer: above the sessions where there is a rail, above the context
+   where the sessions are a drawer (the operator's decision: where the work stands is read before the list of sessions). It is as tall as what it says (to a limit), or tall, or closed; the sessions take the rest. */
+.develop-grid[data-course] {
+	grid-template-areas:
+		"course activity inspector"
+		"nav activity inspector";
+	grid-template-rows: auto minmax(0, 1fr);
+}
+
+.develop[data-fill="false"] .develop-course .course-body {
+	max-height: min(46vh, 420px);
+}
+
+@media (max-width: 1359.98px) {
+	.develop-grid[data-course] {
+		grid-template-areas:
+			"course activity"
+			"nav activity"
+			"nav inspector";
+		grid-template-rows: auto minmax(0, 1fr) auto;
+	}
+}
+
+@media (min-width: 1024px) and (min-height: 540px) {
+	.develop[data-fill="true"] .develop-grid[data-course] {
+		grid-template-areas:
+			"course activity inspector"
+			"nav activity inspector";
+		grid-template-rows: auto minmax(0, 1fr);
+	}
+	.develop[data-fill="true"] .develop-grid[data-course="tall"] {
+		grid-template-rows: minmax(0, 3fr) minmax(0, 2fr);
+	}
+	.develop[data-fill="true"] .develop-course {
+		align-self: stretch;
+		max-height: 100%;
+	}
+	.develop[data-fill="true"] .develop-grid[data-course="fit"] .develop-course {
+		max-height: min(44vh, 400px);
+	}
+}
+
+@media (min-width: 1024px) and (max-width: 1359.98px) and (min-height: 540px) {
+	.develop[data-fill="true"] .develop-grid[data-course] {
+		grid-template-areas:
+			"activity course"
+			"activity inspector";
+	}
+}
+
+@media (min-width: 1024px) and (min-height: 540px) {
+	.develop[data-appearance="field"][data-fill="true"] .develop-grid[data-course] {
+		grid-template-areas:
+			"activity course"
+			"activity inspector";
+	}
+	/* Field's focused reading width closes the dock, and the course with it. */
+	.develop[data-appearance="field"][data-fill="true"][data-dock="closed"] .develop-grid[data-course] {
+		grid-template-areas: "activity";
+		grid-template-rows: minmax(0, 1fr);
+	}
+	.develop[data-appearance="field"][data-fill="true"][data-dock="closed"] .develop-course {
+		display: none;
+	}
+}
+
+@media (max-width: 1023.98px) {
+	.develop-course {
+		margin: 12px 0;
+	}
+	.course-runs li {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.course-chart .course-stage {
+		grid-template-columns: 15px 4.5rem minmax(0, 1fr);
+	}
+	.course-chart .course-stage-text {
+		grid-column: 2 / -1;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.course-dot,
+	.course-fold svg,
+	.course-split::after {
+		transition: none;
+	}
+}
+
+@media (forced-colors: active) {
+	.course-dot {
+		background: CanvasText;
+		forced-color-adjust: none;
+	}
+	.course-nodes {
+		background: none;
+		border-bottom: 1px solid CanvasText;
+	}
+	.course-split::after {
+		background: CanvasText;
+	}
+	.course-mark[data-selected="true"] {
+		fill: Highlight;
+	}
+	.course-stage[aria-current="step"] .course-stage-name {
+		text-decoration: underline;
+	}
+	.develop[data-appearance="instrument"] .caprow.session-row[aria-pressed="true"] {
+		outline: 1px solid Highlight;
+		outline-offset: -1px;
+	}
+}
+
+/* --- one ruled sheet ----------------------------------------------------------------------------------------------------------------
+   Instrument, where DEVELOP fills the window: the sessions, the work and the context are columns of one sheet, divided by hairlines.
+   Three cards each with a border, a radius and a shadow said "three things"; this is one instrument, and the rules give back the
+   width the gaps took. The course is the sheet's one recess. (Where the page scrolls, with a recording open, the panels are still
+   separate: they have different heights, and a shared frame around ragged columns would be a lie about their extent.) */
+@media (min-width: 1024px) and (min-height: 540px) {
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-grid {
+		gap: 0;
+		border: 1px solid var(--line);
+		border-radius: 12px;
+		background: var(--surface-1);
+		overflow: hidden;
+		box-shadow: var(--lift);
+	}
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-grid > .panel,
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-nav-wrap > .panel {
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+		background: none;
+	}
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-grid > .develop-activity {
+		border-inline: 1px solid var(--line);
+	}
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-grid > .develop-course {
+		border-bottom: 1px solid var(--line);
+		background: var(--surface-0);
+	}
+}
+
+@media (min-width: 1024px) and (max-width: 1359.98px) and (min-height: 540px) {
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-grid > .develop-activity {
+		border-left: 0;
+	}
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-nav-wrap > .panel {
+		background: var(--surface-1);
+	}
+}
+
+/* --- quieter words ------------------------------------------------------------------------------------------------------------------
+   Capitals and tracking are kept for the name of the product and for the three-letter provenance codes. Everything else in the
+   Instrument is set as text: a title is a title by its weight and place, and monospace is for identifiers and code. (Field is its own
+   appearance and keeps its own lettering.) */
+.develop[data-appearance="instrument"] .panel-head h2,
+.develop-course .panel-head h2,
+.course-chart .panel-head h2 {
+	font-size: 12.5px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	text-transform: none;
+}
+
+.develop[data-appearance="instrument"] .view-tab {
+	font-size: 12.5px;
+	font-weight: 500;
+	letter-spacing: 0;
+	text-transform: none;
+	padding: 5px 9px;
+}
+
+.develop[data-appearance="instrument"] .view-tab[aria-selected="true"] {
+	font-weight: 600;
+}
+
+.develop[data-appearance="instrument"] .nav-group h3,
+.develop[data-appearance="instrument"] .block h3,
+.develop[data-appearance="instrument"] .task-block h3,
+.develop[data-appearance="instrument"] .task-form h3,
+.develop[data-appearance="instrument"] .changes-block h4,
+.develop[data-appearance="instrument"] .attn-group h3,
+.develop[data-appearance="instrument"] .develop-inspector .more > summary,
+.develop[data-appearance="instrument"] .modes legend,
+.develop[data-appearance="instrument"] thead th {
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 500;
+	letter-spacing: 0;
+	text-transform: none;
+	color: var(--fg-3);
+}
+
+.develop[data-appearance="instrument"] .reasoning-label {
+	font-family: var(--sans);
+	font-size: 12px;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.develop[data-appearance="instrument"] .nav-group h3 {
+	border-bottom: 0;
+	padding: 10px 14px 4px;
+	background: var(--surface-1);
+}
+
+.develop[data-appearance="instrument"] .mode input {
+	accent-color: var(--select);
+}
+
+/* --- the sessions ------------------------------------------------------------------------------------------------------------------
+   A row is three short lines: its name and what kind of thing it is; how it stands; what it holds. The state loses its pill (the
+   glyph and the words are the state) and may wrap, so a fault is never clipped. */
+.develop[data-appearance="instrument"] .develop-nav .panel-body {
+	display: flex;
+	flex-direction: column;
+	padding: 4px 0 10px;
+}
+
+.develop[data-appearance="instrument"] .develop-nav .panel-body > * {
+	margin-inline: 14px;
+}
+
+.develop[data-appearance="instrument"] .develop-nav .panel-body > .nav-group,
+.develop[data-appearance="instrument"] .develop-nav .panel-body > .sessions-scroll {
+	margin-inline: 0;
+}
+
+/* What the list cannot say sinks to its foot: still there, read once, not between the operator and the sessions every time. */
+.develop[data-appearance="instrument"] .develop-nav .panel-body > p.dim.small {
+	order: 8;
+	margin-top: 2px;
+	margin-bottom: 0;
+	font-size: 12px;
+	color: var(--fg-3);
+}
+
+.develop[data-appearance="instrument"] .develop-nav .panel-body > p.dim.small[data-testid="develop-coverage"] {
+	order: 0;
+	margin: 2px 14px 0;
+}
+
+.develop[data-appearance="instrument"] .develop-nav .toolbar {
+	gap: 6px;
+	margin: 8px 14px 4px;
+	padding-top: 8px;
+	border-top: 1px solid var(--line-subtle);
+}
+
+.develop[data-appearance="instrument"] .develop-nav .toolbar .search {
+	flex: 1 1 100%;
+	min-width: 0;
+	height: 28px;
+}
+
+.develop[data-appearance="instrument"] .develop-nav .chip {
+	height: 22px;
+	padding: 0 8px;
+	font-size: 11.5px;
+}
+
+.develop[data-appearance="instrument"] .session-row {
+	grid-template-columns: minmax(0, 1fr) auto;
+	grid-template-areas:
+		"name tag"
+		"state state"
+		"meta meta"
+		"reason reason";
+	gap: 1px 10px;
+	align-items: baseline;
+	padding: 7px 14px 8px;
+	border-bottom: 0;
+	border-radius: 0;
+}
+
+.develop[data-appearance="instrument"] .session-row .session-name {
+	font-size: 12.5px;
+	color: var(--fg-1);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.develop[data-appearance="instrument"] .session-row .session-state {
+	min-width: 0;
+}
+
+.develop[data-appearance="instrument"] .session-row .state {
+	height: auto;
+	padding: 0;
+	border: 0;
+	gap: 5px;
+	align-items: baseline;
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 400;
+	letter-spacing: 0;
+	white-space: normal;
+	color: var(--fg-2);
+}
+
+.develop[data-appearance="instrument"] .session-row .surface-tag {
+	grid-area: tag;
+	justify-self: end;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	font-size: 11.5px;
+	color: var(--fg-3);
+	opacity: 1;
+	white-space: nowrap;
+}
+
+.develop[data-appearance="instrument"] .session-row .surface-tag[data-mode="live"] {
+	color: var(--fg-1);
+}
+
+.develop[data-appearance="instrument"] .session-row .session-meta {
+	font-size: 12px;
+	color: var(--fg-3);
+}
+
+.develop[data-appearance="instrument"] .session-row:not(.live-row) .session-meta {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.develop[data-appearance="instrument"] .caprow.session-row[aria-pressed="true"] {
+	background: rgb(237 232 220 / 0.06);
+	box-shadow: inset 2px 0 0 var(--select);
+}
+
+/* --- the head of the work ----------------------------------------------------------------------------------------------------------
+   Tabs, worktree and run were three boxed bars. They are three lines of one head: the run line carries no box of its own, and its
+   stop is the one control there drawn to be found. */
+.develop[data-appearance="instrument"] .develop-live .run-strip {
+	margin: 0;
+	padding: 7px 14px;
+	border: 0;
+	border-bottom: 1px solid var(--line-subtle);
+	border-radius: 0;
+	background: var(--surface-1);
+}
+
+.develop[data-appearance="instrument"] .develop-live .run-strip[data-connection="unknown"] {
+	border-bottom-style: dashed;
+	border-bottom-color: var(--attention);
+}
+
+.develop[data-appearance="instrument"] .develop-live .stop-control .btn:not(:disabled) {
+	border-color: var(--fg-3);
+	color: var(--fg-1);
+}
+
+/* --- the conversation --------------------------------------------------------------------------------------------------------------
+   Reading text at a reading size and measure, with who spoke in the margin. The spine of left borders is gone: the only rule left is
+   ivory, on what the operator said, because that is where the eye returns to find its place. */
+.develop[data-appearance="instrument"] .develop-live .transcript {
+	gap: 14px;
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn {
+	grid-template-columns: 4.6rem minmax(0, 1fr);
+	gap: 14px;
+	padding-left: 12px;
+	border-left: 2px solid transparent;
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-user {
+	border-left-color: var(--select);
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-intervention {
+	border-left: 2px dashed var(--attention);
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-intervention[data-state="unknown"] {
+	border-left-color: var(--fault);
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-role {
+	font-size: 12px;
+	letter-spacing: 0;
+	text-transform: none;
+	padding-top: 3px;
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-text {
+	font-size: 14.5px;
+	line-height: 1.62;
+	max-width: 76ch;
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-tool {
+	margin-block: -7px;
+	color: var(--fg-3);
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-run {
+	gap: 10px;
+	padding-left: 14px;
+	font-size: 12px;
+	color: var(--fg-3);
+}
+
+.develop[data-appearance="instrument"] .develop-live .turn-run::after {
+	border-top: 1px solid var(--line-subtle);
+}
+
+/* --- the composer: the operator's next act, held to the measure of the text it answers ------------------------------------------ */
+.develop[data-appearance="instrument"] .develop-live .composer > * {
+	max-width: calc(76ch * 1.12 + 4.6rem + 28px);
+}
+
+.develop[data-appearance="instrument"] .develop-live .composer textarea {
+	max-width: calc(76ch * 1.12 + 4.6rem + 28px);
+	background: var(--surface-0);
+	border-color: var(--line);
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.develop[data-appearance="instrument"] .develop-live .composer .btn[type="submit"]:not(:disabled) {
+	border-color: var(--select);
+	color: var(--fg-1);
+}
+
+/* A large, dense screen: a size up, so the sheet is not small print on a wide dark wall. */
+@media (min-width: 2200px) {
+	.develop[data-appearance="instrument"] .develop-live .turn-text {
+		font-size: 16px;
+	}
+	.develop[data-appearance="instrument"] .develop-live .turn {
+		grid-template-columns: 5.4rem minmax(0, 1fr);
+	}
+	.develop[data-appearance="instrument"] .develop-live .composer textarea {
+		font-size: 15px;
+	}
+	.develop[data-appearance="instrument"][data-fill="true"] .develop-grid {
+		font-size: 14px;
+	}
+}
+
+/* A phone: the head of the work is tight lines, and a turn's speaker sits over its text so the text has the whole width. */
+@media (max-width: 640px) {
+	.develop[data-appearance="instrument"] .develop-live .live-head {
+		padding: 6px 12px;
+		gap: 6px 8px;
+	}
+	.develop[data-appearance="instrument"] .develop-live .worktree-bar,
+	.develop[data-appearance="instrument"] .develop-live .run-strip {
+		padding: 5px 12px;
+		gap: 2px 10px;
+	}
+	.develop[data-appearance="instrument"] .develop-live .turn {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 2px;
+	}
+	.develop[data-appearance="instrument"] .develop-live .turn-role {
+		padding-top: 0;
+	}
+	.develop[data-appearance="instrument"] .develop-live .turn-tool {
+		margin-block: -4px;
+	}
+}
+
+
+/* A request's stations inside a task: one line each (a task gives its list items a column layout, which drew them as tall ovals). */
+.task-refs .chain li,
+.develop[data-appearance="field"] .task-refs .chain li {
+	display: inline-flex;
+	flex-direction: row;
+	align-items: baseline;
+	gap: 0;
+	padding: 1px 9px 1px 7px;
+	border: 1px solid var(--line);
+	white-space: nowrap;
+}
+
+.task-refs .chain li[data-done="true"],
+.develop[data-appearance="field"] .task-refs .chain li[data-done="true"] {
+	border-color: var(--line-strong);
+}
+
+/* With a recording open the page scrolls and the course draws the table beside it: the list gives way so both are in the first view. */
+@media (min-width: 1024px) {
+	.develop[data-fill="false"] .develop-nav .sessions-scroll {
+		max-height: min(36vh, 340px);
+	}
+}

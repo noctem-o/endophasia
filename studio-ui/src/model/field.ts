@@ -72,6 +72,11 @@ export interface FieldSignal {
 	responsive: boolean;
 	/** One line for the legend: what the field is showing, in words. */
 	words: string;
+	/**
+	 * What is known about the session, in a sentence that describes no motion of the field. It is what the legend says when something
+	 * other than the contours is drawn behind the work (model/weather.ts): the horizon still shows this state, and this is its meaning.
+	 */
+	state: string;
 }
 
 const OPERATION = { prompt: "prompt", steer: "steer", queue: "queue", stop: "stop" } as const;
@@ -101,15 +106,16 @@ function describe(input: FieldInput): FieldSignal {
 	};
 	const live = input.workbench === "available";
 	// The operator's pause stops what would move and says so: "Flowing" over a still field would be a claim the picture does not make.
-	const moving = (wanted: "drift" | "current", tempo: number, lead: string, rest: string) =>
+	const moving = (wanted: "drift" | "current", tempo: number, lead: string, rest: string, state: string) =>
 		input.paused
 			? {
 					...base,
 					motion: "still" as const,
 					tempo: 0,
 					words: `Paused by you. ${rest.charAt(0).toUpperCase()}${rest.slice(1)}`,
+					state,
 				}
-			: { ...base, motion: wanted, tempo, words: `${lead}: ${rest}` };
+			: { ...base, motion: wanted, tempo, words: `${lead}: ${rest}`, state };
 
 	// Waiting on the operator comes first: it is the one thing on the page that needs a person, and it is never approved here.
 	if (live && input.awaiting !== null)
@@ -119,6 +125,7 @@ function describe(input: FieldInput): FieldSignal {
 			tempo: 0,
 			attention: true,
 			words: `Held: a ${OPERATION[input.awaiting]} waits for your approval in the attached terminal. This page cannot approve it.`,
+			state: `A ${OPERATION[input.awaiting]} waits for your approval in the attached terminal. This page cannot approve it.`,
 		};
 	if (input.surface === "changes")
 		return {
@@ -126,6 +133,7 @@ function describe(input: FieldInput): FieldSignal {
 			motion: "still",
 			tempo: 0,
 			words: "Still while you read changes.",
+			state: "You are reading changes.",
 		};
 	if (input.surface === "recording")
 		return {
@@ -133,9 +141,16 @@ function describe(input: FieldInput): FieldSignal {
 			motion: "still",
 			tempo: 0,
 			words: "A recording: the field does not move. Nothing recorded is live.",
+			state: "A recording is open. Nothing recorded is live.",
 		};
 	if (input.workbench === "absent")
-		return moving("drift", 0.25, "Read-only", "the field drifts on its own; it shows no activity.");
+		return moving(
+			"drift",
+			0.25,
+			"Read-only",
+			"the field drifts on its own; it shows no activity.",
+			"This server only reads: nothing live is attached to it.",
+		);
 	// A workspace host has no harness: there is no session to be connected or disconnected, so nothing here is "still" or "broken" for
 	// want of one. The page's own failure to reach the host is said below like any other.
 	if (input.workbench === "workspace" && !input.unreachable)
@@ -144,6 +159,7 @@ function describe(input: FieldInput): FieldSignal {
 			0.2,
 			"Workspace",
 			"no agent is attached to this host; the field drifts on its own and shows no activity.",
+			"No agent is attached to this host.",
 		);
 	// No answer outranks "not read yet": a first request that failed has been read, and its answer was silence. (The page does not ask
 	// again by itself while it does not know there is a workbench, so "not read yet" would stay on screen.)
@@ -157,9 +173,19 @@ function describe(input: FieldInput): FieldSignal {
 				input.workbench === "unknown"
 					? "Broken: the page asked for a workbench and got no answer. Whether a session runs is not known; unreachable is not ended."
 					: "Broken: the broker did not answer. The session may still be running; unreachable is not ended.",
+			state:
+				input.workbench === "unknown"
+					? "The page asked for a workbench and got no answer. Whether a session runs is not known; unreachable is not ended."
+					: "The broker did not answer. The session may still be running; unreachable is not ended.",
 		};
 	if (input.workbench === "unknown" || input.connection === null)
-		return moving("drift", 0.2, "Not read yet", "nothing is known about a live session.");
+		return moving(
+			"drift",
+			0.2,
+			"Not read yet",
+			"nothing is known about a live session.",
+			"Not read yet: nothing is known about a live session.",
+		);
 	if (input.connection === "disconnected")
 		return {
 			...base,
@@ -167,6 +193,7 @@ function describe(input: FieldInput): FieldSignal {
 			tempo: 0,
 			presence: presence * 0.6,
 			words: "Still: the broker reports no admitted connection now.",
+			state: "The broker reports no admitted connection now.",
 		};
 	if (input.stopping)
 		return {
@@ -174,6 +201,7 @@ function describe(input: FieldInput): FieldSignal {
 			motion: "held",
 			tempo: 0,
 			words: "Held: a stop was sent to Pi. Pi answers once the run is idle.",
+			state: "A stop was sent to Pi. Pi answers once the run is idle.",
 		};
 	if (input.run === "active")
 		return input.following
@@ -182,12 +210,14 @@ function describe(input: FieldInput): FieldSignal {
 					0.7,
 					"Flowing",
 					"Pi reports a run open, re-read every few seconds. The motion is not the model's work.",
+					"Pi reports a run open, re-read every few seconds.",
 				)
 			: {
 					...base,
 					motion: "still",
 					tempo: 0,
 					words: "Still: Pi reported a run open at the last read. Not re-reading now; switch Follow on to keep it current.",
+					state: "Pi reported a run open at the last read. Not re-reading now; switch Follow on to keep it current.",
 				};
 	return moving(
 		"drift",
@@ -196,5 +226,6 @@ function describe(input: FieldInput): FieldSignal {
 		input.run === "idle"
 			? "Pi reports the session idle. The drift is atmosphere, not activity."
 			: "connected; Pi has not reported a run state. The drift is atmosphere, not activity.",
+		input.run === "idle" ? "Pi reports the session idle." : "Connected; Pi has not reported a run state.",
 	);
 }

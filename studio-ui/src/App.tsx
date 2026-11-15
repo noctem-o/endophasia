@@ -10,6 +10,7 @@ import { NO_FILTERS } from "./model/contract.ts";
 import { sourcesModel } from "./model/detail.ts";
 import { liveObserveStart, observeHandoffBlock } from "./model/develop.ts";
 import { attentionOf } from "./model/observe.ts";
+import { type Atmosphere, DEFAULT_ATMOSPHERE } from "./model/weather.ts";
 import { Attention } from "./observe/Attention.tsx";
 import { Banner, readStatusText } from "./observe/Chrome.tsx";
 import { ObserveWorkspace } from "./observe/ObserveWorkspace.tsx";
@@ -47,6 +48,9 @@ export function App(): ReactElement {
 	// switch keeps the draft, the selection and the file being read. Memory only (the page keeps no storage): a reload is Instrument.
 	const [appearance, setAppearance] = useState<"instrument" | "field">("instrument");
 	const [fieldPaused, setFieldPaused] = useState(false);
+	// Field only: what is drawn behind the work (none, the contours, rain, a storm). Decoration, and memory only like the appearance: a
+	// reload is the contours again.
+	const [atmosphere, setAtmosphere] = useState<Atmosphere>(DEFAULT_ATMOSPHERE);
 	const compare = useCompare(workspace === "compare");
 	const develop = useDevelop(workspace === "develop");
 	const omp = useOmp(workspace === "develop");
@@ -312,6 +316,8 @@ export function App(): ReactElement {
 							appearance={appearance}
 							paused={fieldPaused}
 							onPause={setFieldPaused}
+							atmosphere={atmosphere}
+							onAtmosphere={setAtmosphere}
 						/>
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>

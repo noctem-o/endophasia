@@ -188,11 +188,12 @@ Chromium):
 **What the source may contain** (`tests/endo-studio-ui-source.test.ts`, carried over from the earlier page's rules and extended): no HTML
 sink (`dangerouslySetInnerHTML`, `innerHTML`, ...), no dynamic code, no request channel but `fetch`, no storage, no navigation, no
 logging, no absolute address, no telemetry or hosted service; `fetch` in exactly one module, to the one relative endpoint, with no
-credentials, no referrer and no redirect; one `setTimeout` (the pause) and no interval or idle callback; an animation frame in **one**
-module only, the Field renderer (`develop/FieldCanvas.tsx`), which imports React and the signal's type and nothing else, is never imported
-statically, and fetches and times nothing ([develop-field.md](develop-field.md)); only the
-hook starts a read; the protocol is imported as types only; `model/` has no DOM, clock or randomness; two dynamic imports (the
-placeholder workspaces and the Field renderer); one file
+credentials, no referrer and no redirect; one `setTimeout` (the pause) and no interval or idle callback; animation frames in the
+Field's **two** renderers only: the contours (`develop/FieldCanvas.tsx`), which imports React and the signal's type and nothing else,
+and the night weather (`develop/WeatherCanvas.tsx`), which is given no signal at all; both are never imported statically, and fetch and
+time nothing ([develop-field.md](develop-field.md), [develop-atmospheres.md](develop-atmospheres.md)); only the
+hook starts a read; the protocol is imported as types only; `model/` has no DOM, clock or randomness; three dynamic imports (the
+placeholder workspaces and the Field's two renderers); one file
 (the overview) sets a style prop, in two places (the tooltip and the log-extent bracket), through the CSS object model; the style sheet's only `url()` are the three bundled fonts and ivory is
 never a provenance or status colour.
 

@@ -96,8 +96,40 @@ describe("the field signal", () => {
 		const s = fieldSignal(input({ received: 17 }));
 		expect(s.pulse).toBe(17);
 		expect(Object.keys(s).sort()).toEqual(
-			["attention", "motion", "presence", "pulse", "responsive", "tempo", "texture", "words"].sort(),
+			["attention", "motion", "presence", "pulse", "responsive", "state", "tempo", "texture", "words"].sort(),
 		);
+	});
+
+	it("also says what is known in a sentence that describes no motion, for when something other than the contours is drawn", () => {
+		const cases: Partial<FieldInput>[] = [
+			{},
+			{ run: "active", following: true },
+			{ run: "active", following: false },
+			{ run: "unknown" },
+			{ awaiting: "steer" },
+			{ surface: "changes" },
+			{ surface: "recording" },
+			{ workbench: "absent" },
+			{ workbench: "workspace" },
+			{ unreachable: true },
+			{ workbench: "unknown", connection: null, run: null },
+			{ connection: "disconnected" },
+			{ stopping: true },
+			{ paused: true },
+		];
+		for (const over of cases) {
+			const s = fieldSignal(input(over));
+			expect(s.state, JSON.stringify(over)).toMatch(/\.$/);
+			expect(s.state, JSON.stringify(over)).not.toMatch(/\b(drift\w*|flow\w*|field|motion|paused)\b/i);
+			expect(s.state, JSON.stringify(over)).not.toMatch(/^(Still|Held|Broken|Drifting|Flowing)\b/);
+		}
+		// It keeps what the words keep: a report's age, the terminal's authority, and that no answer is not an ending.
+		expect(fieldSignal(input({ run: "active", following: false })).state).toContain("at the last read");
+		expect(fieldSignal(input({ awaiting: "stop" })).state).toContain("This page cannot approve it");
+		expect(fieldSignal(input({ unreachable: true })).state).toContain("unreachable is not ended");
+		expect(fieldSignal(input({ surface: "recording" })).state).toContain("Nothing recorded is live");
+		// Pausing the field does not change what is known.
+		expect(fieldSignal(input({ paused: true })).state).toBe(fieldSignal(input()).state);
 	});
 
 	it("shows a first request that got no answer as broken, not as 'not read yet' (the page does not ask again by itself)", () => {

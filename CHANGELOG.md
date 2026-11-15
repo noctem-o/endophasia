@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Added
+- **Field atmospheres: night rain and a distant storm** ([what they are, their limits and their cost](docs/develop-atmospheres.md)).
+  - Field's legend gains **Atmosphere**: None, Contours (the default, unchanged), Rain or Storm. Memory only, like the appearance.
+    Choosing changes the drawing and nothing else.
+  - Rain and Storm draw a night sky behind the work: three cloud layers with parallax (by drift, and gently against the pointer),
+    sparse rain under a slowly changing wind, and in Storm irregular distant lightning that glows inside the clouds and lights the
+    panel edges facing it. Now and then a drop lands on a panel's edge.
+  - Weather is scenery: its renderer is given no state of the session. The legend says so and still says what is known; the horizon
+    under the run strip keeps the state's colours.
+  - Canvas 2D, loaded on demand, at most 30 frames a second on bounded canvases and pools; nothing is drawn while the tab is
+    hidden, motion is paused or the system asks for reduced motion (one still frame, never lightning).
+  - Under Rain and Storm the panels' veil and the top bar are a little more open; the reading measure is not.
+  - **Not changed:** the contours' renderer, Instrument, pairing, approval, the broker, the protocol and storage.
 - **The Living Instrument: the course, and DEVELOP as one ruled sheet** ([what it is](docs/develop-course.md), [design record and reviews](research/develop-living-instrument/DESIGN.md)).
   - **Course**, a new region above the sessions: where the selected session stands, drawn as two gauges (Run, Request) with the state in
     words and how it is known; a prepared attempt's six stages (Brief, Assent, Send, Run, Check, Judge), each read from its own record;

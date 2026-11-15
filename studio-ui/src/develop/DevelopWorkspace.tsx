@@ -12,6 +12,7 @@ import { eventDetail } from "../model/detail.ts";
 import type { DevelopStage, LifecycleState } from "../model/develop.ts";
 import { type FieldSurface, fieldSignal } from "../model/field.ts";
 import { type LedgerInput, ledger } from "../model/ledger.ts";
+import { type Atmosphere, DEFAULT_ATMOSPHERE } from "../model/weather.ts";
 import { anyOpen, stopInFlight } from "../model/workbench.ts";
 import { EventView } from "../observe/Inspector.tsx";
 import { Panel } from "../ui/Panel.tsx";
@@ -101,6 +102,8 @@ export function DevelopWorkspace({
 	appearance = "instrument",
 	paused = false,
 	onPause,
+	atmosphere = DEFAULT_ATMOSPHERE,
+	onAtmosphere,
 }: {
 	develop: Develop;
 	/** How DEVELOP is drawn. Nothing but the drawing differs. */
@@ -108,6 +111,9 @@ export function DevelopWorkspace({
 	/** Field only: the operator stopped the field's motion (memory only, held by the shell). */
 	paused?: boolean;
 	onPause?(paused: boolean): void;
+	/** Field only: what is drawn behind the work (memory only, held by the shell). Decoration: nothing else reads it. */
+	atmosphere?: Atmosphere;
+	onAtmosphere?(atmosphere: Atmosphere): void;
 	/** The worktree context of the live launch (read-only Git, read when asked). */
 	project: ProjectApi;
 	/** The operator's project and tasks (metadata; choosing a task sends nothing and changes nothing else). */
@@ -556,8 +562,9 @@ export function DevelopWorkspace({
 			data-texture={field ? signal.texture : undefined}
 			data-attention={field ? signal.attention : undefined}
 			data-dock={field ? (dock ? "open" : "closed") : undefined}
+			data-atmosphere={field ? atmosphere : undefined}
 		>
-			{field ? <FieldLayer signal={signal} /> : null}
+			{field ? <FieldLayer signal={signal} atmosphere={atmosphere} paused={paused} /> : null}
 			{narrow ? (
 				<>
 					{inList ? null : (
@@ -719,8 +726,15 @@ export function DevelopWorkspace({
 					{deskMode ? deskContext : liveMode ? liveContext : ompMode ? <OmpInspector omp={omp} /> : inspector}
 				</div>
 			)}
-			{field && onPause !== undefined ? (
-				<FieldLegend signal={signal} paused={paused} reduced={reduced} onPause={onPause} />
+			{field && onPause !== undefined && onAtmosphere !== undefined ? (
+				<FieldLegend
+					signal={signal}
+					atmosphere={atmosphere}
+					paused={paused}
+					reduced={reduced}
+					onPause={onPause}
+					onAtmosphere={onAtmosphere}
+				/>
 			) : null}
 		</div>
 	);

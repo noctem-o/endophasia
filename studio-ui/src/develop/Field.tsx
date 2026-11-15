@@ -1,10 +1,12 @@
 // The Field appearance of DEVELOP: the parts it adds to the workspace. The workspace's components, state and actions are the same in
-// both appearances; Field draws a contour field behind them (loaded on demand), says in a legend what that field is showing, and, where
-// there is nothing to read yet, sets out the ledger of what is known, what is not, what can be done and what is the operator's. It holds
-// no state of its own except whether motion is paused, which lives in the shell, in memory only.
+// both appearances; Field draws an atmosphere behind them (the contour field, night weather, or nothing; each renderer loaded on
+// demand), says in a legend what is drawn and what it means, and, where there is nothing to read yet, sets out the ledger of what is
+// known, what is not, what can be done and what is the operator's. It holds no state of its own: whether motion is paused and which
+// atmosphere is chosen live in the shell, in memory only.
 import { Component, lazy, type ReactElement, type ReactNode, Suspense, useEffect, useState } from "react";
 import type { FieldSignal } from "../model/field.ts";
 import type { Ledger, LedgerBasis, LedgerLine } from "../model/ledger.ts";
+import { ATMOSPHERE_LABEL, ATMOSPHERES, type Atmosphere, isAtmosphere, legendWords } from "../model/weather.ts";
 import { ProvGlyph } from "../ui/marks.tsx";
 
 // The renderer is its own file in the bundle, requested only when the Field appearance is first shown. If that file cannot be loaded, the
@@ -14,6 +16,11 @@ type Renderer = { default: (props: { signal: FieldSignal }) => ReactElement | nu
 const Absent = (): null => null;
 const FieldCanvas = lazy(
 	(): Promise<Renderer> => import("./FieldCanvas.tsx").catch((): Renderer => ({ default: Absent })),
+);
+// The weather is another file again, requested only when Rain or Storm is first chosen. It is given no signal: weather is scenery.
+type Weather = { default: (props: { atmosphere: "rain" | "storm"; paused: boolean }) => ReactElement | null };
+const WeatherCanvas = lazy(
+	(): Promise<Weather> => import("./WeatherCanvas.tsx").catch((): Weather => ({ default: Absent })),
 );
 
 const REDUCED = "(prefers-reduced-motion: reduce)";
@@ -48,56 +55,116 @@ class Optional extends Component<{ children: ReactNode }, { failed: boolean }> {
 	}
 }
 
-/** The field itself: a fixed layer behind the workspace. The canvas is decoration (hidden from assistive technology); the legend says it. */
-export function FieldLayer({ signal }: { signal: FieldSignal }): ReactElement {
+/**
+ * The atmosphere: a fixed layer behind the workspace. Whatever is drawn in it is decoration (hidden from assistive technology, never a
+ * target); the legend says what it is. With no atmosphere the layer is empty and nothing is loaded.
+ */
+export function FieldLayer({
+	signal,
+	atmosphere,
+	paused,
+}: {
+	signal: FieldSignal;
+	atmosphere: Atmosphere;
+	/** The operator paused motion. (The contours are told through their signal; the weather is told here.) */
+	paused: boolean;
+}): ReactElement {
+	const weather = atmosphere === "rain" || atmosphere === "storm";
 	return (
 		<div
 			className="field-layer"
 			aria-hidden="true"
+			data-atmosphere={atmosphere}
 			data-motion={signal.motion}
 			data-texture={signal.texture}
 			data-attention={signal.attention}
 		>
-			<Optional>
-				<Suspense fallback={null}>
-					<FieldCanvas signal={signal} />
-				</Suspense>
-			</Optional>
+			{atmosphere === "none" ? null : (
+				// Rain and Storm are one renderer, kept while switching between them: the same sky, with or without lightning.
+				<Optional key={weather ? "weather" : "contours"}>
+					<Suspense fallback={null}>
+						{weather ? (
+							<WeatherCanvas atmosphere={atmosphere} paused={paused} />
+						) : (
+							<FieldCanvas signal={signal} />
+						)}
+					</Suspense>
+				</Optional>
+			)}
 		</div>
 	);
 }
 
-/** One line under the workspace: what the field shows, in words, and the control that stops it. */
+/** One line under the workspace: what is drawn behind it and what that means, in words; which atmosphere; and the control that stops it. */
 export function FieldLegend({
 	signal,
+	atmosphere,
 	paused,
 	reduced,
 	onPause,
+	onAtmosphere,
 }: {
 	signal: FieldSignal;
+	atmosphere: Atmosphere;
 	paused: boolean;
 	reduced: boolean;
 	onPause(paused: boolean): void;
+	onAtmosphere(atmosphere: Atmosphere): void;
 }): ReactElement {
+	const none = atmosphere === "none";
 	return (
-		<footer className="field-legend" data-testid="field-legend" data-motion={signal.motion}>
-			<span className="field-key" aria-hidden="true" data-motion={signal.motion} data-texture={signal.texture} />
+		<footer
+			className="field-legend"
+			data-testid="field-legend"
+			data-motion={signal.motion}
+			data-atmosphere={atmosphere}
+		>
+			<span
+				className="field-key"
+				aria-hidden="true"
+				data-motion={signal.motion}
+				data-texture={signal.texture}
+				data-atmosphere={atmosphere}
+			/>
 			<span className="field-words" data-testid="field-words">
-				<span className="field-label">Field</span> {signal.words}
+				<span className="field-label">Field</span>{" "}
+				{legendWords(atmosphere, signal, reduced ? "reduced" : paused ? "paused" : "no")}
 			</span>
+			<label
+				className="field-atmosphere"
+				title="What is drawn behind the work. Nothing else changes, and it is not kept after a reload."
+			>
+				<span className="field-atmosphere-label">Atmosphere</span>
+				<select
+					className="field-atmosphere-select"
+					data-testid="atmosphere"
+					value={atmosphere}
+					onChange={(event) => {
+						if (isAtmosphere(event.target.value)) onAtmosphere(event.target.value);
+					}}
+				>
+					{ATMOSPHERES.map((a) => (
+						<option key={a} value={a}>
+							{ATMOSPHERE_LABEL[a]}
+						</option>
+					))}
+				</select>
+			</label>
 			<button
 				type="button"
 				className="field-pause"
 				data-testid="field-pause"
-				disabled={reduced}
+				disabled={reduced || none}
 				title={
-					reduced
-						? "Your system asks for reduced motion, so the field is drawn once and never moves."
-						: "Stop or start the field's motion. Nothing else changes."
+					none
+						? "With no atmosphere nothing moves."
+						: reduced
+							? "Your system asks for reduced motion, so the field is drawn once and never moves."
+							: "Stop or start the field's motion. Nothing else changes."
 				}
 				onClick={() => onPause(!paused)}
 			>
-				{reduced ? "Motion off (system)" : paused ? "Resume motion" : "Pause motion"}
+				{none ? "Nothing moves" : reduced ? "Motion off (system)" : paused ? "Resume motion" : "Pause motion"}
 			</button>
 		</footer>
 	);

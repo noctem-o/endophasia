@@ -3335,6 +3335,46 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	height: 100%;
 }
 
+/* Atmospheres (docs/develop-atmospheres.md). The weather is two canvases filling the layer, the sky under the rain; the sky is computed
+   small and stretched, which is the softness clouds want. They are the layer, so the dot grid is not drawn under them. With no
+   atmosphere the layer is empty and the ground is plain: nothing behind the work, and no light moving along the horizon. */
+.weather-sky,
+.weather-rain {
+	position: absolute;
+	inset: 0;
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+
+.field-layer[data-atmosphere="none"],
+.field-layer[data-atmosphere="rain"],
+.field-layer[data-atmosphere="storm"] {
+	background-image: none;
+}
+
+.field-layer[data-atmosphere="none"]::after {
+	content: none;
+}
+
+body:has(.develop[data-atmosphere="none"]) {
+	background: #030405;
+}
+
+/* Weather is dark where the contours are bright, so under it the panels' veil gives a little: the sky is sensed through a panel, never
+   seen through it. The reading measure keeps its own near-opaque ground (the live surface's gradient), which this does not touch. */
+.develop[data-atmosphere="rain"],
+.develop[data-atmosphere="storm"] {
+	--f-veil: rgba(3, 4, 5, 0.8);
+}
+
+/* The clouds gather at the top of the scene, so the top bar lets some of them through: the sky runs behind the upper edge of the page
+   instead of starting under it. */
+body:has(.develop[data-atmosphere="rain"]) .topbar,
+body:has(.develop[data-atmosphere="storm"]) .topbar {
+	background: rgba(3, 4, 5, 0.72);
+}
+
 .develop[data-appearance="field"] > :not(.field-layer) {
 	position: relative;
 	z-index: 1;
@@ -3546,7 +3586,7 @@ body:has(.develop[data-appearance="field"]) .topbar {
 }
 
 @media (prefers-reduced-motion: no-preference) {
-	.develop[data-appearance="field"][data-motion="current"] .develop-live .run-strip::after {
+	.develop[data-appearance="field"][data-motion="current"]:not([data-atmosphere="none"]) .develop-live .run-strip::after {
 		animation: horizon 6.5s linear infinite;
 	}
 }
@@ -4232,6 +4272,60 @@ body:has(.develop[data-appearance="field"]) .topbar {
 	background: linear-gradient(var(--attention), var(--attention)) 0 4px / 100% 1px no-repeat;
 }
 
+/* What is drawn behind the work: one small select in the legend's voice, beside the control that stops it. */
+.field-atmosphere {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+}
+
+.field-atmosphere-label {
+	font-size: 9.5px;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+.field-atmosphere-select {
+	appearance: none;
+	background:
+		linear-gradient(45deg, transparent 50%, var(--f-ink-3) 50%) right 11px top 55% / 4px 4px no-repeat,
+		linear-gradient(-45deg, transparent 50%, var(--f-ink-3) 50%) right 7px top 55% / 4px 4px no-repeat;
+	border: 1px solid var(--f-hair-2);
+	border-radius: 999px;
+	padding: 1px 24px 1px 10px;
+	font: inherit;
+	color: var(--f-ink-2);
+	cursor: pointer;
+}
+
+.field-atmosphere-select:hover {
+	color: var(--f-ink-1);
+	border-color: rgba(236, 232, 223, 0.26);
+}
+
+.field-atmosphere-select:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: 1px;
+}
+
+.field-atmosphere-select option {
+	background: #0c0e11;
+	color: #efebe3;
+}
+
+/* The key beside the legend's words: slanted strokes for weather, an empty frame for nothing. */
+.field-key[data-atmosphere="rain"],
+.field-key[data-atmosphere="storm"] {
+	background: repeating-linear-gradient(108deg, var(--f-ink-3) 0 1px, transparent 1px 5px);
+	opacity: 0.75;
+}
+
+.field-key[data-atmosphere="none"] {
+	background: none;
+	box-shadow: inset 0 0 0 1px var(--f-hair-2);
+}
+
 .field-pause {
 	flex: none;
 	background: none;
@@ -4382,6 +4476,17 @@ body:has(.develop[data-appearance="field"]) .topbar {
 @media (max-width: 640px) {
 	.field-words {
 		white-space: normal;
+	}
+	/* The words take the first line; the atmosphere and the pause sit under them, at the right. */
+	.field-legend {
+		flex-wrap: wrap;
+		row-gap: 6px;
+	}
+	.field-words {
+		flex-basis: calc(100% - 40px);
+	}
+	.field-atmosphere {
+		margin-left: auto;
 	}
 }
 

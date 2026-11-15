@@ -11,6 +11,10 @@ conversation's scroll position, the reasoning preference and the traces opened b
 
 ![A live conversation drawn as Field (synthetic fixture)](images/field-conversation-1440.png)
 
+What is drawn behind the work is the **Atmosphere**, chosen in the legend: nothing, the contours described here (the default), rain, or
+a storm. The weather is scenery and is documented in [develop-atmospheres.md](develop-atmospheres.md); everything below describes the
+contours, which that change left as they were.
+
 This document describes the **second iteration**: the night survey. It came with model-provided reasoning
 ([develop-reasoning.md](develop-reasoning.md)) and a new composition for live sessions. §8 keeps what the first iteration learned.
 
@@ -28,6 +32,8 @@ This document describes the **second iteration**: the night survey. It came with
   diff, and Escape returns to the conversation. The draft and STOP stay in place throughout.
 - **Back to normal:** *Instrument* in the top bar, or reload. Motion: **Pause motion** in the legend, or the system's reduced-motion
   setting.
+- **Atmosphere:** the select in the legend: None, Contours, Rain or Storm ([develop-atmospheres.md](develop-atmospheres.md)). Memory
+  only.
 
 ## 2. The idea
 

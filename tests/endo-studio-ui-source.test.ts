@@ -79,6 +79,8 @@ describe("the frontend's source", () => {
 				"develop/Surface.tsx",
 				"develop/Field.tsx",
 				"develop/FieldCanvas.tsx",
+				"develop/WeatherCanvas.tsx",
+				"model/weather.ts",
 				"develop/Reasoning.tsx",
 				"model/reasoning.ts",
 				"model/reveal.ts",
@@ -138,12 +140,17 @@ describe("the frontend's source", () => {
 			}
 			expect(text, name).not.toMatch(/from "node:|require\(/);
 		}
-		// Two dynamic imports, each a module of this directory: the placeholder workspaces, and the Field appearance's renderer, which is
-		// requested only when DEVELOP is drawn as Field (docs/develop-field.md), so Instrument never loads it.
+		// Three dynamic imports, each a module of this directory: the placeholder workspaces, the Field appearance's renderer, which is
+		// requested only when DEVELOP is drawn as Field (docs/develop-field.md), so Instrument never loads it, and the night weather, which
+		// is requested only when Rain or Storm is chosen there (docs/develop-atmospheres.md).
 		const dynamic = Object.entries(sources).flatMap(([name, text]) =>
 			[...text.matchAll(/\bimport\(\s*["']([^"']+)["']\s*\)/g)].map((m) => `${name}: ${m[1]}`),
 		);
-		expect(dynamic).toEqual(["App.tsx: ./observe/Unavailable.tsx", "develop/Field.tsx: ./FieldCanvas.tsx"]);
+		expect(dynamic).toEqual([
+			"App.tsx: ./observe/Unavailable.tsx",
+			"develop/Field.tsx: ./FieldCanvas.tsx",
+			"develop/Field.tsx: ./WeatherCanvas.tsx",
+		]);
 		for (const text of Object.values(sources)) expect(text).not.toMatch(/\bimport\(\s*[^"'\s]/);
 	});
 
@@ -179,12 +186,13 @@ describe("the frontend's source", () => {
 		];
 		for (const [name, text] of Object.entries(sources))
 			for (const [what, pattern] of forbidden) expect(text, `${name}: ${what}`).not.toMatch(pattern);
-		// Animation frames are drawn in two modules only: the Field renderer (see the next test for what it may touch), and the reveal of
-		// text still being written (ui/use-reveal.ts), which only changes how fast already-read text appears and honours reduced motion.
+		// Animation frames are drawn in three modules only: the Field's two renderers, the contours and the weather (see the tests below
+		// for what each may touch), and the reveal of text still being written (ui/use-reveal.ts), which only changes how fast already-read
+		// text appears and honours reduced motion.
 		const animated = Object.entries(sources)
 			.filter(([, text]) => /\b(requestAnimationFrame|cancelAnimationFrame)\b/.test(text))
 			.map(([name]) => name);
-		expect(animated).toEqual(["develop/FieldCanvas.tsx", "ui/use-reveal.ts"]);
+		expect(animated).toEqual(["develop/FieldCanvas.tsx", "develop/WeatherCanvas.tsx", "ui/use-reveal.ts"]);
 		// A style prop is set through the CSS object model, which the page policy allows. It is used in two places and no others.
 		const styled = Object.entries(sources)
 			.filter(([, text]) => /\bstyle=\{/.test(text))
@@ -432,6 +440,49 @@ describe("the frontend's source", () => {
 		expect(sources["model/field.ts"]).not.toMatch(/reasoning|thinking/i);
 	});
 
+	it("keeps the weather scenery: loaded on demand, told only which weather and whether it is paused, able to request nothing", () => {
+		const weather = sources["develop/WeatherCanvas.tsx"]!;
+		// It imports React and the pure weather rules, nothing else: no field signal, no wire module, no hook, no api.
+		expect(specifiers(weather)).toEqual([
+			{ typeOnly: false, specifier: "react" },
+			{ typeOnly: false, specifier: "../model/weather.ts" },
+		]);
+		// Nothing imports it statically: it is its own file in the bundle, requested only when Rain or Storm is chosen.
+		for (const [name, text] of Object.entries(sources))
+			for (const { specifier } of specifiers(text)) expect(specifier, name).not.toMatch(/WeatherCanvas/);
+		// Two props, neither of them the session's: weather cannot be made to mean something.
+		expect(weather).toMatch(
+			/export default function WeatherCanvas\(\{\s*atmosphere,\s*paused,\s*\}: \{\s*atmosphere: "rain" \| "storm";\s*paused: boolean;\s*\}\)/,
+		);
+		expect(weather).not.toMatch(/FieldSignal|signal\b|workbench|transcript|reasoning|\bitems\b|\bpulse\b/i);
+		const field = sources["develop/Field.tsx"]!;
+		expect(field.match(/<WeatherCanvas [^>]*\/>/g)).toEqual([
+			"<WeatherCanvas atmosphere={atmosphere} paused={paused} />",
+		]);
+		// It schedules nothing but frames, asks for no GPU, reads nothing over the network and starts no worker.
+		expect(weather).not.toMatch(
+			/\bfetch\(|setTimeout|\bdocument\.cookie|\bWorker\b|getContext\(\s*["']webgl|webgpu/i,
+		);
+		expect(weather.match(/getContext\("2d"/g)?.length).toBe(2);
+		// One loop: one place asks for a frame from outside the loop, and every frame asked for can be cancelled and is when it goes.
+		expect(weather.match(/requestAnimationFrame\(tick\)/g)?.length).toBe(3);
+		expect(weather.match(/requestAnimationFrame\(/g)?.length).toBe(3);
+		expect(weather).toContain("cancelAnimationFrame(frame)");
+		// It stops when the page is hidden, when the operator pauses it and when the system asks for reduced motion.
+		expect(weather).toContain('document.addEventListener("visibilitychange", visible)');
+		expect(weather).toContain('"(prefers-reduced-motion: reduce)"');
+		expect(weather).toMatch(
+			/const wanted = \(\) => !dead && !manual && !document\.hidden && !reduced\.matches && !latest\.current\.paused;/,
+		);
+		// The panels are measured where a drop lands or lightning strikes, never in the frame loop itself.
+		expect(weather.match(/getBoundingClientRect\(\)/g)?.length).toBe(2);
+		expect(weather.match(/\bmeasured\(\)/g)?.length).toBe(2);
+		// What it reads from the page is a class name and boxes: never text.
+		expect(weather).not.toMatch(/textContent|innerText|\.value\b|nodeValue/);
+		// The rules of the weather are pure and import nothing: the seed and the clock are the caller's.
+		expect(specifiers(sources["model/weather.ts"]!)).toEqual([]);
+	});
+
 	it("makes text a React child only: no component builds an element from a record's string", () => {
 		for (const [name, text] of Object.entries(sources)) {
 			expect(text, name).not.toMatch(/createElement\(\s*[^"'\s]/); // a computed tag name
@@ -484,8 +535,9 @@ describe("the page, style sheet and icon", () => {
 		]);
 		expect(css.match(/@keyframes/g)?.length).toBe(2);
 		// The horizon moves only under the reduced-motion query's "no preference", and only while the field's signal says it is flowing.
+		// (And not with no atmosphere chosen: then nothing on the page moves by itself.)
 		expect(css).toMatch(
-			/@media \(prefers-reduced-motion: no-preference\) \{\s*\.develop\[data-appearance="field"\]\[data-motion="current"\] \.develop-live \.run-strip::after \{\s*animation: horizon/,
+			/@media \(prefers-reduced-motion: no-preference\) \{\s*\.develop\[data-appearance="field"\]\[data-motion="current"\]:not\(\[data-atmosphere="none"\]\) \.develop-live \.run-strip::after \{\s*animation: horizon/,
 		);
 	});
 

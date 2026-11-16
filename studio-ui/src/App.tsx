@@ -56,6 +56,10 @@ export function App(): ReactElement {
 	const omp = useOmp(workspace === "develop");
 	const workbench = useWorkbench(workspace === "develop");
 	const workbenchOn = workbench.state.availability === "available";
+	// Words only (DEVELOP-UX-002): what the broker last said this page holds. The broker decides what any request is authorised by.
+	const heldControl = workbench.state.status?.sessionControl;
+	const controlHeld =
+		workbenchOn && workbench.state.grant !== null && heldControl?.state === "active" && heldControl.holder === true;
 	// A workspace host: the project's tasks and evidence, writable after pairing, with no harness (`endo workspace open`).
 	const workspaceHost = workbench.state.availability === "workspace";
 	const launchId = workbench.state.launchId;
@@ -241,7 +245,9 @@ export function App(): ReactElement {
 					data-testid="authority-chip"
 					title={
 						workbenchOn
-							? "This server is a workbench. The page can read and, once paired, ask for a prompt; only the operator in the attached terminal can approve one. It changes no store and runs no command itself."
+							? controlHeld
+								? "This server is a workbench, and this page holds session control: the requests it covers are sent without a terminal approval, for a limited time, to one session, and are recorded as authorised by the session grant. Everything else is approved in the attached terminal."
+								: "This server is a workbench. The page can read and, once paired, ask for a prompt; only the operator in the attached terminal can approve one. It changes no store and runs no command itself."
 							: workspaceHost
 								? "This server is a workspace host. Once paired, the page can read the project's tasks and evidence and change task metadata. It runs no agent and no command, and cannot prompt, steer or stop anything."
 								: "This page only reads. It cannot change a store, steer a runtime or start anything."
@@ -261,7 +267,7 @@ export function App(): ReactElement {
 						<path d="M4 5.4V4a2 2 0 0 1 4 0v1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
 					</svg>
 					{workbenchOn || workspaceHost
-						? `${workspaceHost ? "Workspace" : "Workbench"} · ${workbench.state.grant === null ? "not paired" : "paired"}`
+						? `${workspaceHost ? "Workspace" : "Workbench"} · ${workbench.state.grant === null ? "not paired" : controlHeld ? "paired · session control on" : "paired"}`
 						: "Read-only"}
 				</span>
 				<span id="read-status" className="read-status" aria-live="polite">

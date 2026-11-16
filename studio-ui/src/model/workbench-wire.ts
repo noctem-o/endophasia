@@ -7,8 +7,10 @@ export type WorkbenchCommandState = "awaiting-approval" | "dispatching" | "accep
 export interface WorkbenchCommand {
 	proposalId: string;
 	state: WorkbenchCommandState;
-	/** Whether the operator typed the approval on the terminal (a withdrawn, timed-out or declined prompt was never approved). */
+	/** Whether it was authorised to be sent (a withdrawn, timed-out or declined prompt never was). */
 	approved: boolean;
+	/** How, when it was: the operator typed for this request on the terminal, or a session-control grant covered it and nobody typed. */
+	authorizedBy: AuthorizedBy | null;
 	reason: string | null;
 	disposition: string | null;
 	bytes: number;
@@ -46,6 +48,46 @@ export const ATTEMPT_REFUSALS = [
 ] as const;
 export type AttemptRefusal = (typeof ATTEMPT_REFUSALS)[number];
 export type InterventionOperation = "steer" | "queue" | "stop";
+export type AuthorizedBy = "terminal" | "session-grant";
+/** The launch's mode (DEVELOP-UX-002): chosen on the terminal's command line. Nothing this page sends selects or raises it. */
+export type WorkbenchMode = "everyday" | "protected" | "strict";
+export type ControlOperation = "prompt" | InterventionOperation;
+export const CONTROL_END_REASONS = [
+	"expired",
+	"budget-spent",
+	"revoked-on-terminal",
+	"revoked-by-page",
+	"re-paired",
+	"session-changed",
+	"workspace-changed",
+	"protection-lost",
+	"closing",
+] as const;
+export type ControlEndReason = (typeof CONTROL_END_REASONS)[number];
+/**
+ * Bounded session authority as the broker reports it. `holder` is true only for the page whose pairing redeemed the code that carried
+ * control; only the holder is told the scope. The page displays this: it never decides from it whether a request is authorised.
+ */
+export interface SessionControl {
+	state: "active" | "none";
+	holder: boolean;
+	/** A code that carries control is waiting on the terminal to be typed into a page. */
+	armed: boolean;
+	grantId: string | null;
+	operations: ControlOperation[];
+	expiresAtMs: number | null;
+	sendsLeft: number | null;
+	workspaceRoot: string | null;
+	/** Why the last grant of this launch ended, when there is none now. */
+	ended: ControlEndReason | null;
+}
+/** What bounds the AGENT, as observed by the attached process. A grant is not a boundary; this is. */
+export interface ExecutionProtection {
+	state: "enforced" | "not-enforced" | "unknown";
+	level: "none" | "workspace" | "restricted";
+	mechanism: string | null;
+	limitations: string[];
+}
 export type InterventionState = "awaiting-approval" | "dispatching" | "sent" | "accepted" | "refused" | "unknown";
 export interface ScanProgress {
 	requests: number;
@@ -65,8 +107,9 @@ export interface WorkbenchIntervention {
 	proposalId: string;
 	operation: InterventionOperation;
 	state: InterventionState;
-	/** Whether the operator typed the approval on the terminal. */
+	/** Whether it was authorised to be sent. */
 	approved: boolean;
+	authorizedBy: AuthorizedBy | null;
 	reason: string | null;
 	disposition: string | null;
 	bytes: number | null;
@@ -93,6 +136,9 @@ export interface WorkbenchStatus {
 	/** `attempt`: whether a prepared work attempt's brief can be requested now (a prompt, on a workbench started with --project). */
 	offers: { prompt: Offer; attempt: Offer; steer: Offer; queue: Offer; stop: Offer };
 	paired: boolean;
+	mode: { requested: WorkbenchMode; effective: WorkbenchMode; reason: string | null };
+	protection: ExecutionProtection;
+	sessionControl: SessionControl;
 	command: WorkbenchCommand | null;
 	interventions: WorkbenchIntervention[];
 	transcript: { watermark: number; firstSeq: number };
@@ -186,6 +232,7 @@ const command: Check = (v) =>
 		proposalId: (x) => typeof x === "string" && /^endo\.evidence\.workbench-prompt-[0-9a-f]{32}$/.test(x),
 		state: one("awaiting-approval", "dispatching", "accepted", "refused", "unknown"),
 		approved: bool,
+		authorizedBy: eitherNull(one("terminal", "session-grant")),
 		reason: eitherNull(one(...REASONS)),
 		disposition: eitherNull(one("started", "queued", "handled")),
 		bytes: (n) => count(n) && n <= 16384,
@@ -209,6 +256,7 @@ const intervention: Check = (v) =>
 		operation: one("steer", "queue", "stop"),
 		state: one("awaiting-approval", "dispatching", "sent", "accepted", "refused", "unknown"),
 		approved: bool,
+		authorizedBy: eitherNull(one("terminal", "session-grant")),
 		reason: eitherNull(
 			one(
 				...INTERVENTION_REASONS,
@@ -244,6 +292,48 @@ const intervention: Check = (v) =>
 	});
 
 const offer: Check = (o) => shape(o, { offered: bool, reason: eitherNull(text(400)) });
+const MODE = one("everyday", "protected", "strict");
+const mode: Check = (m) => shape(m, { requested: MODE, effective: MODE, reason: eitherNull(text(300)) });
+const protection: Check = (p) =>
+	shape(p, {
+		state: one("enforced", "not-enforced", "unknown"),
+		level: one("none", "workspace", "restricted"),
+		mechanism: eitherNull(text(64)),
+		limitations: (x) => Array.isArray(x) && x.length <= 8 && list(text(300))(x),
+	});
+const CONTROL_OPERATIONS = ["prompt", "steer", "queue", "stop"];
+const sessionControl: Check = (c) =>
+	shape(c, {
+		state: one("active", "none"),
+		holder: bool,
+		armed: bool,
+		grantId: eitherNull(
+			(x) => typeof x === "string" && /^endo\.evidence\.workbench-session-grant-[0-9a-f]{32}$/.test(x),
+		),
+		operations: (x) =>
+			Array.isArray(x) && x.length <= 4 && new Set(x).size === x.length && list(one(...CONTROL_OPERATIONS))(x),
+		expiresAtMs: eitherNull(count),
+		sendsLeft: eitherNull(count),
+		workspaceRoot: eitherNull(text(4096)),
+		ended: eitherNull(one(...CONTROL_END_REASONS)),
+	}) && sessionControlConsistent(c as unknown as SessionControl);
+/**
+ * A body that contradicts itself is refused whole, so the page can never show control it does not hold: a scope is told only to the
+ * holder of an active grant, and an active grant has an end.
+ */
+const sessionControlConsistent = (c: SessionControl): boolean =>
+	c.state === "active"
+		? c.expiresAtMs !== null &&
+			c.ended === null &&
+			(c.holder
+				? c.grantId !== null && c.sendsLeft !== null && c.workspaceRoot !== null && c.operations.length > 0
+				: c.grantId === null && c.sendsLeft === null && c.workspaceRoot === null && c.operations.length === 0)
+		: !c.holder &&
+			c.grantId === null &&
+			c.expiresAtMs === null &&
+			c.sendsLeft === null &&
+			c.workspaceRoot === null &&
+			c.operations.length === 0;
 
 export const readWorkspaceHostStatus = (v: unknown): WorkspaceHostStatus | null =>
 	shape(v, {
@@ -268,6 +358,9 @@ export const readWorkbenchStatus = (v: unknown): WorkbenchStatus | null =>
 		attachment: short,
 		offers: (o) => shape(o, { prompt: offer, attempt: offer, steer: offer, queue: offer, stop: offer }),
 		paired: bool,
+		mode,
+		protection,
+		sessionControl,
 		command: eitherNull(command),
 		interventions: (x) => Array.isArray(x) && x.length <= 40 && list(intervention)(x),
 		transcript: (t) => shape(t, { watermark: count, firstSeq: count }),
@@ -358,12 +451,15 @@ export type WorkbenchRequest =
 	| { kind: "status" }
 	| { kind: "transcript"; after: number }
 	| { kind: "pair"; code: string }
-	| { kind: "propose"; message: string }
+	/** `nonce` names this one act of the operator, so a repeated request is the same request and never a second send. No authority. */
+	| { kind: "propose"; message: string; nonce: string }
 	/** Ask to send a prepared work attempt's brief: by its id only; the broker reads the brief from the attempt's own record. */
 	| { kind: "attempt"; attemptId: string }
 	| { kind: "command"; proposalId: string }
 	| { kind: "discard"; proposalId: string }
-	| { kind: "intervene"; operation: InterventionOperation; message: string | null }
+	| { kind: "intervene"; operation: InterventionOperation; message: string | null; nonce: string }
+	/** Give up this page's session control. It can only reduce what the page may do; nothing here asks for more. */
+	| { kind: "relinquish" }
 	| { kind: "withdraw"; proposalId: string }
 	| { kind: "check"; proposalId: string };
 
@@ -411,6 +507,7 @@ const FIXED: Record<string, string> = {
 	closing: "The session is closing. Closing it checks the capture once more and records what it shows.",
 	"not-withdrawable": "That prompt is no longer waiting for approval.",
 	"not-recording": "The session is not recording, so nothing was requested.",
+	"no-session-control": "This page holds no session control to give up.",
 	forbidden: "The workbench refused this request.",
 	...Object.fromEntries(
 		ATTEMPT_REFUSALS.map((code) => [

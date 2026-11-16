@@ -650,6 +650,20 @@ describe("6. Replay and duplicates", () => {
 		expect(w.desk.applyCalls).toHaveLength(1);
 	});
 
+	it("a duplicate STOP from a page that paired again can be replayed by that page", async () => {
+		const w = setup();
+		const first = await w.pair(true);
+		w.session.runActive = true;
+		const stop = await w.intervene(first, "stop");
+		const second = await w.pair(false);
+		const nonce = "after-repairing-0123456";
+		const duplicate = await w.intervene(second, "stop", undefined, { nonce });
+		const replay = await w.intervene(second, "stop", undefined, { nonce });
+		expect([duplicate.status, replay.status]).toEqual([200, 200]);
+		expect(replay.body.proposalId).toBe(stop.body.proposalId);
+		expect(w.desk.applyCalls).toHaveLength(1);
+	});
+
 	it("a nonce is not a credential and not free text", async () => {
 		const w = setup();
 		const grant = await w.pair(true);
@@ -1099,6 +1113,11 @@ describe("10. No boundary, a lost boundary, a privileged host: fails closed", ()
 		expect(control.availability().available).toBe(false);
 		expect(endings).toEqual(["protection-lost"]);
 		expect(control.authorize("token-a", "prompt")).toBeNull();
+		// And a status never describes a grant that its own observation just ended.
+		control.arm(2000);
+		control.paired("token-b");
+		flickerAt = calls + 2;
+		expect(control.view("token-b").control).toMatchObject({ state: "none", holder: false, ended: "protection-lost" });
 	});
 
 	it("the boundary is observed again at every use, not remembered from the issue", async () => {

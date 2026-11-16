@@ -378,8 +378,9 @@ export class EndoSessionControlV0 {
 
 	/** What a status says. `token` is the asking request's pairing token, already verified by the host, or null. */
 	view(token: string | null): EndoSessionControlViewV0 {
-		const grant = this.#standing();
+		// Availability first: its observation can end the grant, and the view must describe the grant as it stands AFTER that.
 		const available = this.availability();
+		const grant = this.#standing();
 		const holder = grant !== null && this.#holds(grant, token);
 		return {
 			mode: {

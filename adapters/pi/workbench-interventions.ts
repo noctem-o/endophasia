@@ -229,7 +229,7 @@ export class WorkbenchInterventionsV0 {
 	readonly #h: InterventionHostV0;
 	readonly #commands = new Map<string, Command>();
 	/** Requests by the page's replay nonce: a repeated one returns the request already made and does nothing else. */
-	readonly #nonces = new Map<string, Command>();
+	readonly #nonces = new Map<string, { command: Command; grant: string }>();
 	#counter = 0;
 	#closing = false;
 	#checksRunning = 0;
@@ -430,8 +430,9 @@ export class WorkbenchInterventionsV0 {
 			return refuse(400, "bad-request");
 		if (typeof nonce === "string") {
 			const made = this.#nonces.get(nonce);
+			// Compared with the pairing that SENT the nonce, which for a coalesced STOP need not be the one that made the STOP.
 			if (made !== undefined)
-				return made.grant === grant ? reply(200, this.#view(made)) : refuse(409, "not-offered");
+				return made.grant === grant ? reply(200, this.#view(made.command)) : refuse(409, "not-offered");
 		}
 		const operation = body.operation as EndoInterventionOperationV0;
 		let message: string | null = null;
@@ -451,7 +452,7 @@ export class WorkbenchInterventionsV0 {
 		const stop = operation === "stop" ? this.#stopInFlight() : null;
 		if (stop !== null) {
 			// Its nonce now names that STOP too: replayed after the STOP has settled, it must not become a new one in a later run.
-			if (typeof nonce === "string") this.#remember(nonce, stop);
+			if (typeof nonce === "string") this.#remember(nonce, stop, grant);
 			return reply(200, this.#view(stop));
 		}
 		// Everything that can be refused is refused BEFORE the desk records anything or keeps the text.
@@ -515,14 +516,14 @@ export class WorkbenchInterventionsV0 {
 			command.supersedes = victim;
 		}
 		this.#commands.set(proposal.proposalId, command);
-		if (typeof nonce === "string") this.#remember(nonce, command);
+		if (typeof nonce === "string") this.#remember(nonce, command, grant);
 		this.#trim();
 		command.done = this.#drive(command);
 		return reply(202, this.#view(command));
 	}
 
-	#remember(nonce: string, command: Command): void {
-		this.#nonces.set(nonce, command);
+	#remember(nonce: string, command: Command, grant: string): void {
+		this.#nonces.set(nonce, { command, grant });
 		if (this.#nonces.size > NONCES_KEPT) this.#nonces.delete(this.#nonces.keys().next().value as string);
 	}
 

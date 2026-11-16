@@ -87,6 +87,14 @@ describe("the read-only server has no command surface", () => {
 		expect(
 			(await get(server, `${API}intervention/endo.evidence.intervention.proposal.${"0".repeat(64)}`)).status,
 		).toBe(404);
+		// Nor session control (DEVELOP-UX-002): no mode, no grant, and not even the route that only gives one up.
+		expect(
+			(await send(server, `${capabilityOf(server)}${API}session-control/revoke`, { method: "POST" })).status,
+		).toBe(405);
+		for (const route of ["session-control", "session-control/revoke", "mode"])
+			expect((await get(server, `${API}${route}`)).status, route).toBe(404);
+		expect(JSON.parse(probe.body)).not.toHaveProperty("mode");
+		expect(JSON.parse(probe.body)).not.toHaveProperty("sessionControl");
 	});
 });
 

@@ -544,7 +544,9 @@ describe("5. Expired or revoked: refused before dispatch", () => {
 	it("revoking on the terminal also disarms a code that was never typed", async () => {
 		const w = setup();
 		const issued = w.broker.issuePairingCode({ control: true });
-		expect((await w.status()).sessionControl.armed).toBe(true);
+		expect(w.broker.sessionControl().control.armed).toBe(true);
+		// An unpaired caller is not told that such a code is waiting.
+		expect((await w.status()).sessionControl.armed).toBe(false);
 		w.broker.revokeSessionControl();
 		const grant = (await w.call("POST", "pair", { code: issued.code })).body.grant as string;
 		expect((await w.status(grant)).sessionControl).toMatchObject({ state: "none", armed: false });
@@ -685,8 +687,53 @@ describe("7. Reconnection and reload: no silent renewal", () => {
 	it("an armed code that expires unredeemed arms nothing", async () => {
 		const w = setup();
 		w.broker.issuePairingCode({ control: true });
+		expect(w.broker.sessionControl().control.armed).toBe(true);
 		w.clock.now += 10 * MINUTE;
-		expect((await w.status()).sessionControl.armed).toBe(false);
+		expect(w.broker.sessionControl().control.armed).toBe(false);
+	});
+
+	it("a code armed for one session grants nothing once another session is connected, even if the boundary follows it", async () => {
+		const w = setup();
+		const issued = w.broker.issuePairingCode({ control: true });
+		w.session.piSessionId = "another-session";
+		w.boundary!.status = { ...w.boundary!.status, session: "endo.session.pi.another-session" };
+		const grant = (await w.call("POST", "pair", { code: issued.code })).body.grant as string;
+		expect((await w.status(grant)).sessionControl.state).toBe("none");
+		expect(w.kinds()).toEqual([]);
+	});
+
+	it("a wall clock that is set back does not lengthen a grant: its end is measured on a clock that only moves forward", () => {
+		const wall = { now: 1_700_000_000_000 };
+		const steady = { now: 5_000 };
+		const endings: string[] = [];
+		const control = new EndoSessionControlV0({
+			mode: "everyday",
+			protection: new Boundary(),
+			now: () => wall.now,
+			monotonic: () => steady.now,
+			subject: () => ({
+				launchId: "a".repeat(16),
+				session: SESSION,
+				attachment: "pi.default",
+				workspaceRoot: WORKSPACE,
+			}),
+			closed: () => false,
+			onGranted: () => true,
+			onEnded: (_grant, reason) => endings.push(reason),
+		});
+		control.arm(wall.now + MINUTE);
+		control.paired("token-a");
+		steady.now += 29 * MINUTE;
+		wall.now -= 24 * 60 * MINUTE; // set back a day
+		expect(control.covers("token-a", "prompt")).toBe(true);
+		steady.now += MINUTE;
+		expect(control.authorize("token-a", "prompt")).toBeNull();
+		expect(endings).toEqual(["expired"]);
+		// And a wall clock set FORWARD ends it early, as the operator was told an end by that clock.
+		control.arm(wall.now + MINUTE);
+		control.paired("token-b");
+		wall.now += 31 * MINUTE;
+		expect(control.covers("token-b", "prompt")).toBe(false);
 	});
 
 	it("a new terminal `control` makes a NEW grant: a new id, a new end, a new budget, never an extension", async () => {

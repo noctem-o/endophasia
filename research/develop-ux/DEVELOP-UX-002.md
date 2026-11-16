@@ -1,7 +1,10 @@
 # DEVELOP-UX-002: everyday development and bounded session authority
 
-**Status: architecture, threat model and specification (this section was written before any authority-changing edit). Results,
-measurements and the review are in §9 onward, added when the implementation was complete.**
+**Status: implemented as specified, with one outcome that must be read first.** The broker's bounded session authority is built and
+tested. **Everyday is not in effect on any host**, because no execution boundary around Pi exists in this build and the broker refuses
+to issue a grant without one (§5.3). On a real workstation `endo develop` therefore runs Strict and says why. What reduces friction
+today is the opt-in short confirmation (§6). §1 to §8 were written and committed before any authority-changing edit (`cfc1318`) and
+are unchanged except where §12 says so; results are in §9 onward.
 
 - **Base:** `main` at `25308f5` (PR #150 merged).
 - **Read first:** [develop-workbench.md](../../docs/develop-workbench.md) §3, §13 and §14;
@@ -278,3 +281,138 @@ No second broker, no new listener, no shell or raw RPC route, no storage in the 
 | 10 | No protection, protection lost, privileged host: fails closed | provider unit; broker unit; CLI under a pseudo-terminal |
 | 11 | `endo studio` has no command surface | existing tests, plus the new route |
 | 12 | Records: no text, path, code or token; no invented claim | broker unit; store scan |
+
+## 9. What was built
+
+| Part | Where | State |
+| :-- | :-- | :-- |
+| The grant: arm, issue, use, end | `runtime/contracts/session-control.ts` | implemented; 47 tests at the broker's boundary |
+| The provider interface, and the rule that only a well-formed observation for the exact session and workspace counts | `runtime/contracts/execution-protection.ts` | implemented |
+| The production provider | `cli/execution-protection.ts` | implemented; **never reports `enforced`** |
+| Prompts and interventions under a grant, the status, the nonce, the revoke route | `adapters/pi/workbench.ts`, `workbench-interventions.ts` | implemented |
+| Records | `protocol/workbench.ts`, `protocol/intervention.ts` | implemented (§4.4) |
+| Terminal: `--mode`, `--confirm`, the banner, `control`, `revoke`, the short code | `cli/harness.ts`, `cli/workbench.ts` | implemented |
+| Page: the mode and session-control strip, grant-aware wording, give up | `studio-ui/src/develop/Live.tsx` and the wire gate | implemented |
+| A launcher that places Pi inside an execution boundary | — | **not built** (§5.3, §13) |
+
+Two rules were added during the adversarial pass (§12) and are part of the specification: a grant's end is measured on a monotonic
+clock as well as the wall clock; and an armed code grants only for the session, attachment and workspace that were connected when the
+terminal described it.
+
+## 10. Usability, against DEVELOP-UX-001
+
+The same session as DEVELOP-UX-001 §6: start, ten messages (eight prompts, one steer, one stop), read the diff, finish. Counts are from
+the code and the tests, not timed with a person. No human pilot was run.
+
+| | UX-001 (Strict, `main`) | This change, on a real host today (Everyday requested, Strict in effect) | With `--confirm short` | Everyday in effect (**reachable only in tests**) |
+| :-- | :-- | :-- | :-- | :-- |
+| Commands to start | 1 | 1 | 1 (one flag) | 1 |
+| Pairing | 9 characters, once | the same | the same | the same; the code also grants control, and the terminal says so |
+| Terminal approvals for ten messages | 10 | 10 | 10 | **0** |
+| Typed approval characters | 307 | 307 | **40** (4 each) | 0 |
+| Context switches for ten messages | 20 | 20 | 20 | 0 |
+| Operator must read the terminal before each send | yes | yes | yes (the text is shown first) | no |
+| STOP waits behind another question | behind a prompt's, yes; it supersedes a steer or queue | the same | the same | never |
+| Authority renewal | n/a | n/a | n/a | a new terminal act every 30 minutes or 200 sends, and after any reload |
+| What a compromised page can cause | nothing: it asks | nothing | nothing | sends inside the boundary, for the grant's life |
+
+Read plainly: **for an operator on a real workstation, this change alone removes 267 of 307 typed characters, and only if they opt
+in. It removes no context switch and no approval.** The zero-approval column is real code with real tests, waiting for a boundary.
+
+U9 of DEVELOP-UX-001 (per-message cost) is therefore *partly* improved (typing), and U10 (a human finds it pleasant) is still not
+established.
+
+## 11. Security properties: proven, assumed, not achieved
+
+**Proven by tests in this change** (at the broker, over the real HTTP guards, in a real browser, under a real pseudo-terminal, and over a
+real fake-Pi attachment and store; the fake Pi is a real process speaking Pi's RPC, not Pi):
+
+1. A grant is issued only when a pairing code the terminal armed is redeemed. No route, header or request member issues, arms, extends,
+   widens or describes one; an unknown member refuses the request whole.
+2. A grant is issued and used only while the provider's observation is well formed, `enforced`, at the level the mode needs, and for
+   exactly the connected session and workspace. Absent, unknown, throwing, malformed, weaker, or about something else: no grant.
+3. The observation is taken again at every use. A boundary lost mid-session ends the grant before the next send, for every operation,
+   and its return does not revive it.
+4. Every use checks the holder (constant time), the launch, the session, the attachment, the workspace, the operation, the time (on a
+   clock that cannot be set back) and the budget. Failing any, the request is not sent under the grant; it waits for the terminal.
+5. An ended grant stays ended: re-pairing, reloading, the session returning, the boundary returning and the clock moving do not revive
+   it. A new grant has a new id, a new end and a new budget.
+6. A repeated nonce causes one send. A duplicate STOP is the one in flight.
+7. Under a grant a STOP is dispatched in its own request: not behind a steer waiting for Pi, a steer waiting for the terminal (which
+   it supersedes), or a prompt waiting for the terminal.
+8. An attempt's brief is never covered by a grant.
+9. Every grant-authorised send is recorded `session-grant` with the grant's id, never `terminal`; a short code is recorded
+   `terminal-code`. The grant's records carry no path, text, token or code. Endophasia's own files hold no prompt text, pairing code or
+   token (scanned on disk).
+10. Strict is unchanged: the existing suites pass unmodified in behaviour (fixtures gained the new status fields), ten prompts take ten
+    phrases, and a Strict launch records no grant.
+11. The production provider never reports an enforced boundary; `endo develop` then runs Strict and says why; `--mode protected` exits
+    before Pi is looked for, with no store and no listener.
+12. The short code: made per question in the attached process, never in a reply to the page, declined when wrong or stale, not offered
+    for an attempt; multi-line text is shown before it; STOP preemption holds with it.
+13. `endo studio` gains nothing: the read-only server has no workbench handler, so the new route is refused there like every POST
+    (the existing tests of that server pass).
+
+**Assumed, not tested here:**
+
+- The kernel, Node, and the broker process are not compromised; the terminal is the operator's (R1 qualifies this).
+- A provider that says `enforced` is telling the truth. The broker checks the *form* and the *subject* of an observation. It cannot
+  check its truth. That is the provider's burden (§5.2), and no provider exists.
+- The session identity Pi reports identifies the process the boundary was built around. A provider must bind to the process, not only
+  to the id.
+- A person who sees an armed pairing code on the terminal and can reach the page's address can take session control. The same was true
+  of pairing; the stakes are higher.
+
+**Not achieved:**
+
+- **Any containment of the agent.** Pi, its tools, its subprocesses, its extensions and MCP servers run as the operator, with the
+  operator's credentials, on a workstation whose `docker` and `libvirt` groups are root-equivalent. Nothing in this change alters that,
+  in any mode.
+- **Everyday in effect on a real host.**
+- **Protected mode** as anything but a refusal.
+- R1 to R4 (§3.4) are open, and they limit Strict too.
+- An independent adversarial review (§12).
+- A run against real Pi or a model, and `npm run test:acceptance`.
+
+## 12. Review
+
+**No independent review was obtained.** The operator asked that no sub-agents be used, so the adversarial pass below was made by the
+author of the code, which is not independence. The draft pull request is where an independent reviewer should start, and §11's list
+is written to be attacked.
+
+The author's pass over the authority-changing code, and what came of it:
+
+| # | Finding | Disposition |
+| :-- | :-- | :-- |
+| A1 | A request with `nonce: null` was treated as having no nonce instead of being refused | **fixed** (found by the test written for it) |
+| A2 | A grant's expiry used the wall clock: setting it back lengthened the grant | **fixed**: the end is also measured on a monotonic clock; tested |
+| A3 | A code armed for one session would have issued a grant for whatever session was connected at redemption | **fixed**: the armed code keeps the subject the terminal described; tested |
+| A4 | An unpaired caller of `status` was told that a control-carrying code was waiting | **fixed**: said only to a paired page |
+| A5 | The budget is spent by a send the gate then refuses (a run opened meanwhile) | accepted: it errs toward less authority |
+| A6 | A covered STOP whose grant ends during the microtask in which it waits for a superseded steer falls to the terminal and may queue behind a prompt's question | accepted: that is `main`'s behaviour, reached only in that window |
+| A7 | A grant's `ended` record cannot be written if the store closes first | accepted and documented: a reader treats a grant with no end record as ended at its `expiresAt` at the latest |
+| A8 | The same nonce used for a prompt and for a steer is two requests | accepted: a nonce carries no authority |
+| A9 | The page's words (`Send`, `Stop`) can be stale by one read after a revoke | accepted and tested: the broker decides; the request then waits for the terminal and the card says so |
+| A10 | A short code is easier to approve without reading | accepted as the stated cost of an opt-in (§6) |
+
+## 13. Follow-up: the execution boundary (Protected, and so Everyday)
+
+What prevents full Everyday is exactly one thing: **a launcher that runs the live Pi inside an OS-enforced boundary, and a provider that
+observes it from inside.** In order:
+
+1. **DEVELOP-ISOLATE-001: a live-session sandbox profile**, on the operator's workstation, where Bubblewrap, the user manager and Pi
+   exist. Reuse `detectBubblewrapV0`, the trusted-file rules and the `ProcessScopeV0.wrap` seam (the keeper already starts inside a
+   wrapper). Decide, with the real runtime: Pi's installation and credential paths, read-only (a writable credential or extension
+   directory is an escape at the next unsandboxed launch); the network (an isolated namespace with the recording proxy as the only
+   route, as EVAL-ISO-002 does for a local model, or a shared namespace with its loopback and abstract-socket exposure stated);
+   `--new-session` so the agent has no terminal (R1); no `/run`, so no Docker, libvirt, D-Bus or user-manager socket (R3).
+2. **Probes run inside the profile before the grant is armed**, in the manner of `adapters/sandbox/preflight.ts`, one per requirement of
+   §5.2, each shown to fail when its restriction is removed. The provider reports `enforced` only from those results and from the
+   live process's namespaces, never from its arguments.
+3. **R4**: run the project inspector's Git inside the same boundary, or prove its hardening against an adversarial repository.
+4. **Extensions and MCP servers**: inside the boundary or not loaded; tested with a hostile extension.
+5. Only then: a pilot of Everyday by the operator, on a real Pi, with their approval for the model's cost.
+6. **Protected** adds a declared network route, a mediated tool set and a read-only view outside a chosen worktree, on the same
+   mechanism. It should not be attempted before 1 to 4 hold.
+
+None of these needs root. All of them need the operator's host, which this change did not have.

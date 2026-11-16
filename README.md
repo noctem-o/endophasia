@@ -199,6 +199,13 @@ endo project add --name "My project" --path /path/to/project      # once per pro
 endo develop --project endo.project.<id>
 ```
 
+**Modes** ([DEVELOP-UX-002](research/develop-ux/DEVELOP-UX-002.md)). `endo develop` *asks for* Everyday: one terminal authorisation, then
+prompts, steers, queues and stops from the page without a phrase for each, for 30 minutes, in one workspace. Everyday takes effect
+only where an execution boundary around the agent is observed as enforced. **No build enforces one yet, so today Strict runs** (every
+request approved in the terminal) and the terminal and the page say why. `--mode strict` asks for that outright; `--mode protected`
+starts nothing where it cannot be enforced. To type less in Strict, `--confirm short` lets a request be approved by a four-character
+code the terminal shows for it.
+
 1. Open the private address printed in the terminal (the page opens on **Develop**) and pair it with the one-time
    code shown in that terminal. Type `pair` there for a new code.
 2. Ask for a **Prompt** from the page when the session is idle. During a run, **Steer**, **Queue** and **Request

@@ -82,6 +82,11 @@ export interface EndoSessionControlOptionsV0 {
 	mode: EndoWorkbenchModeV0;
 	protection?: EndoExecutionProtectionV0;
 	now: () => number;
+	/**
+	 * A clock that only moves forward (default `performance.now`): a grant's END is measured on it, so setting the wall clock back
+	 * neither lengthens a grant nor revives one. `now` is the wall clock, for the times a record and a page show.
+	 */
+	monotonic?: () => number;
 	lifetimeMs?: number;
 	maxSends?: number;
 	operations?: readonly EndoSessionControlOperationV0[];
@@ -114,6 +119,8 @@ export interface EndoSessionControlViewV0 {
 }
 
 interface Held extends EndoSessionGrantV0 {
+	/** The grant's end on the monotonic clock. `expiresAtMs` is the same moment on the wall clock, as it stood at issue. */
+	deadline: number;
 	holder: Buffer;
 	sends: number;
 }
@@ -129,7 +136,11 @@ export class EndoSessionControlV0 {
 	readonly #lifetimeMs: number;
 	readonly #maxSends: number;
 	readonly #operations: readonly EndoSessionControlOperationV0[];
-	#armed: { expiresAtMs: number } | null = null;
+	/** The control an unredeemed code carries, with what was connected when the terminal described it. */
+	#armed: { expiresAtMs: number; subject: EndoSessionControlSubjectV0 } | null = null;
+	/** The latest wall time seen: a clock that is set back does not un-expire an armed code. */
+	#latest = 0;
+	readonly #monotonic: () => number;
 	#grant: Held | null = null;
 	#ended: EndoSessionControlEndReasonV0 | null = null;
 
@@ -137,6 +148,7 @@ export class EndoSessionControlV0 {
 		if (!(ENDO_WORKBENCH_MODES_V0 as readonly unknown[]).includes(options.mode))
 			throw new TypeError("unknown workbench mode");
 		this.#o = options;
+		this.#monotonic = options.monotonic ?? (() => performance.now());
 		const lifetime = options.lifetimeMs ?? ENDO_SESSION_CONTROL_DEFAULT_LIFETIME_MS_V0;
 		if (!Number.isSafeInteger(lifetime) || lifetime < 1)
 			throw new TypeError("a session grant's lifetime is a positive integer");
@@ -152,6 +164,11 @@ export class EndoSessionControlV0 {
 		)
 			throw new TypeError("a session grant covers only prompt, steer, queue and stop");
 		this.#operations = Object.freeze(ENDO_SESSION_CONTROL_OPERATIONS_V0.filter((op) => operations.includes(op)));
+	}
+
+	#now(): number {
+		this.#latest = Math.max(this.#latest, this.#o.now());
+		return this.#latest;
 	}
 
 	get requested(): EndoWorkbenchModeV0 {
@@ -198,12 +215,13 @@ export class EndoSessionControlV0 {
 		this.#armed = null;
 		const available = this.availability();
 		if (!available.available) return { ok: false, reason: available.reason as string };
-		this.#armed = { expiresAtMs };
+		const subject = { ...this.#o.subject() };
+		this.#armed = { expiresAtMs, subject };
 		return {
 			ok: true,
 			scope: {
 				operations: this.#operations,
-				workspaceRoot: this.#o.subject().workspaceRoot,
+				workspaceRoot: subject.workspaceRoot,
 				lifetimeMs: this.#lifetimeMs,
 				maxSends: this.#maxSends,
 			},
@@ -223,11 +241,20 @@ export class EndoSessionControlV0 {
 		this.#end("re-paired");
 		const armed = this.#armed;
 		this.#armed = null; // the code is single use: so is what it carried
-		if (armed === null || this.#o.now() >= armed.expiresAtMs) return null;
+		if (armed === null || this.#now() >= armed.expiresAtMs) return null;
 		const available = this.availability();
 		if (!available.available) return null;
 		const subject = this.#o.subject();
-		const issuedAtMs = this.#o.now();
+		// What the terminal described when it armed the code is what is granted, or nothing: a session, attachment or workspace that
+		// changed between the terminal act and the redemption is not the one the operator was told about.
+		if (
+			subject.launchId !== armed.subject.launchId ||
+			subject.session !== armed.subject.session ||
+			subject.attachment !== armed.subject.attachment ||
+			subject.workspaceRoot !== armed.subject.workspaceRoot
+		)
+			return null;
+		const issuedAtMs = this.#now();
 		const grant: Held = {
 			grantId: `endo.evidence.workbench-session-grant-${randomBytes(16).toString("hex")}`,
 			mode: this.#o.mode as Exclude<EndoWorkbenchModeV0, "strict">,
@@ -240,6 +267,7 @@ export class EndoSessionControlV0 {
 			expiresAtMs: issuedAtMs + this.#lifetimeMs,
 			maxSends: this.#maxSends,
 			protection: { level: available.protection.level, mechanism: available.protection.mechanism as string },
+			deadline: this.#monotonic() + this.#lifetimeMs,
 			holder: Buffer.from(token),
 			sends: 0,
 		};
@@ -260,7 +288,8 @@ export class EndoSessionControlV0 {
 		const grant = this.#grant;
 		if (grant === null) return null;
 		if (this.#o.closed()) return this.#end("closing");
-		if (this.#o.now() >= grant.expiresAtMs) return this.#end("expired");
+		// Either clock ends it: the monotonic one cannot be set back, and the wall one is what the operator was told.
+		if (this.#monotonic() >= grant.deadline || this.#now() >= grant.expiresAtMs) return this.#end("expired");
 		const subject = this.#o.subject();
 		if (
 			subject.launchId !== grant.launchId ||
@@ -359,7 +388,7 @@ export class EndoSessionControlV0 {
 			control: {
 				state: grant === null ? "none" : "active",
 				holder,
-				armed: this.#armed !== null && this.#o.now() < this.#armed.expiresAtMs,
+				armed: this.#armed !== null && this.#now() < this.#armed.expiresAtMs,
 				grantId: holder ? grant.grantId : null,
 				operations: holder ? grant.operations : [],
 				expiresAtMs: grant === null ? null : grant.expiresAtMs,
@@ -372,6 +401,6 @@ export class EndoSessionControlV0 {
 }
 
 function describe(grant: Held): EndoSessionGrantV0 {
-	const { holder: _holder, sends: _sends, ...described } = grant;
+	const { holder: _holder, sends: _sends, deadline: _deadline, ...described } = grant;
 	return described;
 }

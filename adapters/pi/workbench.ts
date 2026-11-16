@@ -378,6 +378,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			...(control?.maxSends === undefined ? {} : { maxSends: control.maxSends }),
 			...(control?.operations === undefined ? {} : { operations: control.operations }),
 			now: this.#now,
+			// A test's clock is both clocks; otherwise a grant's end is measured on one that cannot be set back.
+			...(options.now === undefined ? {} : { monotonic: options.now }),
 			closed: () => this.#disposed || this.#ended || this.#closing,
 			subject: () => {
 				const id = options.session.live ? options.session.piSessionId : null;
@@ -580,7 +582,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			paired: this.#pairing.paired(),
 			mode: control.mode,
 			protection: control.protection,
-			sessionControl: control.control,
+			// That a control-carrying code is waiting on the terminal is said only to a paired page: it is of no use to anyone else.
+			sessionControl: paired ? control.control : { ...control.control, armed: false },
 			command:
 				this.#command === null
 					? null

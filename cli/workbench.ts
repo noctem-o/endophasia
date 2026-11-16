@@ -8,6 +8,7 @@
  * or a redirected stream cannot approve a prompt. The same rule as the terminal-governed A/A operator, written here for production
  * code (production `cli/` never imports `research/`).
  */
+import { randomInt } from "node:crypto";
 import { fstatSync, readFileSync, realpathSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
@@ -21,6 +22,8 @@ import {
 	DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0,
 	DevelopAttemptDispatchV0,
 } from "../runtime/contracts/develop-attempt-dispatch.ts";
+import type { EndoExecutionProtectionV0 } from "../runtime/contracts/execution-protection.ts";
+import type { EndoWorkbenchModeV0 } from "../runtime/contracts/session-control.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
@@ -72,7 +75,33 @@ const EFFECT_WORDS: Readonly<Record<"prompt" | "attempt" | "steer" | "queue" | "
 	stop: "Approving asks Pi to abort the run that is open. Pi answers only once it is idle, so this is a request, not an immediate stop. The page cannot approve this; only you can.",
 };
 
+const SESSION_CONTROL_END_WORDS: Readonly<Record<string, string>> = {
+	expired: "its time ran out",
+	"budget-spent": "its count of sends was used up",
+	"revoked-on-terminal": "revoked here",
+	"revoked-by-page": "given up by the page",
+	"re-paired": "a page was paired again, so the page that held it is no longer the paired one",
+	"session-changed": "the connected session is not the one it was granted for",
+	"workspace-changed": "the workspace is not the one it was granted for",
+	"protection-lost": "the agent's execution boundary is no longer observed as enforced",
+	closing: "the session is closing",
+};
+
 const hhmmss = (ms: number): string => new Date(ms).toLocaleTimeString([], { hour12: false });
+
+/**
+ * The short confirmation's alphabet (`--confirm short`, DEVELOP-UX-002 §6): lower case, no character that reads as another. It has no
+ * `i` and no `o`, so a code can never spell this terminal's own commands (`pair`, `control`, `revoke`, `attempt`).
+ */
+const SHORT_CODE_ALPHABET = "abcdefghjkmnpqrstvwxyz23456789";
+const SHORT_CODE_LENGTH = 4;
+const shortCode = (): string =>
+	Array.from({ length: SHORT_CODE_LENGTH }, () => SHORT_CODE_ALPHABET[randomInt(SHORT_CODE_ALPHABET.length)]).join("");
+
+const minutes = (ms: number): string => {
+	const m = Math.round(ms / 60_000);
+	return `${m} minute${m === 1 ? "" : "s"}`;
+};
 
 /**
  * Start the workbench for an attached session. Order: the terminal is verified first, then the frontend and the dedicated cockpit key
@@ -85,6 +114,19 @@ export async function startWorkbenchV0(
 	options: {
 		cwd: string /** A registered project (`endo project add`) the operator named for this launch. */;
 		projectId?: string;
+		/**
+		 * The mode the operator asked for on this command line (DEVELOP-UX-002 §4.1). Absent: Strict, as before. Everyday and Protected
+		 * take effect only while `protection` observes an enforced boundary around the agent; otherwise Strict is what runs, and the
+		 * terminal says why.
+		 */
+		mode?: EndoWorkbenchModeV0;
+		/** What observes the agent's execution boundary on this host. Absent: nothing is enforced. */
+		protection?: EndoExecutionProtectionV0;
+		/**
+		 * `short`: a question may also be answered with the four-character code shown for it (DEVELOP-UX-002 §6). Authority stays on this
+		 * terminal; the code is never sent to a page. Absent or `phrase`: only the phrase, as before. An attempt always needs its phrase.
+		 */
+		confirm?: "phrase" | "short";
 	},
 ): Promise<WorkbenchHandleV0> {
 	requireWorkbenchTerminalV0();
@@ -112,9 +154,12 @@ export async function startWorkbenchV0(
 	const ask = async (
 		request: Parameters<WorkbenchApproverV0>[0],
 		signal: AbortSignal,
-	): Promise<"allow" | "deny" | null> => {
+	): Promise<"allow" | "allow-code" | "deny" | null> => {
 		const what = request.operation;
 		if (signal.aborted) return null;
+		// A code for THIS question only: made here, written only to this terminal, compared only with what is typed here, and gone when the
+		// question is. A page never sees it, so it cannot choose a request whose code matches a line the operator is already typing.
+		const code = options.confirm === "short" && what !== "attempt" ? shortCode() : null;
 		// A message that is this terminal's own command reaches Pi as chat, not as the command (REVIEW-PILOT-001, run 1): said before the
 		// phrase, so the one word that differs (PROMPT, not ATTEMPT) is not the only sign.
 		const asCommand =
@@ -163,7 +208,7 @@ export async function startWorkbenchV0(
 							}`,
 						]),
 				EFFECT_WORDS[what],
-				`Type ${request.phrase} to ${request.message === null ? "send it" : what === "attempt" ? "send exactly this brief" : `send exactly this ${what}`}; anything else declines.`,
+				`Type ${code === null ? request.phrase : `${code} (or the whole phrase ${request.phrase})`} to ${request.message === null ? "send it" : what === "attempt" ? "send exactly this brief" : `send exactly this ${what}`}; anything else declines.`,
 				"",
 			].join("\n"),
 		);
@@ -171,7 +216,7 @@ export async function startWorkbenchV0(
 			const answer = await input.question("> ", {
 				signal: AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, request.expiresAtMs - Date.now()))]),
 			});
-			const decided = answer === request.phrase ? "allow" : "deny";
+			const decided = answer === request.phrase ? "allow" : code !== null && answer === code ? "allow-code" : "deny";
 			// An attempt the PAGE asked for: the operator typed here, so its outcome is told here too, as for `attempt <id>` typed here.
 			if (request.operation === "attempt" && request.requestedFrom === "page" && request.attempt !== undefined) {
 				const attemptId = request.attempt.attemptId;
@@ -191,7 +236,31 @@ export async function startWorkbenchV0(
 		}
 	};
 	const projectId = options.projectId;
+	const mode = options.mode ?? "strict";
+	// The canonical directory: the one a grant's scope names, and the one a boundary would have to confine the agent to.
+	let workspaceRoot = options.cwd;
+	try {
+		workspaceRoot = realpathSync(options.cwd);
+	} catch {
+		// an unreadable directory is no workspace: nothing can be enforced around it, and the protection will not name it
+	}
 	const broker = new WorkbenchBrokerV0({
+		control: {
+			mode,
+			workspaceRoot,
+			...(options.protection === undefined ? {} : { protection: options.protection }),
+		},
+		onSessionControl: (event) => {
+			if (event.type === "granted")
+				write(
+					`\nworkbench: SESSION CONTROL is now held by the page that typed that code, until ${hhmmss(event.grant.expiresAtMs)} or ${event.grant.maxSends} sends: ${event.grant.operations.join(", ")} are sent without asking here. Type \`revoke\` to end it now.\n`,
+				);
+			// A session that is closing says so itself; a notice inviting a new grant would be noise.
+			else if (event.reason !== "closing")
+				write(
+					`\nworkbench: session control ENDED (${SESSION_CONTROL_END_WORDS[event.reason]}) after ${event.sends} send${event.sends === 1 ? "" : "s"}. Every request is approved here again. Type \`control\` for a new grant.\n`,
+				);
+		},
 		session,
 		key: session.owner.digestKey(),
 		attachment: session.owner.attachment,
@@ -251,11 +320,28 @@ export async function startWorkbenchV0(
 	}
 	const cockpitAliases = cockpitAliasesV0(loadOrCreateEndoDigestKeyV0(launched.key.path));
 	aliasOf = (id) => cockpitAliases.id(id);
-	const showCode = (): void => {
-		const { code, expiresAtMs } = broker.issuePairingCode();
-		write(
-			`workbench: pairing code ${code}  (one use; expires ${hhmmss(expiresAtMs)}). Type it into the page to let it ask for prompts and interventions.\n`,
-		);
+	/**
+	 * A new pairing code. With `control`, it also carries session control, and WHAT IS BEING GRANTED is said here, before the operator
+	 * types the code anywhere: the operations, the workspace, the limits, and how to end it. Where control cannot be granted, the code is
+	 * a plain one and the reason is said instead.
+	 */
+	const showCode = (control = false): void => {
+		const issued = broker.issuePairingCode({ control });
+		if (issued.control !== null)
+			write(
+				[
+					`workbench: pairing code ${issued.code}  (one use; expires ${hhmmss(issued.expiresAtMs)}). THIS CODE ALSO GRANTS SESSION CONTROL.`,
+					`  The page that types it may send ${issued.control.operations.join(", ")} to this session WITHOUT asking here,`,
+					`  for ${minutes(issued.control.lifetimeMs)} or ${issued.control.maxSends} sends, whichever comes first, in ${issued.control.workspaceRoot}.`,
+					"  It cannot be extended, widened or renewed from a page; a reload or a new pairing ends it. Attempts are still approved here.",
+					"  Type `revoke` here to end it at once, or `pair` instead for a code that only lets a page read and ask.",
+					"",
+				].join("\n"),
+			);
+		else
+			write(
+				`workbench: pairing code ${issued.code}  (one use; expires ${hhmmss(issued.expiresAtMs)}). Type it into the page to let it ask for prompts and interventions.${issued.refused === null ? "" : ` It carries NO session control: ${issued.refused}`}\n`,
+			);
 	};
 	// The terminal is in raw mode, so Ctrl+C reaches readline, not the process: hand it to the same shutdown path a signal takes.
 	input.on("SIGINT", () => {
@@ -308,6 +394,14 @@ export async function startWorkbenchV0(
 	input.on("line", (line) => {
 		const words = line.trim().split(/\s+/);
 		if (line.trim() === "pair") showCode();
+		// A new terminal authorisation for session control: a new code, with what it grants said above it. Never a renewal of an old grant.
+		else if (line.trim() === "control") showCode(true);
+		else if (line.trim() === "revoke")
+			write(
+				broker.revokeSessionControl()
+					? "" // the broker's own notice says it ended, and why
+					: "workbench: no session control was in effect. Any code waiting to be typed now carries none.\n",
+			);
 		else if (words[0] === "attempt" && words.length === 2) requestAttempt(words[1] as string);
 		else if (words[0] === "attempt")
 			write(
@@ -315,14 +409,36 @@ export async function startWorkbenchV0(
 			);
 		else if (line.trim() !== "")
 			write(
-				"workbench: type `pair` for a new pairing code, or `attempt <id>` to ask to send a prepared attempt's brief; approvals are typed when a request is waiting\n",
+				"workbench: type `pair` for a new pairing code, `control` for one that also grants session control, `revoke` to end session control, or `attempt <id>` to ask to send a prepared attempt's brief; approvals are typed when a request is waiting\n",
 			);
 	});
 	write(
 		"workbench: the address below is private to this launch; anyone who can read it can read what this store records. It lets a page READ and ask; only you, here, can approve a prompt or an intervention.\n",
 	);
 	write(`workbench: ${launched.server.baseUrl}/\n`);
-	showCode();
+	// The mode, said before the first code: what was asked for, what is in effect, and exactly what prevents the difference.
+	const control = broker.sessionControl();
+	if (mode !== "strict") {
+		if (control.mode.effective === mode)
+			write(
+				`workbench: mode ${mode.toUpperCase()}. The agent's execution boundary is observed as enforced (${control.protection.mechanism}, level ${control.protection.level}).\n`,
+			);
+		else
+			write(
+				[
+					`workbench: mode ${mode.toUpperCase()} was requested and is NOT in effect. STRICT is: every prompt, steer, queue and stop is approved here${options.confirm === "short" ? " (by its code or its phrase)" : ", by its phrase"}.`,
+					...(control.protection.limitations.length === 0
+						? [`  why: ${control.mode.reason ?? "no execution boundary is enforced for the agent"}`]
+						: control.protection.limitations.map((line, index) => `  ${index === 0 ? "why:" : "also:"} ${line}`)),
+					"",
+				].join("\n"),
+			);
+	}
+	if (options.confirm === "short")
+		write(
+			"workbench: --confirm short: a request may be approved by the four-character code shown for it, here. It is recorded as a code, not as the phrase.\n",
+		);
+	showCode(control.mode.effective !== "strict");
 	// Say what the page will be told about the project, in plain words, before the operator looks at it.
 	const workspace = broker.workspaceView();
 	if (workspace !== null)

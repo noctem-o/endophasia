@@ -28,10 +28,13 @@ import { type EndoContainmentV0, liveScopeV0 } from "../adapters/sandbox/contain
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../protocol/develop-tasks.ts";
 import type { EndoHarnessNotificationV0 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoObserveProtectionV0, endoProtectionAtLeastV0 } from "../runtime/contracts/execution-protection.ts";
+import { ENDO_WORKBENCH_MODES_V0, type EndoWorkbenchModeV0 } from "../runtime/contracts/session-control.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts";
+import { hostExecutionProtectionV0 } from "./execution-protection.ts";
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 import { attachSummaryV0, ENDO_PROMPT_COST_NOTICE_V0 } from "./loop-hints.ts";
 import { describeProcessCleanupV0, liveContainmentV0 } from "./process-cleanup.ts";
@@ -54,6 +57,8 @@ const VALUE_FLAGS = new Set([
 	"--prompt",
 	"--wait",
 	"--project",
+	"--mode",
+	"--confirm",
 ]);
 const SWITCHES = new Set(["--force", "--authorize-live-study", "--control", "--workbench"]);
 
@@ -233,8 +238,8 @@ async function attach(argv: readonly string[], everyday: boolean): Promise<void>
 	const parsed = parse(
 		argv,
 		everyday
-			? "usage: endo develop [<root> | --root dir] [--pi path] [--cwd dir] [--project id] [--provider p --model m]"
-			: "usage: endo harness attach [<root> | --root dir] [--pi path] [--prompt text] [--wait ms] [--control [--workbench [--project id]]]",
+			? "usage: endo develop [<root> | --root dir] [--pi path] [--cwd dir] [--project id] [--provider p --model m] [--mode everyday|protected|strict] [--confirm phrase|short]"
+			: "usage: endo harness attach [<root> | --root dir] [--pi path] [--prompt text] [--wait ms] [--control [--workbench [--project id] [--mode m] [--confirm c]]]",
 		true,
 	);
 	if (everyday) {
@@ -259,7 +264,29 @@ async function attach(argv: readonly string[], everyday: boolean): Promise<void>
 		throw new TypeError("--project belongs to the workbench: use it with --control --workbench");
 	if (project !== undefined && !ENDO_PROJECT_ID_PATTERN_V0.test(project))
 		throw new TypeError("--project is a project id (endo.project.…) from `endo project add` or `endo project list`");
+	// The mode is chosen HERE, on the attached process's own command line, and nowhere else (DEVELOP-UX-002 §4.1). `endo develop` asks for
+	// Everyday; the long spelling stays Strict unless told. Asking is not getting: Everyday is in effect only while an execution boundary
+	// around the agent is observed as enforced, and otherwise Strict runs and the terminal says why.
+	const modeFlag = parsed.flags.get("--mode");
+	const confirmFlag = parsed.flags.get("--confirm");
+	if ((modeFlag !== undefined || confirmFlag !== undefined) && !parsed.switches.has("--workbench"))
+		throw new TypeError("--mode and --confirm belong to the workbench: use them with --control --workbench");
+	if (modeFlag !== undefined && !(ENDO_WORKBENCH_MODES_V0 as readonly string[]).includes(modeFlag))
+		throw new TypeError("--mode is everyday, protected or strict");
+	if (confirmFlag !== undefined && confirmFlag !== "phrase" && confirmFlag !== "short")
+		throw new TypeError("--confirm is phrase or short");
+	const mode = (modeFlag ?? (everyday ? "everyday" : "strict")) as EndoWorkbenchModeV0;
+	const protection = hostExecutionProtectionV0();
 	if (parsed.switches.has("--workbench")) requireWorkbenchTerminalV0();
+	// Protected is a promise about the AGENT. Where it cannot be kept, nothing is started: running Strict instead would hand an
+	// unrestricted agent to an operator who asked for a restricted one. (Everyday falls back to Strict: that only keeps authority here.)
+	if (mode === "protected") {
+		const seen = endoObserveProtectionV0(protection);
+		if (seen.state !== "enforced" || !endoProtectionAtLeastV0(seen.level, "restricted"))
+			throw new TypeError(
+				`Protected mode cannot be enforced on this host, so nothing was started. ${seen.limitations.join(" ")} Use --mode strict (every request approved in this terminal; the agent is not restricted) if that is acceptable.`,
+			);
+	}
 	// LIVE-PROCESS-CONTAINMENT-001: Pi, and whatever it starts, runs in a scope of its own where the host can give one.
 	const selected = options(parsed);
 	const live = await liveContainmentV0();
@@ -281,7 +308,12 @@ async function attach(argv: readonly string[], everyday: boolean): Promise<void>
 		if (failed !== null) await reportCleanup({ processCleanup: () => failed });
 		throw error;
 	}
-	if (parsed.switches.has("--control")) return attachWithControl(parsed, identified.change, checked.state, session);
+	if (parsed.switches.has("--control"))
+		return attachWithControl(parsed, identified.change, checked.state, session, {
+			mode,
+			protection,
+			...(confirmFlag === undefined ? {} : { confirm: confirmFlag as "phrase" | "short" }),
+		});
 	let disposition: string | null = null;
 	let settled: boolean | null = null;
 	try {
@@ -314,6 +346,11 @@ async function attachWithControl(
 	change: unknown,
 	state: unknown,
 	session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>,
+	control: {
+		mode: EndoWorkbenchModeV0;
+		protection: ReturnType<typeof hostExecutionProtectionV0>;
+		confirm?: "phrase" | "short";
+	},
 ): Promise<void> {
 	const key = session.owner.digestKey();
 	const desk = new PiInterventionDeskV0(session, key, endoInterventionCaptureSourceV0(parsed.root, key));
@@ -327,6 +364,9 @@ async function attachWithControl(
 				// The directory Pi was actually started in: one source, the attachment's own.
 				cwd: resolve(session.owner.options.cwd ?? process.cwd()),
 				...(parsed.flags.has("--project") ? { projectId: parsed.flags.get("--project") as string } : {}),
+				mode: control.mode,
+				protection: control.protection,
+				...(control.confirm === undefined ? {} : { confirm: control.confirm }),
 			});
 		process.stderr.write(`serving control at ${server.path} (endo steer … ${parsed.root})\n`);
 		const prompt = parsed.flags.get("--prompt");

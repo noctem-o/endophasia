@@ -107,6 +107,8 @@ describe("Everyday over a real attachment and store (a stand-in boundary: author
 			body: unknown = null,
 			grant: string | null = null,
 		): Promise<any> => broker.handle({ method, route: route.split("/"), query: "", grant, body });
+		const runsEnded = () =>
+			broker.transcript.view(0).items.filter((item) => item.kind === "run" && item.state === "ended").length;
 		const issued = broker.issuePairingCode({ control: true });
 		expect(issued.control).toMatchObject({ workspaceRoot: cwd, operations: ["prompt", "steer", "queue", "stop"] });
 		const grant = (await call("POST", "pair", { code: issued.code })).body.grant as string;
@@ -126,7 +128,9 @@ describe("Everyday over a real attachment and store (a stand-in boundary: author
 				expect(view.state, `prompt ${i}`).toBe("dispatching");
 				await sleep(10);
 			}
-			expect(await session.waitForSettled(15_000)).toBe(true);
+			// The run this prompt opened has ended, by the broker's own live transcript (not by a wait that could miss a fast run).
+			for (let n = 0; n < 1500 && runsEnded() < i + 1; n++) await sleep(10);
+			expect(runsEnded(), `run ${i}`).toBe(i + 1);
 		}
 		// An open run, then a steer and a stop under the same grant.
 		let last = await call("POST", "prompt/propose", { message: "Count to forty" }, grant);

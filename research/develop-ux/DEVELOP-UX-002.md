@@ -416,3 +416,18 @@ observes it from inside.** In order:
    mechanism. It should not be attempted before 1 to 4 hold.
 
 None of these needs root. All of them need the operator's host, which this change did not have.
+
+## 14. Verification run for this change
+
+On the build host of the header (a container: uid 0, no Bubblewrap, no user manager, no Pi; Chromium and `script` present).
+
+| Check | Result |
+| :-- | :-- |
+| `npm run typecheck` | passes |
+| `npm run lint` | no errors; one warning that is on `main` (`tests/endo-cockpit-eighteenth-review.test.ts`) |
+| `npm run build` | passes |
+| New tests | 61 in four files, all passing: `develop-ux-002-session-control` (47, the broker and the contracts), `-browser` (6, real Chromium over the real HTTP guards), `-cli` (7, a real pseudo-terminal and the fake Pi), `-live` (1, a real fake-Pi attachment, desk and store). None is skipped on this host |
+| Existing workbench, Studio and DEVELOP suites | pass. Changed only in fixtures (hand-built statuses and views gained the new members), the count of the page's routes, and one added assertion that the read-only server refuses the new route |
+| Full suite (`npm test`) | 13 files and 78 tests fail, **the same 13 files and 78 tests that fail on `main` at `25308f5` in a clean worktree on this host** (compared by file and count). They need what this host lacks: a non-root uid, a user manager, a complete Git history. One run of the full suite also failed the new `-live` test, on a wait that could miss a fast run; the wait was replaced by one on the broker's transcript, and the test then passed alone three times and with every workbench, Studio and DEVELOP suite in parallel |
+| Real isolation | **not exercised: none is available on this host, and none exists in this build.** No test is counted as evidence of containment |
+| Real Pi, a model, `npm run test:acceptance` | not run |

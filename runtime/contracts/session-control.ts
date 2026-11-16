@@ -191,12 +191,17 @@ export class EndoSessionControlV0 {
 		if (this.#o.closed()) return no("The session is closing or has ended.");
 		const subject = this.#o.subject();
 		if (subject.session === null) return no("No session is connected.");
-		if (!endoProtectionHoldsV0(protection, need, { session: subject.session, workspaceRoot: subject.workspaceRoot }))
+		if (
+			!endoProtectionHoldsV0(protection, need, { session: subject.session, workspaceRoot: subject.workspaceRoot })
+		) {
+			// THIS observation found the boundary gone (the standing check above made its own a moment earlier): it ends the grant too.
+			this.#end("protection-lost");
 			return no(
 				protection.state === "enforced"
 					? "The execution boundary that is enforced is weaker than this mode requires, or is for another session or workspace."
 					: (protection.limitations[0] ?? "No execution boundary is enforced for the agent."),
 			);
+		}
 		return { available: true, reason: null, protection };
 	}
 

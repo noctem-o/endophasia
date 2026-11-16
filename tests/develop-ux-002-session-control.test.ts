@@ -1073,6 +1073,34 @@ describe("10. No boundary, a lost boundary, a privileged host: fails closed", ()
 		expect(w.session.promptCalls).toEqual([]);
 	});
 
+	it("a boundary that flickers between two observations of one check still ends the grant", () => {
+		const good = new Boundary().status;
+		let calls = 0;
+		let flickerAt = -1;
+		const endings: string[] = [];
+		const control = new EndoSessionControlV0({
+			mode: "everyday",
+			protection: { observe: () => (++calls === flickerAt ? { ...good, state: "not-enforced" } : good) },
+			now: () => 1000,
+			subject: () => ({
+				launchId: "a".repeat(16),
+				session: SESSION,
+				attachment: "pi.default",
+				workspaceRoot: WORKSPACE,
+			}),
+			closed: () => false,
+			onGranted: () => true,
+			onEnded: (_grant, reason) => endings.push(reason),
+		});
+		control.arm(2000);
+		control.paired("token-a");
+		// The standing check sees it enforced; the availability observation right after it does not.
+		flickerAt = calls + 2;
+		expect(control.availability().available).toBe(false);
+		expect(endings).toEqual(["protection-lost"]);
+		expect(control.authorize("token-a", "prompt")).toBeNull();
+	});
+
 	it("the boundary is observed again at every use, not remembered from the issue", async () => {
 		const w = setup();
 		const grant = await w.pair(true);

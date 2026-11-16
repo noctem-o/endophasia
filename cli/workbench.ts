@@ -216,6 +216,10 @@ export async function startWorkbenchV0(
 			const answer = await input.question("> ", {
 				signal: AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, request.expiresAtMs - Date.now()))]),
 			});
+			// `revoke` typed while a question is open is read by the question, not by the line handler below. It still means what it
+			// says: session control ends now, and this request is declined like any answer that is not its phrase.
+			if (answer.trim() === "revoke" && !broker.revokeSessionControl())
+				write("workbench: no session control was in effect. That request was declined.\n");
 			const decided = answer === request.phrase ? "allow" : code !== null && answer === code ? "allow-code" : "deny";
 			// An attempt the PAGE asked for: the operator typed here, so its outcome is told here too, as for `attempt <id>` typed here.
 			if (request.operation === "attempt" && request.requestedFrom === "page" && request.attempt !== undefined) {

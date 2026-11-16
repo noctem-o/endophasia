@@ -180,6 +180,9 @@ export class EndoSessionControlV0 {
 	 * `protection` is what was observed for this answer.
 	 */
 	availability(): { available: boolean; reason: string | null; protection: EndoExecutionProtectionStatusV0 } {
+		// Whatever asks, a grant whose conditions no longer hold ends HERE, with its own reason: a boundary seen as lost by this
+		// observation must not be usable again because it was back by the next one.
+		this.#standing();
 		const protection = endoObserveProtectionV0(this.#o.protection);
 		const no = (reason: string) => ({ available: false, reason, protection });
 		const need = REQUIRED[this.#o.mode];

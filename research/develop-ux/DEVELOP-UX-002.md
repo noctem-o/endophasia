@@ -395,6 +395,17 @@ The author's pass over the authority-changing code, and what came of it:
 | A9 | The page's words (`Send`, `Stop`) can be stale by one read after a revoke | accepted and tested: the broker decides; the request then waits for the terminal and the card says so |
 | A10 | A short code is easier to approve without reading | accepted as the stated cost of an opt-in (§6) |
 
+After the draft pull request was opened, an automated reviewer (Macroscope) raised three findings. Each was checked against the code
+and found correct; all three are fixed and tested:
+
+| # | Finding | Fix |
+| :-- | :-- | :-- |
+| B1 | A nonce sent with a duplicate STOP was not remembered, so replaying it after that STOP settled could stop a later run | the nonce is remembered against the STOP in flight |
+| B2 | `availability()` could observe the boundary as lost without ending the grant, which stayed usable if the boundary was back by the next use | every observation ends a grant whose conditions no longer hold |
+| B3 | `revoke` typed while an approval question was open was read by the question (declining it) and revoked nothing | the question's answer `revoke` also revokes |
+
+An automated review is a second reader, not the independent adversarial review asked for; that is still outstanding.
+
 ## 13. Follow-up: the execution boundary (Protected, and so Everyday)
 
 What prevents full Everyday is exactly one thing: **a launcher that runs the live Pi inside an OS-enforced boundary, and a provider that

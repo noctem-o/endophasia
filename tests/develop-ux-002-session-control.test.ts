@@ -632,6 +632,24 @@ describe("6. Replay and duplicates", () => {
 		expect((await w.status(grant)).sessionControl.sendsLeft).toBe(198);
 	});
 
+	it("a nonce sent with a duplicate STOP names the STOP in flight: replayed in a later run it stops nothing", async () => {
+		const w = setup();
+		const grant = await w.pair(true);
+		w.session.runActive = true;
+		const first = await w.intervene(grant, "stop");
+		const nonce = "second-click-0123456789";
+		const duplicate = await w.intervene(grant, "stop", undefined, { nonce });
+		expect(duplicate.body.proposalId).toBe(first.body.proposalId);
+		w.desk.release(first.body.proposalId);
+		await settle(5);
+		// The run ended; another is open. The old request, sent again, is still the old request.
+		w.session.live_({ type: "agent_settled", record: {} });
+		w.session.live_({ type: "agent_start", record: {} });
+		const replay = await w.intervene(grant, "stop", undefined, { nonce });
+		expect([replay.status, replay.body.proposalId]).toEqual([200, first.body.proposalId]);
+		expect(w.desk.applyCalls).toHaveLength(1);
+	});
+
 	it("a nonce is not a credential and not free text", async () => {
 		const w = setup();
 		const grant = await w.pair(true);
@@ -1040,6 +1058,19 @@ describe("10. No boundary, a lost boundary, a privileged host: fails closed", ()
 			w.boundary!.status = new Boundary().status;
 			expect((await w.status(grant)).sessionControl).toMatchObject({ state: "none", ended: "protection-lost" });
 		}
+	});
+
+	it("a boundary seen as lost by ANY observation ends the grant, even if it is back before the next use", async () => {
+		const w = setup();
+		const grant = await w.pair(true);
+		const good = w.boundary!.status;
+		w.boundary!.status = { ...good, state: "not-enforced" };
+		// The terminal asks for a new code (`control`): that observes the boundary, finds it gone, and the grant ends there.
+		expect(w.broker.issuePairingCode({ control: true }).control).toBeNull();
+		expect(w.ended()).toEqual(["protection-lost"]);
+		w.boundary!.status = good;
+		expect((await w.prompt(grant, "x")).body.state).toBe("awaiting-approval");
+		expect(w.session.promptCalls).toEqual([]);
 	});
 
 	it("the boundary is observed again at every use, not remembered from the issue", async () => {

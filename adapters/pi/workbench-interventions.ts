@@ -449,7 +449,11 @@ export class WorkbenchInterventionsV0 {
 		}
 		// A duplicate STOP is the one already in flight, not another: the operator's second click changes nothing.
 		const stop = operation === "stop" ? this.#stopInFlight() : null;
-		if (stop !== null) return reply(200, this.#view(stop));
+		if (stop !== null) {
+			// Its nonce now names that STOP too: replayed after the STOP has settled, it must not become a new one in a later run.
+			if (typeof nonce === "string") this.#remember(nonce, stop);
+			return reply(200, this.#view(stop));
+		}
 		// Everything that can be refused is refused BEFORE the desk records anything or keeps the text.
 		if (!this.offer(operation, grant).offered) return refuse(409, "not-offered");
 		let proposal: EndoInterventionProposalV0;
@@ -511,13 +515,15 @@ export class WorkbenchInterventionsV0 {
 			command.supersedes = victim;
 		}
 		this.#commands.set(proposal.proposalId, command);
-		if (typeof nonce === "string") {
-			this.#nonces.set(nonce, command);
-			if (this.#nonces.size > NONCES_KEPT) this.#nonces.delete(this.#nonces.keys().next().value as string);
-		}
+		if (typeof nonce === "string") this.#remember(nonce, command);
 		this.#trim();
 		command.done = this.#drive(command);
 		return reply(202, this.#view(command));
+	}
+
+	#remember(nonce: string, command: Command): void {
+		this.#nonces.set(nonce, command);
+		if (this.#nonces.size > NONCES_KEPT) this.#nonces.delete(this.#nonces.keys().next().value as string);
 	}
 
 	discard(proposalId: unknown): { status: number; body: unknown } {

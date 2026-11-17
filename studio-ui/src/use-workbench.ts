@@ -11,6 +11,8 @@ const FOLLOW_MS = 3000;
 /** Following while a message is being written: often enough that its text (revealed gradually, ui/use-reveal.ts) reads as a flow. */
 const FOLLOW_WRITING_MS = 1000;
 const WAITING_MS = 1500;
+/** A name for ONE act of the operator (a press of Send or Stop), so a request repeated for any reason is the same request. Not a secret. */
+const nonce = (): string => crypto.randomUUID();
 // Enough pages for anything the broker can hold (400 items and 2 MiB, pages of 200 items or 512 KiB, a message at most 128 KiB: at most
 // seven pages). A read that still finds more after them reads again at once, as long as it made progress.
 const MAX_PAGES = 8;
@@ -157,7 +159,7 @@ export function useWorkbench(active: boolean) {
 			if (reply.kind === "grant") void read();
 		},
 		propose: async (message: string) => {
-			const reply = await send({ kind: "propose", message });
+			const reply = await send({ kind: "propose", message, nonce: nonce() });
 			if (reply.kind === "command") void read();
 			return reply;
 		},
@@ -168,7 +170,7 @@ export function useWorkbench(active: boolean) {
 			return reply;
 		},
 		intervene: async (operation: InterventionOperation, message: string | null) => {
-			const reply = await send({ kind: "intervene", operation, message });
+			const reply = await send({ kind: "intervene", operation, message, nonce: nonce() });
 			if (reply.kind === "intervention") {
 				if (message !== null) setSentText((now) => ({ ...now, [reply.record.proposalId]: message }));
 				void read();
@@ -199,5 +201,10 @@ export function useWorkbench(active: boolean) {
 		},
 		setView: (view: "live" | "recorded") => dispatch({ type: "view", view }),
 		unpair: () => dispatch({ type: "unpair" }),
+		/** Give up this page's session control. The page stays paired: every request waits for the terminal again. */
+		relinquish: async () => {
+			await send({ kind: "relinquish" });
+			void read();
+		},
 	};
 }

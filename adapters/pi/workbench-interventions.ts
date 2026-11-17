@@ -48,7 +48,13 @@ import type {
 	EndoInterventionProposalV0,
 	EndoInterventionRefusalReasonV0,
 } from "../../protocol/intervention.ts";
-import { type EndoConsumptionSliceLimitsV0, localOperatorAuthorityV0 } from "../../runtime/contracts/intervention.ts";
+import { endoWorkbenchTerminalCommandInV0 } from "../../protocol/workbench.ts";
+import {
+	type EndoConsumptionSliceLimitsV0,
+	localOperatorAuthorityV0,
+	sessionGrantAuthorityV0,
+} from "../../runtime/contracts/intervention.ts";
+import type { EndoSessionControlOperationV0 } from "../../runtime/contracts/session-control.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
 import type { PiConsumptionStepV0, PiInterventionApplyResultV0 } from "./intervention.ts";
 import type { WorkbenchApproverV0, WorkbenchSessionV0 } from "./workbench.ts";
@@ -134,8 +140,10 @@ export interface WorkbenchInterventionViewV0 {
 	proposalId: string;
 	operation: EndoInterventionOperationV0;
 	state: WorkbenchInterventionStateV0;
-	/** Whether the operator typed the approval on the terminal. */
+	/** Whether it was authorised to be sent. */
 	approved: boolean;
+	/** HOW, when it was: `terminal` (the operator typed for this request) or `session-grant` (a session-control grant covered it; nobody typed). */
+	authorizedBy: "terminal" | "session-grant" | null;
 	reason: WorkbenchInterventionReasonV0 | null;
 	/** The runtime's disposition, when it accepted (STOP has none). Acceptance is not consumption and not an effect. */
 	disposition: string | null;
@@ -183,6 +191,16 @@ export interface InterventionHostV0 {
 	approvalWindowMs: number;
 	/** The grant is current (not revoked, expired or replaced) and the broker is serving. */
 	granted(grant: string | null): boolean;
+	/**
+	 * Bounded session authority (runtime/contracts/session-control.ts, DEVELOP-UX-002): whether the page holding `grant` has a standing
+	 * session-control grant that covers the operation (`covers`, which uses nothing), and the authorisation of ONE send under it
+	 * (`authorize`, which counts against its budget and returns the grant's id for the record). Without it every request is approved on
+	 * the terminal.
+	 */
+	sessionControl?: {
+		covers(grant: string | null, operation: EndoSessionControlOperationV0): boolean;
+		authorize(grant: string | null, operation: EndoSessionControlOperationV0): { grantId: string } | null;
+	};
 	/** The broker has ended, been disposed or is closing: nothing more is taken or sent. */
 	closed(): boolean;
 	/** The text of the safe-prompt rule: the operator reads it on a terminal. */
@@ -202,12 +220,17 @@ export const SUPERSEDED = "superseded-by-stop";
 const OPERATIONS: readonly EndoInterventionOperationV0[] = ["steer", "queue", "stop"];
 const KEEP = 40;
 const OPEN: readonly WorkbenchInterventionStateV0[] = ["awaiting-approval", "dispatching", "sent"];
+/** A replay nonce: URL-safe, chosen by the page for one act of the operator. It carries no authority. */
+const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
+const NONCES_KEPT = 256;
 const reply = (status: number, body: unknown) => ({ status, body });
 const refuse = (status: number, error: string) => reply(status, { error });
 
 export class WorkbenchInterventionsV0 {
 	readonly #h: InterventionHostV0;
 	readonly #commands = new Map<string, Command>();
+	/** Requests by the page's replay nonce: a repeated one returns the request already made and does nothing else. */
+	readonly #nonces = new Map<string, { command: Command; grant: string }>();
 	#counter = 0;
 	#closing = false;
 	#checksRunning = 0;
@@ -322,8 +345,16 @@ export class WorkbenchInterventionsV0 {
 		);
 	}
 
-	/** Whether an operation can be requested now, and if not, why (fixed sentences; the runtime's own reason is bounded). */
-	offer(operation: EndoInterventionOperationV0): { offered: boolean; reason: string | null } {
+	/**
+	 * Whether an operation can be requested now, and if not, why (fixed sentences; the runtime's own reason is bounded). `holder` is the
+	 * asking page's pairing token: a request its session-control grant covers needs no terminal question, so a question that is waiting
+	 * there for something else does not hold it back. That matters most for STOP, which must never queue behind other work.
+	 */
+	offer(
+		operation: EndoInterventionOperationV0,
+		holder: string | null = null,
+	): { offered: boolean; reason: string | null } {
+		const covered = holder !== null && this.#h.sessionControl?.covers(holder, operation) === true;
 		const no = (reason: string) => ({ offered: false, reason });
 		const session = this.#h.session;
 		if (this.#closing || this.#h.closed()) return no("The session is closing or has ended.");
@@ -347,6 +378,7 @@ export class WorkbenchInterventionsV0 {
 					? "A stop is already pending: Pi answers it once the run is idle."
 					: "A stop is pending, so steer and queue are withheld until it is answered.",
 			);
+		if (covered) return { offered: true, reason: null };
 		if (this.#h.promptAwaitingApproval())
 			return no(
 				"A prompt is waiting for approval in the terminal. Press Enter there to decline it, or withdraw it on this page.",
@@ -385,13 +417,24 @@ export class WorkbenchInterventionsV0 {
 	// --- requests -------------------------------------------------------------------------------------------------------------
 
 	propose(grant: string, body: Record<string, unknown> | null): { status: number; body: unknown } {
-		const keys = body === null ? "" : Object.keys(body).sort().join();
+		const members = body === null ? [] : Object.keys(body).sort();
+		// A replay nonce names one act of the page. Seen before in this launch: the request already made is the answer and nothing else
+		// happens (under a session grant a repeated request would otherwise be a second send). It carries no authority.
+		const nonce = body !== null && members.includes("nonce") ? body.nonce : null;
+		const keys = members.filter((name) => name !== "nonce").join();
 		if (
 			body === null ||
 			(keys !== "operation" && keys !== "message,operation") ||
-			!OPERATIONS.includes(body.operation as EndoInterventionOperationV0)
+			!OPERATIONS.includes(body.operation as EndoInterventionOperationV0) ||
+			(members.includes("nonce") && (typeof nonce !== "string" || !NONCE.test(nonce)))
 		)
 			return refuse(400, "bad-request");
+		if (typeof nonce === "string") {
+			const made = this.#nonces.get(nonce);
+			// Compared with the pairing that SENT the nonce, which for a coalesced STOP need not be the one that made the STOP.
+			if (made !== undefined)
+				return made.grant === grant ? reply(200, this.#view(made.command)) : refuse(409, "not-offered");
+		}
 		const operation = body.operation as EndoInterventionOperationV0;
 		let message: string | null = null;
 		if (operation === "stop") {
@@ -408,9 +451,16 @@ export class WorkbenchInterventionsV0 {
 		}
 		// A duplicate STOP is the one already in flight, not another: the operator's second click changes nothing.
 		const stop = operation === "stop" ? this.#stopInFlight() : null;
-		if (stop !== null) return reply(200, this.#view(stop));
+		if (stop !== null) {
+			// Its nonce now names that STOP too: replayed after the STOP has settled, it must not become a new one in a later run.
+			if (typeof nonce === "string") this.#remember(nonce, stop, grant);
+			return reply(200, this.#view(stop));
+		}
 		// Everything that can be refused is refused BEFORE the desk records anything or keeps the text.
-		if (!this.offer(operation).offered) return refuse(409, "not-offered");
+		// A steer or queue whose text is one of the terminal's own commands is never covered by a grant (see `#drive`), so it is offered on
+		// the terminal's terms: it waits its turn behind a question already open there.
+		const asCommand = message !== null && endoWorkbenchTerminalCommandInV0(message) !== null;
+		if (!this.offer(operation, asCommand ? null : grant).offered) return refuse(409, "not-offered");
 		let proposal: EndoInterventionProposalV0;
 		try {
 			this.#counter += 1;
@@ -438,6 +488,7 @@ export class WorkbenchInterventionsV0 {
 				operation,
 				state: "awaiting-approval",
 				approved: false,
+				authorizedBy: null,
 				reason: null,
 				disposition: null,
 				bytes: proposal.message === null ? null : proposal.message.bytes,
@@ -469,9 +520,15 @@ export class WorkbenchInterventionsV0 {
 			command.supersedes = victim;
 		}
 		this.#commands.set(proposal.proposalId, command);
+		if (typeof nonce === "string") this.#remember(nonce, command, grant);
 		this.#trim();
 		command.done = this.#drive(command);
-		return reply(202, command.view);
+		return reply(202, this.#view(command));
+	}
+
+	#remember(nonce: string, command: Command, grant: string): void {
+		this.#nonces.set(nonce, { command, grant });
+		if (this.#nonces.size > NONCES_KEPT) this.#nonces.delete(this.#nonces.keys().next().value as string);
 	}
 
 	discard(proposalId: unknown): { status: number; body: unknown } {
@@ -615,13 +672,21 @@ export class WorkbenchInterventionsV0 {
 			}
 		};
 		const phrase = `APPROVE ${op.toUpperCase()} ${c.proposal.proposalDigest.slice(0, 16)}`;
-		let answer: "allow" | "deny" | null = null;
+		let answer: "allow" | "allow-code" | "deny" | null = null;
 		// The terminal has one question at a time: a STOP that superseded a request waits until that request has fully settled (its
 		// question is aborted and released, and its refusal is recorded) before it asks its own.
 		if (c.supersedes !== null) await c.supersedes.done.catch(() => {});
 		const askable = !c.abort.signal.aborted && !this.#closing && !this.#h.closed();
+		// A request the asking page's session-control grant covers is authorised by that grant, now, and nobody is asked (DEVELOP-UX-002).
+		// It is decided here, after any wait above, from the grant as it stands at this moment; a grant that ended meanwhile leaves the
+		// request to the terminal, as before.
+		// Never for a message that is one of the terminal's own commands: it would reach Pi as chat and do nothing it names, so the terminal
+		// is asked and says so.
+		const asCommand = c.message !== null && endoWorkbenchTerminalCommandInV0(c.message) !== null;
+		const covered = askable && !asCommand ? (this.#h.sessionControl?.authorize(c.grant, op) ?? null) : null;
+		if (covered !== null) answer = "allow";
 		try {
-			if (askable)
+			if (askable && covered === null)
 				answer = await this.#h.approver(
 					{
 						operation: op,
@@ -657,16 +722,22 @@ export class WorkbenchInterventionsV0 {
 		}
 		let authorization: EndoInterventionAuthorizationV0;
 		try {
+			// Recorded as what it was: the grant's own authority, with its id, or the line the operator typed (the phrase or the short code).
 			authorization = desk.authorize(
 				id,
-				localOperatorAuthorityV0(answer === "allow" ? c.proposal.proposalDigest : null, "terminal-phrase"),
+				covered !== null
+					? sessionGrantAuthorityV0(c.proposal.proposalDigest, covered.grantId)
+					: localOperatorAuthorityV0(
+							answer === "deny" ? null : c.proposal.proposalDigest,
+							answer === "allow-code" ? "terminal-code" : "terminal-phrase",
+						),
 			);
 		} catch {
 			return settle("session-ended", "the decision could not be recorded", "session-ended");
 		}
 		if (answer === "deny")
 			return settle("authorization-denied", "the operator declined it in the terminal", "authorization-denied");
-		c.view = { ...c.view, approved: true };
+		c.view = { ...c.view, approved: true, authorizedBy: covered !== null ? "session-grant" : "terminal" };
 		// What was true when it was proposed may not be now. The desk's gate checks the session, the attachment, the age of the decision,
 		// the capability, the live process and the open run; the broker checks what only it knows.
 		if (this.#h.now() >= c.view.expiresAtMs)

@@ -1949,6 +1949,35 @@ table.fields thead th {
 	margin-left: auto;
 }
 
+/* The launch's mode and this page's standing, above the input (DEVELOP-UX-002). Attention marks a requested mode that is not in effect;
+   session control this page holds is said in words and weight, not in a hue. No fill, no motion: it is a statement, not a control. */
+.authority {
+	padding: 4px 8px;
+	margin: 0 0 8px;
+	border-left: 2px solid var(--line-strong);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.authority p {
+	margin: 2px 0;
+}
+
+.authority-line {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+}
+
+.authority-line .btn {
+	margin-left: auto;
+}
+
+.authority:not([data-requested="strict"])[data-effective="strict"] {
+	border-left-color: var(--attention);
+}
+
 /* The request control and its status, inside an opened attempt, under its brief. */
 .attempt-request {
 	margin: 8px 0;

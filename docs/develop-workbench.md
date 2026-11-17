@@ -5,7 +5,8 @@ slicing of the live DEVELOP workbench. Implemented in slice A (see section 8): t
 approval, the live status, the memory-only transcript, the **prompt** command and its record chain, and the workbench interface.
 Implemented in slice B (section 13): **STEER / QUEUE / STOP** through the broker onto the existing intervention chain, behind the same
 terminal approval for every one. Not implemented: the OMP adapter, streaming, Git changes, any terminal surface, any weaker approval
-mode. Read [studio.md](studio.md) (the read-only Studio and today's recorded-session DEVELOP), [steering.md](steering.md)
+mode. *Later (DEVELOP-UX-002, section 15):* modes and a bounded session-control grant are implemented in the broker; the grant is not in
+effect on any host yet, because no execution boundary around Pi is built. Read [studio.md](studio.md) (the read-only Studio and today's recorded-session DEVELOP), [steering.md](steering.md)
 (the intervention chain) and [pi-attach-inventory.md](pi-attach-inventory.md) first.
 
 Product split this design keeps explicit:
@@ -474,3 +475,46 @@ bound on the longest slice.
   (`--real-pi`) was not run.
 
 How a session from any source (this broker, a recording, or one another host owns) is presented, and why a described capability is not an authorisation: [develop-session-surface.md](develop-session-surface.md).
+
+## 15. Modes and bounded session control (DEVELOP-UX-002)
+
+The full account (audit, threat model, specification, what is proven and what is not) is
+[research/develop-ux/DEVELOP-UX-002.md](../research/develop-ux/DEVELOP-UX-002.md). This section is what an operator needs.
+
+**Sections 2 to 14 describe Strict, and Strict is what runs today.** Nothing in them changed.
+
+| Mode | Start | A prompt, steer, queue or stop is authorised by | In effect when |
+| :-- | :-- | :-- | :-- |
+| **Strict** | `endo develop --mode strict`, or `endo harness attach --control --workbench` | its phrase, typed on the terminal | always |
+| **Everyday** | `endo develop` (the default request) | a session-control grant, for what it covers; otherwise the terminal | an execution boundary around the agent is **observed as enforced**. **None is built: today this is Strict, and the terminal says why** |
+| **Protected** | `endo develop --mode protected` | as Everyday | a stronger boundary is observed. Otherwise **nothing starts** |
+
+The mode is chosen on the command line. No request from a page selects or raises it.
+
+**What a session-control grant is.** One terminal act (the first pairing code of an Everyday launch whose boundary is enforced, or the
+terminal command `control`) marks a pairing code as carrying control, and says what it grants. The page that types that code may then
+send prompt, steer, queue and stop to this session without asking the terminal, for 30 minutes or 200 sends, in the launch directory.
+Each such send is recorded as authorised by the grant, with the grant's id; the grant has its own two records.
+
+**What ends it, for good.** Its time or its count; `revoke` on the terminal; *Give up session control* on the page; any new pairing
+(so a reload, which loses the page's memory, ends it); another session or workspace; the boundary no longer observed. After that every
+request waits for the terminal again. A new grant needs `control` on the terminal and its code typed into the page.
+
+**What it never covers.** Sending an attempt's brief: `APPROVE ATTEMPT …` on the terminal, as before.
+
+**What it is not.** A sandbox. A grant decides who may *send*; only the execution boundary limits what the agent then *does*. That is why
+the grant is refused where no boundary is observed, and why this build, which builds none, never issues one outside tests.
+
+**Terminal commands** at the `>` prompt: `pair` (a code that lets a page read and ask), `control` (a code that also grants session
+control, or the reason it cannot), `revoke` (end session control now), `attempt <id>`.
+
+**Typing less in Strict: `--confirm short`.** The terminal shows the request as before, then a four-character code made for that one
+question. Typing the code, or the whole phrase, approves; anything else declines. The code is never sent to the page. It is recorded as
+`terminal-code`, not as the phrase. A shorter answer is easier to give without reading: that is the cost, and why it is opt-in.
+
+| Route (under `api/v0/workbench/`) | Change |
+| :-- | :-- |
+| `GET status` | gains `mode` (`requested`, `effective`, `reason`), `protection` (as observed) and `sessionControl`. Only the grant's holder is told its scope |
+| `POST prompt/propose`, `POST intervention/propose` | accept an optional `nonce`: a repeated one returns the request already made. Any other added member refuses the request |
+| `POST session-control/revoke {}` | the holder gives the grant up. No route issues, extends or widens one |
+| request views | gain `authorizedBy`: `terminal` or `session-grant` |

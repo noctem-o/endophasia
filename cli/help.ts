@@ -110,6 +110,11 @@ Commands that run a prompted agent session or an experiment:
   develop [<root> | --root dir] [--cwd dir] [--project id] [--pi path] ...
                                      the live workbench, in one word: "harness attach ... --control --workbench", without --prompt.
                                      Needs no registered project and no task; every prompt, steer and stop is approved on this terminal
+                                     [--mode everyday|protected|strict] the mode asked for (default everyday). Everyday is in effect only
+                                     while an execution boundary around the agent is observed as enforced; no build enforces one yet, so
+                                     Strict runs and the terminal says why. Protected starts nothing where it cannot be enforced
+                                     [--confirm phrase|short] short: a request may be approved by the four-character code this terminal
+                                     shows for it (never for an attempt). See research/develop-ux/DEVELOP-UX-002.md
   harness attach <root> ...          start a Pi session
                                      with --control --workbench --project <id>, type "attempt <id>" on that terminal, or use the
                                      paired page's Task view, to ask to send a prepared attempt's brief to this Pi session as a new

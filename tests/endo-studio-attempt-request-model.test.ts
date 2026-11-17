@@ -18,6 +18,7 @@ const command = (over: Partial<WorkbenchCommand> = {}): WorkbenchCommand => ({
 	proposalId: `endo.evidence.workbench-prompt-${"0".repeat(32)}`,
 	state: "awaiting-approval",
 	approved: false,
+	authorizedBy: null,
 	reason: null,
 	disposition: null,
 	bytes: 100,
@@ -74,6 +75,7 @@ describe("the words for a page-requested attempt", () => {
 			command({
 				state: "dispatching",
 				approved: true,
+				authorizedBy: "terminal",
 				attempt: { attemptId: A, taskId: "t", bound: true, refusal: null },
 			}),
 			command({ state: "accepted", approved: true, disposition: "started" }),
@@ -99,6 +101,7 @@ describe("the words for a page-requested attempt", () => {
 			command({
 				state: "refused",
 				approved: true,
+				authorizedBy: "terminal",
 				reason: "attempt-changed",
 				attempt: { attemptId: A, taskId: "t", bound: false, refusal: "task-words-changed" },
 			}),
@@ -109,6 +112,7 @@ describe("the words for a page-requested attempt", () => {
 			command({
 				state: "refused",
 				approved: true,
+				authorizedBy: "terminal",
 				reason: "session-ended",
 				attempt: { attemptId: A, taskId: "t", bound: true, refusal: null },
 			}),
@@ -206,6 +210,7 @@ describe("review regressions", () => {
 				command({
 					state: "refused",
 					approved: true,
+					authorizedBy: "terminal",
 					reason: refusal === "already-authorized" ? "duplicate" : "attempt-changed",
 					attempt: { attemptId: A, taskId: "t", bound: false, refusal },
 				}),
@@ -219,6 +224,7 @@ describe("review regressions", () => {
 					command({
 						state: "refused",
 						approved: true,
+						authorizedBy: "terminal",
 						reason: "attempt-not-recorded",
 						attempt: { attemptId: A, taskId: "t", bound: false, refusal },
 					}),
@@ -234,6 +240,7 @@ describe("review regressions", () => {
 			command({
 				state: "refused",
 				approved: true,
+				authorizedBy: "terminal",
 				reason: "session-ended",
 				attempt: { attemptId: A, taskId: "t", bound: true, refusal: null },
 			}),

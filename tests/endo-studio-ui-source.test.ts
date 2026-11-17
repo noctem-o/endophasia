@@ -210,13 +210,20 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(20);
+		expect(api.match(/\/api\//g)?.length).toBe(21);
 		// Oh My Pi's saved sessions: two fixed GET routes, the second named only by an opaque selector the list gave, gated first.
 		expect(api).toContain("./api/v0/develop/omp/sessions");
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/if \(!ompSelector\(request\.selector\)\)/);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(13);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(14);
+		// DEVELOP-UX-002: the one new route can only REDUCE what the page may do, and its body is empty. No route, member or header of the
+		// page's names a mode, a scope or a lifetime; the replay nonce is the only member added to a request.
+		expect(api).toContain('route = "./api/v0/workbench/session-control/revoke";\n\t\tbody = "{}";');
+		expect(api).not.toMatch(/session-control\/(?!revoke)/);
+		expect(api).not.toMatch(
+			/JSON\.stringify\(\{[^}]*\b(mode|sessionControl|authorizedBy|expiresAtMs|operations|grant)\b/,
+		);
 		for (const route of ["status", "transcript", "pair", "prompt/propose", "prompt/discard", "intervention/propose"])
 			expect(api).toContain(`./api/v0/workbench/${route}`);
 		// Asking to send a prepared attempt (docs/designs/develop-attempt-workbench.md): one fixed route, its body the attempt's id alone,

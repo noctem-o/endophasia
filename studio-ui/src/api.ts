@@ -286,7 +286,11 @@ export async function fetchWorkbench(
 		body = JSON.stringify({ code: request.code });
 	} else if (request.kind === "propose") {
 		route = "./api/v0/workbench/prompt/propose";
-		body = JSON.stringify({ message: request.message });
+		if (!NONCE.test(request.nonce)) return bad("Invalid request reference.");
+		body = JSON.stringify({ message: request.message, nonce: request.nonce });
+	} else if (request.kind === "relinquish") {
+		route = "./api/v0/workbench/session-control/revoke";
+		body = "{}";
 	} else if (request.kind === "attempt") {
 		if (!/^endo\.attempt\.[0-9a-f]{32}$/.test(request.attemptId)) return bad("Invalid attempt reference.");
 		route = "./api/v0/workbench/attempt/propose";
@@ -295,7 +299,12 @@ export async function fetchWorkbench(
 		const stop = request.operation === "stop";
 		if (stop !== (request.message === null)) return bad("Steer and queue need a message; stop carries none.");
 		route = "./api/v0/workbench/intervention/propose";
-		body = JSON.stringify(stop ? { operation: "stop" } : { operation: request.operation, message: request.message });
+		if (!NONCE.test(request.nonce)) return bad("Invalid request reference.");
+		body = JSON.stringify(
+			stop
+				? { operation: "stop", nonce: request.nonce }
+				: { operation: request.operation, message: request.message, nonce: request.nonce },
+		);
 	} else if (request.kind === "withdraw" || request.kind === "check") {
 		if (!/^endo\.evidence\.intervention\.proposal\.[0-9a-f]{64}$/.test(request.proposalId))
 			return bad("Invalid intervention reference.");
@@ -344,6 +353,9 @@ export async function fetchWorkbench(
 		} else if (request.kind === "transcript") {
 			const record = readWorkbenchTranscript(json);
 			if (record !== null) return { kind: "transcript", record };
+		} else if (request.kind === "relinquish") {
+			const record = readWorkbenchStatus(json);
+			if (record !== null) return { kind: "status", record };
 		} else if (request.kind === "pair") {
 			const record = readWorkbenchGrant(json);
 			if (record !== null) return { kind: "grant", record };
@@ -646,6 +658,8 @@ const isNoWorkbench = (v: unknown): boolean =>
 	(v as { schemaVersion: unknown }).schemaVersion === "endo.workbench-status.v0";
 
 const REQUEST_TIMEOUT_MS = 60_000;
+/** The broker's own rule for a replay nonce (adapters/pi/workbench.ts). */
+const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
 
 /** Request one snapshot, relative to the page's own address. Never throws: a failure is a `Reply`. */
 export async function fetchSnapshot(request: ReadRequest): Promise<Fetched> {

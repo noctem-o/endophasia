@@ -1,6 +1,8 @@
 // The live conversation: what a connected Pi session is saying and doing, and the one governed input path. Nothing here is recorded
 // evidence. The text is the broker's private, in-memory transcript; the page says so. A prompt, steer, queue or stop can only be
-// REQUESTED here: the operator approves it in the attached terminal, and a refused or unapproved request is shown as not sent. What each
+// REQUESTED here: the operator approves it in the attached terminal, and a refused or unapproved request is shown as not sent. The one
+// exception is said wherever it applies: while this page holds a session-control grant (DEVELOP-UX-002), a request the grant covers is
+// sent without a terminal approval, and is worded as authorised by the grant, never as approved by the operator. What each
 // card claims stops where the evidence stops: acceptance is Pi's reply, consumption is proxy evidence, and a run's end is Pi's report.
 import {
 	type FormEvent,
@@ -27,10 +29,14 @@ import {
 	reasoningParts,
 } from "../model/reasoning.ts";
 import {
-	COMMAND_WORDS,
+	authorisedStepWords,
+	CONTROL_END_WORDS,
 	commandOpen,
+	commandWords,
+	controlCovers,
 	interventionOpen,
 	interventionWords,
+	MODE_WORDS,
 	OPERATION_WORDS,
 	REFUSAL_WORDS,
 	RUN_END_WORDS,
@@ -334,7 +340,9 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 				)}
 				<ol className="chain" aria-label="Steps">
 					<li data-done="true">requested</li>
-					<li data-done={i.approved}>approved in the terminal</li>
+					<li data-done={i.approved} data-by={i.authorizedBy ?? ""}>
+						{authorisedStepWords(i.authorizedBy)}
+					</li>
 					<li data-done={reached}>sent to Pi</li>
 					<li data-done={replied}>{i.reason === "runtime-refused" ? "Pi refused" : "Pi replied"}</li>
 					{message ? <li data-done={i.consumption?.status === "observed"}>consumption observed</li> : null}
@@ -559,7 +567,7 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 	return (
 		<section className="command-card" data-testid="command-card" data-state={c.state} aria-label="Prompt status">
 			<p>
-				<strong>{COMMAND_WORDS[c.state]}</strong>
+				<strong>{commandWords(c)}</strong>
 				{c.state === "refused" && c.reason !== null ? <span>: {REFUSAL_WORDS[c.reason] ?? c.reason}</span> : null}
 				{c.state === "accepted" ? (
 					<span> (a reply from the runtime, not a result: follow the run above)</span>
@@ -567,7 +575,9 @@ function CommandCard({ wb }: { wb: Workbench }): ReactElement | null {
 			</p>
 			<ol className="chain" aria-label="Steps">
 				<li data-done="true">requested</li>
-				<li data-done={c.approved}>approved in the terminal</li>
+				<li data-done={c.approved} data-by={c.authorizedBy ?? ""}>
+					{authorisedStepWords(c.authorizedBy)}
+				</li>
 				<li data-done={c.state === "dispatching" || c.state === "accepted" || c.state === "unknown"}>sent</li>
 				<li data-done={c.state === "accepted"}>accepted by the runtime</li>
 			</ol>
@@ -670,6 +680,98 @@ const MODE_HINT: Readonly<Record<(typeof MODES)[number]["id"], string>> = {
 	queue: `${OPERATION_WORDS.queue.delivery} It is only requested here; you approve it in the attached terminal, and it may use the model and cost money. Its text is also kept in this store's interventions folder (as endo steer does), outside the event log, even if you decline it. Ctrl+Enter requests it.`,
 };
 
+/** The same delivery, said for a request this page's session control covers: nobody is asked, and it is recorded as such. */
+const COVERED_HINT: Readonly<Record<(typeof MODES)[number]["id"], string>> = {
+	prompt:
+		"Sends a NEW prompt: it starts a run and is not an intervention. This page holds session control, so it is sent at once, without a terminal approval, and recorded as authorised by the session grant. It may use the model and cost money. Ctrl+Enter sends it.",
+	steer: `${OPERATION_WORDS.steer.delivery} This page holds session control, so it is sent at once, without a terminal approval, and recorded as authorised by the session grant. It may use the model and cost money. Its text is also kept in this store's interventions folder (as endo steer does), outside the event log. Ctrl+Enter sends it.`,
+	queue: `${OPERATION_WORDS.queue.delivery} This page holds session control, so it is sent at once, without a terminal approval, and recorded as authorised by the session grant. It may use the model and cost money. Its text is also kept in this store's interventions folder (as endo steer does), outside the event log. Ctrl+Enter sends it.`,
+};
+
+/**
+ * The launch's mode and this page's standing, above the input: which mode was asked for and which is in effect, why a requested mode is
+ * not, whether session control is on, what it permits, where and until when. It displays what the broker said. It asks for nothing:
+ * the only control here REDUCES what this page may do, and a new grant is a code from the terminal, typed below like any pairing code.
+ */
+function AuthorityStrip({ wb }: { wb: Workbench }): ReactElement | null {
+	const { status, grant } = wb.state;
+	if (status === null || status.connection !== "connected") return null;
+	const { mode, protection, sessionControl: control } = status;
+	const until =
+		control.expiresAtMs === null ? "" : new Date(control.expiresAtMs).toLocaleTimeString([], { hour12: false });
+	const held = control.state === "active" && control.holder && grant !== null;
+	const fallback = mode.effective !== mode.requested;
+	return (
+		<section
+			className="authority"
+			data-testid="authority"
+			data-requested={mode.requested}
+			data-effective={mode.effective}
+			data-control={held ? "held" : control.state === "active" ? "other" : "off"}
+			aria-label="Mode and session control"
+		>
+			<p className="authority-line">
+				<span className="chip-ref" data-testid="authority-mode">
+					Mode: {MODE_WORDS[mode.effective]}
+				</span>{" "}
+				{held ? (
+					<strong data-testid="authority-control">
+						Session control on · {control.operations.join(", ")} · until {until} (browser clock) ·{" "}
+						{control.sendsLeft} sends left
+					</strong>
+				) : (
+					<span data-testid="authority-control">
+						{mode.effective === "strict"
+							? "Every prompt, steer, queue and stop is approved in the attached terminal."
+							: control.state === "active"
+								? `Session control is held by another page until ${until} (browser clock). This page can read and ask.`
+								: `Session control off${control.ended === null ? "" : ` (the last grant ended: ${CONTROL_END_WORDS[control.ended] ?? control.ended})`}. Every request waits for the terminal.`}
+					</span>
+				)}
+				{held ? (
+					<button
+						type="button"
+						className="btn quiet small-btn"
+						data-testid="authority-relinquish"
+						onClick={() => void wb.relinquish()}
+					>
+						Give up session control
+					</button>
+				) : null}
+			</p>
+			{held ? (
+				<p className="dim small" data-testid="authority-scope">
+					In <span className="mono">{control.workspaceRoot}</span>, for this session only. Covered requests are
+					sent without asking in the terminal and are recorded as authorised by the session grant. It cannot be
+					renewed or widened from this page; a reload ends it. Sending an attempt is still approved in the
+					terminal.
+				</p>
+			) : null}
+			{fallback ? (
+				<p className="small" data-testid="authority-unavailable">
+					{MODE_WORDS[mode.requested]} was requested and is not in effect: {mode.reason ?? "no reason was given"}
+				</p>
+			) : null}
+			{fallback && protection.limitations.length > 1 ? (
+				<details className="dim small">
+					<summary>What else the attached process observed</summary>
+					<ul>
+						{protection.limitations.slice(1).map((line) => (
+							<li key={line}>{line}</li>
+						))}
+					</ul>
+				</details>
+			) : null}
+			{mode.effective !== "strict" && !held && grant !== null ? (
+				<Pairing
+					wb={wb}
+					hint="For session control, type `control` in the attached terminal: it says what the code grants, and shows it. Entering a code here pairs this page again; only a code the terminal marked carries control."
+				/>
+			) : null}
+		</section>
+	);
+}
+
 function Composer({ wb }: { wb: Workbench }): ReactElement {
 	const { draft, setDraft, mode, setMode } = wb;
 	const [sending, setSending] = useState(false);
@@ -681,6 +783,9 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 	const asCommand = terminalCommandIn(draft);
 	const ok = offer.offered && !sending && !promptOpen && asCommand === null && draft.trim() !== "";
 	const label = MODES.find((m) => m.id === mode)!.label;
+	// Words only: whether a request is authorised by the grant is the broker's decision when it arrives.
+	const covered = controlCovers(wb.state.status, mode);
+	const hint = covered ? COVERED_HINT[mode] : MODE_HINT[mode];
 	const send = async () => {
 		if (!ok) return;
 		setSending(true);
@@ -725,8 +830,14 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 						</label>
 					))}
 				</fieldset>
-				<button type="submit" className="btn" data-testid="send" disabled={!ok}>
-					Request {mode}
+				<button
+					type="submit"
+					className="btn"
+					data-testid="send"
+					data-covered={covered ? "yes" : "no"}
+					disabled={!ok}
+				>
+					{covered ? "Send" : "Request"} {mode}
 				</button>
 			</div>
 			<label htmlFor={id} className="sr-only">
@@ -766,9 +877,9 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 				className="dim small composer-hint"
 				id={`${id}-hint`}
 				data-testid="composer-hint"
-				title={offer.offered ? MODE_HINT[mode] : (offer.reason ?? "")}
+				title={offer.offered ? hint : (offer.reason ?? "")}
 			>
-				{offer.offered ? MODE_HINT[mode] : (offer.reason ?? "")}
+				{offer.offered ? hint : (offer.reason ?? "")}
 			</p>
 		</form>
 	);
@@ -787,7 +898,9 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 					{st === "awaiting-approval"
 						? "Stop requested · awaiting terminal approval"
 						: st === "dispatching"
-							? "Stop approved · dispatching to Pi"
+							? stop.authorizedBy === "session-grant"
+								? "Stop authorised by the session grant · dispatching to Pi"
+								: "Stop approved · dispatching to Pi"
 							: "Stop dispatched to Pi · reply pending until the run is idle"}
 				</strong>
 				{st === "awaiting-approval" ? (
@@ -812,6 +925,8 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 	// The whole sentence is shown when it matters (it cancels something, or cannot be requested); otherwise a short clause is shown and the
 	// sentence stays as the button's description for assistive technology and the tooltip.
 	const showAll = superseded !== undefined || grant === null || !offer.offered;
+	// Under session control a stop is sent in its own request: it waits for no question and no other request.
+	const covered = controlCovers(status, "stop");
 	return (
 		<span className="stop-control">
 			<button
@@ -822,11 +937,11 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 				aria-describedby="stop-reason"
 				onClick={() => void wb.intervene("stop", null)}
 			>
-				Request stop
+				{covered ? "Stop" : "Request stop"}
 			</button>
 			{showAll ? null : (
 				<span className="dim small stop-short" aria-hidden="true">
-					approve in the terminal
+					{covered ? "sent at once · session control" : "approve in the terminal"}
 				</span>
 			)}
 			<span
@@ -840,7 +955,7 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 				{grant === null
 					? "Pair this page to request a stop."
 					: offer.offered
-						? `${OPERATION_WORDS.stop.delivery} You approve it in the terminal.${
+						? `${OPERATION_WORDS.stop.delivery} ${covered ? "This page holds session control, so it is sent at once, without a terminal approval, and recorded as authorised by the session grant." : "You approve it in the terminal."}${
 								superseded === undefined
 									? ""
 									: ` Requesting it cancels the ${superseded.operation} now waiting for approval: that ${superseded.operation} will not be sent.`
@@ -1148,6 +1263,7 @@ export function LiveConversation({
 						request={(attempt) => <AttemptRequest wb={wb} attempt={attempt} onSettled={workspace.refresh} />}
 					/>
 				</div>
+				<AuthorityStrip wb={wb} />
 				{state.grant === null ? <Pairing wb={wb} /> : <Composer wb={wb} />}
 			</section>
 		</PanelBoundary>
@@ -1272,7 +1388,9 @@ export function LiveContext({
 							<li key={op} data-testid={`offer-${op}`}>
 								<strong>{op === "prompt" ? "Prompt" : OPERATION_WORDS[op].name}</strong> —{" "}
 								{o?.offered
-									? `available: ${gist}, approved in the attached terminal`
+									? controlCovers(status, op)
+										? `available: ${gist}, sent under this page's session control (no terminal approval)`
+										: `available: ${gist}, approved in the attached terminal`
 									: `unavailable: ${lower(o?.reason ?? "not read yet")}`}
 							</li>
 						);

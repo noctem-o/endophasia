@@ -90,9 +90,12 @@ export type WorkbenchAction =
  * The workbench terminal's own command, when the composer's whole text is one (a mirror of protocol/workbench.ts,
  * `endoWorkbenchTerminalCommandInV0`; a test keeps them equal). Sent from here it would reach the agent as chat, so the page does not ask.
  */
-export function terminalCommandIn(text: string): { command: "attempt" | "pair"; argument: string | null } | null {
+export type TerminalCommand = "attempt" | "pair" | "control" | "revoke";
+const BARE_COMMANDS: readonly TerminalCommand[] = ["pair", "control", "revoke"];
+export function terminalCommandIn(text: string): { command: TerminalCommand; argument: string | null } | null {
 	const words = text.trim().split(/\s+/);
-	if (words.length === 1 && words[0] === "pair") return { command: "pair", argument: null };
+	const bare = BARE_COMMANDS.find((command) => command === words[0]);
+	if (words.length === 1 && bare !== undefined) return { command: bare, argument: null };
 	if (words[0] !== "attempt") return null;
 	if (words.length === 1) return { command: "attempt", argument: null };
 	return words.length === 2 && /^endo\.attempt\./.test(words[1] as string)
@@ -101,7 +104,11 @@ export function terminalCommandIn(text: string): { command: "attempt" | "pair"; 
 }
 
 /** Why the composer will not ask for a message that is a terminal command: where that command goes instead. */
-export function terminalCommandWords(found: { command: "attempt" | "pair" }): string {
+export function terminalCommandWords(found: { command: TerminalCommand }): string {
+	if (found.command === "revoke")
+		return 'This is the workbench terminal\'s `revoke` command, not a message. Sent from here it would go to the agent as chat and revoke nothing. To end session control from this page, use "Give up session control" above; or type `revoke` at the attached terminal.';
+	if (found.command === "control")
+		return "This is the workbench terminal's `control` command, not a message. Sent from here it would go to the agent as chat and grant nothing. Session control is granted only at the attached terminal: type it there.";
 	return found.command === "pair"
 		? "This is the workbench terminal's `pair` command, not a message. Sent from here it would go to the agent as chat. Type it at the attached terminal."
 		: "This is the workbench terminal's `attempt` command, not a message. Sent from here it would go to the agent as chat: it would not send the attempt's brief, and nothing would record it as the attempt. Type it at the attached terminal, or use \"Request sending … to Pi\" under the attempt in Task.";
@@ -270,6 +277,46 @@ function describe(status: WorkbenchStatus): string {
 	return status.run === "active" ? "connected · run active" : status.run === "idle" ? "connected · idle" : "connected";
 }
 
+/**
+ * Whether this page holds session control that covers an operation, as the broker last said. It only decides WORDS (a button says
+ * "Send", a hint says nobody will be asked): the broker decides, per request, whether a request is authorised, and a request it does not
+ * cover simply waits for the terminal.
+ */
+export function controlCovers(status: WorkbenchStatus | null, operation: "prompt" | InterventionOperation): boolean {
+	const c = status?.sessionControl;
+	return c !== undefined && c.state === "active" && c.holder && c.operations.includes(operation);
+}
+
+/** Which step of a request's chain authorised it, in words that never call a grant-authorised send a typed approval. */
+export function authorisedStepWords(by: "terminal" | "session-grant" | null): string {
+	return by === "session-grant" ? "authorised by the session grant" : "approved in the terminal";
+}
+
+export const CONTROL_END_WORDS: Readonly<Record<string, string>> = {
+	expired: "its time ran out",
+	"budget-spent": "its count of sends was used up",
+	"revoked-on-terminal": "it was revoked in the terminal",
+	"revoked-by-page": "this page gave it up",
+	"re-paired": "a page was paired again",
+	"session-changed": "the connected session is not the one it was granted for",
+	"workspace-changed": "the workspace is not the one it was granted for",
+	"protection-lost": "the agent's execution boundary is no longer observed as enforced",
+	closing: "the session is closing",
+};
+
+export const MODE_WORDS: Readonly<Record<"everyday" | "protected" | "strict", string>> = {
+	everyday: "Everyday",
+	protected: "Protected",
+	strict: "Strict",
+};
+
+/** The prompt's state line. A send a session grant authorised is never worded as approved by the operator. */
+export function commandWords(c: { state: string; authorizedBy: "terminal" | "session-grant" | null }): string {
+	if (c.state === "dispatching" && c.authorizedBy === "session-grant")
+		return "Authorised by the session grant. Sending to the runtime";
+	return COMMAND_WORDS[c.state] ?? c.state;
+}
+
 export const COMMAND_WORDS: Readonly<Record<string, string>> = {
 	"awaiting-approval": "Waiting for you to approve it in the attached terminal",
 	dispatching: "Approved. Sending to the runtime",
@@ -327,7 +374,9 @@ export function interventionWords(i: WorkbenchIntervention): string {
 		case "awaiting-approval":
 			return "Requested. Waiting for you to approve it in the attached terminal";
 		case "dispatching":
-			return "Approved in the terminal. Being sent to Pi";
+			return i.authorizedBy === "session-grant"
+				? "Authorised by the session grant. Being sent to Pi"
+				: "Approved in the terminal. Being sent to Pi";
 		case "sent":
 			return i.operation === "stop"
 				? "Sent to Pi. Waiting for its reply (Pi answers a stop once the run is idle)"

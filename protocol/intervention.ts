@@ -95,8 +95,14 @@ export type EndoInterventionAuthorityV0 =
 	/**
 	 * `digest-confirmed`: the operator gave the proposal's whole digest (`endo steer authorize`). `terminal-phrase`: the operator typed the
 	 * workbench's per-operation phrase, which carries the first 16 hex characters of the digest, on the attached process's controlling terminal.
+	 * `terminal-code`: the operator typed there the short code the terminal showed for that one question (opt-in, `--confirm short`).
 	 */
-	| { kind: "local-operator"; confirmation: "digest-confirmed" | "terminal-phrase" | "scenario" }
+	| { kind: "local-operator"; confirmation: "digest-confirmed" | "terminal-phrase" | "terminal-code" | "scenario" }
+	/**
+	 * Nobody typed for this request: it was authorised by a bounded session-control grant (runtime/contracts/session-control.ts,
+	 * DEVELOP-UX-002) that the operator authorised once on the terminal. `sessionGrant` names it; its own records say its scope.
+	 */
+	| { kind: "local-operator"; confirmation: "session-grant"; sessionGrant: string }
 	| { kind: "external"; provider: string };
 
 export interface EndoInterventionAuthorizationV0 {

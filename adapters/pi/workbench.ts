@@ -28,10 +28,23 @@
 //                                      page names the attempt and nothing else; the brief is read from the attempt's own record here. Its
 //                                      state is read, and it is withdrawn, through prompt/<id> and prompt/discard, as any prompt.
 //
+//   POST session-control/revoke {}     the page that holds the session-control grant gives it up. It can only REDUCE authority: no route
+//                                      issues, extends, widens or describes a grant.
+//
 // Authority. The browser can request and can never authorise. A prompt is sent only after the operator types its exact digest on the
 // attached process's CONTROLLING TERMINAL (the `approver` below); a page script cannot do that. The grant (obtained by typing the
 // terminal's pairing code into the page) only lets the page ask and read. It is single, held in the page's memory, expires, and is
 // replaced by a new pairing. The approval is a local operator's decision, not proof of identity.
+//
+// Bounded session authority (DEVELOP-UX-002, runtime/contracts/session-control.ts). In a launch whose mode is Everyday or Protected, and
+// only while an execution boundary around the agent is OBSERVED as enforced (runtime/contracts/execution-protection.ts), the terminal may
+// arm a pairing code with session control. The page that redeems it holds a session-control grant: for a closed set of operations, this
+// session and attachment, this workspace, a fixed time and a count of sends, its `prompt/propose` and `intervention/propose` are
+// authorised by the grant and dispatched without a terminal phrase, and RECORDED AS SUCH (`confirmation: "session-grant"`, with the
+// grant's id), never as a typed approval. Whether a request is covered is decided here, per request, from the broker's own state: no
+// member of any request selects a mode or a scope. A request the grant does not cover takes the terminal path above, unchanged. An
+// attempt's brief is never covered. A grant is not a sandbox and this file enforces none: it only refuses to issue or use a grant
+// without one.
 //
 // A prompt is not an intervention: it opens a run, STEER/QUEUE/STOP change one. It has its own record chain (protocol/workbench.ts):
 // proposed → authorized → dispatched → accepted, or refused with a closed reason. HTTP acceptance of a request means only that it was
@@ -58,6 +71,7 @@ import {
 	ENDO_WORKBENCH_SCHEMA_V0,
 	type EndoWorkbenchKindV0,
 	type EndoWorkbenchRefusalReasonV0,
+	endoWorkbenchTerminalCommandInV0,
 } from "../../protocol/workbench.ts";
 import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../protocol/workbench-http.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -68,7 +82,16 @@ import type {
 } from "../../runtime/contracts/develop-attempt-dispatch.ts";
 import type { DevelopTakenObservationV0 } from "../../runtime/contracts/develop-observations.ts";
 import type { DevelopLaunchHostV0, DevelopLaunchWorkspaceV0 } from "../../runtime/contracts/develop-workspace.ts";
+import type { EndoExecutionProtectionV0 } from "../../runtime/contracts/execution-protection.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
+import {
+	type EndoSessionControlEndReasonV0,
+	type EndoSessionControlOperationV0,
+	EndoSessionControlV0,
+	type EndoSessionControlViewV0,
+	type EndoSessionGrantV0,
+	type EndoWorkbenchModeV0,
+} from "../../runtime/contracts/session-control.ts";
 import { EndoPairingV0 } from "../../runtime/contracts/workbench-pairing.ts";
 import {
 	type EndoProjectSourceV0,
@@ -134,11 +157,27 @@ export interface WorkbenchApprovalRequestV0 {
 	/** For a prompt or an attempt: where it was requested, on this terminal or from the paired page. Either way only the terminal approves. */
 	requestedFrom?: "terminal" | "page";
 }
-/** "allow" only for the exact phrase; "deny" for any other answer; null when there was no answer in time or it was withdrawn. */
+/**
+ * "allow" only for the exact phrase; "allow-code" for the short code the terminal showed for this one question (only a terminal started
+ * with `--confirm short` gives it, and never for an attempt); "deny" for any other answer; null when there was no answer in time or it
+ * was withdrawn.
+ */
 export type WorkbenchApproverV0 = (
 	request: WorkbenchApprovalRequestV0,
 	signal: AbortSignal,
-) => Promise<"allow" | "deny" | null>;
+) => Promise<"allow" | "allow-code" | "deny" | null>;
+
+/** The launch's mode and what would bound the agent, as the attached process's command line and host decided them. Never from a page. */
+export interface WorkbenchControlOptionsV0 {
+	mode: EndoWorkbenchModeV0;
+	/** What observes the execution boundary. Without one, nothing is enforced and no grant is ever issued. */
+	protection?: EndoExecutionProtectionV0;
+	/** The canonical (real) path of the directory the runtime was launched in. */
+	workspaceRoot: string;
+	lifetimeMs?: number;
+	maxSends?: number;
+	operations?: readonly EndoSessionControlOperationV0[];
+}
 
 /**
  * The project context the broker may serve: two READS about the directory the session was launched in (adapters/git/project-inspector.ts),
@@ -189,6 +228,16 @@ export interface WorkbenchOptionsV0 {
 			},
 		): unknown;
 	};
+	/**
+	 * Bounded session authority (DEVELOP-UX-002). Absent, the launch is Strict: every request is approved on the terminal, as before.
+	 */
+	control?: WorkbenchControlOptionsV0;
+	/** Told when a session-control grant is issued or ends, so the attached terminal can say so. Never told a token. */
+	onSessionControl?: (
+		event:
+			| { type: "granted"; grant: EndoSessionGrantV0 }
+			| { type: "ended"; grant: EndoSessionGrantV0; reason: EndoSessionControlEndReasonV0; sends: number },
+	) => void;
 	now?: () => number;
 	/** How long the operator has to approve a prompt. Default 5 minutes. */
 	approvalWindowMs?: number;
@@ -209,8 +258,13 @@ export type WorkbenchCommandStateV0 = "awaiting-approval" | "dispatching" | "acc
 export interface WorkbenchCommandViewV0 {
 	proposalId: string;
 	state: WorkbenchCommandStateV0;
-	/** Whether the operator typed the approval on the terminal. A withdrawn, timed-out or declined prompt was never approved. */
+	/** Whether it was authorised to be sent. A withdrawn, timed-out or declined prompt never was. */
 	approved: boolean;
+	/**
+	 * HOW it was authorised, when it was: `terminal` (the operator typed for this request, the phrase or the short code) or
+	 * `session-grant` (nobody typed for it: a session-control grant covered it). Null until then.
+	 */
+	authorizedBy: "terminal" | "session-grant" | null;
 	/** Why it was refused, when it was. */
 	reason: EndoWorkbenchRefusalReasonV0 | null;
 	/** The runtime's disposition, when it accepted. Acceptance is not completion. */
@@ -269,6 +323,9 @@ export type WorkbenchTerminalRequestV0 =
  * not shown. What the operator sees is what would be sent.
  */
 const UNSAFE_PROMPT_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
+/** A replay nonce: URL-safe, chosen by the page for one act of the operator. */
+const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
+const NONCES_KEPT = 256;
 const sha256 = (text: string): string => createHash("sha256").update(text).digest("hex");
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
@@ -283,6 +340,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	readonly #now: () => number;
 	/** The page's pairing (runtime/contracts/workbench-pairing.ts): one code at a time from the terminal, one grant at a time for the page. */
 	readonly #pairing: EndoPairingV0;
+	/** Bounded session authority: the mode, the observed execution boundary and the one grant (runtime/contracts/session-control.ts). */
+	readonly #control: EndoSessionControlV0;
+	/** Requests by the page's replay nonce: a repeated one returns the request already made and does nothing else. */
+	readonly #nonces = new Map<string, Proposal>();
 	#command: Proposal | null = null;
 	/** An attempt's send whose run is watched for its end (see `#watchRun`). */
 	#afterRun: WatchedRunV0 | null = null;
@@ -310,6 +371,53 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			grantMs: this.#o.grantMs,
 			closed: () => this.#disposed || this.#ended,
 		});
+		const control = options.control;
+		this.#control = new EndoSessionControlV0({
+			mode: control?.mode ?? "strict",
+			...(control?.protection === undefined ? {} : { protection: control.protection }),
+			...(control?.lifetimeMs === undefined ? {} : { lifetimeMs: control.lifetimeMs }),
+			...(control?.maxSends === undefined ? {} : { maxSends: control.maxSends }),
+			...(control?.operations === undefined ? {} : { operations: control.operations }),
+			now: this.#now,
+			// A test's clock is both clocks; otherwise a grant's end is measured on one that cannot be set back.
+			...(options.now === undefined ? {} : { monotonic: options.now }),
+			closed: () => this.#disposed || this.#ended || this.#closing,
+			subject: () => {
+				const id = options.session.live ? options.session.piSessionId : null;
+				return {
+					launchId: this.launchId,
+					session: id === null ? null : `endo.session.pi.${id}`,
+					attachment: options.attachment,
+					workspaceRoot: control?.workspaceRoot ?? "",
+				};
+			},
+			onGranted: (grant) => {
+				if (!this.#recordGrant(grant)) return false;
+				// The terminal is told after the record exists; what it does with the news cannot undo the grant.
+				queueMicrotask(() => {
+					try {
+						options.onSessionControl?.({ type: "granted", grant });
+					} catch {
+						// the terminal's own notice is not part of the authority
+					}
+				});
+				return true;
+			},
+			onEnded: (grant, reason, sends) => {
+				try {
+					options.onSessionControl?.({ type: "ended", grant, reason, sends });
+				} catch {
+					// as above
+				}
+				options.session.recordWorkbench("workbench.session-control-ended", {
+					schemaVersion: ENDO_WORKBENCH_SCHEMA_V0,
+					grantId: grant.grantId,
+					reason,
+					sends,
+					endedAt: new Date(this.#now()).toISOString(),
+				});
+			},
+		});
 		this.#interventions =
 			options.interventions === undefined
 				? null
@@ -321,6 +429,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 						now: this.#now,
 						approvalWindowMs: this.#o.approvalWindowMs,
 						granted: (grant) => this.#granted(grant),
+						sessionControl: this.#control,
 						closed: () => this.#disposed || this.#ended,
 						unsafe: (message) => UNSAFE_PROMPT_CHARS.test(message),
 						watermark: () => this.transcript.watermark,
@@ -365,9 +474,70 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		return this.#tasks?.view() ?? null;
 	}
 
-	/** A new one-time pairing code, replacing any earlier one. It is shown only on the attached terminal. */
-	issuePairingCode(): { code: string; expiresAtMs: number } {
-		return this.#pairing.issue();
+	/**
+	 * THE TERMINAL ONLY. A new one-time pairing code, replacing any earlier one. It is shown only on the attached terminal.
+	 *
+	 * With `control`, the code also carries session control: the page that redeems it holds a session-control grant with the scope
+	 * returned here, which the terminal tells the operator before they type the code anywhere. It is refused, with the reason, when a grant
+	 * could not be issued now (Strict mode, no session, no enforced execution boundary); the code is then a plain one. A plain code
+	 * withdraws the control an earlier, unredeemed code carried.
+	 */
+	issuePairingCode(options: { control?: boolean } = {}): {
+		code: string;
+		expiresAtMs: number;
+		control: {
+			operations: readonly EndoSessionControlOperationV0[];
+			workspaceRoot: string;
+			lifetimeMs: number;
+			maxSends: number;
+		} | null;
+		/** Why the code carries no control, when control was asked for. */
+		refused: string | null;
+	} {
+		const issued = this.#pairing.issue();
+		if (options.control !== true) {
+			this.#control.disarm();
+			return { ...issued, control: null, refused: null };
+		}
+		const armed = this.#control.arm(issued.expiresAtMs);
+		return armed.ok
+			? { ...issued, control: armed.scope, refused: null }
+			: { ...issued, control: null, refused: armed.reason };
+	}
+
+	/** THE TERMINAL ONLY. End the session-control grant now, and withdraw the control an unredeemed code carries. The page stays paired. */
+	revokeSessionControl(): boolean {
+		return this.#control.revoke("revoked-on-terminal");
+	}
+
+	/** For the terminal: the mode in effect, the execution boundary as observed now, and the grant (no token). */
+	sessionControl(): EndoSessionControlViewV0 & { grant: (EndoSessionGrantV0 & { sendsLeft: number }) | null } {
+		return { ...this.#control.view(null), grant: this.#control.current() };
+	}
+
+	/** Record a grant before it exists: one that cannot be recorded is not issued. */
+	#recordGrant(grant: EndoSessionGrantV0): boolean {
+		try {
+			this.#o.session.recordWorkbench("workbench.session-control-granted", {
+				schemaVersion: ENDO_WORKBENCH_SCHEMA_V0,
+				grantId: grant.grantId,
+				session: grant.session,
+				attachment: grant.attachment,
+				launchId: grant.launchId,
+				mode: grant.mode,
+				operations: [...grant.operations],
+				// A path is the operator's own; the record carries its keyed digest, as it does for every text.
+				workspace: this.#o.key.digest({ purpose: "endo.workbench.workspace-root.v0", root: grant.workspaceRoot }),
+				protection: { level: grant.protection.level, mechanism: grant.protection.mechanism },
+				confirmation: "terminal-pairing-code",
+				issuedAt: new Date(grant.issuedAtMs).toISOString(),
+				expiresAt: new Date(grant.expiresAtMs).toISOString(),
+				maxSends: grant.maxSends,
+			} as unknown as Record<string, JsonValueV0>);
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	#granted(grant: string | null): boolean {
@@ -380,8 +550,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	 * `paired`: the request carried the grant. Status needs no grant, so what it says of the prompt in flight is only its state: which work
 	 * attempt and task it carries is told to the paired page alone (as the attempts themselves are, behind the grant).
 	 */
-	#status(paired: boolean) {
+	#status(paired: boolean, grant: string | null) {
 		const session = this.#o.session;
+		// The grant is consulted for the holder only: a request without the pairing token is told no scope.
+		const holder = paired ? grant : null;
+		const control = this.#control.view(holder);
 		const id = session.piSessionId;
 		const connected = !this.#disposed && !this.#ended && session.live && id !== null;
 		const sessionId = id === null ? null : `endo.session.pi.${id}`;
@@ -400,7 +573,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				...Object.fromEntries(
 					(["steer", "queue", "stop"] as const).map((operation) => [
 						operation,
-						this.#interventions?.offer(operation) ?? {
+						this.#interventions?.offer(operation, holder) ?? {
 							offered: false,
 							reason: "Interventions are not configured for this launch.",
 						},
@@ -408,6 +581,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				),
 			},
 			paired: this.#pairing.paired(),
+			mode: control.mode,
+			protection: control.protection,
+			// That a control-carrying code is waiting on the terminal is said only to a paired page: it is of no use to anyone else.
+			sessionControl: paired ? control.control : { ...control.control, armed: false },
 			command:
 				this.#command === null
 					? null
@@ -463,6 +640,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	 */
 	endSession(): void {
 		if (this.#ended) return;
+		this.#control.revoke("closing");
 		this.#ended = true;
 		this.#pairing.clear();
 		this.#command?.abort.abort();
@@ -477,6 +655,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	 * request is approved after the chains have been closed off. The desk calls this when its `finish` begins.
 	 */
 	beginClose(): void {
+		this.#control.revoke("closing");
 		this.#closing = true;
 		this.#interventions?.beginClose();
 		this.#command?.abort.abort();
@@ -487,9 +666,14 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (!this.#o.session.live) this.endSession();
 		const [a, b, ...more] = request.route;
 		if (a === "status" && b === undefined && request.method === "GET" && request.query === "")
-			return reply(200, this.#status(this.#granted(request.grant)));
-		if (a === "pair" && b === undefined && request.method === "POST" && request.query === "")
-			return this.#pairing.pair(isRecord(request.body) ? request.body.code : undefined);
+			return reply(200, this.#status(this.#granted(request.grant), request.grant));
+		if (a === "pair" && b === undefined && request.method === "POST" && request.query === "") {
+			const answer = this.#pairing.pair(isRecord(request.body) ? request.body.code : undefined);
+			// A new pairing replaces the page: the grant the old one held ends, and a new one is issued only if THIS code was armed on the
+			// terminal. The answer is the same either way: what the page holds is told by the status, never by the pairing.
+			if (answer.status === 200) this.#control.paired((answer.body as { grant: string }).grant);
+			return answer;
+		}
 		// Everything below needs the grant.
 		if (!this.#granted(request.grant)) return refuse(401, "grant-required");
 		if (a === "transcript" && b === undefined && request.method === "GET") {
@@ -515,6 +699,19 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			const answer = await endoProjectRouteV0(this.#o.project, request.route, request.method, request.query);
 			// As for the workspace reads: a pairing revoked while Git was being read gets the refusal, never the read.
 			if (answer !== null) return this.#granted(request.grant) ? answer : refuse(401, "grant-required");
+		}
+		// The holder gives its session-control grant up. Reducing authority needs no terminal; nothing here can add any.
+		if (
+			a === "session-control" &&
+			b === "revoke" &&
+			more.length === 0 &&
+			request.method === "POST" &&
+			request.query === ""
+		) {
+			if (!isRecord(request.body) || Object.keys(request.body).length !== 0) return refuse(400, "bad-request");
+			return this.#control.relinquish(request.grant)
+				? reply(200, this.#status(true, request.grant))
+				: refuse(409, "no-session-control");
 		}
 		if (a === "prompt" && b === "propose" && more.length === 0 && request.method === "POST" && request.query === "")
 			return this.#propose(request.grant as string, isRecord(request.body) ? request.body : null);
@@ -544,8 +741,17 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	// --- the prompt command --------------------------------------------------------------------------------------------------
 
 	#propose(grant: string, body: Record<string, unknown> | null): { status: number; body: unknown } {
-		if (body === null || Object.keys(body).join() !== "message" || typeof body.message !== "string")
+		const members = body === null ? "" : Object.keys(body).sort().join();
+		if (body === null || (members !== "message" && members !== "message,nonce") || typeof body.message !== "string")
 			return refuse(400, "bad-request");
+		// A replay nonce names one act of the page. Seen before in this launch: the request already made is the answer, and nothing else
+		// happens (under a session grant a repeated request would otherwise be a second send). It carries no authority.
+		const nonce = members === "message" ? null : body.nonce;
+		if (members !== "message") {
+			if (typeof nonce !== "string" || !NONCE.test(nonce)) return refuse(400, "bad-request");
+			const made = this.#nonces.get(nonce);
+			if (made !== undefined) return made.grant === grant ? reply(200, made.view) : refuse(409, "not-offered");
+		}
 		const message = body.message;
 		const bytes = Buffer.byteLength(message, "utf8");
 		if (
@@ -556,7 +762,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			return refuse(400, "bad-request");
 		const offer = this.#promptOffer();
 		if (!offer.offered) return refuse(409, "not-offered");
-		const opened = this.#open(grant, message, null);
+		const opened = this.#open(grant, message, null, nonce as string | null);
 		return opened === null ? refuse(503, "not-recording") : reply(202, opened.view);
 	}
 
@@ -619,7 +825,12 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	}
 
 	/** Record the proposal and start asking. The caller has checked the message and the offer. Null when the proposal cannot be recorded. */
-	#open(grant: string | null, message: string, attempt: DevelopAttemptCandidateV0 | null): Proposal | null {
+	#open(
+		grant: string | null,
+		message: string,
+		attempt: DevelopAttemptCandidateV0 | null,
+		nonce: string | null = null,
+	): Proposal | null {
 		const session = this.#o.session;
 		const piId = session.piSessionId as string;
 		const sessionId = `endo.session.pi.${piId}`;
@@ -656,6 +867,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 				proposalId,
 				state: "awaiting-approval",
 				approved: false,
+				authorizedBy: null,
 				reason: null,
 				disposition: null,
 				bytes,
@@ -680,6 +892,10 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			done: Promise.resolve(),
 		};
 		this.#command = proposal;
+		if (nonce !== null) {
+			this.#nonces.set(nonce, proposal);
+			if (this.#nonces.size > NONCES_KEPT) this.#nonces.delete(this.#nonces.keys().next().value as string);
+		}
 		proposal.done = this.#run(proposal);
 		return proposal;
 	}
@@ -731,35 +947,47 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		};
 		// An attempt has its own phrase: a prompt's approval, typed into an attempt's question, declines it, and the other way round.
 		const phrase = `APPROVE ${p.attempt === null ? "PROMPT" : "ATTEMPT"} ${p.proposalDigest.slice(0, 16)}`;
-		let answer: "allow" | "deny" | null = null;
-		try {
-			answer = await this.#o.approver(
-				{
-					operation: p.attempt === null ? "prompt" : "attempt",
-					proposalId: p.view.proposalId,
-					phrase,
-					session: p.session,
-					attachment: p.attachment,
-					bytes: p.view.bytes,
-					message: p.message as string,
-					expiresAtMs: p.view.expiresAtMs,
-					requestedFrom: p.grant === null ? "terminal" : "page",
-					...(p.attempt === null
-						? {}
-						: {
-								attempt: {
-									attemptId: p.attempt.attemptId,
-									taskId: p.attempt.taskId,
-									taskRevision: p.attempt.taskRevision,
-									preparedOnRevision: p.attempt.preparedOnRevision,
-								},
-							}),
-				},
-				p.abort.signal,
-			);
-		} catch {
-			answer = null;
-		}
+		let answer: "allow" | "allow-code" | "deny" | null = null;
+		// A typed prompt from the page that holds a standing session-control grant covering `prompt` is authorised by that grant, here and
+		// now, and nobody is asked. Everything else (an attempt's brief, a request made on the terminal, no grant, a grant that ended a
+		// moment ago) takes the terminal path below, unchanged. From this line to the send there is no await for a typed prompt, so a grant
+		// that authorised it cannot be revoked in between.
+		// A prompt whose text is one of the terminal's own commands (`revoke`, `control`, `pair`, `attempt …`) is almost certainly typed in
+		// the wrong window: it would reach Pi as chat and do nothing it names. A grant never covers it; the terminal is asked, and says so.
+		const covered =
+			p.attempt === null && p.grant !== null && endoWorkbenchTerminalCommandInV0(p.message as string) === null
+				? this.#control.authorize(p.grant, "prompt")
+				: null;
+		if (covered !== null) answer = "allow";
+		else
+			try {
+				answer = await this.#o.approver(
+					{
+						operation: p.attempt === null ? "prompt" : "attempt",
+						proposalId: p.view.proposalId,
+						phrase,
+						session: p.session,
+						attachment: p.attachment,
+						bytes: p.view.bytes,
+						message: p.message as string,
+						expiresAtMs: p.view.expiresAtMs,
+						requestedFrom: p.grant === null ? "terminal" : "page",
+						...(p.attempt === null
+							? {}
+							: {
+									attempt: {
+										attemptId: p.attempt.attemptId,
+										taskId: p.attempt.taskId,
+										taskRevision: p.attempt.taskRevision,
+										preparedOnRevision: p.attempt.preparedOnRevision,
+									},
+								}),
+					},
+					p.abort.signal,
+				);
+			} catch {
+				answer = null;
+			}
 		if (this.#disposed || this.#ended || this.#closing) return settle("session-ended", p.proposedEventId);
 		if (answer === null)
 			return settle(p.abort.signal.aborted ? "not-authorized" : "approval-timed-out", p.proposedEventId);
@@ -772,8 +1000,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 					schemaVersion: ENDO_WORKBENCH_SCHEMA_V0,
 					proposalId: p.view.proposalId,
 					proposalDigest: p.proposalDigest,
-					decision: answer,
-					confirmation: "terminal",
+					decision: answer === "deny" ? "deny" : "allow",
+					// Recorded as what it was. A grant-authorised send is never recorded as typed.
+					...(covered !== null
+						? { confirmation: "session-grant", sessionGrant: covered.grantId }
+						: { confirmation: answer === "allow-code" ? "terminal-code" : "terminal" }),
 					decidedAt,
 				},
 				[p.proposedEventId],
@@ -782,7 +1013,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			return settle("session-ended", p.proposedEventId);
 		}
 		if (answer === "deny") return settle("authorization-denied", authorized.id);
-		p.view = { ...p.view, approved: true };
+		p.view = { ...p.view, approved: true, authorizedBy: covered !== null ? "session-grant" : "terminal" };
 		// The gate is checked again at the moment of sending: what was true when it was proposed may not be.
 		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
 		const gate = (): "session-ended" | "not-authorized" | "run-active" | null => {
@@ -970,6 +1201,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	/** Stop accepting anything, withdraw a waiting approval, revoke the grant and forget the transcript. Idempotent. */
 	async dispose(): Promise<void> {
 		if (this.#disposed) return;
+		this.#control.revoke("closing");
 		this.#disposed = true;
 		this.#pairing.clear();
 		this.#ended = true;

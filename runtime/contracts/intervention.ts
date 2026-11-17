@@ -74,7 +74,7 @@ export interface EndoInterventionAuthorityProviderV0 {
  */
 export function localOperatorAuthorityV0(
 	confirmedDigest: string | null,
-	confirmation: "digest-confirmed" | "terminal-phrase" | "scenario" = "digest-confirmed",
+	confirmation: "digest-confirmed" | "terminal-phrase" | "terminal-code" | "scenario" = "digest-confirmed",
 ): EndoInterventionAuthorityProviderV0 {
 	return {
 		authority: { kind: "local-operator", confirmation },
@@ -83,6 +83,24 @@ export function localOperatorAuthorityV0(
 			if (confirmedDigest !== proposal.proposalDigest)
 				return { decision: "deny", reason: "the confirmed digest is not this proposal's digest" };
 			return { decision: "allow", reason: null };
+		},
+	};
+}
+
+/**
+ * The authority of a session-control grant (runtime/contracts/session-control.ts) over ONE proposal the grant was just asked about and
+ * covered: the broker passes the digest of exactly that proposal. Recorded as what it is, with the grant's id; never as a typed phrase.
+ */
+export function sessionGrantAuthorityV0(
+	coveredDigest: string,
+	sessionGrant: string,
+): EndoInterventionAuthorityProviderV0 {
+	return {
+		authority: { kind: "local-operator", confirmation: "session-grant", sessionGrant },
+		decide(proposal) {
+			return coveredDigest === proposal.proposalDigest
+				? { decision: "allow", reason: null }
+				: { decision: "deny", reason: "the session grant was asked about another proposal" };
 		},
 	};
 }

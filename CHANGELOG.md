@@ -3,6 +3,20 @@
 ## Unreleased
 
 ### Added
+- **DEVELOP-UX-002: bounded session control, and modes** ([architecture, threat model, specification and results](research/develop-ux/DEVELOP-UX-002.md)).
+  - `endo develop --mode everyday|protected|strict`. `endo develop` asks for Everyday; `endo harness attach --workbench` stays Strict.
+  - A **session-control grant** in the broker, separate from the pairing grant: issued only when a pairing code the terminal marked is
+    redeemed; bound to the launch, the session and attachment, the workspace, a closed set of operations (prompt, steer, queue, stop),
+    30 minutes and 200 sends. A covered request is dispatched without a terminal phrase and recorded as authorised by the grant
+    (`confirmation: "session-grant"`), never as typed. Attempts keep their phrase. `control` and `revoke` on the terminal.
+  - **It is issued and used only while an execution boundary around the agent is observed as enforced. No provider in this build
+    reports one, so on every host today Everyday is not in effect, Strict runs, and the terminal and the page say why.** Protected
+    refuses to start. Nothing here sandboxes Pi.
+  - `--confirm short` (opt-in): a request may be approved by a four-character code the terminal shows for that one question. Recorded
+    as `terminal-code`. Never for an attempt.
+  - The page shows the mode, why a requested mode is not in effect, and session control (scope, expiry, a control to give it up).
+  - Records: `workbench.session-control-granted` and `-ended`; `workbench.prompt-authorized` and `intervention.authorization` say how
+    each send was authorised. `prompt/propose` and `intervention/propose` accept an optional replay `nonce`.
 - **Field atmospheres: night rain and a distant storm** ([what they are, their limits and their cost](docs/develop-atmospheres.md)).
   - Field's legend gains **Atmosphere**: None, Contours (the default, unchanged), Rain or Storm. Memory only, like the appearance.
     Choosing changes the drawing and nothing else.

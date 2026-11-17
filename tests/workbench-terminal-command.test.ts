@@ -4,13 +4,19 @@ import { endoWorkbenchTerminalCommandInV0 } from "../protocol/workbench.ts";
 import { terminalCommandIn, terminalCommandWords } from "../studio-ui/src/model/workbench.ts";
 
 const ID = `endo.attempt.${"a".repeat(32)}`;
-const CASES: [string, { command: "attempt" | "pair"; argument: string | null } | null][] = [
+const CASES: [string, { command: "attempt" | "pair" | "control" | "revoke"; argument: string | null } | null][] = [
 	[`attempt ${ID}`, { command: "attempt", argument: ID }],
 	[`  attempt   ${ID}\n`, { command: "attempt", argument: ID }],
 	["attempt endo.attempt.588db0", { command: "attempt", argument: "endo.attempt.588db0" }],
 	["attempt", { command: "attempt", argument: null }],
 	["pair", { command: "pair", argument: null }],
 	[" pair \n", { command: "pair", argument: null }],
+	["revoke", { command: "revoke", argument: null }],
+	["  revoke\n", { command: "revoke", argument: null }],
+	["control", { command: "control", argument: null }],
+	["revoke the old token", null],
+	["Revoke", null],
+	["control flow is wrong here", null],
 	["attempt it", null],
 	["attempt it again, carefully", null],
 	[`attempt ${ID} now`, null],
@@ -32,5 +38,8 @@ describe("the workbench terminal's own command, found in a message", () => {
 		expect(terminalCommandWords({ command: "attempt" })).toContain("Type it at the attached terminal");
 		expect(terminalCommandWords({ command: "attempt" })).toContain("would not send the attempt's brief");
 		expect(terminalCommandWords({ command: "pair" })).toContain("`pair`");
+		expect(terminalCommandWords({ command: "revoke" })).toContain("Give up session control");
+		expect(terminalCommandWords({ command: "revoke" })).toContain("revoke nothing");
+		expect(terminalCommandWords({ command: "control" })).toContain("grant nothing");
 	});
 });

@@ -48,6 +48,7 @@ import type {
 	EndoInterventionProposalV0,
 	EndoInterventionRefusalReasonV0,
 } from "../../protocol/intervention.ts";
+import { endoWorkbenchTerminalCommandInV0 } from "../../protocol/workbench.ts";
 import {
 	type EndoConsumptionSliceLimitsV0,
 	localOperatorAuthorityV0,
@@ -456,7 +457,10 @@ export class WorkbenchInterventionsV0 {
 			return reply(200, this.#view(stop));
 		}
 		// Everything that can be refused is refused BEFORE the desk records anything or keeps the text.
-		if (!this.offer(operation, grant).offered) return refuse(409, "not-offered");
+		// A steer or queue whose text is one of the terminal's own commands is never covered by a grant (see `#drive`), so it is offered on
+		// the terminal's terms: it waits its turn behind a question already open there.
+		const asCommand = message !== null && endoWorkbenchTerminalCommandInV0(message) !== null;
+		if (!this.offer(operation, asCommand ? null : grant).offered) return refuse(409, "not-offered");
 		let proposal: EndoInterventionProposalV0;
 		try {
 			this.#counter += 1;
@@ -676,7 +680,10 @@ export class WorkbenchInterventionsV0 {
 		// A request the asking page's session-control grant covers is authorised by that grant, now, and nobody is asked (DEVELOP-UX-002).
 		// It is decided here, after any wait above, from the grant as it stands at this moment; a grant that ended meanwhile leaves the
 		// request to the terminal, as before.
-		const covered = askable ? (this.#h.sessionControl?.authorize(c.grant, op) ?? null) : null;
+		// Never for a message that is one of the terminal's own commands: it would reach Pi as chat and do nothing it names, so the terminal
+		// is asked and says so.
+		const asCommand = c.message !== null && endoWorkbenchTerminalCommandInV0(c.message) !== null;
+		const covered = askable && !asCommand ? (this.#h.sessionControl?.authorize(c.grant, op) ?? null) : null;
 		if (covered !== null) answer = "allow";
 		try {
 			if (askable && covered === null)

@@ -71,6 +71,7 @@ import {
 	ENDO_WORKBENCH_SCHEMA_V0,
 	type EndoWorkbenchKindV0,
 	type EndoWorkbenchRefusalReasonV0,
+	endoWorkbenchTerminalCommandInV0,
 } from "../../protocol/workbench.ts";
 import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../protocol/workbench-http.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -951,7 +952,12 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		// now, and nobody is asked. Everything else (an attempt's brief, a request made on the terminal, no grant, a grant that ended a
 		// moment ago) takes the terminal path below, unchanged. From this line to the send there is no await for a typed prompt, so a grant
 		// that authorised it cannot be revoked in between.
-		const covered = p.attempt === null && p.grant !== null ? this.#control.authorize(p.grant, "prompt") : null;
+		// A prompt whose text is one of the terminal's own commands (`revoke`, `control`, `pair`, `attempt …`) is almost certainly typed in
+		// the wrong window: it would reach Pi as chat and do nothing it names. A grant never covers it; the terminal is asked, and says so.
+		const covered =
+			p.attempt === null && p.grant !== null && endoWorkbenchTerminalCommandInV0(p.message as string) === null
+				? this.#control.authorize(p.grant, "prompt")
+				: null;
 		if (covered !== null) answer = "allow";
 		else
 			try {

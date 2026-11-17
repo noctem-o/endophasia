@@ -90,9 +90,12 @@ export type WorkbenchAction =
  * The workbench terminal's own command, when the composer's whole text is one (a mirror of protocol/workbench.ts,
  * `endoWorkbenchTerminalCommandInV0`; a test keeps them equal). Sent from here it would reach the agent as chat, so the page does not ask.
  */
-export function terminalCommandIn(text: string): { command: "attempt" | "pair"; argument: string | null } | null {
+export type TerminalCommand = "attempt" | "pair" | "control" | "revoke";
+const BARE_COMMANDS: readonly TerminalCommand[] = ["pair", "control", "revoke"];
+export function terminalCommandIn(text: string): { command: TerminalCommand; argument: string | null } | null {
 	const words = text.trim().split(/\s+/);
-	if (words.length === 1 && words[0] === "pair") return { command: "pair", argument: null };
+	const bare = BARE_COMMANDS.find((command) => command === words[0]);
+	if (words.length === 1 && bare !== undefined) return { command: bare, argument: null };
 	if (words[0] !== "attempt") return null;
 	if (words.length === 1) return { command: "attempt", argument: null };
 	return words.length === 2 && /^endo\.attempt\./.test(words[1] as string)
@@ -101,7 +104,11 @@ export function terminalCommandIn(text: string): { command: "attempt" | "pair"; 
 }
 
 /** Why the composer will not ask for a message that is a terminal command: where that command goes instead. */
-export function terminalCommandWords(found: { command: "attempt" | "pair" }): string {
+export function terminalCommandWords(found: { command: TerminalCommand }): string {
+	if (found.command === "revoke")
+		return 'This is the workbench terminal\'s `revoke` command, not a message. Sent from here it would go to the agent as chat and revoke nothing. To end session control from this page, use "Give up session control" above; or type `revoke` at the attached terminal.';
+	if (found.command === "control")
+		return "This is the workbench terminal's `control` command, not a message. Sent from here it would go to the agent as chat and grant nothing. Session control is granted only at the attached terminal: type it there.";
 	return found.command === "pair"
 		? "This is the workbench terminal's `pair` command, not a message. Sent from here it would go to the agent as chat. Type it at the attached terminal."
 		: "This is the workbench terminal's `attempt` command, not a message. Sent from here it would go to the agent as chat: it would not send the attempt's brief, and nothing would record it as the attempt. Type it at the attached terminal, or use \"Request sending … to Pi\" under the attempt in Task.";

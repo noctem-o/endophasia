@@ -464,6 +464,31 @@ describe("4. Wrong workspace or scope", () => {
 		expect((await w.status(grant)).sessionControl).toMatchObject({ state: "active", sendsLeft: 200 });
 	});
 
+	it("never covers a message that is one of the terminal's own commands: it waits for the terminal, which says so", async () => {
+		const w = setup();
+		const grant = await w.pair(true);
+		for (const text of ["revoke", "control", " pair\n", `attempt endo.attempt.${"a".repeat(32)}`]) {
+			const reply = await w.prompt(grant, text);
+			expect(reply.body, text).toMatchObject({ state: "awaiting-approval", authorizedBy: null });
+			expect(w.session.promptCalls, text).toEqual([]);
+			w.terminal.type("no");
+			await settle(5);
+		}
+		// Words around them are ordinary messages, and the grant covers them.
+		await w.prompt(grant, "revoke the old token in auth.ts");
+		await settle(5);
+		expect(w.session.promptCalls).toEqual(["revoke the old token in auth.ts"]);
+		// Steer and queue the same; and such a steer does not jump a question already open on the terminal.
+		w.session.runActive = true;
+		w.desk.hold = false;
+		const steer = await w.intervene(grant, "steer", "revoke");
+		expect(steer.body).toMatchObject({ state: "awaiting-approval", authorizedBy: null });
+		expect((await w.intervene(grant, "queue", "control")).status).toBe(409);
+		expect(w.desk.applyCalls).toEqual([]);
+		// The grant itself is untouched by them.
+		expect((await w.status(grant)).sessionControl).toMatchObject({ state: "active", sendsLeft: 199 });
+	});
+
 	it("never covers an attempt's brief: it is approved on the terminal by its own phrase, grant or no grant", async () => {
 		const root = realpathSync(mkdtempSync(join(tmpdir(), "endo-ux2-")));
 		cleanup.push(() => rmSync(root, { recursive: true, force: true }));

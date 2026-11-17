@@ -204,7 +204,11 @@ export async function startWorkbenchV0(
 							`NOTE: this ${what} is the text of this terminal's \`${asCommand.command}\` command. Approving sends it to Pi as a chat message. ${
 								asCommand.command === "attempt"
 									? "It does NOT send any attempt's brief, and records no authorisation for one. To send the attempt, decline this, then type the command at the `>` prompt here."
-									: "It does NOT pair the page. To pair, decline this, then type `pair` at the `>` prompt here."
+									: asCommand.command === "revoke"
+										? "It does NOT revoke session control. To revoke it, type `revoke` at the `>` prompt here (that also declines this)."
+										: asCommand.command === "control"
+											? "It does NOT grant session control. To grant it, decline this, then type `control` at the `>` prompt here."
+											: "It does NOT pair the page. To pair, decline this, then type `pair` at the `>` prompt here."
 							}`,
 						]),
 				EFFECT_WORDS[what],

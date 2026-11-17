@@ -49,17 +49,23 @@ export const ENDO_WORKBENCH_GRANT_END_REASONS_V0 = [
 
 export const ENDO_WORKBENCH_SCHEMA_V0 = "endo.workbench.v0";
 
+/** The workbench terminal's own commands that take no argument (DEVELOP-UX-002 adds `control` and `revoke`). */
+export const ENDO_WORKBENCH_BARE_COMMANDS_V0 = ["pair", "control", "revoke"] as const;
+export type EndoWorkbenchTerminalCommandV0 = (typeof ENDO_WORKBENCH_BARE_COMMANDS_V0)[number] | "attempt";
+
 /**
- * The workbench terminal's own command, when a message's whole text is one: `pair`, or `attempt` alone or with an attempt id. A message
+ * The workbench terminal's own command, when a message's whole text is one: `pair`, `control`, `revoke`, or `attempt` alone or with an
+ * attempt id. A message
  * like that typed into the page's composer reaches the agent as chat, not as the command: it sends no attempt's brief and records no
  * authorisation (REVIEW-PILOT-001, run 1). The page refuses to ask for it, and the terminal warns when asked to approve one anyway. Plain
  * English such as "attempt it" is not a command: only an argument that starts like an attempt id is.
  */
 export function endoWorkbenchTerminalCommandInV0(
 	text: string,
-): { command: "attempt" | "pair"; argument: string | null } | null {
+): { command: EndoWorkbenchTerminalCommandV0; argument: string | null } | null {
 	const words = text.trim().split(/\s+/);
-	if (words.length === 1 && words[0] === "pair") return { command: "pair", argument: null };
+	const bare = ENDO_WORKBENCH_BARE_COMMANDS_V0.find((command) => command === words[0]);
+	if (words.length === 1 && bare !== undefined) return { command: bare, argument: null };
 	if (words[0] !== "attempt") return null;
 	if (words.length === 1) return { command: "attempt", argument: null };
 	return words.length === 2 && /^endo\.attempt\./.test(words[1] as string)

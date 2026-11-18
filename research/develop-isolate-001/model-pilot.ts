@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { existsSync, lstatSync, statSync } from "node:fs";
-import { createConnection } from "node:net";
+import { createConnection, createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { EndoCaptureLogV0 } from "../../adapters/openai-proxy/capture-log.ts";
 import { loadEndoCassetteV0 } from "../../adapters/openai-proxy/cassette.ts";
@@ -43,6 +43,13 @@ const attempt = (opts) => new Promise((resolve) => {
 });
 const code = (f) => { try { f(); return "ok"; } catch (e) { return e.code || "error"; } };
 assert.equal(process.argv[2], c.fds);
+if (c.mode === "shared-network-control") {
+	assert.equal(fs.readlinkSync("/proc/self/ns/net"), c.namespaces.net);
+	const outcome = await attempt({ host: "127.0.0.1", port: c.hostPorts.canary });
+	assert.equal(outcome, "connected");
+	console.log(JSON.stringify({ fds: process.argv[2], networkNamespace: "shared", hostCanary: outcome }));
+	process.exit(0);
+}
 const stat = fs.statSync("/work", { bigint: true });
 assert.equal(stat.dev + ":" + stat.ino, c.workspace);
 assert.equal(code(() => fs.readFileSync(c.canary)), "ENOENT");
@@ -64,6 +71,25 @@ const observations = {
 	relaySocket: code(() => fs.lstatSync(c.socket)),
 	abstract: await attempt({ path: "\0" + c.abstractName }),
 };
+if (c.hostPorts) {
+	const self = net.createServer((socket) => socket.end());
+	await new Promise((resolve, reject) => { self.once("error", reject); self.listen(0, "127.0.0.1", resolve); });
+	try {
+		const address = self.address();
+		assert.equal(address.address, "127.0.0.1");
+		observations.selfListener = address.address + ":" + address.port;
+		observations.selfLoopback = await attempt({ host: address.address, port: address.port });
+	} finally {
+		await new Promise((resolve, reject) => self.close((error) => error ? reject(error) : resolve()));
+	}
+	observations.external = await attempt({ host: "192.0.2.1", port: 80 });
+	observations.hostCanary = await attempt({ host: "127.0.0.1", port: c.hostPorts.canary });
+	observations.hostRecorder = await attempt({ host: "127.0.0.1", port: c.hostPorts.recorder });
+	assert.equal(observations.selfLoopback, "connected");
+	assert.equal(observations.external, "ENETUNREACH");
+	assert.equal(observations.hostCanary, "ECONNREFUSED");
+	assert.equal(observations.hostRecorder, "ECONNREFUSED");
+}
 assert.equal(observations.direct, "ECONNREFUSED");
 assert.equal(observations.abstract, "ECONNREFUSED");
 const request = (method, path, model, extra = {}) => new Promise((resolve) => {
@@ -119,8 +145,16 @@ export async function runModelPilot(
 	{ bwrap, base, options, scratch, piRoot, controller }: PilotContext,
 	connect: boolean,
 ) {
+	const selfListeners: { scope: string; address: string }[] = [];
+	let hostPorts: { canary: number; recorder: number } | undefined;
 	const scope = async (mode: string, mounts: EndoSandboxProfileInputV0["mounts"] = [], bridge = false) => {
-		const profile = profileWithFdObserverV0(buildSandboxProfileV0({ ...base, mounts: [...base.mounts, ...mounts] }));
+		const profile = profileWithFdObserverV0(
+			buildSandboxProfileV0({
+				...base,
+				mounts: [...base.mounts, ...mounts],
+				...(mode === "shared-network-control" ? { unsafeForTests: { shareNet: true } } : {}),
+			}),
+		);
 		assert(profile, "the trusted descriptor observer is unavailable");
 		const command = [
 			NODE,
@@ -135,6 +169,7 @@ export async function runModelPilot(
 				fds: ENDO_STDIO_FDS_V0,
 				abstractName: `endo-pilot-${randomBytes(12).toString("hex")}`,
 				mode,
+				hostPorts,
 				model: MODEL,
 				maxBody: MAX_BODY,
 				maxTokens: MAX_TOKENS,
@@ -162,7 +197,15 @@ export async function runModelPilot(
 				run.truncated.stderr === 0,
 			`${mode} failed or cleanup was unconfirmed (exit=${run.exitCode}, timeout=${run.timedOut}): ${run.stderr.toString().slice(-600)}`,
 		);
-		return JSON.parse(run.stdout.toString());
+		const { selfListener, ...observations } = JSON.parse(run.stdout.toString());
+		if (hostPorts !== undefined && mode !== "shared-network-control") {
+			assert.equal(typeof selfListener, "string");
+			assert.match(selfListener, /^127\.0\.0\.1:[1-9][0-9]{0,4}$/);
+			selfListeners.push({ scope: mode, address: selfListener });
+		} else {
+			assert.equal(selfListener, undefined);
+		}
+		return observations;
 	};
 	const unavailable = {
 		fds: ENDO_STDIO_FDS_V0,
@@ -172,9 +215,11 @@ export async function runModelPilot(
 		relaySocket: "ENOENT",
 		abstract: "ECONNREFUSED",
 	};
-	const noRoute = await scope("no-route");
-	assert.deepEqual(noRoute, unavailable);
-	if (!connect) return { noRoute };
+	if (!connect) {
+		const noRoute = await scope("no-route");
+		assert.deepEqual(noRoute, unavailable);
+		return { noRoute };
+	}
 
 	const host = await fetch(`${UPSTREAM}/v1/models`, { redirect: "error", signal: AbortSignal.timeout(4000) });
 	assert.equal(host.status, 200, "approved host model API must answer");
@@ -186,6 +231,15 @@ export async function runModelPilot(
 	const key = endoDigestKeyV0(randomBytes(32), "installation");
 	const store = join(scratch, "pilot-capture");
 	const log = new EndoCaptureLogV0(store, key, "record", { async: true });
+	let canaryHits = 0;
+	const canary = createServer((socket) => {
+		canaryHits += 1;
+		socket.destroy();
+	});
+	const closeCanary = async () => {
+		if (canary.listening)
+			await new Promise<void>((resolve, reject) => canary.close((error) => (error ? reject(error) : resolve())));
+	};
 	const policy = {
 		routes: ENDO_PI_MODEL_ROUTES_V0,
 		model: MODEL,
@@ -198,7 +252,29 @@ export async function runModelPilot(
 	};
 	let relay: Awaited<ReturnType<typeof startModelRelayV0>> | undefined;
 	try {
+		await new Promise<void>((resolve, reject) => {
+			canary.once("error", reject);
+			canary.listen(0, "127.0.0.1", resolve);
+		});
+		const canaryAddress = canary.address();
+		assert(canaryAddress !== null && typeof canaryAddress !== "string");
+		assert.equal(canaryAddress.address, "127.0.0.1");
 		relay = await startModelRelayV0({ upstream: UPSTREAM, policy, log, runtimeDirectory: scratch });
+		await log.flush();
+		const listen = loadEndoCassetteV0(store, key).listen;
+		assert(listen, "recording proxy listener was not recorded");
+		const proxy = new URL(listen);
+		assert.equal(proxy.hostname, "127.0.0.1");
+		hostPorts = { canary: canaryAddress.port, recorder: Number(proxy.port) };
+		const privateNetwork = {
+			...unavailable,
+			selfLoopback: "connected",
+			external: "ENETUNREACH",
+			hostCanary: "ECONNREFUSED",
+			hostRecorder: "ECONNREFUSED",
+		};
+		const noRoute = await scope("no-route");
+		assert.deepEqual(noRoute, privateNetwork);
 		assert.equal(statSync(dirname(relay.socketPath)).mode & 0o777, 0o700);
 		assert.equal(lstatSync(relay.socketPath).mode & 0o777, 0o600);
 		const mounts = modelRelayMountsV0(relay, scratch);
@@ -207,10 +283,10 @@ export async function runModelPilot(
 			mounts.filter((m) => m.kind !== "socket"),
 			true,
 		);
-		assert.deepEqual(bridgeOnly, { ...unavailable, bridge: "connected", bridgeRequest: "ECONNRESET" });
+		assert.deepEqual(bridgeOnly, { ...privateNetwork, bridge: "connected", bridgeRequest: "ECONNRESET" });
 		assert.equal(relay.admitted(), 0);
 		const policyControl = await scope("policy", mounts, true);
-		const active = { ...unavailable, bridge: "connected", relaySocket: "ok" };
+		const active = { ...privateNetwork, bridge: "connected", relaySocket: "ok" };
 		assert.deepEqual(policyControl, {
 			...active,
 			wrongMethod: "ECONNRESET",
@@ -239,6 +315,11 @@ export async function runModelPilot(
 		assert.deepEqual({ ...pi, completion: "" }, { ...active, completion: "" });
 		assert.equal(relay.admitted(), 1);
 		assert.deepEqual(relay.refusals(), refusals);
+		assert.equal(canaryHits, 0, "a private scope contacted the host canary");
+		const sharedNetwork = await scope("shared-network-control");
+		assert.deepEqual(sharedNetwork, { fds: ENDO_STDIO_FDS_V0, networkNamespace: "shared", hostCanary: "connected" });
+		assert.equal(canaryHits, 1, "the shared-network control did not reach the canary exactly once");
+		await closeCanary();
 		await relay.close();
 		await log.flush();
 		assert.equal(relay.recordingFailures(), 0);
@@ -264,20 +345,22 @@ export async function runModelPilot(
 		assert.equal(complete[0]?.path, "/v1/chat/completions");
 		assert.equal(complete[0]?.response?.status, 200);
 		assert.equal(complete[0]?.truncated, null);
-		assert(cassette.listen, "recording proxy listener was not recorded");
-		const proxy = new URL(cassette.listen);
-		assert.equal(proxy.hostname, "127.0.0.1");
-		const proxyClosed = await new Promise((resolve) => {
-			const socket = createConnection({ host: proxy.hostname, port: Number(proxy.port) });
-			const done = (value: string) => {
-				socket.destroy();
-				resolve(value);
-			};
-			socket.on("error", (e) => done((e as NodeJS.ErrnoException).code ?? "error"));
-			socket.on("connect", () => done("connected"));
-			socket.setTimeout(1500, () => done("timeout"));
-		});
+		assert.equal(cassette.listen, listen);
+		const afterClose = (port: number) =>
+			new Promise((resolve) => {
+				const socket = createConnection({ host: "127.0.0.1", port });
+				const done = (value: string) => {
+					socket.destroy();
+					resolve(value);
+				};
+				socket.on("error", (e) => done((e as NodeJS.ErrnoException).code ?? "error"));
+				socket.on("connect", () => done("connected"));
+				socket.setTimeout(1500, () => done("timeout"));
+			});
+		const proxyClosed = await afterClose(hostPorts.recorder);
+		const canaryClosed = await afterClose(hostPorts.canary);
 		assert.equal(proxyClosed, "ECONNREFUSED");
+		assert.equal(canaryClosed, "ECONNREFUSED");
 		assert.equal(existsSync(relay.socketPath), false);
 		return {
 			hostModelListed: true,
@@ -286,20 +369,32 @@ export async function runModelPilot(
 			noRoute,
 			bridgeOnly,
 			policyControl,
+			sharedNetwork,
+			canaryHits,
 			refusals,
 			notForwarded: noForward,
 			admitted: relay.admitted(),
 			pi,
 			completed: { method: "POST", path: "/v1/chat/completions", status: 200 },
-			listeners: { proxy: cassette.listen, unix: relay.socketPath, guest: `127.0.0.1:${PORT}` },
-			cleanup: { allScopes: "confirmed", proxy: proxyClosed, unix: "removed" },
+			listeners: {
+				proxy: listen,
+				unix: relay.socketPath,
+				guestBridges: `127.0.0.1:${PORT}`,
+				hostCanary: `127.0.0.1:${hostPorts.canary}`,
+				selfListeners,
+			},
+			cleanup: { allScopes: "confirmed", proxy: proxyClosed, hostCanary: canaryClosed, unix: "removed" },
 		};
 	} finally {
 		try {
 			await relay?.close();
 			await log.flush();
 		} finally {
-			log.close();
+			try {
+				await closeCanary();
+			} finally {
+				log.close();
+			}
 		}
 	}
 }

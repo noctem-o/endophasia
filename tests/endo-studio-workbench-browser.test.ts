@@ -1,7 +1,7 @@
 // The DEVELOP workbench in a real browser, served by its broker (a stand-in session and a hand-resolved terminal approver): the live
 // state, pairing, the private conversation, one governed prompt from request to acceptance, refusals, disconnect, and what must NEVER
 // happen (the grant in a URL or storage, an approval by the page, a prompt sent before the terminal approves it).
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -89,6 +89,56 @@ const refresh = async (page: Page) => {
 };
 
 suite("the DEVELOP workbench", () => {
+	it("inspects the Pi-reported request and outcome by keyboard on desktop and mobile", async () => {
+		const { page, session, broker } = await open();
+		await pairWith(page, broker);
+		session.live_({
+			type: "tool_execution_start",
+			record: { toolName: "bash", toolCallId: "c1", args: { command: "git status --short" } },
+		});
+		session.live_({
+			type: "tool_execution_end",
+			record: {
+				toolName: "bash",
+				toolCallId: "c1",
+				isError: false,
+				result: { content: [{ type: "text", text: " M README.md" }] },
+			},
+		});
+		await refresh(page);
+		await page.waitFor("document.querySelector('.tool-disclosure summary')?.textContent.includes('completed')");
+		const selector = ".tool-disclosure summary";
+		expect(await page.text(selector)).toContain("git status --short");
+		expect(await page.text(selector)).toContain("Pi-reported");
+		expect(await page.eval("!!document.querySelector('.tool-disclosure[open]')")).toBe(false);
+		await page.eval("document.querySelector('.tool-disclosure summary').focus()");
+		await page.press("Enter");
+		await page.waitFor("document.querySelector('.tool-disclosure[open]')");
+		expect(await page.text(".tool-disclosure dl")).toContain("Exit codeunavailable");
+		expect(await page.text(".tool-disclosure dl")).toContain(" M README.md");
+		const dir = process.env.ENDO_TOOL_EVIDENCE_DIR;
+		if (dir) writeFileSync(join(dir, "after.png"), await page.screenshot());
+		await page.resize(390, 844);
+		await page.waitFor(
+			"document.querySelector('[data-testid=live-row]') && !document.querySelector('#develop-live')",
+		);
+		await page.click("[data-testid=live-row]");
+		await page.waitFor("document.querySelector('.tool-disclosure')");
+		await page.click(selector);
+		await page.waitFor("document.querySelector('.tool-disclosure[open]')");
+		await page.eval("document.querySelector('.tool-disclosure').scrollIntoView({block:'center'})");
+		const fits = await page.eval<boolean>(
+			"(() => { const b=document.querySelector('.tool-disclosure').getBoundingClientRect();return b.width > 0 && b.left >= 0 && b.right <= innerWidth; })()",
+		);
+		expect(fits).toBe(true);
+		if (dir) writeFileSync(join(dir, "mobile.png"), await page.screenshot());
+		expect(await page.eval<number>("localStorage.length + sessionStorage.length")).toBe(0);
+		expect(JSON.stringify(page.seen)).not.toContain("git status --short");
+		broker.endSession();
+		await refresh(page);
+		await page.waitFor("!document.querySelector('.tool-disclosure')");
+	});
+
 	it("describes the live session in the neutral vocabulary without changing what the composer is offered", async () => {
 		const { page, session, broker } = await open();
 		expect(await page.text("[data-testid=surface-tag]")).toBe("live");
@@ -205,7 +255,9 @@ suite("the DEVELOP workbench", () => {
 		expect(await page.eval<boolean>("document.querySelector('[data-testid=reasoning-text]') === null")).toBe(true);
 		expect(await page.text("[data-testid=turn-assistant] .turn-text")).not.toContain("HIDDEN-THOUGHT");
 		// Three tool calls in a row are one folded line.
-		expect(await page.eval<number>("document.querySelectorAll('.transcript details').length")).toBe(1);
+		expect(
+			await page.eval<number>("document.querySelectorAll('.transcript > li > details:not([open])').length"),
+		).toBe(1);
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=run-marker]').length")).toBe(2);
 		// The transcript is a list with a name, not a live region that would announce every row.
 		expect(

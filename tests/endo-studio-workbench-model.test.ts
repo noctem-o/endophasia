@@ -55,7 +55,7 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	...over,
 });
 const page = (items: TranscriptItem[], watermark: number, more = false): WorkbenchTranscript => ({
-	schemaVersion: "endo.workbench-transcript.v1",
+	schemaVersion: "endo.workbench-transcript.v2",
 	launchId: LAUNCH,
 	items,
 	watermark,
@@ -76,12 +76,13 @@ const msg = (seq: number, text = `m${seq}`): TranscriptItem => ({
 	stopReason: null,
 	from: null,
 });
-const tool = (seq: number, callId: string, s: "running" | "ok" | "error"): TranscriptItem => ({
+const tool = (seq: number, callId: string | null, s: "running" | "ok" | "error"): TranscriptItem => ({
 	seq,
 	kind: "tool",
 	callId,
 	name: "read",
 	status: s,
+	fields: [],
 });
 const run = (n: number, from: number): TranscriptItem[] => Array.from({ length: n }, (_, i) => msg(from + i));
 
@@ -103,6 +104,33 @@ describe("the transcript is incremental", () => {
 		s = give(s, page([tool(4, "orphan", "ok")], 4));
 		expect(s.items).toHaveLength(3);
 		expect(give(s, page([msg(1)], 4)).items).toHaveLength(3);
+	});
+
+	it("does not regress a finished call on duplicates, late starts or missing IDs", () => {
+		const s = give(
+			withStatus(),
+			page(
+				[
+					tool(1, "a", "running"),
+					tool(2, "b", "ok"),
+					tool(3, "a", "error"),
+					tool(4, "b", "running"),
+					tool(5, "a", "ok"),
+					tool(6, null, "running"),
+					tool(7, null, "ok"),
+				],
+				7,
+			),
+		);
+		expect(s.items.map((i) => [i.seq, i.kind === "tool" && i.status])).toEqual([
+			[1, "error"],
+			[2, "ok"],
+			[6, "running"],
+			[7, "ok"],
+		]);
+		const unpaired = reduceWorkbench(s, { type: "unpair" });
+		expect(unpaired.items).toEqual([]);
+		expect(give(unpaired, page([tool(8, "late", "ok")], 8))).toBe(unpaired);
 	});
 
 	it("keeps the cursor at what was received while pages remain, so a failed later page is read again", () => {

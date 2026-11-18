@@ -24,7 +24,7 @@ import {
 
 const LAUNCH = "0123456789abcdef";
 const body = (over: Record<string, unknown> = {}) => ({
-	schemaVersion: "endo.workbench-transcript.v1",
+	schemaVersion: "endo.workbench-transcript.v2",
 	launchId: LAUNCH,
 	items: [
 		{
@@ -149,8 +149,10 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	...over,
 });
 const at = new Date(0);
-const withStatus = (over: Partial<WorkbenchStatus> = {}): WorkbenchState =>
-	reduceWorkbench(initialWorkbench(), { type: "reply", reply: { kind: "status", record: status(over) }, at });
+const withStatus = (over: Partial<WorkbenchStatus> = {}): WorkbenchState => ({
+	...reduceWorkbench(initialWorkbench(), { type: "reply", reply: { kind: "status", record: status(over) }, at }),
+	grant: "g".repeat(43),
+});
 const give = (s: WorkbenchState, over: Record<string, unknown>) => {
 	const record = readWorkbenchTranscript(body(over));
 	if (record === null) throw new Error("fixture refused");

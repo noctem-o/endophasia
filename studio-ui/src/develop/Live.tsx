@@ -138,6 +138,60 @@ function rowsOf(items: readonly TranscriptItem[]): Row[] {
 	return rows;
 }
 
+function ToolDisclosure({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> }) {
+	const reflow = useContext(ReflowContext);
+	const main = item.fields.find((f) => f.label === "Command" || f.label === "Path");
+	const status =
+		item.status === "ok"
+			? "completed"
+			: item.status === "ended"
+				? "ended · outcome unavailable"
+				: item.status === "error"
+					? "error (reported)"
+					: "running";
+	const fields = [...item.fields];
+	if (!fields.some((f) => f.label !== "Exit code" && f.label !== "Output"))
+		fields.unshift({
+			label: item.name === "bash" ? "Command" : ["read", "write", "edit"].includes(item.name) ? "Path" : "Arguments",
+			state: "unavailable",
+		});
+	for (const label of ["Exit code", "Output"] as const)
+		if (!fields.some((f) => f.label === label)) fields.push({ label, state: "unavailable" });
+	return (
+		<details className="turn-body tool-disclosure" onToggle={() => reflow?.()}>
+			<summary>
+				<span className="mono">
+					{item.name}
+					{main && "text" in main ? ` · ${main.text}` : ""}
+				</span>{" "}
+				· {status} <small className="dim">Pi-reported</small>
+			</summary>
+			<dl>
+				{fields.map((f) => (
+					<div key={f.label}>
+						<dt>{f.label === "Command" ? "Requested command" : f.label}</dt>
+						<dd>
+							{"text" in f ? (
+								<>
+									<code>{f.text || "(empty)"}</code>{" "}
+									<small>{f.state === "truncated" ? "reported · truncated" : f.state}</small>
+								</>
+							) : f.state === "redacted" ? (
+								"withheld for privacy"
+							) : (
+								"unavailable"
+							)}
+						</dd>
+					</div>
+				))}
+			</dl>
+			<p className="dim small">
+				Call #{item.seq} · Arguments come from Pi’s start report. No independent check of execution or correctness.
+			</p>
+		</details>
+	);
+}
+
 /** What a message's body draws: its parts in the runtime's order, reasoning as disclosures and text as text. */
 function Parts({
 	parts,
@@ -215,12 +269,7 @@ const Turn = memo(function Turn({
 		return (
 			<li className={`turn turn-tool tool-${item.status}`} data-testid="tool-row">
 				<span className="turn-role">tool</span>
-				<span className="turn-body mono">
-					{item.name}{" "}
-					<span className="dim">
-						· {item.status === "running" ? "running" : item.status === "ok" ? "ok" : "error (reported)"}
-					</span>
-				</span>
+				<ToolDisclosure item={item} />
 			</li>
 		);
 	const empty = item.parts.length === 0;
@@ -460,11 +509,10 @@ function Transcript({ wb, reasoning }: { wb: Workbench; reasoning: ReasoningView
 						<ul className="plain">
 							{row.items.map((i) => (
 								<li key={i.seq} className="mono">
-									{i.name} <span className="dim">· {i.status}</span>
+									<ToolDisclosure item={i} />
 								</li>
 							))}
 						</ul>
-						<p className="dim small">Tool arguments and results are not kept by the workbench.</p>
 					</details>
 				</li>
 			),

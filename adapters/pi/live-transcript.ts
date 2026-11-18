@@ -10,7 +10,7 @@
 // its `thinking_*` stream events); a `<think>` tag or any other pattern inside ordinary text is ordinary text. A reasoning block Pi
 // marks `redacted` is kept as "withheld", with no text; its opaque `thinkingSignature` is never read. Reasoning is what the model emitted
 // as reasoning: it is relayed, not interpreted, and nothing here claims it reflects how the model actually computed its answer.
-// For a tool call only its name and outcome are kept (arguments and results are not kept at all). What it never does: reconstruct text
+// Tool boundaries keep only the conservative live-tool-fields projection. What it never does: reconstruct text
 // from digests, infer content from a tool name, or claim a message it did not receive. A message that arrived before it began is simply
 // absent, and the view says its first sequence number so a reader can tell.
 //
@@ -30,8 +30,9 @@
 //  - one page: at most PAGE items and PAGE_BYTES (always at least one item, so a reader makes progress).
 
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
+import { endFields, startFields, type ToolField } from "./live-tool-fields.ts";
 
-export const LIVE_TRANSCRIPT_SCHEMA_V1 = "endo.workbench-transcript.v1";
+export const LIVE_TRANSCRIPT_SCHEMA_V2 = "endo.workbench-transcript.v2";
 export const LIVE_TRANSCRIPT_MAX_ITEMS_V0 = 400;
 export const LIVE_TRANSCRIPT_MAX_BYTES_V0 = 2 * 1024 * 1024;
 export const LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0 = 32 * 1024;
@@ -72,7 +73,14 @@ export type LiveTranscriptItemV0 =
 			/** The `open` snapshot this completed message replaces, if one was being shown; else null. */
 			from: number | null;
 	  }
-	| { seq: number; kind: "tool"; callId: string; name: string; status: "running" | "ok" | "error" }
+	| {
+			seq: number;
+			kind: "tool";
+			callId: string | null;
+			name: string;
+			status: "running" | "ok" | "error" | "ended";
+			fields: ToolField[];
+	  }
 	| { seq: number; kind: "run"; state: "started" | "ended" };
 
 /** The assistant message being written, as of the moment it was read. Not a message: it is replaced by the completed one. */
@@ -129,15 +137,14 @@ function cut(text: string, limit: number): { text: string; truncated: boolean } 
 	return { text: encoded.subarray(0, end).toString("utf8"), truncated: true };
 }
 
-const name = (value: unknown): string =>
-	typeof value === "string" && value.length > 0
-		? value.slice(0, 128).replace(/[\u0000-\u001f\u007f]/g, "")
-		: "unknown";
-
 /** The UTF-8 bytes a part holds (what counts against the transcript's bound). */
 const partBytes = (part: LiveTranscriptPartV1): number => (part.text.length === 0 ? 0 : bytes(part.text));
 const itemBytes = (item: LiveTranscriptItemV0): number =>
-	item.kind === "message" ? item.parts.reduce((sum, part) => sum + partBytes(part), 0) : 0;
+	item.kind === "message"
+		? item.parts.reduce((sum, part) => sum + partBytes(part), 0)
+		: item.kind === "tool"
+			? bytes(JSON.stringify(item))
+			: 0;
 
 /** A completed message's content, as ordered parts within the bounds. Images, tool calls and every other block are left out. */
 function partsOf(content: unknown): { parts: LiveTranscriptPartV1[]; truncated: boolean; dropped: number } {
@@ -261,16 +268,24 @@ export class LiveTranscriptV0 {
 				stopReason: typeof stop === "string" && stop !== "pending" ? stop.slice(0, 32) : null,
 				from,
 			});
-		} else if (event.type === "tool_execution_start") {
-			this.#add({ kind: "tool", callId: name(record.toolCallId), name: name(record.toolName), status: "running" });
-		} else if (event.type === "tool_execution_end") {
-			// The end of a call is a NEW item with its own sequence number, so a reader that already holds the running item receives the
-			// outcome by the same cursor it uses for everything else. A reader folds items of one call id into one row.
+		} else if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
+			const callId =
+				typeof record.toolCallId === "string" && /^[a-zA-Z0-9_.:|-]{1,128}$/.test(record.toolCallId)
+					? record.toolCallId
+					: null;
+			const tool =
+				typeof record.toolName === "string" && /^[a-zA-Z][a-zA-Z0-9_.-]{0,127}$/.test(record.toolName)
+					? record.toolName
+					: record.toolName === undefined
+						? "name unavailable"
+						: "name withheld";
+			const start = event.type === "tool_execution_start";
 			this.#add({
 				kind: "tool",
-				callId: name(record.toolCallId),
-				name: name(record.toolName),
-				status: record.isError === true ? "error" : "ok",
+				callId,
+				name: tool,
+				status: start ? "running" : record.isError === true ? "error" : record.isError === false ? "ok" : "ended",
+				fields: start ? startFields(tool, record.args) : endFields(tool, record.result),
 			});
 		}
 	}
@@ -372,7 +387,11 @@ export class LiveTranscriptV0 {
 		}
 		return {
 			items: items.map((item) =>
-				item.kind === "message" ? { ...item, parts: item.parts.map((part) => ({ ...part })) } : { ...item },
+				item.kind === "message"
+					? { ...item, parts: item.parts.map((part) => ({ ...part })) }
+					: item.kind === "tool"
+						? { ...item, fields: item.fields.map((f) => ({ ...f })) }
+						: { ...item },
 			),
 			watermark: this.#seq,
 			firstSeq: this.#firstSeq,

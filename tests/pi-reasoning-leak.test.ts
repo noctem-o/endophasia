@@ -7,6 +7,7 @@
 //
 // The first suite runs always, against the fake Pi (tests/fixtures/fake-pi) in its model-endpoint mode. The second runs only when
 // ENDO_PI_EXECUTABLE names an installed Pi; it is the same check with the real Pi's own openai-completions provider.
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -40,8 +41,17 @@ function filesOutsidePi(directory: string): { path: string; bytes: Buffer }[] {
 	return out;
 }
 
-async function run(executable: string, extraEnv: Record<string, string>) {
-	const server = await startFakeOpenAiServer({ reasoningContent: `${SENTINEL}: first read the failing test.` });
+async function run(executable: string, extraEnv: Record<string, string>, toolDemo = false) {
+	const server = await startFakeOpenAiServer(
+		toolDemo
+			? {
+					toolScript: {
+						steps: [{ name: "bash", arguments: JSON.stringify({ command: "git status --short" }) }],
+						finalText: "Done.",
+					},
+				}
+			: { reasoningContent: `${SENTINEL}: first read the failing test.` },
+	);
 	const scratch = mkdtempSync(join(tmpdir(), "endo-reasoning-"));
 	cleanup.push(() => rmSync(scratch, { recursive: true, force: true }));
 	const agentDir = join(scratch, "agent");
@@ -62,7 +72,14 @@ async function run(executable: string, extraEnv: Record<string, string>) {
 			},
 		}),
 	);
+	if (toolDemo) {
+		execFileSync("git", ["-c", "init.defaultBranch=main", "init", "-q", cwd], {
+			env: { PATH: process.env.PATH, HOME: home, GIT_CONFIG_NOSYSTEM: "1" },
+		});
+		writeFileSync(join(cwd, "README.md"), "Synthetic fixture.");
+	}
 	const pi = new PiAttachmentV0({
+		...(toolDemo ? { tools: ["bash"] } : {}),
 		root,
 		cwd,
 		executable,
@@ -90,7 +107,7 @@ async function run(executable: string, extraEnv: Record<string, string>) {
 		});
 		// Two turns: the second model request carries the first turn back to the model (whatever Pi replays of it), so a durable record
 		// made of that request would show here too.
-		for (const prompt of ["Say something short.", "And once more."]) {
+		for (const prompt of toolDemo ? ["Check this scratch workspace."] : ["Say something short.", "And once more."]) {
 			expect(await session.prompt(prompt)).toBe("started");
 			expect(await session.waitForSettled(60_000)).toBe(true);
 		}
@@ -130,6 +147,31 @@ const executable = process.env.ENDO_PI_EXECUTABLE;
 describe.runIf(executable !== undefined && executable.length > 0)(
 	"reasoning through the attachment (real Pi, opt-in)",
 	() => {
+		it("relays the installed Pi's bash report without recording the command or output in Endophasia's store", async () => {
+			const { root, view, cleared } = await run(executable!, {}, true);
+			const calls = view.items.filter((i) => i.kind === "tool");
+			expect(calls).toHaveLength(2);
+			expect(calls[0]).toMatchObject({
+				name: "bash",
+				status: "running",
+				fields: expect.arrayContaining([{ label: "Command", state: "reported", text: "git status --short" }]),
+			});
+			expect(calls[1]).toMatchObject({
+				name: "bash",
+				callId: calls[0]!.callId,
+				status: "ok",
+				fields: expect.arrayContaining([
+					{ label: "Exit code", state: "unavailable" },
+					{ label: "Output", state: "reported", text: expect.stringContaining("?? README.md") },
+				]),
+			});
+			expect(cleared).not.toContain("git status --short");
+			const files = filesOutsidePi(root);
+			expect(files.length).toBeGreaterThan(0);
+			for (const { path, bytes } of files)
+				for (const value of ["git status --short", "?? README.md"]) expect(bytes.includes(value), path).toBe(false);
+		}, 120_000);
+
 		it("reaches the broker's transcript as a structured reasoning part, and nothing durable", async () => {
 			const { root, view, cleared } = await run(executable!, {});
 			const assistant = view.items.find((item) => item.kind === "message" && item.role === "assistant");

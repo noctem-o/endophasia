@@ -33,7 +33,7 @@ Pi (RPC stdout)
             ├─ adapters/pi/mapping.ts             canonical evidence: message_end → role, stop reason, usage. No content, no reasoning.
             └─ adapters/pi/workbench.ts           the broker hands every live event to its transcript
                  └─ adapters/pi/live-transcript.ts   memory only, bounded (§3)
-                      └─ GET api/v0/workbench/transcript?after=n   grant required; endo.workbench-transcript.v1
+                      └─ GET api/v0/workbench/transcript?after=n   grant required; endo.workbench-transcript.v2
                            └─ studio-ui/src/model/workbench-wire.ts   the whole body checked; one failure refuses it whole
                                 └─ studio-ui/src/model/workbench.ts   the page's copy, bounded again
                                      └─ develop/Live.tsx → develop/Reasoning.tsx   drawn as text (a React child), never markup
@@ -42,7 +42,7 @@ Pi (RPC stdout)
 **The transcript.** Before this change it kept a message's `text` parts and dropped everything else. Now a message keeps its **parts**
 in the runtime's order: text parts (adjacent ones joined, as before) and reasoning parts. A reasoning part is `supplied` (with text),
 `withheld` (Pi marked it `redacted`; no text is kept, and `thinkingSignature` is never read), or `empty` (a block with no text). Tool-call
-blocks and images are left out of the message. A tool's name and outcome still arrive as their own items from `tool_execution_*`, so a
+blocks and images are left out of the message. A tool’s private summary and inspected fields arrive as their own items from `tool_execution_*`, so a
 message, the tools it called and the next message keep their order.
 
 **The message being written.** Deltas are folded into **one snapshot** (`open`), held beside the item log and never in it:
@@ -105,8 +105,8 @@ before the answer.
 
 ## 5. The wire
 
-`GET api/v0/workbench/transcript` answers `endo.workbench-transcript.v1`. The page and the broker are one bundle served by one process,
-so v0 is no longer accepted. Changes from v0:
+`GET api/v0/workbench/transcript` answers `endo.workbench-transcript.v2`. The page and the broker are one bundle served by one process,
+so earlier versions are no longer accepted. v2 adds private tool fields (see [the tool disclosure](develop-workbench.md#inspecting-tool-reports)); the message and reasoning contract remains:
 
 ```ts
 // a message item

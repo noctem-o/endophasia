@@ -70,7 +70,17 @@ describe("the live transcript", () => {
 		expect(view.items.map((i) => i.seq)).toEqual([1, 2, 3, 4, 5, 6]);
 		// A reader that already holds the running item gets the outcome by the same cursor: it is a NEW item.
 		expect(t.view(4).items).toEqual([
-			{ seq: 5, kind: "tool", callId: "c1", name: "read", status: "ok" },
+			{
+				seq: 5,
+				kind: "tool",
+				callId: "c1",
+				name: "read",
+				status: "ok",
+				fields: [
+					{ label: "Exit code", state: "unavailable" },
+					{ label: "Output", state: "redacted" },
+				],
+			},
 			{ seq: 6, kind: "run", state: "ended" },
 		]);
 	});

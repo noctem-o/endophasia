@@ -59,6 +59,7 @@ const run = (seq: number, s: "started" | "ended"): TranscriptItem => ({ seq, kin
 const tool = (seq: number, st: "running" | "ok" | "error"): TranscriptItem => ({
 	seq,
 	kind: "tool",
+	fields: [],
 	callId: `c${seq}`,
 	name: "bash",
 	status: st,

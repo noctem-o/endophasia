@@ -358,6 +358,12 @@ describe("the guards on a command request", () => {
 	it("keeps live text out of every read route and writes nothing to the store", async () => {
 		const { session, broker, post, getW, root, server } = await startBroker();
 		const before = treeHash(root);
+		session.live_({
+			type: "tool_execution_start",
+			record: { toolName: "bash", toolCallId: "c1", args: { command: "git status --short" } },
+		});
+		expect((await getW("transcript")).status).toBe(401);
+		expect((await getW("status")).body).not.toContain("git status --short");
 		session.live_(textMessage("user", SECRET));
 		session.live_(textMessage("assistant", SECRET));
 		const grant = (

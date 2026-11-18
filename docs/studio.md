@@ -228,8 +228,8 @@ never inferred from recordings). The page can **read** the live conversation and
   conversation. If Pi's reply is not seen (a timeout, a lost connection) the page says *Sent, but the runtime's reply was not seen* and
   asks you to check the conversation before sending another: only Pi's own refusal is shown as *Not sent*. A prompt is only sent when the session is connected and idle; the gate is checked again at the moment of sending.
 - **The conversation** is a private, in-memory view of what the attached process has received: your prompts and the assistant's text
-  (tagged *live · private, cleared at session end*), tool calls by name and outcome (three or more in a row fold), run markers. Tool
-  arguments and results and reasoning text are not kept. It is never written to the event store or served by any read route. Pi keeps
+  (tagged *live · private, cleared at session end*), inspectable Pi-reported tool activity (three or more calls in a row fold), and run markers.
+  Only [narrow projections of tool arguments and output](develop-workbench.md#inspecting-tool-reports) are shown. It is never written to the event store or served by any read route. Pi keeps
   its own session file; that is Pi's retention.
 - **Records.** Each prompt leaves its own chain in the store, by keyed digest only: `workbench.prompt-proposed`, `-authorized`
   (allow or deny, confirmation `terminal`), `-dispatched`, `-accepted`, or `-refused` with a reason. It is not an intervention.

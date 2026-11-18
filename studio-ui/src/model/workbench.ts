@@ -128,6 +128,8 @@ export const anyOpen = (s: WorkbenchState): boolean =>
 export const stopInFlight = (s: WorkbenchState): WorkbenchIntervention | null =>
 	s.interventions.find((i) => i.operation === "stop" && interventionOpen(i)) ?? null;
 
+const emptyTranscript = { items: [], watermark: 0, evicted: 0, trimmed: 0, open: null, reasoning: null };
+
 export function reduceWorkbench(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
 	switch (action.type) {
 		case "started":
@@ -139,7 +141,7 @@ export function reduceWorkbench(state: WorkbenchState, action: WorkbenchAction):
 		case "view":
 			return { ...state, view: action.view };
 		case "unpair":
-			return { ...state, grant: null };
+			return { ...state, grant: null, ...emptyTranscript };
 		case "reply":
 			return apply(state, action.reply, action.at);
 	}
@@ -156,10 +158,10 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			const base = fresh ? { ...initialWorkbench(), view: state.view, follow: state.follow } : state;
 			// The broker says the session is DISCONNECTED (its answer, not a failure to reach it): the private text it held is gone, so the
 			// page forgets its copy too. An unreachable broker is a different thing and clears nothing.
-			const gone = status.connection === "disconnected";
+			const gone = status.connection === "disconnected" || !status.paired;
 			return {
 				...base,
-				...(gone ? { items: [], watermark: 0, evicted: 0, trimmed: 0, open: null } : {}),
+				...(gone ? emptyTranscript : {}),
 				availability: "available",
 				status,
 				host: null,
@@ -193,20 +195,30 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 		}
 		case "transcript": {
 			const t = reply.record;
-			if (state.launchId !== t.launchId) return state;
+			if (state.launchId !== t.launchId || state.grant === null || state.status?.connection === "disconnected")
+				return state;
 			const reset = t.watermark < state.watermark;
 			const held = reset ? [] : state.items;
-			const last = held.at(-1)?.seq ?? 0;
+			const last = reset ? 0 : state.watermark;
 			// Items of one tool call fold into one row: the running item is updated in place by its later outcome, which arrives as a
 			// NEW item (a new sequence number) so the same cursor delivers it.
 			const items = [...held];
 			for (const item of t.items) {
 				if (item.seq <= last && !reset) continue;
 				const at =
-					item.kind === "tool" ? items.findIndex((x) => x.kind === "tool" && x.callId === item.callId) : -1;
+					item.kind === "tool"
+						? items.findIndex(
+								(x) =>
+									x.kind === "tool" &&
+									item.callId !== null &&
+									x.callId === item.callId &&
+									x.name === item.name,
+							)
+						: -1;
 				if (item.kind === "tool" && at >= 0) {
 					const existing = items[at] as typeof item;
-					items[at] = { ...existing, status: item.status };
+					if (existing.status === "running" && item.status !== "running")
+						items[at] = { ...existing, status: item.status, fields: [...existing.fields, ...item.fields] };
 				} else items.push(item);
 			}
 			// The cursor is what was RECEIVED: when more pages follow, it is the last item of this one, not the broker's highest number,
@@ -242,6 +254,7 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			const unpaired = reply.status === 401 && reply.code === "grant-required";
 			return {
 				...state,
+				...(unpaired ? emptyTranscript : {}),
 				grant: unpaired ? null : state.grant,
 				problem: reply.message,
 				unreachable: reply.status === 0 && reply.code === "",
@@ -251,7 +264,11 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 }
 
 const textOf = (item: TranscriptItem): number =>
-	item.kind === "message" ? item.parts.reduce((sum, part) => sum + part.text.length, 0) : 0;
+	item.kind === "message"
+		? item.parts.reduce((sum, part) => sum + part.text.length, 0)
+		: item.kind === "tool"
+			? JSON.stringify(item).length
+			: 0;
 /** At most MAX_ITEMS items and MAX_TEXT of text, the newest kept (always the newest one). */
 function bounded(items: TranscriptItem[]): TranscriptItem[] {
 	let from = Math.max(0, items.length - MAX_ITEMS);

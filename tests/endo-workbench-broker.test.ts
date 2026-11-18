@@ -545,6 +545,45 @@ describe("the approval is attributed only when it happened", () => {
 });
 
 describe("the end of the runtime", () => {
+	it("gives no authority for a descriptor that claims every control feature: offers and requests are decided as before", async () => {
+		const { session, pair, call, broker } = setup();
+		// The attachment's assessment admits steering and stop; this broker has no intervention desk, so neither may be offered.
+		Object.assign(session, {
+			capabilityState: {
+				capabilities: ["steering.steer", "steering.stop", "session.identity", "tool.activity"].map(
+					(capability) => ({
+						capability,
+						status: "admitted",
+					}),
+				),
+			},
+		});
+		const grant = await pair();
+		session.runActive = true;
+		const page = (await call("GET", "transcript", null, grant)).body as {
+			descriptor: { providerControls: Record<string, string> };
+		};
+		expect(page.descriptor.providerControls).toMatchObject({ interrupt: "assessed", steer: "assessed" });
+		const status = (await call("GET", "status", null, grant)).body as {
+			offers: Record<string, { offered: boolean }>;
+			sessionControl: { state: string };
+			protection: { state: string };
+		};
+		expect([status.offers.steer?.offered, status.offers.stop?.offered]).toEqual([false, false]);
+		expect(status.sessionControl.state).toBe("none");
+		expect(status.protection.state).toBe("not-enforced");
+		for (const operation of ["steer", "stop"]) {
+			const reply = await call(
+				"POST",
+				"intervention/propose",
+				{ operation, message: operation === "stop" ? null : "x", nonce: "0".repeat(32) },
+				grant,
+			);
+			expect(reply.status, operation).toBeGreaterThanOrEqual(400);
+		}
+		expect(session.promptCalls).toEqual([]);
+		void broker;
+	});
 	it("does not resume the old private transcript across an observed native-session replacement", async () => {
 		const { session, pair, call, broker } = setup();
 		const grant = await pair();

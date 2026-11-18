@@ -1,10 +1,10 @@
 // Browser wire gate for the workbench routes. The broker (adapters/pi/workbench.ts) is authoritative for state, authority and privacy;
 // nothing of it runs here. These checks cover every field the workbench renderers read. A body that does not match is refused whole,
 // and a failure becomes fixed text: no response body, grant or transcript text ever reaches a message.
-import type { ActivityCapabilities, PrivateActivity } from "../../../protocol/private-activity.ts";
+import type { ActivityDescriptor, PrivateActivity } from "../../../protocol/private-activity.ts";
 import { type Check, count, eitherNull, list, obj, one, shape } from "./compare-wire.ts";
 
-import { isPrivateActivity, validActivityCapabilities } from "./private-activity-wire.ts";
+import { isPrivateActivity, validActivityDescriptor } from "./private-activity-wire.ts";
 
 export type WorkbenchCommandState = "awaiting-approval" | "dispatching" | "accepted" | "refused" | "unknown";
 export interface WorkbenchCommand {
@@ -203,7 +203,7 @@ export interface WorkbenchTranscript {
 	schemaVersion: "endo.workbench-transcript.v3";
 	launchId: string;
 	items: TranscriptItem[];
-	capabilities: ActivityCapabilities;
+	descriptor: ActivityDescriptor;
 	watermark: number;
 	firstSeq: number;
 	evicted: number;
@@ -410,7 +410,7 @@ export function readWorkbenchTranscript(v: unknown): WorkbenchTranscript | null 
 			schemaVersion: one("endo.workbench-transcript.v3"),
 			launchId: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
 			items: (x) => Array.isArray(x) && x.length <= 200 && list(item)(x),
-			capabilities: validActivityCapabilities,
+			descriptor: validActivityDescriptor,
 			watermark: count,
 			firstSeq: count,
 			evicted: count,

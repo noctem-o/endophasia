@@ -20,7 +20,7 @@ import type {
 	WorkbenchTranscript,
 } from "../studio-ui/src/model/workbench-wire.ts";
 import { readWorkbenchStatus } from "../studio-ui/src/model/workbench-wire.ts";
-import { unverified } from "./fixtures/private-activity.ts";
+import { syntheticActivities, unknownDescriptor } from "./fixtures/private-activity.ts";
 
 const LAUNCH = "0123456789abcdef";
 const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
@@ -59,7 +59,7 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 });
 const page = (items: TranscriptItem[], watermark: number, more = false): WorkbenchTranscript => ({
 	schemaVersion: "endo.workbench-transcript.v3",
-	capabilities: unverified,
+	descriptor: unknownDescriptor,
 	launchId: LAUNCH,
 	items,
 	watermark,
@@ -107,6 +107,36 @@ const give = (s: WorkbenchState, t: WorkbenchTranscript) =>
 	reduceWorkbench(s, { type: "reply", reply: { kind: "transcript", record: t }, at });
 
 describe("the transcript is incremental", () => {
+	it("folds a provider's file-change report into its own occurrence and never into a tool call that shares the numbers", () => {
+		const [started, completed] = syntheticActivities as [TranscriptItem, TranscriptItem];
+		let s = give(withStatus(), page([started], 1));
+		s = give(s, page([completed], 2));
+		expect(s.items).toEqual([
+			{
+				...started,
+				status: "completed",
+				fields: [
+					{ label: "Path", state: "reported", text: "README.md" },
+					{ label: "Edits", state: "counted", text: "2" },
+				],
+			},
+		]);
+		// A tool end that names occurrence 1 is a different observation type: it does not complete the file change.
+		const stray = {
+			...tool(3, "fc_fixture", "completed", 1),
+			source: "synthetic-codex",
+			turn: 1,
+			category: "file-change",
+		} as TranscriptItem;
+		const after = give(give(withStatus(), page([started], 1)), page([stray], 3));
+		expect(after.items.map((i) => [i.kind, i.seq])).toEqual([
+			["file-change", 1],
+			["tool", 3],
+		]);
+		// A lone report with no native reference is its own row, and its status is the provider's, never a lifecycle we made up.
+		const lone = syntheticActivities[6]!;
+		expect(give(withStatus(), page([lone], 7)).items).toEqual([lone]);
+	});
 	it("keeps both invocations when a completed native ID is reused on a later page", () => {
 		let s = give(withStatus(), page([tool(1, "c1", "running"), tool(2, "c1", "completed", 1)], 4, true));
 		s = give(s, page([tool(3, "c1", "running"), tool(4, "c1", "failed", 3)], 4));

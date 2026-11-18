@@ -22,12 +22,12 @@ import {
 	type WorkbenchStatus,
 	type WorkbenchTranscript,
 } from "../studio-ui/src/model/workbench-wire.ts";
-import { unverified } from "./fixtures/private-activity.ts";
+import { unknownDescriptor } from "./fixtures/private-activity.ts";
 
 const LAUNCH = "0123456789abcdef";
 const body = (over: Record<string, unknown> = {}) => ({
 	schemaVersion: "endo.workbench-transcript.v3",
-	capabilities: unverified,
+	descriptor: unknownDescriptor,
 	launchId: LAUNCH,
 	items: [
 		{

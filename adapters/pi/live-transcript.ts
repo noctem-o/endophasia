@@ -29,7 +29,7 @@
 //    in `evicted`, so a reader sees a gap as a gap;
 //  - one page: at most PAGE items and PAGE_BYTES (always at least one item, so a reader makes progress).
 
-import type { ActivityCapabilities, PrivateActivity } from "../../protocol/private-activity.ts";
+import type { ActivityDescriptor, DescriptorBasis, PrivateActivity } from "../../protocol/private-activity.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
 import { endFields, startFields } from "./live-tool-fields.ts";
 
@@ -99,7 +99,8 @@ export interface LiveTranscriptReasoningV1 {
 export interface LiveTranscriptViewV0 {
 	/** Items with a sequence number greater than the `after` asked for, oldest first, at most one page. */
 	items: LiveTranscriptItemV0[];
-	capabilities: ActivityCapabilities;
+	/** What this source's reports can show, and what its provider claims about control: descriptive only, never authority. */
+	descriptor: ActivityDescriptor;
 	/** The highest sequence number issued so far: pass it back as `after` to continue. 0 before anything was seen. */
 	watermark: number;
 	/** The first sequence number this transcript could hold; earlier events happened before it began or were evicted. */
@@ -137,9 +138,9 @@ const partBytes = (part: LiveTranscriptPartV1): number => (part.text.length === 
 const itemBytes = (item: LiveTranscriptItemV0): number =>
 	item.kind === "message"
 		? item.parts.reduce((sum, part) => sum + partBytes(part), 0)
-		: item.kind === "tool"
-			? bytes(JSON.stringify(item))
-			: 0;
+		: item.kind === "run"
+			? 0
+			: bytes(JSON.stringify(item));
 
 /** A completed message's content, as ordered parts within the bounds. Images, tool calls and every other block are left out. */
 function partsOf(content: unknown): { parts: LiveTranscriptPartV1[]; truncated: boolean; dropped: number } {
@@ -211,8 +212,8 @@ interface OpenBlock {
 export class LiveTranscriptV0 {
 	#items: LiveTranscriptItemV0[] = [];
 	#bytes = 0;
-	readonly #assessed: ((capability: string) => ActivityCapabilities["interrupt"]) | undefined;
-	constructor(assessed?: (capability: string) => ActivityCapabilities["interrupt"]) {
+	readonly #assessed: ((capability: string) => DescriptorBasis) | undefined;
+	constructor(assessed?: (capability: string) => DescriptorBasis) {
 		this.#assessed = assessed;
 	}
 	#seq = 0;
@@ -441,20 +442,24 @@ export class LiveTranscriptV0 {
 			items.push(item);
 		}
 		return {
-			capabilities: {
-				nativeSessionIdentity: this.#assessed?.("session.identity") ?? "unverified",
-				stableCallIdentity: "unverified",
-				toolBoundaries:
-					this.#sawStart && this.#sawEnd ? "supported" : (this.#assessed?.("tool.activity") ?? "unverified"),
-				argumentPreview: this.#args ? "supported" : "unverified",
-				resultPreview: this.#result ? "supported" : "unverified",
-				toolCancellation: "unavailable",
-				interrupt: this.#assessed?.("steering.stop") ?? "unverified",
-				steer: this.#assessed?.("steering.steer") ?? "unverified",
-				approvals: "unavailable",
-				resume: "unverified",
-				fileChanges: "unavailable",
-				subagents: "unavailable",
+			descriptor: {
+				observation: {
+					nativeSessionIdentity: this.#assessed?.("session.identity") ?? "unknown",
+					stableCallIdentity: "unknown",
+					toolBoundaries:
+						this.#sawStart && this.#sawEnd ? "observed" : (this.#assessed?.("tool.activity") ?? "unknown"),
+					argumentPreview: this.#args ? "observed" : "unknown",
+					resultPreview: this.#result ? "observed" : "unknown",
+					fileChanges: "unavailable",
+					subagents: "unavailable",
+				},
+				providerControls: {
+					interrupt: this.#assessed?.("steering.stop") ?? "unknown",
+					steer: this.#assessed?.("steering.steer") ?? "unknown",
+					approvals: "unavailable",
+					toolCancellation: "unavailable",
+					resume: "unknown",
+				},
 			},
 			items: items.map((item) =>
 				item.kind === "message"

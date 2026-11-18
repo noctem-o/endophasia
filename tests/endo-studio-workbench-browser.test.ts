@@ -11,7 +11,7 @@ import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
 import { event, ingestAll, removeTempRoots, tempRoot } from "./cockpit-fixtures.ts";
 import { serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
-import { syntheticActivities } from "./fixtures/private-activity.ts";
+import { claimingDescriptor, syntheticActivities } from "./fixtures/private-activity.ts";
 import { Approval, FakeSession, settle, textMessage } from "./workbench-fixtures.ts";
 
 const executable = findBrowser();
@@ -90,19 +90,45 @@ const refresh = async (page: Page) => {
 };
 
 suite("the DEVELOP workbench", () => {
-	it("renders explicitly synthetic activity reports through the same private transcript gate", async () => {
+	it("renders explicitly synthetic activity reports as what they are: a file change is not a tool call", async () => {
 		const { page, broker } = await open();
 		const view = broker.transcript.view.bind(broker.transcript);
 		broker.transcript.view = (after = 0) => ({
 			...view(after),
-			watermark: 4,
+			watermark: 7,
+			descriptor: claimingDescriptor,
 			items: syntheticActivities.filter((i) => i.seq > after),
 		});
 		await pairWith(page, broker);
-		await page.waitFor("document.querySelectorAll('.tool-disclosure').length === 3");
+		await page.waitFor("document.querySelectorAll('.tool-disclosure').length === 5");
+		const kinds = await page.eval<string[]>(
+			"[...document.querySelectorAll('[data-testid=transcript] li[data-activity]')].map((li) => li.dataset.activity + ':' + li.dataset.testid)",
+		);
+		expect(kinds).toEqual([
+			"file-change:activity-row",
+			"tool:tool-row",
+			"tool:tool-row",
+			"activity:activity-row",
+			"file-change:activity-row",
+		]);
+		const change = await page.text("li[data-activity=file-change]");
+		expect(change).toContain("file change");
+		expect(change).toContain("completed");
+		expect(change).toContain("reported by synthetic-codex");
+		expect(change).toContain("File-change report");
+		expect(change).toContain("not an observed filesystem write");
+		expect(change).not.toMatch(/Tool call|Requested command|Exit code/);
+		expect(await page.text("li[data-activity=activity]")).toContain("reported, no lifecycle");
 		const rows = await page.text("[data-testid=transcript]");
 		for (const source of ["synthetic-codex", "synthetic-claude", "synthetic-acp"]) expect(rows).toContain(source);
 		expect(rows).not.toContain("reported by pi-live");
+		// The descriptor claims every control feature; the offers and the composer are the broker's, unchanged.
+		await page.eval("document.querySelector('[data-testid=source-capabilities]').open = true");
+		expect(await page.text("[data-testid=provider-controls]")).toContain(
+			"Interruption: admitted by the runtime assessment",
+		);
+		expect(await page.text("[data-testid=source-capabilities]")).toContain("A description, not a permission");
+		expect(await page.text("[data-testid=offer-stop]")).toContain("unavailable");
 	});
 	it("inspects the Pi-reported request and outcome by keyboard on desktop and mobile", async () => {
 		const { page, session, broker } = await open();
@@ -125,6 +151,8 @@ suite("the DEVELOP workbench", () => {
 		const selector = ".tool-disclosure summary";
 		expect(await page.text(selector)).toContain("git status --short");
 		expect(await page.text(selector)).toContain("reported by pi-live");
+		expect(await page.text(".tool-disclosure")).toContain("Tool call · activity #1 · command · pi-live report");
+		expect(await page.eval("document.querySelector('[data-testid=tool-row]').dataset.activity")).toBe("tool");
 		expect(await page.eval("!!document.querySelector('.tool-disclosure[open]')")).toBe(false);
 		await page.eval("document.querySelector('.tool-disclosure summary').focus()");
 		await page.press("Enter");

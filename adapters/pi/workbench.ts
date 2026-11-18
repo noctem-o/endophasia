@@ -363,7 +363,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#transcriptSession = options.session.piSessionId;
 		this.transcript = new LiveTranscriptV0((id) => {
 			const status = options.session.capabilityState?.capabilities.find((c) => c.capability === id)?.status;
-			return status === "admitted" ? "supported" : status === "unavailable" ? "unavailable" : "unverified";
+			// Only what the existing assessment admits is "assessed"; partial or missing evidence is not support.
+			return status === "admitted" ? "assessed" : status === "unavailable" ? "unavailable" : "unknown";
 		});
 		this.#o = {
 			approvalWindowMs: 5 * 60_000,

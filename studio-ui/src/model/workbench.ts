@@ -2,7 +2,7 @@
 // the broker last said (status), the private transcript it served, the one prompt in flight, and the grant, which lives here in memory
 // only. Nothing is inferred: a state is what the broker reported; a lost broker is "unreachable", never "ended".
 
-import type { ActivityCapabilities } from "../../../protocol/private-activity.ts";
+import type { ActivityDescriptor } from "../../../protocol/private-activity.ts";
 import type {
 	InterventionOperation,
 	InterventionState,
@@ -34,7 +34,8 @@ export interface WorkbenchState {
 	/** The operator grant: held in memory only, dropped when the broker says the page is no longer paired. */
 	grant: string | null;
 	items: TranscriptItem[];
-	activityCapabilities: ActivityCapabilities | null;
+	/** What the source said its activity reports can show. Presentation only: no offer, grant or request reads it. */
+	activityDescriptor: ActivityDescriptor | null;
 	watermark: number;
 	evicted: number;
 	/** Items this page let go of to stay within its own bound (the broker may still hold them). */
@@ -67,7 +68,7 @@ export const initialWorkbench = (): WorkbenchState => ({
 	launchId: null,
 	grant: null,
 	items: [],
-	activityCapabilities: null,
+	activityDescriptor: null,
 	watermark: 0,
 	evicted: 0,
 	trimmed: 0,
@@ -81,6 +82,9 @@ export const initialWorkbench = (): WorkbenchState => ({
 	follow: true,
 	view: "live",
 });
+
+/** Statuses that say an activity has not reported its end yet. */
+const OPEN: ReadonlySet<string> = new Set(["requested", "running", "in-progress"]);
 
 export class WorkbenchReadGeneration {
 	current = 0;
@@ -157,7 +161,7 @@ export const stopInFlight = (s: WorkbenchState): WorkbenchIntervention | null =>
 
 const emptyTranscript = {
 	items: [],
-	activityCapabilities: null,
+	activityDescriptor: null,
 	watermark: 0,
 	evicted: 0,
 	trimmed: 0,
@@ -239,30 +243,38 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			const items = [...state.items];
 			for (const item of t.items) {
 				if (item.seq <= state.watermark) continue;
+				// A later report folds into its occurrence's first row only when that row is the same kind of activity, from the same source and
+				// turn, under the same native reference, and still open. Anything else stays its own row.
 				const at =
-					item.kind === "tool" && item.occurrence < item.seq
+					item.kind !== "message" && item.kind !== "run" && item.occurrence < item.seq
 						? items.findIndex(
 								(x) =>
-									x.kind === "tool" &&
+									x.kind === item.kind &&
 									x.seq === item.occurrence &&
-									(x.status === "requested" || (x.status === "running" && item.status !== "running")) &&
 									x.source === item.source &&
 									x.turn === item.turn &&
 									x.category === item.category &&
-									x.name === item.name &&
-									x.callId === item.callId,
+									(x.kind === "tool" && item.kind === "tool"
+										? x.name === item.name && x.callId === item.callId
+										: x.kind !== "tool" &&
+											item.kind !== "tool" &&
+											x.nativeRef === item.nativeRef &&
+											(x.kind !== "activity" || item.kind !== "activity" || x.name === item.name)) &&
+									(x.status === "requested" || (OPEN.has(x.status) && !OPEN.has(item.status))),
 							)
 						: -1;
 				const existing = items[at];
-				if (item.kind === "tool" && existing?.kind === "tool")
+				if (existing !== undefined && existing.kind === item.kind && item.kind !== "message" && item.kind !== "run")
 					items[at] = {
 						...existing,
 						status: item.status,
 						fields: [
-							...existing.fields.filter((f) => !item.fields.some((next) => next.label === f.label)),
+							...(existing as typeof item).fields.filter(
+								(f) => !item.fields.some((next) => next.label === f.label),
+							),
 							...item.fields,
 						],
-					};
+					} as typeof item;
 				else items.push(item);
 			}
 			// The cursor is what was RECEIVED: when more pages follow, it is the last item of this one, not the broker's highest number,
@@ -272,7 +284,7 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			return {
 				...state,
 				items: kept,
-				activityCapabilities: t.capabilities,
+				activityDescriptor: t.descriptor,
 				watermark: Math.max(state.watermark, cursor),
 				evicted: t.evicted,
 				trimmed: state.trimmed + (items.length - kept.length),
@@ -311,9 +323,9 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 const textOf = (item: TranscriptItem): number =>
 	item.kind === "message"
 		? item.parts.reduce((sum, part) => sum + part.text.length, 0)
-		: item.kind === "tool"
-			? JSON.stringify(item).length
-			: 0;
+		: item.kind === "run"
+			? 0
+			: JSON.stringify(item).length;
 /** At most MAX_ITEMS items and MAX_TEXT of text, the newest kept (always the newest one). */
 function bounded(items: TranscriptItem[]): TranscriptItem[] {
 	let from = Math.max(0, items.length - MAX_ITEMS);

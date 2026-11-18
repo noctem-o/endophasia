@@ -32,7 +32,11 @@ fs.writeFileSync(dir + "/models.json", JSON.stringify({ providers: { relay: { ba
 	maxTokens: Number(env.ENDO_MODEL_MAX_COMPLETION_TOKENS), input: ["text"], cost: zero }] } } }));
 fs.writeFileSync(dir + "/settings.json", JSON.stringify({ defaultProvider: "relay", defaultModel: env.ENDO_MODEL_ID }));
 const prompt = fs.readFileSync("/agent/prompt.txt", "utf8");
-const child = spawn("/usr/bin/node", ["/agent/pi/dist/bundle/cli.js", "-p", "--no-session", prompt], {
+const flags = process.argv.slice(2);
+if (flags.length && (flags.length !== 1 || flags[0] !== "--read-edit-pilot")) throw new Error("unknown condition");
+const pilot = flags.length ? ["--mode", "json", "--tools", "read,edit", "--offline", "--no-extensions", "--no-mcp",
+	"--no-skills", "--no-context-files", "--no-prompt-templates", "--no-approve", "--thinking", "off"] : [];
+const child = spawn("/usr/bin/node", ["/agent/pi/dist/bundle/cli.js", "-p", "--no-session", ...pilot, prompt], {
 	stdio: "inherit",
 	env: { ...env, PI_CODING_AGENT_DIR: dir, PI_OFFLINE: "1", PI_SKIP_VERSION_CHECK: "1", PI_TELEMETRY: "0" },
 });

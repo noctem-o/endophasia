@@ -68,7 +68,7 @@ with tempfile.TemporaryFile() as private:
 import fs from "node:fs";
 const { runOfflineBoundary } = await import(process.argv[2]);
 const input = [fs.fstatSync(63).isFile(), fs.fstatSync(64).isFIFO()];
-const result = await runOfflineBoundary();
+const result = await runOfflineBoundary({ modelRoute: "probe" });
 process.stdout.write(JSON.stringify({ input, result }));
 `;
 		const diagnostic = fileURLToPath(new URL("../research/develop-isolate-001/diagnostic.ts", import.meta.url));
@@ -94,6 +94,9 @@ process.stdout.write(JSON.stringify({ input, result }));
 		expect(result).toMatchObject({
 			passed: true,
 			offline: { checks: { "fds-inherited": "fds:0.1.2", "fd-inventory-control": "fds:0.1.2.6.7" } },
+			model: {
+				noRoute: { fds: "fds:0.1.2", direct: "ECONNREFUSED", bridge: "ECONNREFUSED", relaySocket: "ENOENT" },
+			},
 		});
 	},
 	35_000,

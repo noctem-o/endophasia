@@ -30,6 +30,8 @@ export const OFFLINE_EXPECTED = {
 	"controller-signal-zero": "ESRCH",
 	"self-pid-control": "visible-and-addressable",
 	"privilege-status": "ok",
+	"no-new-privileges": "1",
+	"capability-masks": "0000000000000000",
 	"privilege-parser-control": "detects-both",
 	"nested-userns": "ENOSPC",
 	"detached-child": "alive-in-sandbox",
@@ -144,6 +146,10 @@ out["controller-signal-zero"] = code(() => process.kill(c.controllerPid, 0));
 out["self-pid-control"] = code(() => fs.statSync("/proc/" + process.pid)) === "ok" &&
 	code(() => process.kill(process.pid, 0)) === "ok" ? "visible-and-addressable" : "unexpected";
 const status = fs.readFileSync("/proc/self/status", "utf8");
+out["no-new-privileges"] = /^NoNewPrivs:\s+([01])$/m.exec(status)?.[1] ?? "unreadable";
+const masks = ["Inh", "Eff", "Prm", "Bnd", "Amb"].map((field) =>
+	new RegExp("^Cap" + field + ":\\s+([0-9a-f]{16})$", "m").exec(status)?.[1]);
+out["capability-masks"] = masks.every((mask) => mask === masks[0]) ? masks[0] ?? "unreadable" : "mixed";
 const privilege = (status) => {
 	if (!/^NoNewPrivs:\s+1$/m.test(status)) return "nnp-missing";
 	return ["Inh", "Eff", "Prm", "Bnd", "Amb"].every((field) =>

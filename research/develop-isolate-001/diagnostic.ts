@@ -97,7 +97,13 @@ export function completedOfflineRun(run: EndoSandboxRunV0): boolean {
 
 type Checks = Partial<Record<OfflineObservationKey, string>>;
 
-export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean } = {}) {
+export async function runOfflineBoundary({
+	realPi = false,
+	modelRoute,
+}: {
+	realPi?: boolean;
+	modelRoute?: "probe" | "local";
+} = {}) {
 	const unavailable = (reason: string) => ({ kind: "offline-diagnostic", passed: false, reason });
 	if (process.platform !== "linux" || !process.getuid?.())
 		return unavailable("the diagnostic requires an unprivileged Linux controller");
@@ -107,7 +113,12 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 	if (!containment.ok) return unavailable(containment.detail);
 	const runtime = resolveRuntimeV0([NODE, "/usr/bin/unshare", "/usr/bin/true"]);
 	if (!runtime.ok) return unavailable(runtime.detail);
-	if (realPi && !trustedPiInstallation()) return unavailable("the pinned Arch Pi installation did not validate");
+	if ((realPi || modelRoute === "local") && !trustedPiInstallation())
+		return unavailable("the pinned Arch Pi installation did not validate");
+	const capLast = Number(readFileSync("/proc/sys/kernel/cap_last_cap", "utf8").trim());
+	if (!Number.isInteger(capLast) || capLast < 0 || capLast > 63)
+		return unavailable("the kernel capability mask could not be determined");
+	const allCaps = ((1n << BigInt(capLast + 1)) - 1n).toString(16).padStart(16, "0");
 
 	const scratch = mkdtempSync("/tmp/endo-isolate-");
 	try {
@@ -225,6 +236,18 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 			await inspect("nested-userns-enabled", base, { "nested-userns": "allowed" }, (args) =>
 				args.filter((arg) => arg !== "--disable-userns" && arg !== "--assert-userns-disabled"),
 			),
+			await inspect(
+				"namespace-capabilities-enabled",
+				base,
+				{ "privilege-status": "capability", "capability-masks": allCaps },
+				(args) => {
+					const index = args.indexOf("--cap-drop");
+					if (index < 0 || args[index + 1] !== "ALL")
+						throw new Error("the baseline does not explicitly drop every capability");
+					args.splice(index, 2, "--uid", "0", "--cap-add", "ALL");
+					return args;
+				},
+			),
 		];
 		const invalid = buildSandboxProfileV0(base);
 		invalid.args.push("--endo-deliberate-invalid-option");
@@ -241,6 +264,13 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 				/Unknown option --endo-deliberate-invalid-option/i.test(rejected.stderr.toString("utf8")),
 		};
 		const controlsPassed = brokenLaunch.passed && controls.every((c) => c.passed);
+		const model =
+			modelRoute !== undefined && controlsPassed
+				? await (await import("./model-pilot.ts")).runModelPilot(
+						{ bwrap: bwrap.bwrap, base, options: runOptions, scratch, piRoot: PI, controller },
+						modelRoute === "local",
+					)
+				: undefined;
 		const offlinePi =
 			realPi && controlsPassed
 				? await inspect(
@@ -267,6 +297,7 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 			controls,
 			brokenLaunch,
 			offlinePi,
+			model,
 		};
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });
@@ -275,12 +306,17 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 
 if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
 	const args = process.argv.slice(2);
-	if (args.length !== 0 && (args.length !== 1 || args[0] !== "--operator-approved-offline-pi")) {
-		process.stderr.write("Usage: node research/develop-isolate-001/diagnostic.ts [--operator-approved-offline-pi]\n");
+	const flags = ["--operator-approved-offline-pi", "--probe-model-route-absent", "--operator-approved-local-model"];
+	if (args.length !== 0 && (args.length !== 1 || !flags.includes(args[0] ?? ""))) {
+		process.stderr.write(`Usage: node research/develop-isolate-001/diagnostic.ts [${flags.join(" | ")}]\n`);
 		process.exitCode = 2;
 	} else {
 		try {
-			const result = await runOfflineBoundary({ realPi: args.length === 1 });
+			const modelRoute = args[0] === flags[1] ? "probe" : args[0] === flags[2] ? "local" : undefined;
+			const result = await runOfflineBoundary({
+				realPi: args[0] === flags[0],
+				...(modelRoute === undefined ? {} : { modelRoute }),
+			});
 			process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 			process.exitCode = result.passed ? 0 : 1;
 		} catch (error) {

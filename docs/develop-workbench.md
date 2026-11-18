@@ -258,7 +258,7 @@ The operator approved (1) the broker serves the workbench page itself, (2) termi
   remove it. What Endophasia writes (events, registries, runtime-text and artifact stores) never holds the prompt or reply text; a
   test scans for it. The workbench's own transcript is separate, in memory, bounded (400 items and 2 MiB in all; 32 KiB of text and
   96 KiB of reasoning per message) and cleared when the session ends or the broker is disposed.
-- **Tool arguments and results are not kept at all**, not even in memory: the transcript holds a tool's name and outcome only.
+- **Tools:** only a [bounded projection](#inspecting-tool-reports) of Pi’s reports is kept in private transcript memory.
 - **Model-provided reasoning** is kept in that same transcript, under the same rules, when Pi supplies it as structured `thinking`
   blocks; a redacted block is kept as withheld, with no text. It never reaches evidence, logs or the read-only Studio; a test scans the
   store for it. See [develop-reasoning.md](develop-reasoning.md).
@@ -520,3 +520,20 @@ question. Typing the code, or the whole phrase, approves; anything else declines
 | `POST prompt/propose`, `POST intervention/propose` | accept an optional `nonce`: a repeated one returns the request already made. Any other added member refuses the request |
 | `POST session-control/revoke {}` | the holder gives the grant up. No route issues, extends or widens one |
 | request views | gain `authorizedBy`: `terminal` or `session-grant` |
+
+### Inspecting tool reports
+
+A tool row opens with Enter, Space or a click. For example, `bash · git status --short · completed` is labelled **Pi-reported**. The command is the argument on Pi’s execution-start event, not a reconstruction of the assistant’s tool-call block. A request with no such event has no row. “Completed” means Pi sent an end event with boolean `isError: false`; neither that nor a displayed output line verifies an OS process, an exit code, or a correct result. An end without a boolean outcome says so.
+
+The attachment’s private live callback projects fields *before* the grant-gated transcript response. The canonical mapper still records keyed comparison digests, never the projected text. The client folds starts and ends by call ID and name without moving a call’s first row; an end without its start cannot reconstruct arguments. Missing or malformed IDs do not correlate. The page clears its copy after grant loss or reported disconnection, not merely a network error.
+
+| Tool | Start fields | End fields |
+| --- | --- | --- |
+| bash | Exact common commands from a fixed vocabulary; directory and timeout only if supplied. Shell literals, compound commands and private paths are withheld. | A bounded single text block only for a fixed diagnostic or short-status lines made of admitted filenames. Other output and errors are withheld. |
+| read | Admitted path; numeric offset and limit when supplied. | File contents are withheld. |
+| edit / write | Admitted path; number of entries observed in an edit list, never replacement text or a write body. | Results and diffs are withheld. |
+| Other | Name; arguments withheld when present. | Result contents withheld. |
+
+Exit code is shown only for a safe integer in `result.details.exitCode`. No parsing shell output or inferring zero. A missing field is unavailable; a present value outside the projection is withheld. The public path vocabulary in `live-tool-fields.ts` is deliberately small: most real project filenames and commands will not be shown. The projection does not try to recognise every kind of secret. Accepted tool identifiers and numeric metadata are runtime assertions, not a confidentiality boundary against a malicious provider encoding data in permitted values. Model-provided messages and reasoning have their own unchanged rules.
+
+At most three fields per boundary event. The largest is 512 UTF-8 bytes of ASCII output; validate the entire input first, withhold over 65,536 input characters rather than inspecting an unbounded result. Projected tool items count toward the existing transcript and page budgets. No argument or result object is retained. This does not alter Pi’s own session files or a separately configured recording proxy.

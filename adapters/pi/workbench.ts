@@ -99,7 +99,7 @@ import {
 	endoProjectRouteV0,
 } from "../../runtime/contracts/workspace-routes.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
-import { LIVE_TRANSCRIPT_SCHEMA_V1, LiveTranscriptV0 } from "./live-transcript.ts";
+import { LIVE_TRANSCRIPT_SCHEMA_V2, LiveTranscriptV0 } from "./live-transcript.ts";
 import { piEndoSessionIdV0 } from "./mapping.ts";
 import { PiRpcRefusalV0 } from "./rpc.ts";
 import {
@@ -681,7 +681,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			const match = /^after=(0|[1-9][0-9]{0,15})$/.exec(request.query);
 			if (request.query !== "" && match === null) return refuse(400, "bad-request");
 			const view = this.transcript.view(match === null ? 0 : Number(match[1]));
-			return reply(200, { schemaVersion: LIVE_TRANSCRIPT_SCHEMA_V1, launchId: this.launchId, ...view });
+			return reply(200, { schemaVersion: LIVE_TRANSCRIPT_SCHEMA_V2, launchId: this.launchId, ...view });
 		}
 		// The operator's tasks: metadata only, behind the grant. Without a registered project the workbench says so with one constant answer.
 		if (a === "workspace") {

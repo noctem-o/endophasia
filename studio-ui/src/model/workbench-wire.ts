@@ -169,6 +169,9 @@ export type MessagePart =
 			bytes: number;
 	  };
 export type ReasoningPart = Extract<MessagePart, { kind: "reasoning" }>;
+
+import type { ToolField } from "../../../adapters/pi/live-tool-fields.ts";
+
 export type TranscriptItem =
 	| {
 			seq: number;
@@ -181,7 +184,14 @@ export type TranscriptItem =
 			/** The in-progress snapshot this completed message replaced, or null. */
 			from: number | null;
 	  }
-	| { seq: number; kind: "tool"; callId: string; name: string; status: "running" | "ok" | "error" }
+	| {
+			seq: number;
+			kind: "tool";
+			callId: string | null;
+			name: string;
+			status: "running" | "ok" | "error" | "ended";
+			fields: ToolField[];
+	  }
 	| { seq: number; kind: "run"; state: "started" | "ended" };
 export type TranscriptMessage = Extract<TranscriptItem, { kind: "message" }>;
 /** The assistant message being written, as the broker held it when the page read it. Replaced by the completed message. */
@@ -196,7 +206,7 @@ export interface ReasoningRelay {
 	reason: string | null;
 }
 export interface WorkbenchTranscript {
-	schemaVersion: "endo.workbench-transcript.v1";
+	schemaVersion: "endo.workbench-transcript.v2";
 	launchId: string;
 	items: TranscriptItem[];
 	watermark: number;
@@ -385,6 +395,33 @@ const part: Check = (v) =>
 const reasoningConsistent = (r: ReasoningPart): boolean =>
 	r.state === "supplied" ? r.text.length > 0 || r.truncated : r.text === "" && !r.truncated && r.bytes === 0;
 const parts: Check = (x) => Array.isArray(x) && x.length <= MAX_PARTS && list(part)(x);
+const toolLabel = one(
+	"Command",
+	"Directory",
+	"Timeout",
+	"Path",
+	"Offset",
+	"Limit",
+	"Edits",
+	"Content",
+	"Arguments",
+	"Exit code",
+	"Output",
+);
+const field: Check = (v) => {
+	if (shape(v, { label: toolLabel, state: one("unavailable", "redacted") })) return true;
+	if (
+		!shape(v, {
+			label: toolLabel,
+			state: one("observed", "truncated", "reported"),
+			text: (x) => typeof x === "string" && x.length <= 512 && new TextEncoder().encode(x).length <= 512,
+		})
+	)
+		return false;
+	if (v.label === "Edits") return v.state === "observed" && /^\d{1,10}$/.test(v.text as string);
+	if (v.state === "observed" || v.label === "Arguments" || v.label === "Content") return false;
+	return v.state !== "truncated" || v.label === "Output";
+};
 const item: Check = (v) =>
 	shape(v, {
 		seq: (n) => count(n) && n >= 1,
@@ -399,16 +436,18 @@ const item: Check = (v) =>
 	shape(v, {
 		seq: (n) => count(n) && n >= 1,
 		kind: one("tool"),
-		callId: short,
-		name: short,
-		status: one("running", "ok", "error"),
+		callId: eitherNull(text(128)),
+		name: text(128),
+		status: one("running", "ok", "error", "ended"),
+		fields: (x) =>
+			Array.isArray(x) && x.length <= 3 && x.every(field) && new Set(x.map((f) => f.label)).size === x.length,
 	}) ||
 	shape(v, { seq: (n) => count(n) && n >= 1, kind: one("run"), state: one("started", "ended") });
 
 export function readWorkbenchTranscript(v: unknown): WorkbenchTranscript | null {
 	if (
 		!shape(v, {
-			schemaVersion: one("endo.workbench-transcript.v1"),
+			schemaVersion: one("endo.workbench-transcript.v2"),
 			launchId: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
 			items: (x) => Array.isArray(x) && x.length <= 200 && list(item)(x),
 			watermark: count,
@@ -426,6 +465,11 @@ export function readWorkbenchTranscript(v: unknown): WorkbenchTranscript | null 
 	if (t.open !== null && t.open.afterSeq > t.watermark) return null;
 	let previous = 0;
 	for (const i of t.items) {
+		if (
+			i.kind === "tool" &&
+			i.fields.some((f) => (f.label === "Output" || f.label === "Exit code") === (i.status === "running"))
+		)
+			return null;
 		if (i.seq <= previous || i.seq > t.watermark) return null;
 		previous = i.seq;
 	}

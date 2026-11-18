@@ -1,7 +1,10 @@
 // Browser wire gate for the workbench routes. The broker (adapters/pi/workbench.ts) is authoritative for state, authority and privacy;
 // nothing of it runs here. These checks cover every field the workbench renderers read. A body that does not match is refused whole,
 // and a failure becomes fixed text: no response body, grant or transcript text ever reaches a message.
+import type { ActivityCapabilities, PrivateActivity } from "../../../protocol/private-activity.ts";
 import { type Check, count, eitherNull, list, obj, one, shape } from "./compare-wire.ts";
+
+import { isPrivateActivity, validActivityCapabilities } from "./private-activity-wire.ts";
 
 export type WorkbenchCommandState = "awaiting-approval" | "dispatching" | "accepted" | "refused" | "unknown";
 export interface WorkbenchCommand {
@@ -170,24 +173,6 @@ export type MessagePart =
 	  };
 export type ReasoningPart = Extract<MessagePart, { kind: "reasoning" }>;
 
-const toolLabels = [
-	"Command",
-	"Directory",
-	"Timeout",
-	"Path",
-	"Offset",
-	"Limit",
-	"Edits",
-	"Content",
-	"Arguments",
-	"Exit code",
-	"Output",
-] as const;
-type ToolField = { label: (typeof toolLabels)[number] } & (
-	| { state: "reported" | "observed" | "truncated"; text: string }
-	| { state: "unavailable" | "redacted" }
-);
-
 export type TranscriptItem =
 	| {
 			seq: number;
@@ -200,14 +185,7 @@ export type TranscriptItem =
 			/** The in-progress snapshot this completed message replaced, or null. */
 			from: number | null;
 	  }
-	| {
-			seq: number;
-			kind: "tool";
-			callId: string | null;
-			name: string;
-			status: "running" | "ok" | "error" | "ended";
-			fields: ToolField[];
-	  }
+	| PrivateActivity
 	| { seq: number; kind: "run"; state: "started" | "ended" };
 export type TranscriptMessage = Extract<TranscriptItem, { kind: "message" }>;
 /** The assistant message being written, as the broker held it when the page read it. Replaced by the completed message. */
@@ -222,9 +200,10 @@ export interface ReasoningRelay {
 	reason: string | null;
 }
 export interface WorkbenchTranscript {
-	schemaVersion: "endo.workbench-transcript.v2";
+	schemaVersion: "endo.workbench-transcript.v3";
 	launchId: string;
 	items: TranscriptItem[];
+	capabilities: ActivityCapabilities;
 	watermark: number;
 	firstSeq: number;
 	evicted: number;
@@ -411,21 +390,6 @@ const part: Check = (v) =>
 const reasoningConsistent = (r: ReasoningPart): boolean =>
 	r.state === "supplied" ? r.text.length > 0 || r.truncated : r.text === "" && !r.truncated && r.bytes === 0;
 const parts: Check = (x) => Array.isArray(x) && x.length <= MAX_PARTS && list(part)(x);
-const toolLabel = one(...toolLabels);
-const field: Check = (v) => {
-	if (shape(v, { label: toolLabel, state: one("unavailable", "redacted") })) return true;
-	if (
-		!shape(v, {
-			label: toolLabel,
-			state: one("observed", "truncated", "reported"),
-			text: (x) => typeof x === "string" && x.length <= 512 && new TextEncoder().encode(x).length <= 512,
-		})
-	)
-		return false;
-	if (v.label === "Edits") return v.state === "observed" && /^\d{1,10}$/.test(v.text as string);
-	if (v.state === "observed" || v.label === "Arguments" || v.label === "Content") return false;
-	return v.state !== "truncated" || v.label === "Output";
-};
 const item: Check = (v) =>
 	shape(v, {
 		seq: (n) => count(n) && n >= 1,
@@ -437,23 +401,16 @@ const item: Check = (v) =>
 		stopReason: eitherNull(text(32)),
 		from: eitherNull((n) => count(n) && n >= 1),
 	}) ||
-	shape(v, {
-		seq: (n) => count(n) && n >= 1,
-		kind: one("tool"),
-		callId: eitherNull(text(128)),
-		name: text(128),
-		status: one("running", "ok", "error", "ended"),
-		fields: (x) =>
-			Array.isArray(x) && x.length <= 3 && x.every(field) && new Set(x.map((f) => f.label)).size === x.length,
-	}) ||
+	isPrivateActivity(v) ||
 	shape(v, { seq: (n) => count(n) && n >= 1, kind: one("run"), state: one("started", "ended") });
 
 export function readWorkbenchTranscript(v: unknown): WorkbenchTranscript | null {
 	if (
 		!shape(v, {
-			schemaVersion: one("endo.workbench-transcript.v2"),
+			schemaVersion: one("endo.workbench-transcript.v3"),
 			launchId: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
 			items: (x) => Array.isArray(x) && x.length <= 200 && list(item)(x),
+			capabilities: validActivityCapabilities,
 			watermark: count,
 			firstSeq: count,
 			evicted: count,
@@ -469,11 +426,6 @@ export function readWorkbenchTranscript(v: unknown): WorkbenchTranscript | null 
 	if (t.open !== null && t.open.afterSeq > t.watermark) return null;
 	let previous = 0;
 	for (const i of t.items) {
-		if (
-			i.kind === "tool" &&
-			i.fields.some((f) => (f.label === "Output" || f.label === "Exit code") === (i.status === "running"))
-		)
-			return null;
 		if (i.seq <= previous || i.seq > t.watermark) return null;
 		previous = i.seq;
 	}

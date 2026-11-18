@@ -142,21 +142,8 @@ function ToolDisclosure({ item }: { item: Extract<TranscriptItem, { kind: "tool"
 	const reflow = useContext(ReflowContext);
 	const main = item.fields.find((f) => f.label === "Command" || f.label === "Path");
 	const status =
-		item.status === "ok"
-			? "completed"
-			: item.status === "ended"
-				? "ended · outcome unavailable"
-				: item.status === "error"
-					? "error (reported)"
-					: "running";
-	const fields = [...item.fields];
-	if (!fields.some((f) => f.label !== "Exit code" && f.label !== "Output"))
-		fields.unshift({
-			label: item.name === "bash" ? "Command" : ["read", "write", "edit"].includes(item.name) ? "Path" : "Arguments",
-			state: "unavailable",
-		});
-	for (const label of ["Exit code", "Output"] as const)
-		if (!fields.some((f) => f.label === label)) fields.push({ label, state: "unavailable" });
+		item.status === "unknown" ? "outcome unavailable" : item.status === "failed" ? "error (reported)" : item.status;
+	const fields = item.fields;
 	return (
 		<details className="turn-body tool-disclosure" onToggle={() => reflow?.()}>
 			<summary>
@@ -164,7 +151,7 @@ function ToolDisclosure({ item }: { item: Extract<TranscriptItem, { kind: "tool"
 					{item.name}
 					{main && "text" in main ? ` · ${main.text}` : ""}
 				</span>{" "}
-				· {status} <small className="dim">Pi-reported</small>
+				· {status} <small className="dim">reported by {item.source}</small>
 			</summary>
 			<dl>
 				{fields.map((f) => (
@@ -174,19 +161,26 @@ function ToolDisclosure({ item }: { item: Extract<TranscriptItem, { kind: "tool"
 							{"text" in f ? (
 								<>
 									<code>{f.text || "(empty)"}</code>{" "}
-									<small>{f.state === "truncated" ? "reported · truncated" : f.state}</small>
+									<small>
+										{f.state === "truncated"
+											? "reported · truncated after validation"
+											: f.state === "counted"
+												? "counted in provider report"
+												: "provider-reported"}
+									</small>
 								</>
-							) : f.state === "redacted" ? (
-								"withheld for privacy"
+							) : f.state === "withheld" ? (
+								"withheld by safe-preview policy"
 							) : (
-								"unavailable"
+								"unavailable · not supplied by the provider"
 							)}
 						</dd>
 					</div>
 				))}
 			</dl>
 			<p className="dim small">
-				Call #{item.seq} · Arguments come from Pi’s start report. No independent check of execution or correctness.
+				Activity #{item.occurrence} · {item.category} · {item.source} report. No independent check of execution or
+				correctness.
 			</p>
 		</details>
 	);
@@ -502,8 +496,8 @@ function Transcript({ wb, reasoning }: { wb: Workbench; reasoning: ReasoningView
 					<details className="turn-body">
 						<summary>
 							{row.items.length} tool calls
-							{row.items.some((i) => i.status === "error")
-								? ` (${row.items.filter((i) => i.status === "error").length} error)`
+							{row.items.some((i) => i.status === "failed")
+								? ` (${row.items.filter((i) => i.status === "failed").length} error)`
 								: ""}
 						</summary>
 						<ul className="plain">

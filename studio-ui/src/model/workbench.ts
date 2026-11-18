@@ -1,6 +1,8 @@
 // Workbench state. Pure: no DOM, no network, no clock (times are passed in). One owner for what the page knows of the live session: what
 // the broker last said (status), the private transcript it served, the one prompt in flight, and the grant, which lives here in memory
 // only. Nothing is inferred: a state is what the broker reported; a lost broker is "unreachable", never "ended".
+
+import type { ActivityCapabilities } from "../../../protocol/private-activity.ts";
 import type {
 	InterventionOperation,
 	InterventionState,
@@ -32,6 +34,7 @@ export interface WorkbenchState {
 	/** The operator grant: held in memory only, dropped when the broker says the page is no longer paired. */
 	grant: string | null;
 	items: TranscriptItem[];
+	activityCapabilities: ActivityCapabilities | null;
 	watermark: number;
 	evicted: number;
 	/** Items this page let go of to stay within its own bound (the broker may still hold them). */
@@ -64,6 +67,7 @@ export const initialWorkbench = (): WorkbenchState => ({
 	launchId: null,
 	grant: null,
 	items: [],
+	activityCapabilities: null,
 	watermark: 0,
 	evicted: 0,
 	trimmed: 0,
@@ -77,6 +81,29 @@ export const initialWorkbench = (): WorkbenchState => ({
 	follow: true,
 	view: "live",
 });
+
+export class WorkbenchReadGeneration {
+	current = 0;
+	invalidate(): void {
+		this.current += 1;
+	}
+	accept(since: number, held: WorkbenchState, reply: WorkbenchReply): boolean {
+		if (since !== this.current) return false;
+		if (
+			reply.kind === "grant" ||
+			reply.kind === "absent" ||
+			(reply.kind === "failure" && reply.status === 401 && reply.code === "grant-required") ||
+			((reply.kind === "status" || reply.kind === "host") &&
+				((held.grant !== null && !reply.record.paired) ||
+					(held.launchId !== null && held.launchId !== reply.record.launchId))) ||
+			(reply.kind === "status" &&
+				(reply.record.connection === "disconnected" ||
+					(held.status !== null && held.status.session !== reply.record.session)))
+		)
+			this.invalidate();
+		return true;
+	}
+}
 
 export type WorkbenchAction =
 	| { type: "started" }
@@ -128,7 +155,15 @@ export const anyOpen = (s: WorkbenchState): boolean =>
 export const stopInFlight = (s: WorkbenchState): WorkbenchIntervention | null =>
 	s.interventions.find((i) => i.operation === "stop" && interventionOpen(i)) ?? null;
 
-const emptyTranscript = { items: [], watermark: 0, evicted: 0, trimmed: 0, open: null, reasoning: null };
+const emptyTranscript = {
+	items: [],
+	activityCapabilities: null,
+	watermark: 0,
+	evicted: 0,
+	trimmed: 0,
+	open: null,
+	reasoning: null,
+};
 
 export function reduceWorkbench(state: WorkbenchState, action: WorkbenchAction): WorkbenchState {
 	switch (action.type) {
@@ -154,7 +189,9 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 		case "status": {
 			const status = reply.record;
 			// A different launch is a different process: nothing held from the old one (grant, text, a prompt) belongs to it.
-			const fresh = state.launchId !== null && state.launchId !== status.launchId;
+			const fresh =
+				(state.launchId !== null && state.launchId !== status.launchId) ||
+				(state.status !== null && state.status.session !== status.session);
 			const base = fresh ? { ...initialWorkbench(), view: state.view, follow: state.follow } : state;
 			// The broker says the session is DISCONNECTED (its answer, not a failure to reach it): the private text it held is gone, so the
 			// page forgets its copy too. An unreachable broker is a different thing and clears nothing.
@@ -168,7 +205,7 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 				statusAt: at,
 				launchId: status.launchId,
 				// The broker holds one grant: if it says this page is not paired, the grant we hold is no longer one.
-				grant: status.paired ? base.grant : null,
+				grant: gone ? null : base.grant,
 				command: status.command,
 				interventions: status.interventions,
 				problem: null,
@@ -182,6 +219,7 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			const base = fresh ? { ...initialWorkbench(), view: state.view } : state;
 			return {
 				...base,
+				...emptyTranscript,
 				availability: "workspace",
 				status: null,
 				host,
@@ -195,31 +233,37 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 		}
 		case "transcript": {
 			const t = reply.record;
-			if (state.launchId !== t.launchId || state.grant === null || state.status?.connection === "disconnected")
+			if (state.launchId !== t.launchId || state.grant === null || state.status?.connection !== "connected")
 				return state;
-			const reset = t.watermark < state.watermark;
-			const held = reset ? [] : state.items;
-			const last = reset ? 0 : state.watermark;
-			// Items of one tool call fold into one row: the running item is updated in place by its later outcome, which arrives as a
-			// NEW item (a new sequence number) so the same cursor delivers it.
-			const items = [...held];
+			if (t.watermark < state.watermark) return state;
+			const items = [...state.items];
 			for (const item of t.items) {
-				if (item.seq <= last && !reset) continue;
+				if (item.seq <= state.watermark) continue;
 				const at =
-					item.kind === "tool"
+					item.kind === "tool" && item.occurrence < item.seq
 						? items.findIndex(
 								(x) =>
 									x.kind === "tool" &&
-									item.callId !== null &&
-									x.callId === item.callId &&
-									x.name === item.name,
+									x.seq === item.occurrence &&
+									(x.status === "requested" || (x.status === "running" && item.status !== "running")) &&
+									x.source === item.source &&
+									x.turn === item.turn &&
+									x.category === item.category &&
+									x.name === item.name &&
+									x.callId === item.callId,
 							)
 						: -1;
-				if (item.kind === "tool" && at >= 0) {
-					const existing = items[at] as typeof item;
-					if (existing.status === "running" && item.status !== "running")
-						items[at] = { ...existing, status: item.status, fields: [...existing.fields, ...item.fields] };
-				} else items.push(item);
+				const existing = items[at];
+				if (item.kind === "tool" && existing?.kind === "tool")
+					items[at] = {
+						...existing,
+						status: item.status,
+						fields: [
+							...existing.fields.filter((f) => !item.fields.some((next) => next.label === f.label)),
+							...item.fields,
+						],
+					};
+				else items.push(item);
 			}
 			// The cursor is what was RECEIVED: when more pages follow, it is the last item of this one, not the broker's highest number,
 			// so a later page that fails is read again and nothing is skipped.
@@ -228,9 +272,10 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			return {
 				...state,
 				items: kept,
-				watermark: Math.max(reset ? 0 : state.watermark, cursor),
+				activityCapabilities: t.capabilities,
+				watermark: Math.max(state.watermark, cursor),
 				evicted: t.evicted,
-				trimmed: (reset ? 0 : state.trimmed) + (items.length - kept.length),
+				trimmed: state.trimmed + (items.length - kept.length),
 				// Every page carries the snapshot as of its own read: the last one read is the newest.
 				open: t.open,
 				reasoning: t.reasoning,
@@ -238,7 +283,7 @@ function apply(state: WorkbenchState, reply: WorkbenchReply, at: Date): Workbenc
 			};
 		}
 		case "grant":
-			return { ...state, grant: reply.record.grant, problem: null };
+			return { ...state, ...emptyTranscript, grant: reply.record.grant, problem: null };
 		case "command":
 			return { ...state, command: reply.record, problem: null };
 		case "intervention": {

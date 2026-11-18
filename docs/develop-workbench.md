@@ -525,7 +525,7 @@ question. Typing the code, or the whole phrase, approves; anything else declines
 
 A tool row opens with Enter, Space or a click. For example, `bash · git status --short · completed` is labelled **Pi-reported**. The command is the argument on Pi’s execution-start event, not a reconstruction of the assistant’s tool-call block. A request with no such event has no row. “Completed” means Pi sent an end event with boolean `isError: false`; neither that nor a displayed output line verifies an OS process, an exit code, or a correct result. An end without a boolean outcome says so.
 
-The attachment’s private live callback projects fields *before* the grant-gated transcript response. The canonical mapper still records keyed comparison digests, never the projected text. The client folds starts and ends by call ID and name without moving a call’s first row; an end without its start cannot reconstruct arguments. Missing or malformed IDs do not correlate. The page clears its copy after grant loss or reported disconnection, not merely a network error.
+The attachment’s private live callback projects fields *before* the grant-gated transcript response. The canonical mapper still records keyed comparison digests, never the projected text. The adapter assigns an occurrence before pagination. The client folds a later report into that occurrence without moving the first row; an end without its start cannot reconstruct arguments. Missing or malformed IDs do not correlate. The page clears its transcript after known grant loss or reported disconnection, not merely a network error. See [private activity](private-activity.md) for correlation limits, stale replies and compatibility.
 
 | Tool | Start fields | End fields |
 | --- | --- | --- |

@@ -4,7 +4,7 @@
 // store. A grant is held in this hook's state only.
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { fetchWorkbench } from "./api.ts";
-import { anyOpen, initialWorkbench, reduceWorkbench } from "./model/workbench.ts";
+import { anyOpen, initialWorkbench, reduceWorkbench, WorkbenchReadGeneration } from "./model/workbench.ts";
 import type { InterventionOperation, WorkbenchReply, WorkbenchRequest } from "./model/workbench-wire.ts";
 
 const FOLLOW_MS = 3000;
@@ -51,17 +51,20 @@ export function useWorkbench(active: boolean) {
 
 	// Bumped when a grant is issued. A read that began before it carries an older status (paired: false) that must not be applied over the
 	// new grant, which no later status can bring back: the broker never repeats the token.
-	const epoch = useRef(0);
+	const generation = useRef(new WorkbenchReadGeneration());
 
-	const send = useCallback(async (request: WorkbenchRequest, since?: number): Promise<WorkbenchReply> => {
-		const abort = controller.current ?? new AbortController();
-		controller.current = abort;
-		const reply = await fetchWorkbench(request, latest.current.grant, abort.signal);
-		if (reply.kind === "grant") epoch.current += 1;
-		if (!abort.signal.aborted && (since === undefined || since === epoch.current))
+	const send = useCallback(
+		async (request: WorkbenchRequest, since = generation.current.current): Promise<WorkbenchReply> => {
+			const abort = controller.current ?? new AbortController();
+			controller.current = abort;
+			const reply = await fetchWorkbench(request, latest.current.grant, abort.signal);
+			if (abort.signal.aborted || !generation.current.accept(since, latest.current, reply))
+				return { kind: "failure", status: 0, code: "", message: "Request superseded", retrySeconds: null };
 			dispatch({ type: "reply", reply, at: new Date() });
-		return reply;
-	}, []);
+			return reply;
+		},
+		[],
+	);
 
 	const schedule = useCallback(() => {
 		if (timer.current !== null) clearTimeout(timer.current);
@@ -84,11 +87,16 @@ export function useWorkbench(active: boolean) {
 		}
 		running.current = true;
 		again.current = false;
-		const since = epoch.current;
+		const since = generation.current.current;
 		dispatch({ type: "started" });
 		try {
 			const status = await send({ kind: "status" }, since);
-			if (status.kind === "status" && status.record.paired && latest.current.grant !== null) {
+			if (
+				since === generation.current.current &&
+				status.kind === "status" &&
+				status.record.paired &&
+				latest.current.grant !== null
+			) {
 				let after = status.record.launchId === latest.current.launchId ? latest.current.watermark : 0;
 				const from = after;
 				let more = false;
@@ -200,7 +208,10 @@ export function useWorkbench(active: boolean) {
 			else schedule();
 		},
 		setView: (view: "live" | "recorded") => dispatch({ type: "view", view }),
-		unpair: () => dispatch({ type: "unpair" }),
+		unpair: () => {
+			generation.current.invalidate();
+			dispatch({ type: "unpair" });
+		},
 		/** Give up this page's session control. The page stays paired: every request waits for the terminal again. */
 		relinquish: async () => {
 			await send({ kind: "relinquish" });

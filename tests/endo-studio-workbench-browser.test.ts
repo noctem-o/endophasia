@@ -11,6 +11,7 @@ import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
 import { event, ingestAll, removeTempRoots, tempRoot } from "./cockpit-fixtures.ts";
 import { serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
+import { syntheticActivities } from "./fixtures/private-activity.ts";
 import { Approval, FakeSession, settle, textMessage } from "./workbench-fixtures.ts";
 
 const executable = findBrowser();
@@ -89,6 +90,20 @@ const refresh = async (page: Page) => {
 };
 
 suite("the DEVELOP workbench", () => {
+	it("renders explicitly synthetic activity reports through the same private transcript gate", async () => {
+		const { page, broker } = await open();
+		const view = broker.transcript.view.bind(broker.transcript);
+		broker.transcript.view = (after = 0) => ({
+			...view(after),
+			watermark: 4,
+			items: syntheticActivities.filter((i) => i.seq > after),
+		});
+		await pairWith(page, broker);
+		await page.waitFor("document.querySelectorAll('.tool-disclosure').length === 3");
+		const rows = await page.text("[data-testid=transcript]");
+		for (const source of ["synthetic-codex", "synthetic-claude", "synthetic-acp"]) expect(rows).toContain(source);
+		expect(rows).not.toContain("reported by pi-live");
+	});
 	it("inspects the Pi-reported request and outcome by keyboard on desktop and mobile", async () => {
 		const { page, session, broker } = await open();
 		await pairWith(page, broker);
@@ -109,7 +124,7 @@ suite("the DEVELOP workbench", () => {
 		await page.waitFor("document.querySelector('.tool-disclosure summary')?.textContent.includes('completed')");
 		const selector = ".tool-disclosure summary";
 		expect(await page.text(selector)).toContain("git status --short");
-		expect(await page.text(selector)).toContain("Pi-reported");
+		expect(await page.text(selector)).toContain("reported by pi-live");
 		expect(await page.eval("!!document.querySelector('.tool-disclosure[open]')")).toBe(false);
 		await page.eval("document.querySelector('.tool-disclosure summary').focus()");
 		await page.press("Enter");

@@ -143,7 +143,7 @@ export function runsOf(items: readonly TranscriptItem[], interventions: readonly
 		if (item.kind === "tool") {
 			open.tools += 1;
 			if (item.status === "running") open.running += 1;
-			if (item.status === "error") open.errors += 1;
+			if (item.status === "failed") open.errors += 1;
 		} else {
 			open.messages += 1;
 			if (item.stopReason === "error") open.reportedError = true;

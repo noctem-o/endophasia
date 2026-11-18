@@ -29,10 +29,11 @@
 //    in `evicted`, so a reader sees a gap as a gap;
 //  - one page: at most PAGE items and PAGE_BYTES (always at least one item, so a reader makes progress).
 
+import type { ActivityCapabilities, PrivateActivity } from "../../protocol/private-activity.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
-import { endFields, startFields, type ToolField } from "./live-tool-fields.ts";
+import { endFields, startFields } from "./live-tool-fields.ts";
 
-export const LIVE_TRANSCRIPT_SCHEMA_V2 = "endo.workbench-transcript.v2";
+export const LIVE_TRANSCRIPT_SCHEMA_V3 = "endo.workbench-transcript.v3";
 export const LIVE_TRANSCRIPT_MAX_ITEMS_V0 = 400;
 export const LIVE_TRANSCRIPT_MAX_BYTES_V0 = 2 * 1024 * 1024;
 export const LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0 = 32 * 1024;
@@ -73,14 +74,7 @@ export type LiveTranscriptItemV0 =
 			/** The `open` snapshot this completed message replaces, if one was being shown; else null. */
 			from: number | null;
 	  }
-	| {
-			seq: number;
-			kind: "tool";
-			callId: string | null;
-			name: string;
-			status: "running" | "ok" | "error" | "ended";
-			fields: ToolField[];
-	  }
+	| PrivateActivity
 	| { seq: number; kind: "run"; state: "started" | "ended" };
 
 /** The assistant message being written, as of the moment it was read. Not a message: it is replaced by the completed one. */
@@ -105,6 +99,7 @@ export interface LiveTranscriptReasoningV1 {
 export interface LiveTranscriptViewV0 {
 	/** Items with a sequence number greater than the `after` asked for, oldest first, at most one page. */
 	items: LiveTranscriptItemV0[];
+	capabilities: ActivityCapabilities;
 	/** The highest sequence number issued so far: pass it back as `after` to continue. 0 before anything was seen. */
 	watermark: number;
 	/** The first sequence number this transcript could hold; earlier events happened before it began or were evicted. */
@@ -216,7 +211,19 @@ interface OpenBlock {
 export class LiveTranscriptV0 {
 	#items: LiveTranscriptItemV0[] = [];
 	#bytes = 0;
+	readonly #assessed: ((capability: string) => ActivityCapabilities["interrupt"]) | undefined;
+	constructor(assessed?: (capability: string) => ActivityCapabilities["interrupt"]) {
+		this.#assessed = assessed;
+	}
 	#seq = 0;
+	#turnCount = 0;
+	#turn: number | null = null;
+	#sawStart = false;
+	#sawEnd = false;
+	#args = false;
+	#result = false;
+	private pending = new Map<string, number | null>();
+	private overflow = false;
 	#evicted = 0;
 	#firstSeq = 1;
 	#cleared = false;
@@ -231,6 +238,13 @@ export class LiveTranscriptV0 {
 	push(event: RpcEventV0): void {
 		if (this.#cleared) return;
 		const record = event.record;
+		if (event.type === "turn_start") this.#turn = ++this.#turnCount;
+		else if (event.type === "turn_end" || event.type === "agent_end" || event.type === "agent_settled")
+			this.#turn = null;
+		if (["agent_start", "agent_end", "agent_settled", "turn_start", "turn_end"].includes(event.type)) {
+			this.pending.clear();
+			this.overflow = false;
+		}
 		if (event.type === "agent_start") {
 			if (this.#runOpen) return;
 			this.#runOpen = true;
@@ -280,12 +294,53 @@ export class LiveTranscriptV0 {
 						? "name unavailable"
 						: "name withheld";
 			const start = event.type === "tool_execution_start";
+			const fields = start ? startFields(tool, record.args) : endFields(tool, record.result);
+			if (start) {
+				this.#sawStart = true;
+				this.#args ||= fields.some((f) => "text" in f);
+			} else {
+				this.#sawEnd = true;
+				this.#result ||= fields.some((f) => "text" in f);
+			}
+			let occurrence = this.#seq + 1;
+			if (!this.overflow && callId !== null && !tool.includes(" ")) {
+				const key = JSON.stringify([callId, tool]);
+				const prior = this.pending.get(key);
+				if (start) {
+					if (prior === undefined && this.pending.size >= LIVE_TRANSCRIPT_MAX_ITEMS_V0) {
+						this.pending.clear();
+						this.overflow = true;
+					} else this.pending.set(key, prior === undefined ? occurrence : null);
+				} else if (prior !== undefined && prior !== null) {
+					occurrence = prior;
+					this.pending.delete(key);
+				}
+			}
 			this.#add({
 				kind: "tool",
+				source: "pi-live",
+				turn: this.#turn,
+				category:
+					tool === "bash"
+						? "command"
+						: tool === "read"
+							? "file-read"
+							: tool === "edit" || tool === "write"
+								? "file-change"
+								: ["grep", "find", "ls"].includes(tool)
+									? "retrieval"
+									: "other",
+				occurrence,
 				callId,
 				name: tool,
-				status: start ? "running" : record.isError === true ? "error" : record.isError === false ? "ok" : "ended",
-				fields: start ? startFields(tool, record.args) : endFields(tool, record.result),
+				status: start
+					? "running"
+					: record.isError === true
+						? "failed"
+						: record.isError === false
+							? "completed"
+							: "unknown",
+				fields,
 			});
 		}
 	}
@@ -386,6 +441,21 @@ export class LiveTranscriptV0 {
 			items.push(item);
 		}
 		return {
+			capabilities: {
+				nativeSessionIdentity: this.#assessed?.("session.identity") ?? "unverified",
+				stableCallIdentity: "unverified",
+				toolBoundaries:
+					this.#sawStart && this.#sawEnd ? "supported" : (this.#assessed?.("tool.activity") ?? "unverified"),
+				argumentPreview: this.#args ? "supported" : "unverified",
+				resultPreview: this.#result ? "supported" : "unverified",
+				toolCancellation: "unavailable",
+				interrupt: this.#assessed?.("steering.stop") ?? "unverified",
+				steer: this.#assessed?.("steering.steer") ?? "unverified",
+				approvals: "unavailable",
+				resume: "unverified",
+				fileChanges: "unavailable",
+				subagents: "unavailable",
+			},
 			items: items.map((item) =>
 				item.kind === "message"
 					? { ...item, parts: item.parts.map((part) => ({ ...part })) }
@@ -407,6 +477,7 @@ export class LiveTranscriptV0 {
 		this.#items = [];
 		this.#bytes = 0;
 		this.#open = null;
+		this.pending.clear();
 		this.#cleared = true;
 	}
 

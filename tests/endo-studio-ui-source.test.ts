@@ -75,6 +75,7 @@ describe("the frontend's source", () => {
 				"develop/SessionInspector.tsx",
 				"develop/Omp.tsx",
 				"model/omp-wire.ts",
+				"model/private-activity-wire.ts",
 				"use-omp.ts",
 				"develop/Surface.tsx",
 				"develop/Field.tsx",

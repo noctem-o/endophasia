@@ -57,7 +57,7 @@ describe("the live transcript", () => {
 			["message", "user"],
 			["message", "assistant"],
 			["tool", "running"],
-			["tool", "ok"],
+			["tool", "completed"],
 			["run", "ended"],
 		]);
 		const assistant = view.items[2]!;
@@ -72,13 +72,17 @@ describe("the live transcript", () => {
 		expect(t.view(4).items).toEqual([
 			{
 				seq: 5,
+				occurrence: 4,
 				kind: "tool",
+				source: "pi-live",
+				turn: null,
+				category: "file-read",
 				callId: "c1",
 				name: "read",
-				status: "ok",
+				status: "completed",
 				fields: [
 					{ label: "Exit code", state: "unavailable" },
-					{ label: "Output", state: "redacted" },
+					{ label: "Output", state: "withheld" },
 				],
 			},
 			{ seq: 6, kind: "run", state: "ended" },
@@ -102,7 +106,7 @@ describe("the live transcript", () => {
 		const t = new LiveTranscriptV0();
 		t.push({ type: "tool_execution_start", record: { toolCallId: "x", toolName: "bash" } });
 		t.push({ type: "tool_execution_end", record: { toolCallId: "x", toolName: "bash", isError: true } });
-		expect(t.view().items.map((i) => i.kind === "tool" && i.status)).toEqual(["running", "error"]);
+		expect(t.view().items.map((i) => i.kind === "tool" && i.status)).toEqual(["running", "failed"]);
 		for (let i = 0; i < LIVE_TRANSCRIPT_MAX_ITEMS_V0 + 50; i++) t.push(textMessage("user", `m${i}`));
 		const view = t.view(0);
 		expect(t.size.items).toBeLessThanOrEqual(LIVE_TRANSCRIPT_MAX_ITEMS_V0);
@@ -541,6 +545,17 @@ describe("the approval is attributed only when it happened", () => {
 });
 
 describe("the end of the runtime", () => {
+	it("does not resume the old private transcript across an observed native-session replacement", async () => {
+		const { session, pair, call, broker } = setup();
+		const grant = await pair();
+		session.live_(textMessage("user", SECRET));
+		const original = session.piSessionId;
+		session.piSessionId = "replacement";
+		session.live_(textMessage("user", "replacement text"));
+		expect(broker.transcript.cleared).toBe(true);
+		session.piSessionId = original;
+		expect((await call("GET", "transcript", null, grant)).body).toMatchObject({ items: [], open: null });
+	});
 	it("withdraws a waiting approval, revokes the grant and clears the transcript as soon as the runtime is gone", async () => {
 		const { session, call, pair, broker, approval } = setup();
 		const grant = await pair();

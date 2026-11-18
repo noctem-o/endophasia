@@ -1,6 +1,7 @@
 // The workbench reducer, as a pure function: the incremental transcript (a tool call folds into one row by its call id), the cursor that
 // is what was RECEIVED (a failed page is read again, nothing is skipped), a new launch forgetting everything, an unpaired page
 // dropping its grant, and an absent workbench.
+
 import { describe, expect, it } from "vitest";
 import {
 	anyOpen,
@@ -9,6 +10,7 @@ import {
 	MAX_ITEMS,
 	reduceWorkbench,
 	stopInFlight,
+	WorkbenchReadGeneration,
 	type WorkbenchState,
 } from "../studio-ui/src/model/workbench.ts";
 import type {
@@ -18,6 +20,7 @@ import type {
 	WorkbenchTranscript,
 } from "../studio-ui/src/model/workbench-wire.ts";
 import { readWorkbenchStatus } from "../studio-ui/src/model/workbench-wire.ts";
+import { unverified } from "./fixtures/private-activity.ts";
 
 const LAUNCH = "0123456789abcdef";
 const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
@@ -55,7 +58,8 @@ const status = (over: Partial<WorkbenchStatus> = {}): WorkbenchStatus => ({
 	...over,
 });
 const page = (items: TranscriptItem[], watermark: number, more = false): WorkbenchTranscript => ({
-	schemaVersion: "endo.workbench-transcript.v2",
+	schemaVersion: "endo.workbench-transcript.v3",
+	capabilities: unverified,
 	launchId: LAUNCH,
 	items,
 	watermark,
@@ -76,9 +80,18 @@ const msg = (seq: number, text = `m${seq}`): TranscriptItem => ({
 	stopReason: null,
 	from: null,
 });
-const tool = (seq: number, callId: string | null, s: "running" | "ok" | "error"): TranscriptItem => ({
+const tool = (
+	seq: number,
+	callId: string | null,
+	s: "running" | "completed" | "failed",
+	occurrence = seq,
+): TranscriptItem => ({
 	seq,
 	kind: "tool",
+	source: "pi-live",
+	turn: null,
+	category: "file-read",
+	occurrence,
 	callId,
 	name: "read",
 	status: s,
@@ -94,14 +107,22 @@ const give = (s: WorkbenchState, t: WorkbenchTranscript) =>
 	reduceWorkbench(s, { type: "reply", reply: { kind: "transcript", record: t }, at });
 
 describe("the transcript is incremental", () => {
+	it("keeps both invocations when a completed native ID is reused on a later page", () => {
+		let s = give(withStatus(), page([tool(1, "c1", "running"), tool(2, "c1", "completed", 1)], 4, true));
+		s = give(s, page([tool(3, "c1", "running"), tool(4, "c1", "failed", 3)], 4));
+		expect(s.items.map((i) => [i.seq, i.kind === "tool" && i.status])).toEqual([
+			[1, "completed"],
+			[3, "failed"],
+		]);
+	});
 	it("updates a running tool call in place when its outcome arrives as a new item, by the same cursor", () => {
 		let s = give(withStatus(), page([msg(1), tool(2, "c1", "running")], 2));
 		expect(s.items.map((i) => i.kind === "tool" && i.status)).toEqual([false, "running"]);
-		s = give(s, page([tool(3, "c1", "error")], 3));
+		s = give(s, page([tool(3, "c1", "failed", 2)], 3));
 		expect(s.items).toHaveLength(2);
-		expect(s.items[1]).toMatchObject({ kind: "tool", callId: "c1", status: "error" });
+		expect(s.items[1]).toMatchObject({ kind: "tool", callId: "c1", status: "failed" });
 		expect(s.watermark).toBe(3);
-		s = give(s, page([tool(4, "orphan", "ok")], 4));
+		s = give(s, page([tool(4, "orphan", "completed")], 4));
 		expect(s.items).toHaveLength(3);
 		expect(give(s, page([msg(1)], 4)).items).toHaveLength(3);
 	});
@@ -112,25 +133,27 @@ describe("the transcript is incremental", () => {
 			page(
 				[
 					tool(1, "a", "running"),
-					tool(2, "b", "ok"),
-					tool(3, "a", "error"),
+					tool(2, "b", "completed"),
+					tool(3, "a", "failed", 1),
 					tool(4, "b", "running"),
-					tool(5, "a", "ok"),
+					tool(5, "a", "completed"),
 					tool(6, null, "running"),
-					tool(7, null, "ok"),
+					tool(7, null, "completed"),
 				],
 				7,
 			),
 		);
 		expect(s.items.map((i) => [i.seq, i.kind === "tool" && i.status])).toEqual([
-			[1, "error"],
-			[2, "ok"],
+			[1, "failed"],
+			[2, "completed"],
+			[4, "running"],
+			[5, "completed"],
 			[6, "running"],
-			[7, "ok"],
+			[7, "completed"],
 		]);
 		const unpaired = reduceWorkbench(s, { type: "unpair" });
 		expect(unpaired.items).toEqual([]);
-		expect(give(unpaired, page([tool(8, "late", "ok")], 8))).toBe(unpaired);
+		expect(give(unpaired, page([tool(8, "late", "completed")], 8))).toBe(unpaired);
 	});
 
 	it("keeps the cursor at what was received while pages remain, so a failed later page is read again", () => {
@@ -151,6 +174,28 @@ describe("the transcript is incremental", () => {
 });
 
 describe("launch, pairing and availability", () => {
+	it("ignores an earlier page and invalidates outstanding reads before re-pair or reconnect", () => {
+		const held = give(withStatus(), page([msg(2)], 2));
+		expect(give(held, page([msg(1)], 1))).toBe(held);
+		for (const next of [
+			status({ paired: false }),
+			status({ connection: "disconnected" }),
+			status({ session: "endo.session.pi.other" }),
+			status({ launchId: "fedcba9876543210" }),
+		]) {
+			const gate = new WorkbenchReadGeneration();
+			const pending = gate.current;
+			const reply = { kind: "status", record: next } as const;
+			expect(gate.accept(pending, held, reply)).toBe(true);
+			const cleared = reduceWorkbench(held, { type: "reply", reply, at });
+			expect(cleared).toMatchObject({ grant: null, items: [], open: null });
+			const grant = { kind: "grant", record: { grant: "r".repeat(43), expiresAtMs: 1000 } } as const;
+			expect(gate.accept(gate.current, cleared, grant)).toBe(true);
+			const repaired = reduceWorkbench(cleared, { type: "reply", reply: grant, at });
+			expect(gate.accept(pending, repaired, { kind: "transcript", record: page([msg(2)], 2) })).toBe(false);
+			expect(gate.accept(pending, repaired, grant)).toBe(false);
+		}
+	});
 	it("forgets the grant, the text and the prompt when a different launch answers", () => {
 		let s = give(withStatus(), page([msg(1, "private")], 1));
 		expect(s.items).toHaveLength(1);

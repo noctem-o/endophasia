@@ -1,5 +1,6 @@
 import {
 	type BigIntStats,
+	chmodSync,
 	closeSync,
 	constants,
 	fstatSync,
@@ -20,7 +21,7 @@ import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 
 const O_PATH = 0o10000000;
 const PATH_FLAGS = O_PATH | constants.O_NOFOLLOW;
-const CONFIG = "[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n";
+const CONFIG = "[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n";
 const MAX_FILES = 4096;
 const MAX_BYTES = 32 * 1024 * 1024;
 
@@ -248,10 +249,12 @@ export function admitWorkspaceV0(input: WorkspaceAdmissionInputV0): AdmittedWork
 								admitConfiguration(bytes);
 								configuration = true;
 							}
-							writeFileSync(join(snapshot, path), path === ".git/config" ? CONFIG : bytes, {
+							const dest = join(snapshot, path);
+							writeFileSync(dest, path === ".git/config" ? CONFIG : bytes, {
 								flag: "wx",
 								mode: 0o600,
 							});
+							if (!path.startsWith(".git/") && (stat.mode & 0o100n) !== 0n) chmodSync(dest, 0o700);
 						} else refuse("path", "workspace contains a special file");
 					} finally {
 						closeSync(child);

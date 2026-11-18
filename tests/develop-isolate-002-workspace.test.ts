@@ -7,6 +7,7 @@ import {
 	mkdtempSync,
 	readFileSync,
 	rmSync,
+	statSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -37,7 +38,7 @@ function fixture() {
 	writeFileSync(join(root, "tracked"), "before\n");
 	git("add", "--", "tracked");
 	const config = join(root, ".git/config");
-	return { directory, root, evidenceRoot, internalRoots, config, input: { root, evidenceRoot, internalRoots } };
+	return { directory, root, evidenceRoot, internalRoots, config, git, input: { root, evidenceRoot, internalRoots } };
 }
 
 describe.runIf(process.platform === "linux")("workspace admission", () => {
@@ -116,6 +117,11 @@ describe.runIf(process.platform === "linux")("workspace admission", () => {
 
 	it("seals configuration and working bytes in a separate snapshot", () => {
 		const f = fixture();
+		chmodSync(join(f.root, "tracked"), 0o755);
+		const otherOnly = join(f.root, "other-exec");
+		writeFileSync(otherOnly, "fixture\n");
+		chmodSync(otherOnly, 0o655);
+		chmodSync(f.config, 0o700);
 		const admitted = admitWorkspaceV0(f.input);
 		expect(admitted.ok).toBe(true);
 		if (!admitted.ok) return;
@@ -123,9 +129,12 @@ describe.runIf(process.platform === "linux")("workspace admission", () => {
 			writeFileSync(f.config, "[core]\n\tfsmonitor = synthetic\n");
 			writeFileSync(join(f.root, "tracked"), "after\n");
 			expect(readFileSync(join(admitted.snapshot, ".git/config"), "utf8")).toBe(
-				"[core]\n\trepositoryformatversion = 0\n\tfilemode = false\n\tbare = false\n",
+				"[core]\n\trepositoryformatversion = 0\n\tfilemode = true\n\tbare = false\n",
 			);
 			expect(readFileSync(join(admitted.snapshot, "tracked"), "utf8")).toBe("before\n");
+			expect(statSync(join(admitted.snapshot, "tracked")).mode & 0o777).toBe(0o700);
+			expect(statSync(join(admitted.snapshot, "other-exec")).mode & 0o777).toBe(0o600);
+			expect(statSync(join(admitted.snapshot, ".git/config")).mode & 0o777).toBe(0o600);
 			expect(existsSync(join(admitted.snapshot, ".git/hooks"))).toBe(false);
 		} finally {
 			admitted.dispose();
@@ -142,6 +151,27 @@ describe.runIf(process.platform === "linux")("workspace admission", () => {
 			if (!result.ok) return;
 			expect(result.status.toString()).toContain(" tracked\0");
 			expect(result.diff.toString()).toContain("+after");
+		},
+		30_000,
+	);
+
+	it.runIf(process.env.ENDO_ISOLATE_HOST === "1")(
+		"reports a tracked script becoming executable in both status and diff",
+		async () => {
+			const f = fixture();
+			const script = join(f.root, "run.sh");
+			writeFileSync(script, "#!/bin/sh\nexit 0\n", { mode: 0o600 });
+			f.git("add", "--", "run.sh");
+			chmodSync(script, 0o755);
+			const result = await inspectWorkspaceGitV0(f.input);
+			expect(result).toMatchObject({ ok: true, workspaceRoot: f.root });
+			if (!result.ok) return;
+			const status = result.status
+				.toString()
+				.split("\0")
+				.find((entry) => entry.endsWith(" run.sh"));
+			expect(status).toMatch(/^1 AM N\.\.\. 000000 100644 100755 /);
+			expect(result.diff.toString()).toBe("diff --git a/run.sh b/run.sh\nold mode 100644\nnew mode 100755\n");
 		},
 		30_000,
 	);

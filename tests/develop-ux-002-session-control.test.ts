@@ -30,6 +30,7 @@ import {
 	ENDO_SESSION_CONTROL_END_REASONS_V0,
 	ENDO_SESSION_CONTROL_MAX_LIFETIME_MS_V0,
 	type EndoSessionControlOperationV0,
+	type EndoSessionControlOptionsV0,
 	EndoSessionControlV0,
 	type EndoWorkbenchModeV0,
 } from "../runtime/contracts/session-control.ts";
@@ -380,6 +381,64 @@ describe("3. Wrong session or attachment", () => {
 		expect((await w.prompt(grant, "x")).status).toBe(401);
 		expect(w.session.promptCalls).toEqual([]);
 		expect(w.ended()).toEqual(["closing"]);
+	});
+
+	it.each([
+		["lost", change({ state: "not-enforced" })],
+		["unreadable", unreadable],
+		["different session", change({ session: "endo.session.pi.other" })],
+		["different workspace", change({ workspaceRoot: "/other" })],
+	] as const)("runtime loss revokes rather than recording closing when the boundary is %s", async (_name, lose) => {
+		const w = setup();
+		const token = await w.pair(true);
+		lose(w.boundary!);
+		w.session.piSessionId = "other";
+		w.session.live = false;
+		expect((await w.prompt(token, "must not send")).status).toBe(401);
+		expect(w.session.promptCalls).toEqual([]);
+		expect(w.ended()).toEqual(["protection-lost"]);
+		expect(w.broker.sessionControl().grant).toBeNull();
+	});
+
+	it("runtime loss fails closed if the provider implementation is absent", () => {
+		const endings: string[] = [];
+		const opts: EndoSessionControlOptionsV0 = {
+			mode: "everyday",
+			protection: new Boundary(),
+			now: () => 1000,
+			subject: () => ({
+				launchId: "a".repeat(16),
+				session: SESSION,
+				attachment: "pi.default",
+				workspaceRoot: WORKSPACE,
+			}),
+			closed: () => false,
+			onGranted: () => true,
+			onEnded: (_grant: unknown, reason: string) => {
+				endings.push(reason);
+			},
+		};
+		const control = new EndoSessionControlV0(opts);
+		expect(control.arm(2000).ok).toBe(true);
+		expect(control.paired("token-a")).not.toBeNull();
+		delete opts.protection;
+		control.runtimeLost();
+		expect(endings).toEqual(["protection-lost"]);
+		expect(control.authorize("token-a", "prompt")).toBeNull();
+		expect(control.paired("token-b")).toBeNull();
+	});
+
+	it("explicit shutdown remains closing when the boundary is lost, and Strict has no runtime grant to revoke", async () => {
+		const everyday = setup();
+		await everyday.pair(true);
+		unreadable(everyday.boundary!);
+		everyday.broker.beginClose();
+		everyday.broker.endSession();
+		expect(everyday.ended()).toEqual(["closing"]);
+		const strict = setup({ mode: "strict" });
+		expect(strict.broker.issuePairingCode({ control: true }).control).toBeNull();
+		strict.broker.endSession();
+		expect(strict.ended()).toEqual([]);
 	});
 
 	it("the grant itself refuses another launch, attachment or session (the contract, where each can be varied)", () => {

@@ -512,6 +512,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 
 	/** For the terminal: the mode in effect, the execution boundary as observed now, and the grant (no token). */
 	sessionControl(): EndoSessionControlViewV0 & { grant: (EndoSessionGrantV0 & { sendsLeft: number }) | null } {
+		if (!this.#o.session.live) this.endSession();
 		return { ...this.#control.view(null), grant: this.#control.current() };
 	}
 
@@ -640,8 +641,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	 */
 	endSession(): void {
 		if (this.#ended) return;
-		this.#control.revoke("closing");
 		this.#ended = true;
+		this.#control.runtimeLost();
 		this.#pairing.clear();
 		this.#command?.abort.abort();
 		this.#interventions?.beginClose();

@@ -50,6 +50,12 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      - name: Check sandbox tools (not kernel isolation coverage)
+        run: |
+          if ! test -x /usr/bin/python3 || ! test -x /usr/bin/bash; then
+            echo '### Real kernel isolation coverage: ABSENT (python3 or bash missing)' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
       # Ubuntu 24.04 ships GNU coreutils 9.4, whose mv has no --exchange: here the reference-replacement tests check the
       # up-front refusal, and the exchange job below checks the exchange itself.
       # ENDO_REQUIRE_BROWSER makes the Studio frontend's browser suite fail, not skip, on a runner without Chromium.

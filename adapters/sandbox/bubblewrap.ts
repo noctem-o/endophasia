@@ -37,6 +37,7 @@ export type EndoIsolationRefusalV0 =
 	| { ok: false; reason: "missing"; detail: string }
 	| { ok: false; reason: "untrusted-executable"; detail: string }
 	| { ok: false; reason: "setuid-unsupported"; detail: string }
+	| { ok: false; reason: "fd-sanitizer-unavailable"; detail: string }
 	| { ok: false; reason: "namespaces-unavailable"; detail: string }
 	| { ok: false; reason: "runtime-unacceptable"; detail: string };
 
@@ -58,6 +59,32 @@ function trustedFileProblem(path: string): string | null {
 	return null;
 }
 
+const FD_SANITIZER = "/usr/bin/python3";
+const SANITIZE_FDS = `import errno, fcntl, os, sys
+for entry in os.listdir("/proc/self/fd"):
+    fd = int(entry)
+    if fd < 6:
+        continue
+    try:
+        os.close(fd)
+    except OSError as error:
+        if error.errno != errno.EBADF:
+            raise
+for fd in range(6):
+    if fcntl.fcntl(fd, fcntl.F_GETFD) & fcntl.FD_CLOEXEC:
+        raise RuntimeError("sandbox launch descriptor is close-on-exec")
+os.execv(sys.argv[1], sys.argv[1:])`;
+
+function fdSanitizerPath(): string | null {
+	try {
+		const path = realpathSync(FD_SANITIZER);
+		if (trustedFileProblem(path) !== null || (lstatSync(path).mode & 0o6000) !== 0) return null;
+		return path;
+	} catch {
+		return null;
+	}
+}
+
 /**
  * Find Bubblewrap and check that this host can enforce the profile: a trusted executable, not setuid (its privileged mode behaves
  * differently and is not supported), and a real sandbox started with every namespace this profile needs.
@@ -72,6 +99,12 @@ export function detectBubblewrapV0(
 	if (problem !== null) return { ok: false, reason: "untrusted-executable", detail: problem };
 	if ((lstatSync(path).mode & 0o6000) !== 0)
 		return { ok: false, reason: "setuid-unsupported", detail: `${path} is setuid or setgid` };
+	if (fdSanitizerPath() === null)
+		return {
+			ok: false,
+			reason: "fd-sanitizer-unavailable",
+			detail: "a trusted unprivileged /usr/bin/python3 is required",
+		};
 	const version = spawnSync(path, ["--version"], { env: {}, encoding: "utf8", timeout: 5000 });
 	const v = /^bubblewrap ([0-9][0-9.]*)\s*$/.exec(version.stdout ?? "");
 	if (version.status !== 0 || v === null)
@@ -429,6 +462,9 @@ export async function runSandboxV0(
 		onStarted?: (init: EndoProcessIdentityV0) => void;
 	},
 ): Promise<EndoSandboxRunV0> {
+	const sanitizer = fdSanitizerPath();
+	if (sanitizer === null)
+		throw new Error("a trusted unprivileged /usr/bin/python3 is required for sandbox fd hygiene");
 	const start = performance.now();
 	const unit = newScopeUnitV0();
 	options.onScope?.(unit);
@@ -444,8 +480,22 @@ export async function runSandboxV0(
 	// scope's own deadline (the timeout and a margin) ends it even if this controller is gone.
 	const runtimeMaxSec = options.timeoutMs / 1000 + 30;
 	const child = spawn(
-		options.containment.systemdRun,
-		scopeArgsV0(options.containment, unit, runtimeMaxSec, [bwrap.path, "--args", "4", "--", ...argv], options.limits),
+		sanitizer,
+		[
+			"-I",
+			"-S",
+			"-B",
+			"-c",
+			SANITIZE_FDS,
+			options.containment.systemdRun,
+			...scopeArgsV0(
+				options.containment,
+				unit,
+				runtimeMaxSec,
+				[bwrap.path, "--args", "4", "--", ...argv],
+				options.limits,
+			),
+		],
 		{
 			env: { ...options.containment.env },
 			stdio: ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe"],

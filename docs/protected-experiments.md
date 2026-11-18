@@ -105,8 +105,10 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
   The agent can still run executables it writes into `/work` or `/tmp` (or copies from the runtime), and load native modules: the declared
   runtime is what is mounted, not a limit on what can execute.
 - **Environment:** cleared, then only `HOME`, `PATH` and `TMPDIR` (bubblewrap adds `PWD`). Bubblewrap itself is started with an empty
-  environment. Its options arrive through a pipe (`--args`), so the sandbox's `/proc/1/cmdline` holds no host path; stdin, stdout and
-  stderr are the only descriptors the sandboxed command inherits.
+  environment. Its options arrive through a pipe (`--args`), so the sandbox's `/proc/1/cmdline` holds no host path. Before starting
+  `systemd-run`, the runner execs through a trusted, unprivileged `/usr/bin/python3` in isolated mode. This closes every inherited
+  descriptor except stdio and the three designated Bubblewrap control pipes. Bubblewrap consumes those three pipes before handing
+  stdio to the payload.
 - **Network:** a new namespace with only `lo`, so there is no route out. The host's loopback services and its abstract Unix sockets
   belong to another namespace and are unreachable. No host socket path is mounted.
 - **Lifetime: each sandbox runs in its own systemd user scope** (`adapters/sandbox/containment.ts`). Every sandbox (the preflight
@@ -167,7 +169,10 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
 
 ## 3. The preflight: enforcement checked, not assumed
 
-Before each attempt the controller runs a probe in **that attempt's own profile** (`adapters/sandbox/preflight.ts`). The probe reports
+Before each attempt the controller runs a probe in **that attempt's profile**, with a probe-only read-only mount of trusted Bash and
+its required libraries (`adapters/sandbox/preflight.ts`). Bash inventories descriptors before it execs Node, which opens its own
+descriptors and changes close-on-exec flags during startup. If either sanitizer or observer is unavailable, the attempt does not run.
+The probe reports
 observations only: error codes, counts and fixed words. The controller decides each probe from its own expectations, and the agent starts
 only if every probe passes. Otherwise the attempt is recorded with `preflight: failed` and `agent: not-run`.
 
@@ -180,7 +185,7 @@ only if every probe passes. Otherwise the attempt is recorded with `preflight: f
 | `fs-workspace-writable` | write and remove a file in `/work` | `ok` (positive control) |
 | `fs-tmp-private` | list `/tmp` | empty |
 | `proc-private` | list `/proc` | at most 4 PIDs, the controller's not among them |
-| `env-minimal`, `fds-inherited` | the environment's names; every descriptor above 2 | nothing beyond the declared names; only pipes and anonymous inodes (node's own; a leaked host pipe would look the same, which is why bubblewrap is given nothing but its stdio, status and option pipes) |
+| `env-minimal`, `fds-inherited` | the environment's names; the exact descriptor numbers before Node starts | no undeclared names (apart from the observer's fixed `SHLVL=0`); exactly `0,1,2`, regardless of descriptor type |
 | `net-interfaces` | list interfaces | `lo` only |
 | `net-host-loopback`, `net-host-abstract-socket` | connect to a TCP listener and an abstract socket the controller opened on the host | `ECONNREFUSED` |
 | `net-external`, `net-host-path-socket` | connect to 192.0.2.1:80; to a socket file the controller opened | `ENETUNREACH`; `ENOENT` |
@@ -284,8 +289,10 @@ run, isolation executable, agent profile or evaluator, a gap in attempt numbers,
 
 ## 6. Running the offline example
 
-Host prerequisites: Linux with unprivileged user namespaces enabled, Bubblewrap at `/usr/bin/bwrap` (root-owned, not setuid), `ldd`, and
-`/usr/bin/node`. No root, no daemon, no kernel setting changed.
+Host prerequisites: Linux with unprivileged user namespaces enabled, Bubblewrap at `/usr/bin/bwrap` (root-owned, not setuid), a
+systemd user manager with cgroup v2, `ldd`, and `/usr/bin/node`. A trusted `/usr/bin/python3` (including its host-managed
+libraries and standard library) closes inherited descriptors before launch. Trusted `/usr/bin/bash` and its resolved libraries are
+required for the read-only preflight descriptor observer. No root, additional daemon, or kernel change is required.
 
 ```sh
 node research/protected-eval/example/make-spec.ts > /tmp/protected-spec.json
@@ -305,9 +312,12 @@ another way. A probe that fails at an attempt refuses that attempt, which stays 
 
 | File | Real kernel isolation | Covers |
 | :-- | :-- | :-- |
-| `tests/protected-isolation.test.ts` | **yes** (skipped, and says so, where `detectBubblewrapV0` refuses) | see the list below |
+| `tests/protected-isolation.test.ts` | **yes** when Bubblewrap and scope detection succeed; otherwise **absent**, explicitly reported in the test log and GitHub Actions job summary | see the list below |
 | `tests/protected-isolation.test.ts`, "refusal instead of an unprotected fallback" | no | a missing or untrusted bubblewrap, a linked or non-root runtime, an undeclared executable: refused, nothing run |
 | `tests/protected-records.test.ts` | no | records: tampered, truncated, unknown-version, extended and self-contradictory ones refused; a closed spec; collection on the host (links, hard links, FIFO, traversal, oversize, a change mid-read, totals); the historical planner and readers unchanged |
+
+A green shard with absent coverage is not kernel-isolation evidence. CI checks that Python and Bash are installed before testing. On a
+host expected to supply real isolation, set `ENDO_REQUIRE_ISOLATION=1` to fail the suite when it cannot measure that boundary.
 
 The real-isolation tests cover:
 - a positive control: an honest agent passes the independent evaluator;

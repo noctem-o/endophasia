@@ -12,7 +12,7 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { EndoProtectedProbeV0 } from "../../protocol/protected-experiment.ts";
-import { type EndoBubblewrapV0, type EndoSandboxProfileV0, runSandboxV0 } from "./bubblewrap.ts";
+import { type EndoBubblewrapV0, type EndoSandboxProfileV0, resolveRuntimeV0, runSandboxV0 } from "./bubblewrap.ts";
 import type { EndoContainmentV0 } from "./containment.ts";
 
 /** Host paths the sandbox must not see, by role (their paths are not secret; their absence inside is what is checked). */
@@ -45,6 +45,40 @@ export interface EndoPreflightV0 {
 	reason: string | null;
 }
 
+export const ENDO_STDIO_FDS_V0 = "fds:0.1.2";
+export const ENDO_FD_OBSERVER_V0 = [
+	"/usr/bin/bash",
+	"--noprofile",
+	"--norc",
+	"-p",
+	"-c",
+	`[[ -d /proc/self/fd ]] || exit 125
+fds=fds:
+separator=
+for entry in /proc/self/fd/[0-9]*; do
+	[[ -L "$entry" ]] || continue
+	IFS=/ read -r unused unused unused unused fd <<< "$entry"
+	fds="$fds$separator$fd"
+	separator=.
+done
+unset _ SHLVL
+exec -- "$@" "$fds"`,
+	"endo-fd-observer",
+] as const;
+
+export function profileWithFdObserverV0(profile: EndoSandboxProfileV0): EndoSandboxProfileV0 | null {
+	const runtime = resolveRuntimeV0([ENDO_FD_OBSERVER_V0[0]]);
+	if (!runtime.ok) return null;
+	const args = [...profile.args];
+	const pos = args.findLastIndex((arg, i) => arg === "--remount-ro" && args[i + 1] === "/");
+	args.splice(
+		pos === -1 ? args.length : pos,
+		0,
+		...runtime.files.flatMap(({ source, target }) => ["--ro-bind", source, target]),
+	);
+	return { ...profile, args };
+}
+
 /** The probe, run as `node --input-type=module -e <PROBE> <config json>` inside the sandbox. Self-contained; reports observations only. */
 export const ENDO_PREFLIGHT_PROBE_V0 = String.raw`
 import fs from "node:fs"; import net from "node:net"; import os from "node:os";
@@ -65,8 +99,8 @@ out["fs-dev-readonly"] = code(() => fs.writeFileSync("/dev/.endo-probe", "x"));
 out["fs-workspace-writable"] = code(() => { const p = c.writable + "/" + c.probeName; fs.writeFileSync(p, "x", { flag: "wx" }); fs.unlinkSync(p); });
 out["fs-tmp-private"] = (() => { try { return "entries:" + fs.readdirSync("/tmp").length; } catch (e) { return String(e.code); } })();
 out["proc-private"] = (() => { try { const p = fs.readdirSync("/proc").filter((x) => /^[0-9]+$/.test(x)); return "pids:" + p.length + (fs.readlinkSync("/proc/self/ns/pid") === c.controllerPidNamespace ? " pidns:controller" : " pidns:own"); } catch (e) { return String(e.code); } })();
-out["env-minimal"] = (() => { const extra = Object.keys(process.env).filter((k) => !c.environment.includes(k)); return extra.length === 0 ? "ok" : "extra:" + extra.length; })();
-out["fds-inherited"] = (() => { let bad = 0; for (const f of fs.readdirSync("/proc/self/fd")) { if (Number(f) <= 2) continue; try { const l = fs.readlinkSync("/proc/self/fd/" + f); if (!/^(anon_inode:|pipe:)/.test(l)) bad++; } catch { } } return "unexpected:" + bad; })();
+out["env-minimal"] = (() => { const extra = Object.keys(process.env).filter((k) => !c.environment.includes(k) && !(k === "SHLVL" && process.env[k] === "0")); return extra.length === 0 ? "ok" : "extra:" + extra.length; })();
+out["fds-inherited"] = process.argv[2] ?? "unreadable";
 out["net-interfaces"] = Object.keys(os.networkInterfaces()).filter((n) => n !== "lo").length === 0 ? "lo-only" : "other-interfaces";
 c.sockets.forEach((p, i) => { out["socket-hidden-" + i] = code(() => fs.lstatSync(p)); });
 const attempt = (opts) => new Promise((resolve) => { const s = net.connect(opts); const t = setTimeout(() => { s.destroy(); resolve("timeout"); }, 2000); s.on("connect", () => { clearTimeout(t); s.destroy(); resolve("connected"); }); s.on("error", (e) => { clearTimeout(t); resolve(String(e.code || "error")); }); });
@@ -113,7 +147,7 @@ export function preflightPassesV0(id: string, observed: string): boolean {
 		return m !== null && Number(m[1]) <= 4;
 	}
 	if (id === "env-minimal") return observed === "ok";
-	if (id === "fds-inherited") return observed === "unexpected:0";
+	if (id === "fds-inherited") return observed === ENDO_STDIO_FDS_V0;
 	if (id === "net-interfaces") return observed === "lo-only";
 	// From a new network namespace, the host's loopback and the host's abstract sockets do not exist, and there is no route out.
 	if (id === "net-host-loopback" || id === "net-host-abstract-socket") return observed === "ECONNREFUSED";
@@ -144,6 +178,9 @@ export async function preflightV0(
 	containment: EndoContainmentV0,
 	record: Pick<Parameters<typeof runSandboxV0>[3], "onScope" | "onLauncher"> = {},
 ): Promise<EndoPreflightV0> {
+	const probeProfile = profileWithFdObserverV0(profile);
+	if (probeProfile === null)
+		return { status: "unavailable", probes: [], reason: "the trusted descriptor observer could not be resolved" };
 	let controllerPidNamespace: string;
 	try {
 		controllerPidNamespace = readlinkSync("/proc/self/ns/pid");
@@ -187,8 +224,8 @@ export async function preflightV0(
 		};
 		const run = await runSandboxV0(
 			bwrap,
-			profile,
-			[node, "--input-type=module", "-e", ENDO_PREFLIGHT_PROBE_V0, JSON.stringify(config)],
+			probeProfile,
+			[...ENDO_FD_OBSERVER_V0, node, "--input-type=module", "-e", ENDO_PREFLIGHT_PROBE_V0, JSON.stringify(config)],
 			{
 				timeoutMs: 30_000,
 				outputBytes: 64 * 1024,

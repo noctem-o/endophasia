@@ -6,6 +6,7 @@ import { expect, it } from "vitest";
 import {
 	buildSandboxProfileV0,
 	detectBubblewrapV0,
+	ENDO_SANDBOX_NAMESPACES_V0,
 	processStartTimeV0,
 	resolveRuntimeV0,
 	runSandboxV0,
@@ -81,7 +82,18 @@ process.stdin.resume();`;
 					expect(readFileSync(`${proc}/status`, "utf8")).toMatch(
 						new RegExp(`^NSpid:\\s+${pid}\\s+${guestPid}$`, "m"),
 					);
-					expect(readlinkSync(`${proc}/ns/pid`)).toBe(readlinkSync(`/proc/${init.pid}/ns/pid`));
+					const vector = (base: string) =>
+						ENDO_SANDBOX_NAMESPACES_V0.map((name) => readlinkSync(`${base}/ns/${name}`));
+					const expected = vector(`/proc/${init.pid}`);
+					const actual = vector(proc);
+					const host = vector("/proc/self");
+					const matches = (observed: string[]) => expected.every((entry, index) => observed[index] === entry);
+					expect(matches(actual)).toBe(true);
+					for (const [index, link] of host.entries()) {
+						const substituted = [...actual];
+						substituted[index] = link;
+						expect(matches(substituted), ENDO_SANDBOX_NAMESPACES_V0[index]).toBe(false);
+					}
 					const fields = readFileSync(`${proc}/stat`, "utf8").split(") ").at(-1)?.split(" ");
 					expect(fields?.[3]).toBe(String(pid));
 					descendant = { pid, start };

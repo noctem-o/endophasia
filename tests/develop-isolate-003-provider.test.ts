@@ -83,8 +83,12 @@ it("ignores a purported attestation written by a workspace even with the exact s
 
 it
 	.runIf(process.platform === "linux" && process.env.ENDO_ATTESTED_PI_HOST === "1")
-	.each(["owned Pi exits by signal", "workspace evidence becomes unreadable"] as const)(
-	"revokes a real grant when %s, without an upstream call",
+	.each([
+		"owned Pi exits by signal",
+		"workspace evidence becomes unreadable",
+		"startup cancelled at handoff",
+	] as const)(
+	"records the isolated session outcome when %s, without an upstream call",
 	async (scenario) => {
 		const base = mkdtempSync("/tmp/endo-everyday-loss-");
 		const parent = join(base, "parent");
@@ -101,6 +105,7 @@ it
 		};
 		let piPid: number | undefined;
 		let proof: PiLaunchAttestationV0 | null = null;
+		const abort = new AbortController();
 		let session: Awaited<ReturnType<PiAttachmentV0["openSession"]>> | undefined;
 		let broker: WorkbenchBrokerV0 | undefined;
 		let dispose: (() => void) | undefined;
@@ -123,10 +128,16 @@ it
 					});
 					proof = launched.attestation;
 					piPid = launched.client.connection.pid;
+					if (scenario === "startup cancelled at handoff") abort.abort();
 					return launched;
 				},
 			});
 			await owner.checkLocal();
+			if (scenario === "startup cancelled at handoff") {
+				await expect(owner.openSession(abort.signal)).rejects.toThrow("startup cancelled");
+				expect(await owner.failedStartCleanup()).toMatchObject([{ boundary: "scope", result: "confirmed" }]);
+				return;
+			}
 			session = await owner.openSession();
 			const live = session;
 			const protection = attestedExecutionProtectionV0(

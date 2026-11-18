@@ -848,6 +848,7 @@ export class PiSessionAttachmentV0 {
 				...(options.processScope === undefined ? {} : { scope: options.processScope() }),
 				onDiagnostic,
 			});
+		this.#cleanups.push(client.connection.cleanup());
 		if (this.#closed) {
 			await client.close();
 			throw new TypeError("the session attachment is closed");
@@ -880,7 +881,6 @@ export class PiSessionAttachmentV0 {
 			if (this.#client === client) this.#onEvent(event);
 		});
 		void client.connection.exited.then((exit) => this.#onExit(client, exit));
-		this.#cleanups.push(client.connection.cleanup());
 		let state: Awaited<ReturnType<PiRpcClientV0["getState"]>>;
 		try {
 			state = opened?.initialState ?? (await client.getState());

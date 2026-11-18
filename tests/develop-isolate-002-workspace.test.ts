@@ -42,6 +42,25 @@ function fixture() {
 }
 
 describe.runIf(process.platform === "linux")("workspace admission", () => {
+	it("projects info/exclude without admitting other info files", () => {
+		const f = fixture();
+		writeFileSync(join(f.root, ".git/info/exclude"), "private-build\n");
+		writeFileSync(join(f.root, ".git/info/attributes"), "tracked filter=fixture\n");
+		writeFileSync(join(f.root, "private-build"), "synthetic");
+		writeFileSync(join(f.root, "visible"), "control");
+		const admitted = admitWorkspaceV0(f.input);
+		if (!admitted.ok) throw new Error(admitted.detail);
+		try {
+			const status = (dir: string) => f.git("-C", dir, "status", "--porcelain").toString();
+			expect(status(f.root)).toContain("?? visible");
+			expect(status(f.root)).not.toContain("private-build");
+			expect(status(admitted.snapshot)).toBe(status(f.root));
+			expect(existsSync(join(admitted.snapshot, ".git/info/attributes"))).toBe(false);
+		} finally {
+			admitted.dispose();
+		}
+	});
+
 	it("refuses a workspace symlink or a symlinked ancestor", () => {
 		const f = fixture();
 		const alias = join(f.directory, "alias");

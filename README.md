@@ -201,8 +201,10 @@ endo develop --project endo.project.<id>
 
 **Modes** ([DEVELOP-UX-002](research/develop-ux/DEVELOP-UX-002.md)). `endo develop` *asks for* Everyday: one terminal authorisation, then
 prompts, steers, queues and stops from the page without a phrase for each, for 30 minutes, in one workspace. Everyday takes effect
-only where an execution boundary around the agent is observed as enforced. **No build enforces one yet, so today Strict runs** (every
-request approved in the terminal) and the terminal and the page say why. `--mode strict` asks for that outright; `--mode protected`
+only while Endophasia verifies the live sandboxed session. The supported configuration is stock Pi 1.5.2 with the local
+Ornith-1.5-9B-Q8_0 model through the governed relay, no tools, an ephemeral session, a read-only workspace snapshot,
+no credentials and no unrestricted network. Otherwise Everyday falls back to Strict (every request approved in the
+terminal), and the terminal and page say why. `--mode strict` asks for that outright; `--mode protected`
 starts nothing where it cannot be enforced. To type less in Strict, `--confirm short` lets a request be approved by a four-character
 code the terminal shows for it.
 

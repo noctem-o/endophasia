@@ -27,6 +27,7 @@ import {
 	runSandboxV0,
 } from "../../adapters/sandbox/bubblewrap.ts";
 import { detectContainmentV0 } from "../../adapters/sandbox/containment.ts";
+import { ENDO_FD_OBSERVER_V0, profileWithFdObserverV0 } from "../../adapters/sandbox/preflight.ts";
 import {
 	failedOfflineChecks,
 	OFFLINE_EXPECTED,
@@ -124,7 +125,6 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 			{ kind: "rw-dir", source: workspace, target: "/work", role: "disposable-workspace" },
 			{ kind: "ro-dir", source: join(workspace, ".git"), target: "/work/.git", role: "git-fixture" },
 		];
-		if (realPi) mounts.push({ kind: "ro-dir", source: PI, target: "/pi", role: "pinned-offline-pi" });
 		const base: EndoSandboxProfileInputV0 = {
 			runtime: runtime.files,
 			mounts,
@@ -141,7 +141,8 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 			protectedDir,
 			secret,
 			workspace: `${s.dev}:${s.ino}`,
-			env: { ...ENV, PWD: "/work" },
+			env: { ...ENV, PWD: "/work", SHLVL: "0" },
+			fdObserver: ENDO_FD_OBSERVER_V0,
 		};
 		const inspect = async (
 			label: string,
@@ -149,14 +150,16 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 			expected: Checks = {},
 			adjust: (args: string[]) => string[] = (args) => args,
 		) => {
-			const profile = buildSandboxProfileV0(input);
+			const profile = profileWithFdObserverV0(buildSandboxProfileV0(input));
+			if (profile === null) throw new Error("the trusted descriptor observer could not be resolved");
 			profile.args = adjust(profile.args);
 			const challenge = randomBytes(16).toString("hex");
-			const smokePi = realPi && label === "offline";
+			const smokePi = label === "offline-pi-smoke";
 			const run = await runSandboxV0(
 				bwrap.bwrap,
 				profile,
 				[
+					...ENDO_FD_OBSERVER_V0,
 					NODE,
 					"--input-type=module",
 					"-e",
@@ -184,20 +187,15 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 				termination: run.termination,
 			};
 		};
-		const offline = await inspect(
-			"offline",
-			base,
-			realPi
-				? {
-						"pi-rpc": "state",
-						"pi-extension-marker": "ENOENT",
-						"pi-mcp-marker": "ENOENT",
-					}
-				: {},
-		);
+		const offline = await inspect("offline", base);
 		if (!offline.passed)
 			return { ...unavailable("the baseline did not complete with every required observation"), offline };
 		const controls = [
+			await inspect(
+				"writable-root-and-extra-environment",
+				{ ...base, unsafeForTests: { writableRoot: true, extraEnv: { ENDO_SYNTHETIC_EXTRA: "fixture" } } },
+				{ "fs-root-readonly": "ok", "fs-dev-readonly": "ok", "env-minimal": "unexpected" },
+			),
 			await inspect(
 				"shared-network-namespace",
 				{ ...base, unsafeForTests: { shareNet: true } },
@@ -242,15 +240,33 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 				rejected.scope.ended === "confirmed" &&
 				/Unknown option --endo-deliberate-invalid-option/i.test(rejected.stderr.toString("utf8")),
 		};
+		const controlsPassed = brokenLaunch.passed && controls.every((c) => c.passed);
+		const offlinePi =
+			realPi && controlsPassed
+				? await inspect(
+						"offline-pi-smoke",
+						{
+							...base,
+							mounts: [...mounts, { kind: "ro-dir", source: PI, target: "/pi", role: "pinned-offline-pi" }],
+						},
+						{
+							"pi-rpc": "state",
+							"pi-process": "same-namespace-and-workspace",
+							"pi-extension-marker": "ENOENT",
+							"pi-mcp-marker": "ENOENT",
+						},
+					)
+				: undefined;
 		return {
 			kind: "offline-diagnostic",
-			passed: brokenLaunch.passed && controls.every((c) => c.passed),
+			passed: controlsPassed && (!realPi || offlinePi?.passed === true),
 			controllerTTY: process.stdin.isTTY === true,
 			bubblewrapVersion: bwrap.bwrap.version,
 			systemdVersion: containment.containment.version,
 			offline,
 			controls,
 			brokenLaunch,
+			offlinePi,
 		};
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });

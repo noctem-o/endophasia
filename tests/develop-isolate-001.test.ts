@@ -1,6 +1,9 @@
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import * as bubblewrap from "../adapters/sandbox/bubblewrap.ts";
 import * as containment from "../adapters/sandbox/containment.ts";
+import { preflightPassesV0 } from "../adapters/sandbox/preflight.ts";
 import { completedOfflineRun, runOfflineBoundary } from "../research/develop-isolate-001/diagnostic.ts";
 import {
 	failedOfflineChecks,
@@ -44,8 +47,57 @@ describe("offline observations (simulated, no host launch)", () => {
 		expect(failedOfflineChecks(exposed, { "fs-canary-read": "ok" })).toEqual(["workspace-identity"]);
 		expect(failedOfflineChecks(OFFLINE_EXPECTED, { "fs-canary-read": "ok" })).toEqual(["fs-canary-read"]);
 		expect(failedOfflineChecks({ ...OFFLINE_EXPECTED, "nested-userns": "inconclusive" })).toEqual(["nested-userns"]);
+		expect(preflightPassesV0("fds-inherited", "fds:0.1.2")).toBe(true);
+		for (const refused of ["fds:0.1.2.6.7", "fds:0.2", "unreadable", "unexpected:0"])
+			expect(preflightPassesV0("fds-inherited", refused)).toBe(false);
 	});
 });
+
+it.runIf(process.env.ENDO_ISOLATE_HOST === "1")(
+	"removes inherited synthetic file and pipe descriptors from the actual sandbox",
+	() => {
+		const python = `
+import os, subprocess, sys, tempfile
+with tempfile.TemporaryFile() as private:
+    read_end, write_end = os.pipe()
+    os.dup2(private.fileno(), 63)
+    os.dup2(read_end, 64)
+    subprocess.run(sys.argv[1:], pass_fds=(63, 64), check=True)
+`;
+		const node = `
+import fs from "node:fs";
+const { runOfflineBoundary } = await import(process.argv[2]);
+const input = [fs.fstatSync(63).isFile(), fs.fstatSync(64).isFIFO()];
+const result = await runOfflineBoundary();
+process.stdout.write(JSON.stringify({ input, result }));
+`;
+		const diagnostic = fileURLToPath(new URL("../research/develop-isolate-001/diagnostic.ts", import.meta.url));
+		const raw = execFileSync(
+			"/usr/bin/python3",
+			[
+				"-I",
+				"-S",
+				"-B",
+				"-c",
+				python,
+				process.execPath,
+				"--input-type=module",
+				"-e",
+				node,
+				"fd-regression",
+				diagnostic,
+			],
+			{ encoding: "utf8", timeout: 30_000 },
+		);
+		const { input, result } = JSON.parse(raw);
+		expect(input).toEqual([true, true]);
+		expect(result).toMatchObject({
+			passed: true,
+			offline: { checks: { "fds-inherited": "fds:0.1.2", "fd-inventory-control": "fds:0.1.2.6.7" } },
+		});
+	},
+	35_000,
+);
 
 describe("offline process completion (simulated, no host launch)", () => {
 	const complete: bubblewrap.EndoSandboxRunV0 = {

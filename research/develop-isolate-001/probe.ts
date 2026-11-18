@@ -1,4 +1,4 @@
-import { preflightPassesV0 } from "../../adapters/sandbox/preflight.ts";
+import { ENDO_STDIO_FDS_V0, preflightPassesV0 } from "../../adapters/sandbox/preflight.ts";
 
 export const LIVE_PROBE_PREFIX = "ENDO-OFFLINE-BOUNDARY ";
 
@@ -8,6 +8,8 @@ export const OFFLINE_EXPECTED = {
 	"fs-dev-readonly": "EROFS",
 	"fs-workspace-writable": "ok",
 	"env-minimal": "ok",
+	"fds-inherited": ENDO_STDIO_FDS_V0,
+	"fd-inventory-control": `${ENDO_STDIO_FDS_V0}.6.7`,
 	"workspace-identity": "same",
 	"outside-write": "ENOENT",
 	"symlink-read": "ENOENT",
@@ -26,10 +28,14 @@ export const OFFLINE_EXPECTED = {
 	"terminal-session": "none",
 	"controller-proc": "ENOENT",
 	"controller-signal-zero": "ESRCH",
+	"self-pid-control": "visible-and-addressable",
 	"privilege-status": "ok",
+	"privilege-parser-control": "detects-both",
 	"nested-userns": "ENOSPC",
 	"detached-child": "alive-in-sandbox",
+	"exited-child-control": "gone",
 	"pi-rpc": "not-requested",
+	"pi-process": "not-requested",
 	"pi-extension-marker": "not-requested",
 	"pi-mcp-marker": "not-requested",
 } as const;
@@ -51,7 +57,9 @@ export function readOfflineProbe(stdout: string, challenge: string): Record<Offl
 			Object.keys(checks).length !== keys.length ||
 			!keys.every(
 				(key) =>
-					Object.hasOwn(checks, key) && typeof checks[key] === "string" && /^[a-z0-9-]{1,40}$/i.test(checks[key]),
+					Object.hasOwn(checks, key) &&
+					typeof checks[key] === "string" &&
+					/^[a-z0-9:.-]{1,40}$/i.test(checks[key]),
 			)
 		)
 			return null;
@@ -69,9 +77,14 @@ export function failedOfflineChecks(
 		const override = expected[id];
 		if (override !== undefined) return override !== checks[id];
 		if (Object.hasOwn(expected, id)) return true;
-		return ["fs-canary-read", "fs-root-readonly", "fs-dev-readonly", "fs-workspace-writable", "env-minimal"].includes(
-			id,
-		)
+		return [
+			"fs-canary-read",
+			"fs-root-readonly",
+			"fs-dev-readonly",
+			"fs-workspace-writable",
+			"env-minimal",
+			"fds-inherited",
+		].includes(id)
 			? !preflightPassesV0(id, checks[id])
 			: OFFLINE_EXPECTED[id] !== checks[id];
 	});
@@ -92,6 +105,19 @@ out["fs-dev-readonly"] = code(() => write("/dev/endo-canary"));
 out["fs-workspace-writable"] = code(() => write("/work/write-check"));
 out["env-minimal"] = Object.keys(process.env).length === Object.keys(c.env).length &&
 	Object.entries(c.env).every(([key, value]) => process.env[key] === value) ? "ok" : "unexpected";
+out["fds-inherited"] = process.argv[2] ?? "unreadable";
+const fd = fs.openSync("/tmp/fd-control", "wx", 0o600);
+try {
+	const [command, ...args] = c.fdObserver;
+	const s = spawnSync(command, [...args, "/usr/bin/node", "-e", "process.stdout.write(process.argv[1])"], {
+		stdio: ["ignore", "pipe", "ignore", "ignore", "ignore", "ignore", fd, "pipe"],
+		encoding: "utf8", timeout: 3000, maxBuffer: 1024,
+	});
+	out["fd-inventory-control"] = s.status === 0 ? s.stdout : "unreadable";
+} finally {
+	fs.closeSync(fd);
+	fs.unlinkSync("/tmp/fd-control");
+}
 const ws = fs.statSync("/work", { bigint: true });
 out["workspace-identity"] = ws.dev + ":" + ws.ino === c.workspace ? "same" : "different";
 out["outside-write"] = code(() => write(c.protectedDir + "/write-check"));
@@ -115,10 +141,17 @@ out["terminal-open"] = code(() => fs.closeSync(fs.openSync("/dev/tty", fs.consta
 out["terminal-session"] = fs.readFileSync("/proc/self/stat", "utf8").split(") ").at(-1).split(" ")[4] === "0" ? "none" : "tty";
 out["controller-proc"] = code(() => fs.statSync("/proc/" + c.controllerPid));
 out["controller-signal-zero"] = code(() => process.kill(c.controllerPid, 0));
+out["self-pid-control"] = code(() => fs.statSync("/proc/" + process.pid)) === "ok" &&
+	code(() => process.kill(process.pid, 0)) === "ok" ? "visible-and-addressable" : "unexpected";
 const status = fs.readFileSync("/proc/self/status", "utf8");
-out["privilege-status"] = /^NoNewPrivs:\s+1$/m.test(status) &&
-	["Eff", "Prm", "Bnd", "Amb"].every((field) => new RegExp("^Cap" + field + ":\\s+0+$", "m").test(status))
-	? "ok" : "unexpected";
+const privilege = (status) => {
+	if (!/^NoNewPrivs:\s+1$/m.test(status)) return "nnp-missing";
+	return ["Inh", "Eff", "Prm", "Bnd", "Amb"].every((field) =>
+		new RegExp("^Cap" + field + ":\\s+0+$", "m").test(status)) ? "ok" : "capability";
+};
+out["privilege-status"] = privilege(status);
+out["privilege-parser-control"] = privilege(status.replace(/^NoNewPrivs:\s+1$/m, "NoNewPrivs:\t0")) === "nnp-missing" &&
+	privilege(status.replace(/^CapInh:\s+0+$/m, "CapInh:\t0000000000000001")) === "capability" ? "detects-both" : "unexpected";
 const nested = spawnSync("/usr/bin/unshare", ["--user", "--", "/usr/bin/true"], { encoding: "utf8", timeout: 3000 });
 out["nested-userns"] = nested.status === 1 && /unshare failed: No space left on device\s*$/.test(nested.stderr)
 	? "ENOSPC" : nested.status === 0 ? "allowed" : "inconclusive";
@@ -137,7 +170,14 @@ out["detached-child"] = await new Promise((resolve) => {
 		} catch { resolve("error"); }
 	});
 });
+const gone = spawn("/usr/bin/true", [], { detached: true, stdio: "ignore" });
+out["exited-child-control"] = await new Promise((resolve) => {
+	gone.once("error", () => resolve("error"));
+	gone.once("close", (exit) => resolve(exit === 0 && code(() => process.kill(gone.pid, 0)) === "ESRCH" &&
+		code(() => fs.statSync("/proc/" + gone.pid)) === "ENOENT" ? "gone" : "unexpected"));
+});
 out["pi-rpc"] = "not-requested";
+out["pi-process"] = "not-requested";
 if (c.beforePi) {
 	if (!Object.entries(out).every(([id, value]) => id === "challenge" || c.beforePi[id] === value)) {
 		out["pi-rpc"] = "withheld";
@@ -167,6 +207,15 @@ if (c.beforePi) {
 			if (r.type !== "response" || r.id !== "offline-state" || r.command !== "get_state") return;
 			result = r.success === true && typeof r.data?.sessionId === "string" && r.data.sessionId.length > 0
 				? "state" : "invalid-state";
+			if (result === "state") {
+				const proc = "/proc/" + pi.pid;
+				const cwd = fs.statSync(proc + "/cwd", { bigint: true });
+				const parent = fs.readFileSync(proc + "/stat", "utf8").split(") ").at(-1).split(" ")[1];
+				const same = Object.keys(c.namespaces).every((name) =>
+					fs.readlinkSync(proc + "/ns/" + name) === fs.readlinkSync("/proc/self/ns/" + name));
+				out["pi-process"] = Number(parent) === process.pid && cwd.dev + ":" + cwd.ino === c.workspace && same
+					? "same-namespace-and-workspace" : "different";
+			}
 			pi.stdin.end();
 		} catch {}
 	});

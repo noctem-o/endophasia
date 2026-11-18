@@ -170,7 +170,23 @@ export type MessagePart =
 	  };
 export type ReasoningPart = Extract<MessagePart, { kind: "reasoning" }>;
 
-import type { ToolField } from "../../../adapters/pi/live-tool-fields.ts";
+const toolLabels = [
+	"Command",
+	"Directory",
+	"Timeout",
+	"Path",
+	"Offset",
+	"Limit",
+	"Edits",
+	"Content",
+	"Arguments",
+	"Exit code",
+	"Output",
+] as const;
+type ToolField = { label: (typeof toolLabels)[number] } & (
+	| { state: "reported" | "observed" | "truncated"; text: string }
+	| { state: "unavailable" | "redacted" }
+);
 
 export type TranscriptItem =
 	| {
@@ -395,19 +411,7 @@ const part: Check = (v) =>
 const reasoningConsistent = (r: ReasoningPart): boolean =>
 	r.state === "supplied" ? r.text.length > 0 || r.truncated : r.text === "" && !r.truncated && r.bytes === 0;
 const parts: Check = (x) => Array.isArray(x) && x.length <= MAX_PARTS && list(part)(x);
-const toolLabel = one(
-	"Command",
-	"Directory",
-	"Timeout",
-	"Path",
-	"Offset",
-	"Limit",
-	"Edits",
-	"Content",
-	"Arguments",
-	"Exit code",
-	"Output",
-);
+const toolLabel = one(...toolLabels);
 const field: Check = (v) => {
 	if (shape(v, { label: toolLabel, state: one("unavailable", "redacted") })) return true;
 	if (

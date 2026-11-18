@@ -122,6 +122,7 @@ export async function startWorkbenchV0(
 		mode?: EndoWorkbenchModeV0;
 		/** What observes the agent's execution boundary on this host. Absent: nothing is enforced. */
 		protection?: EndoExecutionProtectionV0;
+		isolated?: true;
 		/**
 		 * `short`: a question may also be answered with the four-character code shown for it (DEVELOP-UX-002 §6). Authority stays on this
 		 * terminal; the code is never sent to a page. Absent or `phrase`: only the phrase, as before. An attempt always needs its phrase.
@@ -274,8 +275,8 @@ export async function startWorkbenchV0(
 		attachment: session.owner.attachment,
 		approver,
 		interventions: desk,
-		project: new GitProjectInspectorV0({ cwd: options.cwd }),
-		...(projectId === undefined
+		...(options.isolated === true ? {} : { project: new GitProjectInspectorV0({ cwd: options.cwd }) }),
+		...(projectId === undefined || options.isolated === true
 			? {}
 			: {
 					tasks: {
@@ -287,7 +288,7 @@ export async function startWorkbenchV0(
 							),
 					},
 				}),
-		...(projectId === undefined
+		...(projectId === undefined || options.isolated === true
 			? {}
 			: {
 					// Sending an attempt's brief: requested by the `attempt <id>` line below or by the paired page; approved only on this terminal.

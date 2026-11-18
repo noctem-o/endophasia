@@ -481,15 +481,17 @@ How a session from any source (this broker, a recording, or one another host own
 The full account (audit, threat model, specification, what is proven and what is not) is
 [research/develop-ux/DEVELOP-UX-002.md](../research/develop-ux/DEVELOP-UX-002.md). This section is what an operator needs.
 
-**Sections 2 to 14 describe Strict, and Strict is what runs today.** Nothing in them changed.
+**Sections 2 to 14 describe Strict.** That mode still requires terminal approval for every request.
 
 | Mode | Start | A prompt, steer, queue or stop is authorised by | In effect when |
 | :-- | :-- | :-- | :-- |
 | **Strict** | `endo develop --mode strict`, or `endo harness attach --control --workbench` | its phrase, typed on the terminal | always |
-| **Everyday** | `endo develop` (the default request) | a session-control grant, for what it covers; otherwise the terminal | an execution boundary around the agent is **observed as enforced**. **None is built: today this is Strict, and the terminal says why** |
+| **Everyday** | `endo develop` (the default request) | a session-control grant, for what it covers; otherwise the terminal | a `workspace` boundary is **observed as enforced** for the exact session and workspace. The guarded local-model profile is described below; otherwise authority stays Strict. |
 | **Protected** | `endo develop --mode protected` | as Everyday | a stronger boundary is observed. Otherwise **nothing starts** |
 
 The mode is chosen on the command line. No request from a page selects or raises it.
+
+The guarded Everyday profile is opt-in through the existing model selection: `endo develop --root <store> --cwd <workspace> --provider relay --model Ornith-1.5-9B-Q8_0 --tools none`. It requires the pinned Pi 1.5.2 installation and an admitted standalone Git workspace on a supported Linux filesystem. It uses only the existing local loopback model endpoint, with at most one completion exchange per launch. The workspace is a read-only snapshot; tools, extensions, MCP, host Git inspection and attempt provenance are not available on this path. No credential route or Protected mode is enabled. See [DEVELOP-ISOLATE-003](../research/develop-isolate-003/README.md) for the verification and limits.
 
 **What a session-control grant is.** One terminal act (the first pairing code of an Everyday launch whose boundary is enforced, or the
 terminal command `control`) marks a pairing code as carrying control, and says what it grants. The page that types that code may then

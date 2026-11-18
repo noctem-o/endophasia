@@ -3,9 +3,8 @@
 // boundary, is Strict and sends nothing without its typed line; that Protected starts nothing; that Ctrl-C still ends the session; and
 // the opt-in short confirmation: bound to one question, multi-line text shown first, a stale or wrong code declines, STOP preempts.
 //
-// No real isolation exists on any host for this build, so none is exercised here: these tests show the terminal REFUSING to claim it.
 import { type ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +16,7 @@ import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 
 const CLI = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
 const hasScript = spawnSync("script", ["--version"]).status === 0;
+const realEveryday = hasScript && process.platform === "linux" && process.env.ENDO_EVERYDAY_LOCAL_MODEL === "1";
 const ansi = /\x1b\[[0-9;?]*[A-Za-z]/g;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const cleanup: (() => void | Promise<void>)[] = [];
@@ -47,7 +47,12 @@ function pty(command: string, env: NodeJS.ProcessEnv) {
 					return match;
 				}
 				if (Date.now() > deadline || child.exitCode !== null)
-					throw new Error(`pattern ${pattern} not seen; output so far:\n${state.output.slice(-2000)}`);
+					throw new Error(
+						`pattern ${pattern} not seen; output so far:\n${state.output
+							.replace(/(pairing code )[A-Z0-9]{4}-[A-Z0-9]{4}/g, "$1[redacted]")
+							.replace(/(http:\/\/127\.0\.0\.1:\d+\/)[A-Za-z0-9_-]+\//g, "$1[redacted]/")
+							.slice(-2000)}`,
+					);
 				await sleep(25);
 			}
 		},
@@ -129,6 +134,86 @@ afterEach(async () => {
 	for (const done of cleanup.splice(0).reverse()) await done();
 });
 
+it.runIf(realEveryday)(
+	"issues an observed Everyday grant to real Pi and completes one authorized local model call",
+	async () => {
+		const base = temp("endo-everyday-e2e-");
+		const work = join(base, "workspace");
+		const root = join(base, "store");
+		const home = join(base, "home");
+		mkdirSync(work);
+		mkdirSync(home);
+		const env = {
+			PATH: "/usr/bin",
+			HOME: home,
+			XDG_RUNTIME_DIR: process.env.XDG_RUNTIME_DIR,
+			GIT_CONFIG_NOSYSTEM: "1",
+		};
+		expect(spawnSync("/usr/bin/git", ["-C", work, "init", "-q"], { env }).status).toBe(0);
+		const term = pty(
+			`${process.execPath} ${CLI} develop --root ${root} --cwd ${work} --mode everyday --provider relay --model Ornith-1.5-9B-Q8_0 --tools none`,
+			env,
+		);
+		try {
+			const address = (await term.waitFor(/workbench: (http:\/\/127\.0\.0\.1:\d+\/[A-Za-z0-9_-]+\/)/))[1]!;
+			await term.waitFor(
+				/mode EVERYDAY\. The agent's execution boundary is observed as enforced \(endo\.pi-bubblewrap-workspace\.v0, level workspace\)/,
+			);
+			const code = (
+				await term.waitFor(/pairing code ([A-Z0-9]{4}-[A-Z0-9]{4})[^\n]*THIS CODE ALSO GRANTS SESSION CONTROL/)
+			)[1]!;
+			const { post, getJson, until } = client(address);
+			const pair = await post("pair", { code });
+			expect(pair.status).toBe(200);
+			const token = ((await pair.json()) as { grant: string }).grant;
+			expect(await getJson("status", token)).toMatchObject({
+				mode: { effective: "everyday" },
+				protection: { state: "enforced", level: "workspace", mechanism: "endo.pi-bubblewrap-workspace.v0" },
+				sessionControl: { state: "active", holder: true, workspaceRoot: work },
+			});
+			const request = await post("prompt/propose", { message: "Reply with the single word READY." }, token);
+			expect(request.status).toBe(202);
+			const proposal = (await request.json()) as { proposalId: string; authorizedBy: string };
+			expect(proposal.authorizedBy).toBe("session-grant");
+			await until("Pi's completed assistant response", async () => {
+				const { items } = (await getJson("transcript", token)) as {
+					items: { role?: string; stopReason?: string; parts?: { kind: string; text: string }[] }[];
+				};
+				return items.some(
+					(item) =>
+						item.role === "assistant" &&
+						item.stopReason === "stop" &&
+						item.parts?.some((part) => part.kind === "text" && part.text.trim() === "READY"),
+				);
+			});
+			expect(await getJson(`prompt/${proposal.proposalId}`, token)).toMatchObject({
+				state: "accepted",
+				authorizedBy: "session-grant",
+			});
+			const displaced = join(base, "displaced");
+			renameSync(work, displaced);
+			mkdirSync(work);
+			expect(await getJson("status", token)).toMatchObject({
+				mode: { effective: "strict" },
+				protection: { state: "not-enforced", level: "none" },
+				sessionControl: { state: "none", ended: "protection-lost" },
+			});
+			const next = await post("prompt/propose", { message: "Do not send this." }, token);
+			expect(next.status).toBe(202);
+			expect(await next.json()).toMatchObject({ state: "awaiting-approval", authorizedBy: null });
+			term.type("");
+			term.interrupt();
+			expect(await term.exit).toBe(0);
+			expect(term.output()).toContain("local relay admitted 1 exchange(s), HTTP 200 responses: 1.");
+			expect(recorded(root)).toContain("workbench.session-control-granted");
+			expect(recorded(root)).toContain('"reason":"protection-lost"');
+		} finally {
+			term.interrupt();
+		}
+	},
+	45_000,
+);
+
 describe("the mode is chosen on the command line, and checked before anything starts", () => {
 	const run = (argv: string[]) =>
 		spawnSync(process.execPath, [CLI, ...argv], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
@@ -175,7 +260,7 @@ describe.runIf(hasScript && process.platform === "linux")("endo develop under a 
 		expect(await term.exit).toBe(1);
 		const said = term.output();
 		expect(said).toContain("Protected mode cannot be enforced on this host, so nothing was started.");
-		expect(said).toContain("Pi is not placed inside an execution boundary by this build");
+		expect(said).toContain("No attested execution boundary is available for this launch.");
 		expect(said).toContain("Use --mode strict");
 		expect(said).not.toContain("workbench: http://");
 		expect(said).not.toContain("no-such-pi");
@@ -193,7 +278,7 @@ describe.runIf(hasScript && process.platform === "linux")("endo develop under a 
 		await term.waitFor(
 			/mode EVERYDAY was requested and is NOT in effect\. STRICT is: every prompt, steer, queue and stop is approved here, by its phrase\./,
 		);
-		await term.waitFor(/why: Pi is not placed inside an execution boundary by this build/);
+		await term.waitFor(/why: No attested execution boundary is available for this launch/);
 		const code = (await term.waitFor(/pairing code ([A-Z0-9]{4}-[A-Z0-9]{4})/))[1]!;
 		// The first code is a plain one, and says so.
 		expect(term.output()).not.toContain("THIS CODE ALSO GRANTS SESSION CONTROL");

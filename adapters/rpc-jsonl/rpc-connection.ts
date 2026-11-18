@@ -8,6 +8,21 @@ import { encodeJsonlRecordV0, JsonlDecoderV0, type JsonlFaultV0 } from "./jsonl.
 import { checkSize, checkTimeout } from "./limits.ts";
 import { type ProcessCleanupV0, ProcessGroupV0, type ProcessScopeV0 } from "./process-group.ts";
 
+export type RpcOwnedProcessV0 = Pick<
+	ProcessGroupV0,
+	| "stdin"
+	| "stdout"
+	| "stderr"
+	| "exited"
+	| "pid"
+	| "scopeUnit"
+	| "groupId"
+	| "killGroup"
+	| "signalGroup"
+	| "liveMembers"
+	| "release"
+>;
+
 /** One command response, correlated to the request that caused it. `success: false` is a refusal, not an error. */
 export interface RpcResponseV0 {
 	readonly id: string;
@@ -194,7 +209,7 @@ export class RpcConnectionV0 {
 	/** Settles when the process exited and stdout is closed, or the bounded drain grace expired. */
 	readonly terminated: Promise<RpcTerminationV0>;
 
-	readonly #group: ProcessGroupV0;
+	readonly #group: RpcOwnedProcessV0;
 	readonly #decoder: JsonlDecoderV0;
 	readonly #pending = new Map<string, Pending>();
 	readonly #events = new Set<(event: RpcEventV0) => void>();
@@ -234,7 +249,7 @@ export class RpcConnectionV0 {
 	#resolveExited!: (exit: RpcExitV0) => void;
 	#resolveTerminated!: (termination: RpcTerminationV0) => void;
 
-	constructor(options: RpcConnectionOptionsV0) {
+	constructor(options: RpcConnectionOptionsV0, owned?: RpcOwnedProcessV0) {
 		// Validated and copied before anything starts (see limits.ts): a later change to the caller's object is ignored.
 		this.#requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
 		this.#drainGraceMs = options.drainGraceMs ?? DEFAULT_DRAIN_GRACE_MS;
@@ -281,16 +296,14 @@ export class RpcConnectionV0 {
 		// process.env, which may hold provider keys. stderr is either never read (it may quote payloads) or drained
 		// continuously into a bounded tail, so an unread pipe can never block the runtime.
 		const capture = options.stderr === "capture";
-		this.#group = new ProcessGroupV0(
-			launch.command,
-			[...launch.leadingArgs, "--mode", "rpc", ...(options.args ?? [])],
-			{
+		this.#group =
+			owned ??
+			new ProcessGroupV0(launch.command, [...launch.leadingArgs, "--mode", "rpc", ...(options.args ?? [])], {
 				cwd: options.cwd,
 				env: options.env,
 				stderr: capture ? "pipe" : "ignore",
 				...(options.scope === undefined ? {} : { scope: options.scope }),
-			},
-		);
+			});
 		const { stdout, stdin } = this.#group;
 		if (capture) {
 			this.#group.stderr?.on("data", (chunk: Buffer) => {

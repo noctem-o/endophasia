@@ -362,6 +362,15 @@ export class EndoSessionControlV0 {
 		return had;
 	}
 
+	runtimeLost(): void {
+		this.#armed = null;
+		const grant = this.#grant;
+		if (grant === null) return;
+		const need = REQUIRED[grant.mode];
+		const holds = need !== null && endoProtectionHoldsV0(endoObserveProtectionV0(this.#o.protection), need, grant);
+		this.#end(holds ? "closing" : "protection-lost");
+	}
+
 	/** The page that holds the grant gives it up. Anything else holding a pairing token cannot end another's grant. */
 	relinquish(token: string | null): boolean {
 		const grant = this.#grant;

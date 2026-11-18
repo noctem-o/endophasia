@@ -12,6 +12,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSyn
 import { dirname } from "node:path";
 import type { Duplex, Readable, Writable } from "node:stream";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import type { ProcessExitV0 } from "../rpc-jsonl/process-group.ts";
 import {
 	type EndoContainmentV0,
 	type EndoScopeLimitsV0,
@@ -464,6 +465,7 @@ export async function runSandboxV0(
 		/** Resource limits on the sandbox's scope (EVAL-ISO-002). Absent: none beyond TasksMax, as in EVAL-ISO-001. */
 		limits?: EndoScopeLimitsV0;
 		stdin?: Buffer;
+		signal?: AbortSignal;
 		/** Called with the scope's unit before anything is started, so a caller can record it durably first. */
 		onScope?: (unit: string) => void;
 		/** Called right after the launch with the launcher's identity (pid and start time), so a resume can end exactly it. */
@@ -476,6 +478,9 @@ export async function runSandboxV0(
 			challenge: Duplex;
 			stdin: Writable;
 			stdout: Readable;
+			stderr: Readable;
+			exited: Promise<ProcessExitV0>;
+			kill: () => void;
 		}) => Promise<void>;
 	},
 ): Promise<EndoSandboxRunV0> {
@@ -542,6 +547,8 @@ export async function runSandboxV0(
 			// the group is gone
 		}
 	};
+	options.signal?.addEventListener("abort", killGroup, { once: true });
+	if (options.signal?.aborted) killGroup();
 	const argsPipe = child.stdio[4] as NodeJS.WritableStream;
 	argsPipe.on("error", () => {});
 	argsPipe.end(Buffer.from(`${opts.join("\0")}\0`, "utf8"));
@@ -568,6 +575,13 @@ export async function runSandboxV0(
 	let released = false;
 	const release = (child.stdio as unknown as NodeJS.WritableStream[])[5] as NodeJS.WritableStream;
 	const challenge = (child.stdio as readonly unknown[])[6] as Duplex | undefined;
+	const exited =
+		experimentalLaunch === undefined
+			? undefined
+			: new Promise<ProcessExitV0>((resolve) => {
+					child.once("error", () => resolve({ code: null, signal: null, spawnFailed: true }));
+					child.once("exit", (code, signal) => resolve({ code, signal, spawnFailed: false }));
+				});
 	challenge?.on("error", () => {});
 	release.on("error", () => {});
 	child.stdout.on("data", out.push);
@@ -588,11 +602,21 @@ export async function runSandboxV0(
 			return;
 		}
 		if (experimentalLaunch !== undefined) {
-			if (launcher === null || challenge === undefined) {
+			if (launcher === null || challenge === undefined || exited === undefined) {
 				killGroup();
 				return;
 			}
-			const launch = { unit, launcher, init, challenge, stdin: child.stdin, stdout: child.stdout };
+			const launch = {
+				unit,
+				launcher,
+				init,
+				challenge,
+				stdin: child.stdin,
+				stdout: child.stdout,
+				stderr: child.stderr,
+				exited,
+				kill: killGroup,
+			};
 			void Promise.resolve()
 				.then(() => experimentalLaunch(launch))
 				.catch(killGroup);
@@ -630,6 +654,7 @@ export async function runSandboxV0(
 		});
 	});
 	clearTimeout(timer);
+	options.signal?.removeEventListener("abort", killGroup);
 	// bubblewrap reports the command's own exit code on the status fd.
 	const exitStatus = /"exit-code":\s*([0-9]+)/.exec(status);
 	const known = init as EndoProcessIdentityV0 | null;

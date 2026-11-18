@@ -122,6 +122,9 @@ export interface PiAttachmentOptionsV0 {
 	 * processCleanup() reports `unverified`, never `confirmed`.
 	 */
 	readonly processScope?: () => ProcessScopeV0;
+	readonly isolatedSession?: (
+		onDiagnostic: (diagnostic: RpcDiagnosticV0) => void,
+	) => Promise<{ client: PiRpcClientV0; initialState: Awaited<ReturnType<PiRpcClientV0["getState"]>> }>;
 }
 
 export interface PiIdentificationV0 {
@@ -181,7 +184,10 @@ export class PiAttachmentV0 {
 			...(this.options.command === undefined ? {} : { command: this.options.command }),
 			...(this.options.path === undefined ? {} : { path: this.options.path }),
 			...(this.options.cwd === undefined ? {} : { cwd: this.options.cwd }),
-			env: { ...piIdentityEnvironmentV0(), PATH: this.#env().PATH ?? process.env.PATH ?? "" },
+			env:
+				this.options.isolatedSession === undefined
+					? { ...piIdentityEnvironmentV0(), PATH: this.#env().PATH ?? process.env.PATH ?? "" }
+					: this.#env(),
 			...(this.options.now === undefined ? {} : { now: this.options.now }),
 			...(this.options.runtimeContent === undefined ? {} : { runtimeContent: this.options.runtimeContent }),
 		});
@@ -814,32 +820,38 @@ export class PiSessionAttachmentV0 {
 	async connect(): Promise<void> {
 		if (this.#closed) throw new TypeError("the session attachment is closed");
 		if (this.#client !== null && this.#client.connection.state === "running") return;
-		const { sessionDir, sessionId } = this.owner.sessionConfig();
-		mkdirSync(sessionDir, { recursive: true });
 		const options = this.owner.options;
+		const persistent = options.isolatedSession === undefined ? this.owner.sessionConfig() : null;
+		if (persistent !== null) mkdirSync(persistent.sessionDir, { recursive: true });
 		// Events and diagnostics are accepted only from the process this attachment currently owns: a superseded
 		// process may still flush buffered records after a reconnect, and those belong to no current instance.
 		let owned: PiRpcClientV0 | null = null;
 		const instance = randomBytes(8).toString("hex");
-		const client = new PiRpcClientV0({
-			executable: this.owner.launchPath(this.#fingerprint),
-			cwd: options.cwd ?? process.cwd(),
-			env: this.owner.launchEnv(),
-			session: { kind: "persistent", sessionDir, sessionId },
-			...(options.provider === undefined ? {} : { provider: options.provider }),
-			...(options.model === undefined ? {} : { model: options.model }),
-			...(options.tools === undefined ? {} : { tools: options.tools }),
-			...(options.governedToolFree === undefined ? {} : { governedToolFree: options.governedToolFree }),
-			...(options.governedToolFree === true ? { offline: true } : {}),
-			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
-			...(options.maxRpcOutputBytes === undefined ? {} : { maxOutputBytes: options.maxRpcOutputBytes }),
-			...(options.processScope === undefined ? {} : { scope: options.processScope() }),
-			onDiagnostic: (diagnostic) => {
-				// Exit can be observed before stdout drains. Keep diagnostics from that instance until it is
-				// superseded or its store closes, including a limit breach in the remaining stdout bytes.
-				if (owned !== null && this.#context?.instance === instance) this.#diagnostic(diagnostic);
-			},
-		});
+		const onDiagnostic = (diagnostic: RpcDiagnosticV0) => {
+			if (owned !== null && this.#context?.instance === instance) this.#diagnostic(diagnostic);
+		};
+		const opened = options.isolatedSession === undefined ? null : await options.isolatedSession(onDiagnostic);
+		const client =
+			opened?.client ??
+			new PiRpcClientV0({
+				executable: this.owner.launchPath(this.#fingerprint),
+				cwd: options.cwd ?? process.cwd(),
+				env: this.owner.launchEnv(),
+				session: { kind: "persistent", ...persistent! },
+				...(options.provider === undefined ? {} : { provider: options.provider }),
+				...(options.model === undefined ? {} : { model: options.model }),
+				...(options.tools === undefined ? {} : { tools: options.tools }),
+				...(options.governedToolFree === undefined ? {} : { governedToolFree: options.governedToolFree }),
+				...(options.governedToolFree === true ? { offline: true } : {}),
+				...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
+				...(options.maxRpcOutputBytes === undefined ? {} : { maxOutputBytes: options.maxRpcOutputBytes }),
+				...(options.processScope === undefined ? {} : { scope: options.processScope() }),
+				onDiagnostic,
+			});
+		if (this.#closed) {
+			await client.close();
+			throw new TypeError("the session attachment is closed");
+		}
 		owned = client;
 		let live = 0;
 		const self = this;
@@ -871,7 +883,7 @@ export class PiSessionAttachmentV0 {
 		this.#cleanups.push(client.connection.cleanup());
 		let state: Awaited<ReturnType<PiRpcClientV0["getState"]>>;
 		try {
-			state = await client.getState();
+			state = opened?.initialState ?? (await client.getState());
 		} catch (error) {
 			await client.close();
 			this.#client = null;
@@ -907,15 +919,16 @@ export class PiSessionAttachmentV0 {
 			digestKey: { keyId: this.owner.digestKey().keyId, domain: this.owner.digestKey().domain },
 			// Evidence never covers project configuration (checks run in scratch directories); it is recorded here.
 			userConfigurationDigest: piUserConfigurationDigestV0(this.owner.launchEnv()),
-			projectConfigurationDigest: piProjectConfigurationDigestV0(options.cwd ?? process.cwd()),
+			projectConfigurationDigest:
+				opened === null ? piProjectConfigurationDigestV0(options.cwd ?? process.cwd()) : null,
 			instance,
 			piSessionId: state.sessionId,
-			requestedSessionId: sessionId,
+			requestedSessionId: persistent?.sessionId ?? null,
 			args: [...client.args],
 		});
-		if (state.sessionId !== sessionId) {
+		if (persistent !== null && state.sessionId !== persistent.sessionId) {
 			this.#attachmentEvent("harness.session-mismatch", {
-				requestedSessionId: sessionId,
+				requestedSessionId: persistent.sessionId,
 				piSessionId: state.sessionId,
 			});
 		}

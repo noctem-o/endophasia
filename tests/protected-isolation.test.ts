@@ -8,6 +8,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
+	appendFileSync,
 	chmodSync,
 	existsSync,
 	linkSync,
@@ -63,10 +64,23 @@ const detected = detectBubblewrapV0();
 const contained = detected.ok ? await detectContainmentV0() : null;
 const REAL = detected.ok && contained?.ok === true;
 const containment = contained?.ok === true ? contained.containment : (null as unknown as EndoContainmentV0);
-if (!REAL)
-	process.stderr.write(
-		`protected-isolation: real isolation tests skipped: ${detected.ok ? `containment: ${(contained as { detail: string }).detail}` : `${detected.reason}: ${detected.detail}`}\n`,
-	);
+const isolationUnavailable = REAL
+	? null
+	: detected.ok
+		? `containment: ${(contained as { detail: string }).detail}`
+		: `${detected.reason}: ${detected.detail}`;
+if (isolationUnavailable !== null) {
+	process.stderr.write(`protected-isolation: real isolation tests skipped: ${isolationUnavailable}\n`);
+	if (process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_STEP_SUMMARY) {
+		appendFileSync(
+			process.env.GITHUB_STEP_SUMMARY,
+			`### Real kernel isolation coverage: ABSENT\n\nThe protected-isolation suite skipped its real sandbox cases: ${isolationUnavailable}. A green test shard is not evidence of kernel isolation.\n`,
+		);
+	}
+}
+it.runIf(process.env.ENDO_REQUIRE_ISOLATION === "1")("has the required real sandbox host", () => {
+	expect(isolationUnavailable).toBeNull();
+});
 const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");
 
 /** The correct solution, as source, for agents that also want to pass. */

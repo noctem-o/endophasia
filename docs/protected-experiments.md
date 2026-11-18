@@ -289,8 +289,10 @@ run, isolation executable, agent profile or evaluator, a gap in attempt numbers,
 
 ## 6. Running the offline example
 
-Host prerequisites: Linux with unprivileged user namespaces enabled, Bubblewrap at `/usr/bin/bwrap` (root-owned, not setuid), `ldd`, and
-`/usr/bin/node`. No root, no daemon, no kernel setting changed.
+Host prerequisites: Linux with unprivileged user namespaces enabled, Bubblewrap at `/usr/bin/bwrap` (root-owned, not setuid), a
+systemd user manager with cgroup v2, `ldd`, and `/usr/bin/node`. A trusted `/usr/bin/python3` (including its host-managed
+libraries and standard library) closes inherited descriptors before launch. Trusted `/usr/bin/bash` and its resolved libraries are
+required for the read-only preflight descriptor observer. No root, additional daemon, or kernel change is required.
 
 ```sh
 node research/protected-eval/example/make-spec.ts > /tmp/protected-spec.json
@@ -310,9 +312,12 @@ another way. A probe that fails at an attempt refuses that attempt, which stays 
 
 | File | Real kernel isolation | Covers |
 | :-- | :-- | :-- |
-| `tests/protected-isolation.test.ts` | **yes** (skipped, and says so, where `detectBubblewrapV0` refuses) | see the list below |
+| `tests/protected-isolation.test.ts` | **yes** when Bubblewrap and scope detection succeed; otherwise **absent**, explicitly reported in the test log and GitHub Actions job summary | see the list below |
 | `tests/protected-isolation.test.ts`, "refusal instead of an unprotected fallback" | no | a missing or untrusted bubblewrap, a linked or non-root runtime, an undeclared executable: refused, nothing run |
 | `tests/protected-records.test.ts` | no | records: tampered, truncated, unknown-version, extended and self-contradictory ones refused; a closed spec; collection on the host (links, hard links, FIFO, traversal, oversize, a change mid-read, totals); the historical planner and readers unchanged |
+
+A green shard with absent coverage is not kernel-isolation evidence. CI checks that Python and Bash are installed before testing. On a
+host expected to supply real isolation, set `ENDO_REQUIRE_ISOLATION=1` to fail the suite when it cannot measure that boundary.
 
 The real-isolation tests cover:
 - a positive control: an honest agent passes the independent evaluator;

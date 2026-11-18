@@ -145,6 +145,7 @@ function admitConfiguration(bytes: Buffer): void {
 }
 
 function gitProjection(path: string): boolean {
+	if (path === ".git/info" || path === ".git/info/exclude") return true;
 	return /^\.git\/(?:HEAD|index|packed-refs|config|refs(?:\/[^/]+)*|objects|objects\/[0-9a-f]{2}(?:\/[0-9a-f]{38})?|objects\/pack(?:\/pack-[0-9a-f]{40}\.(?:pack|idx))?)$/.test(
 		path,
 	);

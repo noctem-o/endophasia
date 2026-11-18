@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { Stats } from "node:fs";
 import {
 	lstatSync,
 	mkdirSync,
@@ -50,7 +51,7 @@ const ENV = {
 };
 
 function trustedPiInstallation(): boolean {
-	const trusted = (s: ReturnType<typeof lstatSync>) => s.uid === 0 && (s.mode & 0o022) === 0;
+	const trusted = (s: Stats) => s.uid === 0 && (s.mode & 0o022) === 0;
 	for (let path = PI; ; path = dirname(path)) {
 		const s = lstatSync(path);
 		if (!trusted(s) || !s.isDirectory()) return false;
@@ -98,7 +99,7 @@ type Checks = Partial<Record<OfflineObservationKey, string>>;
 
 export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean } = {}) {
 	const unavailable = (reason: string) => ({ kind: "offline-diagnostic", passed: false, reason });
-	if (process.platform !== "linux" || process.getuid?.() === 0)
+	if (process.platform !== "linux" || !process.getuid?.())
 		return unavailable("the diagnostic requires an unprivileged Linux controller");
 	const bwrap = detectBubblewrapV0();
 	if (!bwrap.ok) return unavailable(`${bwrap.reason}: ${bwrap.detail}`);

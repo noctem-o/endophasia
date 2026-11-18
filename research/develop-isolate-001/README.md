@@ -19,4 +19,35 @@ Enforcement assumes a trusted kernel, Bubblewrap, systemd user manager, controll
 
 ## Evidence and operator procedure
 
-Host observations, simulated controls and the exact later operator procedure are recorded separately below as the diagnostic lands.
+### Measured on the Arch workstation, 2026-11-18
+
+Rechecked Linux `7.3.4-arch1-2`, Node `26.13.1`, Bubblewrap `0.13.1` (root-owned, mode `0755`), systemd `262`, cgroup v2, login group names, and the installed Pi path and package version `1.5.2`. An unprivileged host user namespace and the existing detector’s transient user-scope probe both ran and exited successfully. No privileged socket was contacted or tested and no live Pi configuration was inspected.
+
+Ran `node research/develop-isolate-001/diagnostic.ts` with pipe stdio and again under a disposable PTY using `script -q -e -c 'node research/develop-isolate-001/diagnostic.ts' /dev/null`. The PTY run confirmed the controller had a terminal.
+
+| Boundary | Observation inside the offline Node payload | Measured control or limit |
+| --- | --- | --- |
+| Filesystem | The mounted workspace’s device/inode matched the controller’s fixture and its write succeeded. Root and `/dev` rejected writes with `EROFS`. Outside reads and writes, including symlink and traversal reads, yielded `ENOENT`. The private home and scratch each accepted a write. | Binding only the synthetic host directory made its reads and the pathname canary visible, while its write failed with `EROFS`. No real credential or evidence directory was read. |
+| Privilege and environment | `/run` and the synthetic Docker pathname yielded `ENOENT`; only allowlisted environment names and values were present. `NoNewPrivs=1`, `CapEff/CapPrm/CapBnd/CapAmb=0`; nested `unshare --user` failed with the `ENOSPC` diagnostic. | Removing the two user-namespace restriction flags allowed the same nested unshare. The pathname canary is a file, not a socket. There was no setuid or privileged-service invocation. |
+| Terminal | All three stdio streams were non-TTY, kernel controlling-tty number was zero, and opening `/dev/tty` yielded `ENXIO`, even with the controller on a PTY. | No terminal input was read or injected. This checks the missing prerequisite for controlling-terminal injection, not the ioctl. |
+| Processes and cleanup | The canary saw different PID, user, mount, IPC, UTS and cgroup namespaces; the controller’s PID returned `ENOENT` in procfs and `ESRCH` to signal zero. A detached child was alive in its own session in that PID namespace. | The runner reported init gone and scope termination confirmed after the run. This does not distinguish what killed the child first. No real signal or ptrace was attempted on the controller. |
+| Network | Net namespace differed from the controller’s, with no non-loopback interfaces. | The trusted Node-only control sharing the network observed the controller’s namespace and non-loopback interfaces. No connection or listener was opened; loopback and abstract Unix isolation are inferred from the Linux namespace, not exercised through an endpoint. |
+| Git | The synthetic `.git/config` rejected a write with `EROFS` and renaming `.git` returned `EBUSY`. | Omitting the nested read-only bind allowed both operations on the disposable fixture. The host Git inspector was never pointed at this workspace. |
+| Launch failure | An invalid Bubblewrap option produced exit 1 with the expected diagnostic, no command release, and confirmed scope cleanup. | Host capability unavailability is simulated below; namespace support was available on this host. |
+
+### Automated checks and simulations
+
+Five new tests cover malformed, stale and substituted probe output, exact negative-control outcomes, lost/incomplete execution, and a simulated kernel refusal before containment starts. The existing broker suite exercises invalid, mismatched and lost session protection and unchanged Strict approvals with stand-ins. These tests do not establish isolation for Pi. The 119-test focused run included the new tests, the existing session-control suite, Git inspector, and process containment. One existing test was excluded because its final assertion probes permissions on real privileged socket paths. Typecheck, lint (one unchanged warning in `tests/endo-cockpit-eighteenth-review.test.ts`), and build passed. The full suite, live workbench, and legacy network preflight were not run because they open listeners; no full-suite comparison with `main` is claimed.
+
+### Later, only after operator approval: offline Pi RPC smoke
+
+Run from this draft’s checkout on the same unprivileged Arch workstation. Confirm the installed Pi is the pinned root-owned 1.5.2 package at the documented path; do not use the normal Pi home, a real checkout as workspace, or any provider credentials. The controller needs its ordinary user manager and cgroup v2, not elevated authority. Both commands create and clean disposable fixtures and transient user scopes, with no services or listeners:
+
+```sh
+script -q -e -c 'node research/develop-isolate-001/diagnostic.ts' /dev/null
+script -q -e -c 'node research/develop-isolate-001/diagnostic.ts --operator-approved-offline-pi' /dev/null
+```
+
+Run the second command only if the first exits 0 and reports `controllerTTY: true`, and only on explicit approval to start real Pi. The second starts Pi after the in-boundary probe, with no model, no tools, an ephemeral session, network isolated, a private home and only one fixed `get_state` call over pipes. It plants synthetic extension and MCP config canaries in the private home; insist on `pi-rpc: state`, both marker checks `ENOENT`, non-truncated output, all controls passing and confirmed termination. Marker absence is evidence only for this startup path; there is no positive extension/MCP activation control yet. Stop at any refusal or discrepancy. Do not retry with a broader mount, shared network or weakened flags. The Pi branch of the diagnostic was not run in this PR.
+
+**There is no safe Everyday or model-backed pilot command in this draft.** Before one is approved, a new change must cover the four integration gates above, include an adversarial test of live Pi substitution/loss at the broker, and specify the authorized model destination, scoped credentials, request ceilings and shutdown. Until then, keep the production provider at `not-enforced` and the existing mode fallback and refusal unchanged.

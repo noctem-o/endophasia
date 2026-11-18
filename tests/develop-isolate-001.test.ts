@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
-import type { EndoSandboxRunV0 } from "../adapters/sandbox/bubblewrap.ts";
-import { completedOfflineRun } from "../research/develop-isolate-001/diagnostic.ts";
+import { describe, expect, it, vi } from "vitest";
+import * as bubblewrap from "../adapters/sandbox/bubblewrap.ts";
+import * as containment from "../adapters/sandbox/containment.ts";
+import { completedOfflineRun, runOfflineBoundary } from "../research/develop-isolate-001/diagnostic.ts";
 import {
 	failedOfflineChecks,
 	LIVE_PROBE_PREFIX,
@@ -47,7 +48,7 @@ describe("offline observations (simulated, no host launch)", () => {
 });
 
 describe("offline process completion (simulated, no host launch)", () => {
-	const complete: EndoSandboxRunV0 = {
+	const complete: bubblewrap.EndoSandboxRunV0 = {
 		started: true,
 		exitCode: 0,
 		signal: null,
@@ -79,4 +80,27 @@ describe("offline process completion (simulated, no host launch)", () => {
 			expect(completedOfflineRun({ ...complete, ...failed })).toBe(false);
 		}
 	});
+
+	it.runIf(process.platform === "linux" && Boolean(process.getuid?.()))(
+		"does not attempt containment or start a command after a kernel capability refusal",
+		async () => {
+			const preflight = vi.spyOn(bubblewrap, "detectBubblewrapV0").mockReturnValueOnce({
+				ok: false,
+				reason: "namespaces-unavailable",
+				detail: "simulated kernel refusal",
+			});
+			const scope = vi.spyOn(containment, "detectContainmentV0");
+			try {
+				expect(await runOfflineBoundary()).toEqual({
+					kind: "offline-diagnostic",
+					passed: false,
+					reason: "namespaces-unavailable: simulated kernel refusal",
+				});
+				expect(scope).not.toHaveBeenCalled();
+			} finally {
+				preflight.mockRestore();
+				scope.mockRestore();
+			}
+		},
+	);
 });

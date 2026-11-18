@@ -50,7 +50,9 @@ const ENV = {
 	NODE_DISABLE_COMPILE_CACHE: "1",
 };
 
-function trustedPiInstallation(): boolean {
+export { ENV as OFFLINE_ENV, NODE as OFFLINE_NODE, PI as PINNED_PI_ROOT };
+
+export function trustedPiInstallation(): boolean {
 	const trusted = (s: Stats) => s.uid === 0 && (s.mode & 0o022) === 0;
 	for (let path = PI; ; path = dirname(path)) {
 		const s = lstatSync(path);

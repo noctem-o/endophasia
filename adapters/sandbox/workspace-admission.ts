@@ -13,6 +13,7 @@ import {
 	readSync,
 	realpathSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, normalize, relative } from "node:path";
@@ -60,14 +61,17 @@ function configuredRoot(path: string): string {
 	}
 }
 
-function openCanonicalDirectory(path: string): number {
+function openCanonicalDirectory(path: string, protectedIds: ReadonlySet<string>): number {
 	let entry = openSync("/", PATH_FLAGS);
 	try {
 		for (const name of path.slice(1).split("/")) {
 			const next = openSync(join(fdPath(entry), name), PATH_FLAGS);
 			closeSync(entry);
 			entry = next;
-			if (!fstatSync(entry).isDirectory()) refuse("path", "workspace path is not a plain directory");
+			const stat = fstatSync(entry, { bigint: true });
+			if (!stat.isDirectory()) refuse("path", "workspace path is not a plain directory");
+			if (protectedIds.has(identity(stat)))
+				refuse("protected-root", "workspace enters an evidence or internal root");
 		}
 		if (readlinkSync(fdPath(entry)) !== path) refuse("changed", "workspace root changed during admission");
 		return entry;
@@ -175,14 +179,23 @@ export function admitWorkspaceV0(input: WorkspaceAdmissionInputV0): AdmittedWork
 			refuse("path", "a normalized absolute workspace and protected roots are required");
 		const source = input.root;
 		if (below(source, "/tmp")) refuse("path", "workspace cannot contain the snapshot staging root");
+		const protectedIds = new Set<string>();
 		for (const path of [input.evidenceRoot, ...input.internalRoots]) {
 			const guarded = configuredRoot(path);
 			if (below(path, source) || below(source, path) || below(guarded, source) || below(source, guarded))
 				refuse("protected-root", "workspace overlaps an evidence or internal root");
+			const stat = statSync(guarded, { bigint: true, throwIfNoEntry: false });
+			if (stat !== undefined) protectedIds.add(identity(stat));
 		}
-		root = openCanonicalDirectory(source);
+		root = openCanonicalDirectory(source, protectedIds);
 		const rootIdentity = identity(fstatSync(root, { bigint: true }));
 		const mount = mountId(root);
+		const mountRoot = readFileSync("/proc/self/mountinfo", "utf8")
+			.split("\n")
+			.find((line) => line.startsWith(`${mount} `))
+			?.split(" ")[3];
+		if (mountRoot === undefined) refuse("unreadable", "workspace mount is absent from mountinfo");
+		if (mountRoot !== "/") refuse("alias", "workspace is on a mounted filesystem subtree");
 		const parent = openSync(`${fdPath(root)}/..`, PATH_FLAGS);
 		try {
 			if (mountId(parent) !== mount) refuse("alias", "workspace root is a mount point");
@@ -214,6 +227,8 @@ export function admitWorkspaceV0(input: WorkspaceAdmissionInputV0): AdmittedWork
 					const child = openSync(join(fdPath(dir), name), PATH_FLAGS);
 					try {
 						const stat = fstatSync(child, { bigint: true });
+						if (protectedIds.has(identity(stat)))
+							refuse("protected-root", "workspace contains an evidence or internal root");
 						if (path === ".git" && !stat.isDirectory())
 							refuse("git-metadata", ".git must be a plain directory; links and gitfiles are not admitted");
 						if (mountId(child) !== mount || stat.isSymbolicLink() || (!stat.isDirectory() && stat.nlink !== 1n))

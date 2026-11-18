@@ -138,7 +138,7 @@ out["detached-child"] = await new Promise((resolve) => {
 	});
 });
 out["pi-rpc"] = "not-requested";
-if (c.piArgs) {
+if (c.beforePi) {
 	if (!Object.entries(out).every(([id, value]) => id === "challenge" || c.beforePi[id] === value)) {
 		out["pi-rpc"] = "withheld";
 	} else {
@@ -149,7 +149,11 @@ if (c.piArgs) {
 	fs.writeFileSync(agent + "/mcp.json", JSON.stringify({ mcpServers: { canary: {
 		command: "/usr/bin/node", args: ["-e", 'require("node:fs").writeFileSync("/work/mcp-ran", "canary")'],
 	} } }));
-	const pi = spawn("/usr/bin/node", ["/pi/dist/bundle/cli.js", "--mode", "rpc", ...c.piArgs], {
+	const pi = spawn("/usr/bin/node", [
+		"/pi/dist/bundle/cli.js", "--mode", "rpc", "--offline", "--no-session", "--no-tools",
+		"--no-extensions", "--no-mcp", "--no-skills", "--no-context-files", "--no-prompt-templates",
+		"--no-approve", "--no-themes",
+	], {
 		stdio: ["pipe", "pipe", "ignore"],
 	});
 	const lines = createInterface({ input: pi.stdout });
@@ -174,7 +178,7 @@ if (c.piArgs) {
 	out["pi-rpc"] = exit === 0 ? result : result === "state" ? "nonzero-exit" : result;
 	}
 }
-out["pi-extension-marker"] = c.piArgs ? code(() => fs.statSync("/work/extension-ran")) : "not-requested";
-out["pi-mcp-marker"] = c.piArgs ? code(() => fs.statSync("/work/mcp-ran")) : "not-requested";
+out["pi-extension-marker"] = c.beforePi ? code(() => fs.statSync("/work/extension-ran")) : "not-requested";
+out["pi-mcp-marker"] = c.beforePi ? code(() => fs.statSync("/work/mcp-ran")) : "not-requested";
 process.stdout.write("ENDO-OFFLINE-BOUNDARY " + JSON.stringify(out) + "\n");
 `;

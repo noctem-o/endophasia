@@ -16,7 +16,6 @@ import {
 import { networkInterfaces } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { piRpcArgumentsV0 } from "../../adapters/pi/rpc.ts";
 import {
 	buildSandboxProfileV0,
 	detectBubblewrapV0,
@@ -153,21 +152,7 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 			const profile = buildSandboxProfileV0(input);
 			profile.args = adjust(profile.args);
 			const challenge = randomBytes(16).toString("hex");
-			const piArgs =
-				realPi && label === "offline"
-					? [
-							...piRpcArgumentsV0({
-								executable: NODE,
-								cwd: "/work",
-								env: ENV,
-								session: { kind: "ephemeral" },
-								tools: "none",
-								offline: true,
-								governedToolFree: true,
-							}),
-							"--no-themes",
-						]
-					: undefined;
+			const smokePi = realPi && label === "offline";
 			const run = await runSandboxV0(
 				bwrap.bwrap,
 				profile,
@@ -179,14 +164,7 @@ export async function runOfflineBoundary({ realPi = false }: { realPi?: boolean 
 					JSON.stringify({
 						...controller,
 						challenge,
-						piArgs,
-						beforePi:
-							piArgs === undefined
-								? undefined
-								: {
-										...OFFLINE_EXPECTED,
-										"pi-rpc": "not-requested",
-									},
+						beforePi: smokePi ? OFFLINE_EXPECTED : undefined,
 					}),
 				],
 				runOptions,

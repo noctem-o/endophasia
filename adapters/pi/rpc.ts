@@ -246,21 +246,24 @@ export class PiRpcClientV0 {
 	readonly connection: RpcConnectionV0;
 	readonly args: readonly string[];
 
-	constructor(options: PiRpcLaunchOptionsV0) {
+	constructor(options: PiRpcLaunchOptionsV0, owned?: import("../rpc-jsonl/rpc-connection.ts").RpcOwnedProcessV0) {
 		this.args = Object.freeze(piRpcArgumentsV0(options));
-		this.connection = new RpcConnectionV0({
-			launch: { command: options.executable, leadingArgs: [] },
-			label: "Pi",
-			args: this.args,
-			env: options.env,
-			cwd: options.cwd,
-			stderr: "capture",
-			...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
-			...(options.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: options.closeTimeoutMs }),
-			...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
-			...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
-			...(options.scope === undefined ? {} : { scope: options.scope }),
-		});
+		this.connection = new RpcConnectionV0(
+			{
+				launch: { command: options.executable, leadingArgs: [] },
+				label: "Pi",
+				args: this.args,
+				env: options.env,
+				cwd: options.cwd,
+				stderr: "capture",
+				...(options.requestTimeoutMs === undefined ? {} : { requestTimeoutMs: options.requestTimeoutMs }),
+				...(options.closeTimeoutMs === undefined ? {} : { closeTimeoutMs: options.closeTimeoutMs }),
+				...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
+				...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
+				...(options.scope === undefined ? {} : { scope: options.scope }),
+			},
+			owned,
+		);
 	}
 
 	/** Receive every session event as it arrives. */

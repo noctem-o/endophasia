@@ -376,7 +376,8 @@ export const ENDO_MODEL_BRIDGE_SOURCE_V0 = `"use strict";
 const net = require("node:net");
 const { spawn } = require("node:child_process");
 const [port, socket, separator, ...command] = process.argv.slice(2);
-if (!/^[0-9]{1,5}$/.test(port ?? "") || separator !== "--" || command.length === 0) process.exit(64);
+const standalone = separator === undefined;
+if (!/^[0-9]{1,5}$/.test(port ?? "") || !socket || (!standalone && (separator !== "--" || command.length === 0))) process.exit(64);
 const server = net.createServer((client) => {
 	const relay = net.connect(socket);
 	const end = () => { client.destroy(); relay.destroy(); };
@@ -385,6 +386,7 @@ const server = net.createServer((client) => {
 	relay.pipe(client);
 });
 server.listen(Number(port), "127.0.0.1", () => {
+	if (standalone) return;
 	const child = spawn(command[0], command.slice(1), { stdio: "inherit" });
 	for (const signal of ["SIGTERM", "SIGINT", "SIGHUP"]) process.on(signal, () => child.kill(signal));
 	child.on("error", () => process.exit(127));

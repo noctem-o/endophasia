@@ -10,6 +10,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import type { Duplex, Readable, Writable } from "node:stream";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	type EndoContainmentV0,
@@ -61,19 +62,22 @@ function trustedFileProblem(path: string): string | null {
 
 const FD_SANITIZER = "/usr/bin/python3";
 const SANITIZE_FDS = `import errno, fcntl, os, sys
+keep = int(sys.argv[1])
+if keep not in (6, 7):
+    raise RuntimeError("invalid sandbox launch descriptor count")
 for entry in os.listdir("/proc/self/fd"):
     fd = int(entry)
-    if fd < 6:
+    if fd < keep:
         continue
     try:
         os.close(fd)
     except OSError as error:
         if error.errno != errno.EBADF:
             raise
-for fd in range(6):
+for fd in range(keep):
     if fcntl.fcntl(fd, fcntl.F_GETFD) & fcntl.FD_CLOEXEC:
         raise RuntimeError("sandbox launch descriptor is close-on-exec")
-os.execv(sys.argv[1], sys.argv[1:])`;
+os.execv(sys.argv[2], sys.argv[2:])`;
 
 function fdSanitizerPath(): string | null {
 	try {
@@ -151,6 +155,11 @@ export interface EndoRuntimeFileV0 {
 	target: string;
 	source: string;
 	sha256: string;
+}
+
+export function resolveTrustedRuntimeFileV0(path: string): EndoRuntimeFileV0 | null {
+	const source = realpathSync(path);
+	return trustedFileProblem(source) === null ? { source, target: path, sha256: sha256File(source) } : null;
 }
 
 /**
@@ -460,6 +469,14 @@ export async function runSandboxV0(
 		/** Called right after the launch with the launcher's identity (pid and start time), so a resume can end exactly it. */
 		onLauncher?: (launcher: EndoProcessIdentityV0) => void;
 		onStarted?: (init: EndoProcessIdentityV0) => void;
+		experimentalLaunch?: (launch: {
+			unit: string;
+			launcher: EndoProcessIdentityV0;
+			init: EndoProcessIdentityV0;
+			challenge: Duplex;
+			stdin: Writable;
+			stdout: Readable;
+		}) => Promise<void>;
 	},
 ): Promise<EndoSandboxRunV0> {
 	const sanitizer = fdSanitizerPath();
@@ -471,7 +488,17 @@ export async function runSandboxV0(
 	// --block-fd 5: the sandbox's first process waits, before it execs the command, until the controller releases it, which it does only
 	// once it has identified the sandbox (its init's identity, and bubblewrap inside the scope). However short the command, it cannot
 	// finish before it was identified. EOF would release it too, so the pipe is never closed while the sandbox may still run.
-	const opts = ["--json-status-fd", "3", "--block-fd", "5", ...profile.args];
+	const experimentalLaunch = options.experimentalLaunch;
+	if (experimentalLaunch !== undefined && options.stdin !== undefined)
+		throw new TypeError("the experimental launcher owns RPC stdin");
+	const opts = [
+		"--json-status-fd",
+		"3",
+		"--block-fd",
+		"5",
+		...(experimentalLaunch === undefined ? [] : ["--as-pid-1"]),
+		...profile.args,
+	];
 	if ([...opts, ...argv].some((a) => a.includes("\0")))
 		throw new TypeError("a sandbox argument holds a NUL character");
 	// Its own process group (bubblewrap issue #633): until the sandbox's first process calls setsid (after bubblewrap releases it), it is
@@ -487,6 +514,7 @@ export async function runSandboxV0(
 			"-B",
 			"-c",
 			SANITIZE_FDS,
+			experimentalLaunch === undefined ? "6" : "7",
 			options.containment.systemdRun,
 			...scopeArgsV0(
 				options.containment,
@@ -498,17 +526,18 @@ export async function runSandboxV0(
 		],
 		{
 			env: { ...options.containment.env },
-			stdio: ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe"],
+			stdio: ["pipe", "pipe", "pipe", "pipe", "pipe", "pipe", ...(experimentalLaunch ? ["pipe" as const] : [])],
 			detached: true,
 		},
 	);
-	if (child.pid !== undefined) {
-		const startTime = processStartTimeV0(child.pid);
-		if (startTime !== null) options.onLauncher?.({ pid: child.pid, startTime });
-	}
+	const launcherStart = child.pid === undefined ? null : processStartTimeV0(child.pid);
+	const launcher =
+		child.pid === undefined || launcherStart === null ? null : { pid: child.pid, startTime: launcherStart };
+	if (launcher !== null) options.onLauncher?.(launcher);
+	let launcherExited = false;
 	const killGroup = () => {
 		try {
-			if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+			if (!launcherExited && child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
 		} catch {
 			// the group is gone
 		}
@@ -538,6 +567,8 @@ export async function runSandboxV0(
 	let identified = false;
 	let released = false;
 	const release = (child.stdio as unknown as NodeJS.WritableStream[])[5] as NodeJS.WritableStream;
+	const challenge = (child.stdio as readonly unknown[])[6] as Duplex | undefined;
+	challenge?.on("error", () => {});
 	release.on("error", () => {});
 	child.stdout.on("data", out.push);
 	child.stderr.on("data", err.push);
@@ -556,12 +587,22 @@ export async function runSandboxV0(
 			void stopScopeV0(options.containment, unit);
 			return;
 		}
+		if (experimentalLaunch !== undefined) {
+			if (launcher === null || challenge === undefined) {
+				killGroup();
+				return;
+			}
+			const launch = { unit, launcher, init, challenge, stdin: child.stdin, stdout: child.stdout };
+			void Promise.resolve()
+				.then(() => experimentalLaunch(launch))
+				.catch(killGroup);
+		}
 		options.onStarted?.(init);
 		released = true;
 		release.end(Buffer.from("1"));
 	});
 	child.stdin.on("error", () => {});
-	child.stdin.end(options.stdin ?? Buffer.alloc(0));
+	if (experimentalLaunch === undefined) child.stdin.end(options.stdin ?? Buffer.alloc(0));
 	let timedOut = false;
 	const timer = setTimeout(() => {
 		timedOut = true;
@@ -573,6 +614,7 @@ export async function runSandboxV0(
 		// A sandbox process stranded in bubblewrap's launch window (#633) can hold the output pipes open forever. Once bubblewrap itself
 		// has exited, wait a bounded time for the pipes, then stop waiting: termination is then decided below, not by a pipe's end.
 		child.on("exit", (c, s) => {
+			launcherExited = true;
 			// Bubblewrap is reaped from here on: its group number may be reused, so the timeout's group kill must never fire now.
 			clearTimeout(timer);
 			// Bubblewrap is gone: stop its scope at once, which ends anything left in it (a process stranded in the launch window holds
@@ -581,8 +623,8 @@ export async function runSandboxV0(
 			setTimeout(() => {
 				// No group kill here: once bubblewrap is reaped its group number can be reused by an unrelated group. A process stranded in
 				// the launch window is ended with the sandbox's scope (containment.ts), never by a number.
-				for (const stream of [child.stdout, child.stderr, child.stdio[3]])
-					(stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+				for (const stream of [child.stdout, child.stderr, child.stdio[3], challenge])
+					(stream as (NodeJS.ReadableStream & { destroy?: () => void }) | undefined)?.destroy?.();
 				resolve([c, s]);
 			}, 2000).unref();
 		});
@@ -596,6 +638,7 @@ export async function runSandboxV0(
 	const result = options.limits === undefined ? undefined : scopeResultV0(options.containment, unit);
 	// Only now, with the scope stopped, may the release pipe close (an EOF on it would release a blocked init).
 	(release as NodeJS.WritableStream & { destroy?: () => void }).destroy?.();
+	challenge?.destroy();
 	const initGone = known === null ? null : (await endSandboxV0(known)) === "confirmed";
 	const termination = established && ended === "confirmed" ? "confirmed" : "unconfirmed";
 	const o = out.value();

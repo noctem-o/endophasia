@@ -74,6 +74,18 @@ function show(c: Pick<EndoContainmentV0, "systemctl" | "env">, unit: string, pro
 	return out;
 }
 
+export function scopeControlGroupV0(c: Pick<EndoContainmentV0, "systemctl" | "env">, unit: string): string | null {
+	if (!sandboxUnitPattern.test(unit)) return null;
+	const properties = show(c, unit, ["ActiveState", "ControlGroup"]);
+	const group = properties.ControlGroup ?? "";
+	return properties.ActiveState === "active" &&
+		/^(\/[A-Za-z0-9_.@:-]+)+$/.test(group) &&
+		!group.split("/").some((part) => part === "." || part === "..") &&
+		group.endsWith(`/${unit}.scope`)
+		? group
+		: null;
+}
+
 /**
  * Whether this host can contain a sandbox: trusted systemd tools, a reachable user manager, and a real probe scope that the manager
  * creates with the required properties, reports with them applied, and stops on request. Anything else is a refusal.

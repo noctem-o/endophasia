@@ -262,7 +262,7 @@ suite("Everyday where it cannot be in effect, and Strict", () => {
 		expect(await data(page, "effective")).toBe("strict");
 		const why = await page.text("[data-testid=authority-unavailable]");
 		expect(why).toContain("Everyday was requested and is not in effect");
-		expect(why).toContain("Pi is not placed inside an execution boundary by this build");
+		expect(why).toContain("No attested execution boundary is available for this launch.");
 		expect(await page.text("[data-testid=authority]")).toContain("the Docker daemon's socket");
 		const issued = broker.issuePairingCode({ control: true });
 		expect(issued.control).toBeNull();

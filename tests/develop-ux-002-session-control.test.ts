@@ -1249,7 +1249,7 @@ describe("10. No boundary, a lost boundary, a privileged host: fails closed", ()
 		for (const facts of hosts) {
 			const status = hostExecutionProtectionV0(facts).observe();
 			expect(status).toMatchObject({ state: "not-enforced", level: "none", mechanism: null, session: null });
-			expect(status.limitations[0]).toContain("Pi is not placed inside an execution boundary by this build");
+			expect(status.limitations[0]).toContain("No attested execution boundary is available for this launch.");
 		}
 		const privileged = hostExecutionLimitationsV0(hosts[1]!);
 		expect(privileged.join("\n")).toContain("the Docker daemon's socket (/run/docker.sock)");

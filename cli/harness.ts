@@ -34,6 +34,7 @@ import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overvi
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { type EndoControlServerV0, startEndoControlServerV0 } from "./control.ts";
+import { prepareEverydayPiV0 } from "./everyday-pi.ts";
 import { hostExecutionProtectionV0 } from "./execution-protection.ts";
 import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 import { attachSummaryV0, ENDO_PROMPT_COST_NOTICE_V0 } from "./loop-hints.ts";
@@ -276,7 +277,7 @@ async function attach(argv: readonly string[], everyday: boolean): Promise<void>
 	if (confirmFlag !== undefined && confirmFlag !== "phrase" && confirmFlag !== "short")
 		throw new TypeError("--confirm is phrase or short");
 	const mode = (modeFlag ?? (everyday ? "everyday" : "strict")) as EndoWorkbenchModeV0;
-	const protection = hostExecutionProtectionV0();
+	let protection = hostExecutionProtectionV0();
 	if (parsed.switches.has("--workbench")) requireWorkbenchTerminalV0();
 	// Protected is a promise about the AGENT. Where it cannot be kept, nothing is started: running Strict instead would hand an
 	// unrestricted agent to an operator who asked for a restricted one. (Everyday falls back to Strict: that only keeps authority here.)
@@ -289,51 +290,63 @@ async function attach(argv: readonly string[], everyday: boolean): Promise<void>
 	}
 	// LIVE-PROCESS-CONTAINMENT-001: Pi, and whatever it starts, runs in a scope of its own where the host can give one.
 	const selected = options(parsed);
-	const live = await liveContainmentV0();
-	for (const note of live.notes) process.stderr.write(`${note}\n`);
-	const pi = new PiAttachmentV0({
-		...selected,
-		...(live.containment === null ? {} : { processScope: () => liveScopeV0(live.containment as EndoContainmentV0) }),
-	});
-	const identified = await pi.identify();
-	printNotificationV0(identified.notification);
-	const checked = await pi.checkLocal();
-	if (parsed.flags.has("--prompt")) process.stderr.write(`note: ${ENDO_PROMPT_COST_NOTICE_V0}\n`);
-	let session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>;
+	const isolated =
+		mode === "everyday" && project === undefined && !parsed.flags.has("--prompt")
+			? prepareEverydayPiV0(selected)
+			: null;
 	try {
-		session = await pi.openSession();
-	} catch (error) {
-		// A start that failed after launching Pi still reports what it left (Codex, #133), then fails as before.
-		const failed = pi.failedStartCleanup();
-		if (failed !== null) await reportCleanup({ processCleanup: () => failed });
-		throw error;
-	}
-	if (parsed.switches.has("--control"))
-		return attachWithControl(parsed, identified.change, checked.state, session, {
-			mode,
-			protection,
-			...(confirmFlag === undefined ? {} : { confirm: confirmFlag as "phrase" | "short" }),
+		const live = isolated === null ? await liveContainmentV0() : null;
+		for (const note of live?.notes ?? []) process.stderr.write(`${note}\n`);
+		const pi = new PiAttachmentV0({
+			...(isolated?.options ?? selected),
+			...(live?.containment == null
+				? {}
+				: { processScope: () => liveScopeV0(live.containment as EndoContainmentV0) }),
 		});
-	let disposition: string | null = null;
-	let settled: boolean | null = null;
-	try {
-		const prompt = parsed.flags.get("--prompt");
-		if (prompt !== undefined) {
-			disposition = await session.prompt(prompt);
-			settled = await session.waitForSettled(wait);
+		const identified = await pi.identify();
+		printNotificationV0(identified.notification);
+		const checked = await pi.checkLocal();
+		if (parsed.flags.has("--prompt")) process.stderr.write(`note: ${ENDO_PROMPT_COST_NOTICE_V0}\n`);
+		let session: Awaited<ReturnType<PiAttachmentV0["openSession"]>>;
+		try {
+			session = await pi.openSession();
+		} catch (error) {
+			// A start that failed after launching Pi still reports what it left (Codex, #133), then fails as before.
+			const failed = pi.failedStartCleanup();
+			if (failed !== null) await reportCleanup({ processCleanup: () => failed });
+			throw error;
 		}
+		if (isolated !== null) protection = isolated.protection(() => session.piSessionId);
+		if (parsed.switches.has("--control"))
+			return await attachWithControl(parsed, identified.change, checked.state, session, {
+				mode,
+				protection,
+				...(isolated === null ? {} : { isolatedWorkspace: isolated.root }),
+				...(confirmFlag === undefined ? {} : { confirm: confirmFlag as "phrase" | "short" }),
+			});
+		let disposition: string | null = null;
+		let settled: boolean | null = null;
+		try {
+			const prompt = parsed.flags.get("--prompt");
+			if (prompt !== undefined) {
+				disposition = await session.prompt(prompt);
+				settled = await session.waitForSettled(wait);
+			}
+		} finally {
+			await session.close();
+			await reportCleanup(session);
+		}
+		print({
+			change: identified.change,
+			piSessionId: session.piSessionId,
+			prompt: disposition === null ? null : { disposition, settled },
+			counters: session.counters,
+			state: checked.state,
+		});
+		summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled }, wait);
 	} finally {
-		await session.close();
-		await reportCleanup(session);
+		await isolated?.dispose();
 	}
-	print({
-		change: identified.change,
-		piSessionId: session.piSessionId,
-		prompt: disposition === null ? null : { disposition, settled },
-		counters: session.counters,
-		state: checked.state,
-	});
-	summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled }, wait);
 }
 
 /**
@@ -349,6 +362,7 @@ async function attachWithControl(
 	control: {
 		mode: EndoWorkbenchModeV0;
 		protection: ReturnType<typeof hostExecutionProtectionV0>;
+		isolatedWorkspace?: string;
 		confirm?: "phrase" | "short";
 	},
 ): Promise<void> {
@@ -362,7 +376,8 @@ async function attachWithControl(
 		if (parsed.switches.has("--workbench"))
 			workbench = await startWorkbenchV0(session, desk, {
 				// The directory Pi was actually started in: one source, the attachment's own.
-				cwd: resolve(session.owner.options.cwd ?? process.cwd()),
+				cwd: control.isolatedWorkspace ?? resolve(session.owner.options.cwd ?? process.cwd()),
+				...(control.isolatedWorkspace === undefined ? {} : { isolated: true }),
 				...(parsed.flags.has("--project") ? { projectId: parsed.flags.get("--project") as string } : {}),
 				mode: control.mode,
 				protection: control.protection,

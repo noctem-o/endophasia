@@ -1,19 +1,9 @@
-/**
- * What bounds the agent on THIS host, for a live workbench session (runtime/contracts/execution-protection.ts; DEVELOP-UX-002 §5).
- *
- * Today the answer is always "nothing": `endo develop` starts Pi as the operator's own account, in the operator's session, with the
- * operator's environment, files and network, and no launcher in this build places it inside a boundary. This provider therefore never
- * reports `enforced`. It exists so that the reason is said precisely, on the terminal and on the page, and so that the day a launcher
- * does place Pi in a boundary it has one place to report what it OBSERVED from inside it.
- *
- * What it reads is read-only and unprivileged: this process's uid and groups, whether two well-known sockets are writable by it, and
- * one kernel setting. It runs nothing, and it is not an audit: a host with none of these findings is not thereby safe.
- */
 import { accessSync, constants, readFileSync } from "node:fs";
 import type {
 	EndoExecutionProtectionStatusV0,
 	EndoExecutionProtectionV0,
 } from "../runtime/contracts/execution-protection.ts";
+import type { PiLaunchAttestationV0 } from "./attested-pi.ts";
 
 /** What the provider looks at, replaceable in tests. */
 export interface HostFactsV0 {
@@ -58,7 +48,7 @@ const PRIVILEGED_SOCKETS: readonly (readonly [string, string])[] = [
 export function hostExecutionLimitationsV0(facts: HostFactsV0 = HOST): string[] {
 	const uid = facts.uid();
 	const lines = [
-		`Pi is not placed inside an execution boundary by this build: it runs as your account${uid === null ? "" : ` (uid ${uid})`}, with your files, credentials, terminal and network. A session grant would let a page cause anything that account can do.`,
+		`No attested execution boundary is available for this launch. Pi runs as your account${uid === null ? "" : ` (uid ${uid})`}, with your files, credentials, terminal and network. A session grant would let a page cause anything that account can do.`,
 	];
 	if (uid === 0) lines.push("This process is root: nothing on this host is outside the agent's reach.");
 	const seen = new Set<string>();
@@ -76,7 +66,6 @@ export function hostExecutionLimitationsV0(facts: HostFactsV0 = HOST): string[] 
 	return lines;
 }
 
-/** The production provider. It observes no boundary because none is built; it never returns `enforced`. */
 export function hostExecutionProtectionV0(facts: HostFactsV0 = HOST): EndoExecutionProtectionV0 {
 	return {
 		observe: (): EndoExecutionProtectionStatusV0 => ({
@@ -87,5 +76,72 @@ export function hostExecutionProtectionV0(facts: HostFactsV0 = HOST): EndoExecut
 			workspaceRoot: null,
 			limitations: hostExecutionLimitationsV0(facts),
 		}),
+	};
+}
+
+export const PI_WORKSPACE_PROTECTION_V0 = "endo.pi-bubblewrap-workspace.v0";
+
+export function attestedExecutionProtectionV0(
+	record: () => PiLaunchAttestationV0 | null,
+	expected: () => { session: string | null; workspaceRoot: string },
+): EndoExecutionProtectionV0 {
+	const refused = (state: "not-enforced" | "unknown", reason: string): EndoExecutionProtectionStatusV0 => ({
+		state,
+		level: "none",
+		mechanism: null,
+		session: null,
+		workspaceRoot: null,
+		limitations: [reason],
+	});
+	let held: PiLaunchAttestationV0 | null = null;
+	let lost: EndoExecutionProtectionStatusV0 | null = null;
+	const lose = (state: "not-enforced" | "unknown", reason: string) => {
+		lost = refused(state, reason);
+		return lost;
+	};
+	return {
+		observe(): EndoExecutionProtectionStatusV0 {
+			if (lost !== null) return lost;
+			try {
+				const found = record();
+				if (found === null) {
+					const status = refused("not-enforced", "No live execution attestation is available for this launch.");
+					if (held !== null) lost = status;
+					return status;
+				}
+				if (
+					typeof found.session !== "string" ||
+					!/^endo\.session\.pi\.[A-Za-z0-9._-]{1,128}$/.test(found.session) ||
+					typeof found.workspaceRoot !== "string" ||
+					!found.workspaceRoot.startsWith("/") ||
+					typeof found.check !== "function"
+				)
+					return lose("unknown", "The live execution attestation is inconsistent.");
+				const subject = expected();
+				if (found.session !== subject.session || found.workspaceRoot !== subject.workspaceRoot)
+					return lose("not-enforced", "The execution attestation is for a different session or workspace.");
+				if (held !== null && found !== held)
+					return lose("unknown", "The live execution attestation is inconsistent.");
+				const check = found.check();
+				if (check === false)
+					return lose("not-enforced", "The attested process, scope, namespaces, or workspace no longer match.");
+				if (check !== true) return lose("unknown", "The live execution attestation is inconsistent.");
+				held = found;
+				return {
+					state: "enforced",
+					level: "workspace",
+					mechanism: PI_WORKSPACE_PROTECTION_V0,
+					session: found.session,
+					workspaceRoot: found.workspaceRoot,
+					limitations: [
+						"No credential route is available.",
+						"Restricted protection is not established.",
+						"RPC frames are not attributed to individual writers.",
+					],
+				};
+			} catch {
+				return lose("unknown", "The live execution evidence could not be read.");
+			}
+		},
 	};
 }

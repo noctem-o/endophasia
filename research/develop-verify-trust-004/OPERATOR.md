@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `a05e0a4a72a5ae7b4985cf66a0fe498ad2a59753` (Amendment 7 freeze; 32 entries in
+**Selected source commit:** `refs/tags/trust004-amendment-8` (Amendment 8; exact file list in
 [FROZEN.sha256](FROZEN.sha256); this commit's own copy of this page already quotes that manifest's digests). Stage exactly this commit, not the branch tip. Later commits on the branch only change
 documentation and tests outside the manifest; `tests/develop-verify-trust-004-freeze.test.ts` checks in CI that this page and the
 manifest agree, here and at this commit.
@@ -36,11 +36,12 @@ retained evidence**. Nothing on this page writes there.
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=a05e0a4a72a5ae7b4985cf66a0fe498ad2a59753
+F=refs/tags/trust004-amendment-8
+FREEZE_REF=refs/tags/trust004-amendment-8
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/endo18                   # this attempt's disposable guest
-W2=$HOME/.capy/work/endo18-analysis         # the analysis guest
-E=$HOME/endo-evidence/trust004-attempt-4    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment8-run1
+W2=$HOME/.capy/work/trust004-amendment8-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment8-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -53,21 +54,26 @@ qemu-system-x86_64 --version | head -n1; qemu-img --version | head -n1
 test -r /dev/kvm -a -w /dev/kvm && echo kvm-ok
 df -h "$HOME/.capy/work" | tail -n1
 pgrep -af endo13-guest || echo "no guest running"
-for p in "$W" "$W2" "$E"; do test ! -e "$p" && echo "absent $p"; done
+for p in "$W" "$W2" "$E"; do
+  if test -e "$p" || test -L "$p"; then echo "STOP: retained or occupied path: $p" >&2; exit 2; fi
+done
 ```
 
 **Source.** Use a private clone with the branch pointing at the selected commit, so that `host.sh stage` bundles exactly that:
 
 ```sh
-install -d -m 0700 "$W" "$W/vm"
+mkdir -m 0700 -- "$W" && mkdir -m 0700 -- "$W/vm" || exit 2
 git clone -q --no-checkout "$ENDO_REPO" "$W/src"
-git -C "$W/src" fetch -q origin develop-verify-trust-004 2>/dev/null; git -C "$W/src" cat-file -e "$F^{commit}"
+git -C "$W/src" fetch -q origin "$FREEZE_REF:$FREEZE_REF" || exit 1
+tagged=$(git -C "$W/src" rev-parse --verify "$FREEZE_REF^{commit}") || exit 1
+[[ $F == "$FREEZE_REF" || $F == "$tagged" ]] || { echo "wrong freeze commit" >&2; exit 1; }
+F=$tagged
 git -C "$W/src" update-ref refs/heads/develop-verify-trust-004 "$F"
 git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-004
 git -C "$W/src" rev-parse HEAD                                    # must print $F
 test -z "$(git -C "$W/src" status --porcelain)" && echo clean
 (cd "$W/src" && sha256sum -c $T/FROZEN.sha256 | grep -vc ': OK$')  # must print 0
-grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 6a989d68101c44143f6c73d5733241f50b0243fde8738bae44e7b201e4d57abf
+grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 08f46c4335622f48ded2dd405a64770e4263a2c333249e2294ee2e80d28ecef3
 ```
 
 **Image and signature.** The protocol image is `Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2`, SHA-256
@@ -145,9 +151,9 @@ bash /root/session.sh plan
 ```
 
 Expected: only `lo`; disks `vda`, `vdb` (read-only) and `vdc`; the commit is `$F`; session.sh is
-`6a989d68101c44143f6c73d5733241f50b0243fde8738bae44e7b201e4d57abf`. The plan should end with `verdict AUTHORISABLE` and a
+`08f46c4335622f48ded2dd405a64770e4263a2c333249e2294ee2e80d28ecef3`. The plan should end with `verdict AUTHORISABLE` and a
 `plan-digest`. Read every line before authorising: staged commit, stage-disk and bundle digests (the bundle is inside the stage
-disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all 32 entries match`, `session-script is the staged commit's`, `network-interfaces lo`,
+disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all 36 entries match`, `session-script is the staged commit's`, `network-interfaces lo`,
 `shared-filesystems none`, `block-devices vda vdb vdc`, `stage-disk-read-only 1`, `virtualization kvm`, hostname
 `endo13-guest`, kernel `7.3.4-arch1-2`, the eleven pinned packages, and the three pending actions. A `verdict REFUSED` lists each
 reason: stop, preserve the console log and do not work around it.
@@ -190,42 +196,27 @@ reports that the guest console closed.
 
 ## 4. Evidence custody [host]
 
-Set `SIZE` and `DIGEST` exactly as the guest printed them, never estimates, then run this block as one paste. It runs in a
-child bash with `-euo pipefail`, so each step runs only if every earlier one succeeded, and nothing is sealed after a failure:
+Set `SIZE` (decimal bytes) and `DIGEST` (lowercase SHA-256) from the confirmed guest export line.
+Collect **only the raw disk prefix**. Never mount, list, unpack or traverse a guest export, or consume its manifests on the workstation.
 
 ```sh
 E=$E W=$W T=$T SIZE=${SIZE:?} DIGEST=${DIGEST:?} bash -euo pipefail <<'CUSTODY'
-test ! -e "$E" || { echo "STOP: $E already exists" >&2; exit 2; }
-install -d -m 0700 "$E"
-bash "$W/src/$T/qemu/host.sh" collect "$E" "$SIZE" "$DIGEST" || { echo "STOP: collect failed; nothing sealed" >&2; exit 2; }
-test -f "$E/out/evidence/pre/SHA256SUMS" || { echo "STOP: pre-read capture MISSING" >&2; exit 3; }
-(cd "$E/out/evidence/pre" && sha256sum -c SHA256SUMS) || { echo "STOP: pre-read capture FAILS its checksums" >&2; exit 3; }
-cmp "$E/out/evidence/pre/SHA256SUMS" "$E/out/evidence/pre.SHA256SUMS" || { echo "STOP: pre-read manifest differs from its exported copy" >&2; exit 3; }
-if test -d "$E/out/evidence/post"; then
-  (cd "$E/out/evidence/post" && sha256sum -c SHA256SUMS) || { echo "STOP: post-read capture present but FAILS its checksums" >&2; exit 4; }
-  echo "post-read capture present and verified"
-else
-  echo "post-read capture MISSING: list it as missing evidence; it is not a pass"
-fi
+umask 077
+test ! -e "$E" && test ! -L "$E" || { echo "STOP: $E already exists" >&2; exit 2; }
+mkdir -p -- "$(dirname -- "$E")"
+ENDO13_WORK=$W bash "$W/src/$T/qemu/host.sh" collect "$E" "$SIZE" "$DIGEST" || { echo "STOP: collect failed" >&2; exit 2; }
 cp "$W/vm/console.log" "$W/vm/qemu-argv.log" "$W/vm/qemu-offline.stderr" "$W/listeners-before.txt" "$E/"
-(cd "$E" && sha256sum export.tar console.log qemu-argv.log > HOST-SHA256SUMS)
-chmod -R a-w "$E"
-chmod u+w "$E"
-install -d -m 0700 "$E/analysis"
-echo "custody sealed: evidence files read-only; $E/analysis is ready for section 5"
+(cd "$E" && sha256sum export.tar console.log qemu-argv.log qemu-offline.stderr listeners-before.txt > HOST-SHA256SUMS)
+chmod a-w "$E"/{export.tar,console.log,qemu-argv.log,qemu-offline.stderr,listeners-before.txt,HOST-SHA256SUMS}
+echo "raw custody sealed"
 CUSTODY
 echo "custody exit=$?"
 ```
 
-`collect` refuses a digest mismatch. Exit 0 with `custody sealed` is the only success. Exit 2 means collect failed or `$E` already
-existed, 3 means the pre-read capture is missing or fails its checksums, 4 means a post-read capture is present but fails its
-checksums, and any other nonzero exit means copying or sealing failed. On any of them, keep `$W` and stop. A **missing** post-read
-capture is not a checksum failure: a run that stopped after a verified pre-read capture but before the post-read capture has none,
-so that is reported and sealed, and the post-read capture is listed as missing evidence. A run with no verified pre-read capture,
-which includes every run.sh status 8 (the pre-read capture failed and the trusted read was prohibited), **stops at exit 3 and is
-not sealed**: `$E` holds the collected export unsealed and writable, nothing in it is custody evidence, and there is nothing for
-section 5 to reanalyse. Keep `$W` and `$E` as they are and report the run as INCOMPLETE. An absent file is never a pass. Only `$E` itself is left writable, so that
-section 5 can collect into `$E/analysis`; every evidence file stays read-only. Keep every failed attempt's directory.
+Proceed only on exit 0. A matching digest records which bytes arrived, not their meaning, authenticity or safety.
+Even a run with status 8 (pre-read capture failed) can have a confirmed raw export: retain it, mark the experiment
+INCOMPLETE, and do not treat it as a verified capture. On collection or sealing failure keep the work directory and any
+partial custody directory; do not reuse either. Missing or corrupt evidence is diagnosed inside a disposable guest only.
 
 ## 5. Independent reanalysis in a second fresh guest [host, guest root, analyst]
 
@@ -234,9 +225,10 @@ on the workstation, because grading executes candidate code. It reads the export
 `trusted-read.json` only, never harness summaries.
 
 ```sh
-install -d -m 0700 "$W2" "$W2/vm"
+mkdir -m 0700 -- "$W2" && mkdir -m 0700 -- "$W2/vm" || exit 2
 qemu-img convert -O qcow2 -l snapshot.name=provisioned "$OLD/vm/overlay.qcow2" "$W2/vm/overlay.qcow2"
-cp "$W/vm/stage.img" "$W/vm/out.img" "$W2/vm/"      # copies; the originals stay with this attempt
+cp "$W/vm/stage.img" "$W2/vm/stage.img"
+install -m 0600 "$E/export.tar" "$W2/vm/out.img" && truncate -s 2G "$W2/vm/out.img"     # writable copy; keep the sealed prefix unchanged
 mkfifo -m 0600 "$W2/vm/con.in" "$W2/vm/con.out"
 ss -ltunH | sort > "$W2/listeners-before.txt"     # this guest's baseline, before it is launched
 export ENDO13_WORK=$W2                              # in all three terminals
@@ -253,46 +245,112 @@ ss -ltunH | sort | diff "$W2/listeners-before.txt" - && echo "no new host listen
 tail -n1 "$W2/vm/qemu-argv.log"
 ```
 
-At the analysis guest's console, **[guest root]** first, with SIZE and DIGEST from section 4:
+On the second console, **[guest root]**, check that only loopback is present. Use the read-only **host-staged** disk
+(`/dev/vdb`), not the evidence disk, for the source. Set `F` to the selected commit from section 1 in this guest shell.
+Run each block in order; stop on any nonzero status. The source and its ancestors belong to root. Neither the analyst nor
+the extraction can replace the checkout, the report pathname, or a parent of either.
 
 ```sh
-ip -br link
-useradd -m -U -s /usr/bin/bash analyst
-install -d -m 0700 /root/stage && tar -xf /dev/vdb -C /root/stage && cat /root/stage/commit
-head -c SIZE /dev/vdc > /root/export.tar && sha256sum /root/export.tar      # must print DIGEST
-install -o analyst -g analyst -m 0400 /root/stage/repo.bundle /root/export.tar /home/analyst/
-C=$(cat /root/stage/commit)
+(
+  set -eu
+  umask 022
+  ip -br link
+  useradd -m -U -s /usr/bin/bash analyst
+  install -d -m 0700 /root/stage
+  tar -xf /dev/vdb -C /root/stage
+  test "$(cat /root/stage/commit)" = "${F:?}"
+  git clone -q --no-checkout /root/stage/repo.bundle /opt/trust004-source
+  cd /opt/trust004-source
+  git checkout -q --detach "$F"
+  sha256sum --quiet -c research/develop-verify-trust-004/FROZEN.sha256
+  install -d -m 0755 /opt/trust004-result
+  install -o analyst -g analyst -m 0600 /dev/null /opt/trust004-result/analysis.json
+)
 ```
 
-Then as **[analyst]**, through runuser:
+Set `SIZE` and `DIGEST` to exactly the section 4 values in this shell. A short read can return success from head;
+check the actual byte count independently of the digest. Never interpolate free-form console text as a command.
 
 ```sh
-runuser -u analyst -- bash -c 'cd && mkdir a && tar -xf export.tar -C a && git clone -q --no-checkout repo.bundle src &&
-  git -C src -c advice.detachedHead=false checkout -q '"$C"' && (cd src && sha256sum --quiet -c research/develop-verify-trust-004/FROZEN.sha256) &&
-  { node src/research/develop-verify-trust-004/reanalyze.ts a/out/evidence a/out/run/trusted-read.json reanalysis.json; rc=$?; echo "reanalyze exit=$rc"; exit "$rc"; }'
+(
+  set -euo pipefail
+  [[ ${SIZE:?} =~ ^[1-9][0-9]{0,9}$ && $SIZE -le 2147483648 && ${DIGEST:?} =~ ^[0-9a-f]{64}$ ]]
+  head -c "$SIZE" /dev/vdc > /root/export.tar
+  test "$(stat -c %s /root/export.tar)" = "$SIZE"
+  test "$(sha256sum < /root/export.tar | cut -c1-64)" = "$DIGEST"
+  install -m 0444 /root/export.tar /opt/trust004-export.tar
+)
+```
+
+**[analyst]**, through runuser from the root console. Start in the trusted checkout, not the evidence tree.
+Only the trusted extractor parses the outer archive, as the analyst, into a previously nonexistent input directory.
+Do not source, import or run anything from that directory. The analyst checks capture manifests in the disposable
+guest; a missing post-read capture is missing evidence, never a pass. Candidate grading belongs only in the frozen grader.
+
+```sh
+runuser -u analyst -- env -i HOME=/home/analyst PATH=/usr/bin bash -euc '
+  cd /opt/trust004-source
+  input=/home/analyst/input
+  python3 -I /opt/trust004-source/research/develop-verify-trust-004/guest/extract.py /opt/trust004-export.tar "$input"
+  cap=$input/out/evidence
+  python3 -I /opt/trust004-source/research/develop-verify-trust-004/guest/check-input.py "$cap/pre"
+  verify_capture() (
+    cd "$cap/$1"
+    cmp SHA256SUMS "$cap/$1.SHA256SUMS"
+    pattern="^[a-f0-9]{64}  [A-Za-z0-9][A-Za-z0-9_.-]*$"
+    while IFS= read -r row || test -n "$row"; do
+      [[ $row =~ $pattern ]] || exit 1
+    done < SHA256SUMS
+    sha256sum --quiet --strict -c SHA256SUMS
+  )
+  verify_capture pre
+  if test -e "$cap/post" || test -e "$cap/post.SHA256SUMS"; then
+    verify_capture post
+  else
+    echo "post-read capture MISSING"
+  fi
+  rc=0
+  node /opt/trust004-source/research/develop-verify-trust-004/reanalyze.ts "$cap" "$input/out/run/trusted-read.json" /opt/trust004-result/analysis.json || rc=$?
+  echo "reanalyze exit=$rc"
+  exit "$rc"'
 echo "analyst command exit=$?"
 ```
 
-The analyst command exits with reanalyze.ts's own status, so `reanalyze exit=` and `analyst command exit=` are nonzero for a
-failed reanalysis (disagreements, a false or unconfirmed PASS). Write the result out below either way, so that the host can read why.
+Record the exit status. A refusal or missing report is INCOMPLETE: retain both guests' work, do not fabricate a report.
+Inspect a produced report in this guest: check disagreements, false or unconfirmed PASS, refused repositories and commits
+without objects against PROTOCOL.md §9. A completed report may explain a failed result; preserve it even if reanalysis returned nonzero.
 
-Back as **[guest root]**, write the result to the copied evidence disk. The guest powers off only when the write succeeded and
-the device prefix reads back with the archive's digest; otherwise it prints `ANALYSIS NOT WRITTEN` and stays up, so do not power
-it off: keep `$W2` and report.
+**[guest root]** Write the raw report (not a tar) to the second guest's evidence disk. Copy from the fixed report file
+in its root-owned parent to a root-only snapshot, then verify the write before shutting down.
 
 ```sh
-tar -C /home/analyst -cf /root/analysis.tar reanalysis.json && s=$(stat -c %s /root/analysis.tar) &&
-  dd if=/root/analysis.tar of=/dev/vdc conv=fsync status=none &&
-  h=$(sha256sum < /root/analysis.tar | cut -c1-64) && d=$(head -c "$s" /dev/vdc | sha256sum | cut -c1-64) &&
-  test "$h" = "$d" && echo "analysis size=$s sha256=$h device-prefix-sha256=$d" &&
-  systemctl poweroff || echo "ANALYSIS NOT WRITTEN: guest left running"
+(
+  set -euo pipefail
+  install -m 0400 /opt/trust004-result/analysis.json /root/analysis.json
+  s=$(stat -c %s /root/analysis.json)
+  test "$s" -gt 0 && test "$s" -le 2147483648 || exit 1
+  h=$(sha256sum < /root/analysis.json | cut -c1-64)
+  dd if=/root/analysis.json of=/dev/vdc conv=fsync status=none
+  d=$(head -c "$s" /dev/vdc | sha256sum | cut -c1-64)
+  test "$h" = "$d"
+  echo "analysis size=$s sha256=$h device-prefix-sha256=$d"
+  systemctl poweroff
+)
 ```
 
-On the **[host]**: `bash "$W/src/$T/qemu/host.sh" collect "$E/analysis" <size> <sha256>` with `ENDO13_WORK=$W2`, then
-`jq .summary "$E/analysis/reanalysis.json"`. Reanalysis exit 0 requires zero disagreements with the live read, zero false PASS and
-zero unconfirmed PASS. Also read `repositoriesRefused`, `commitsWithoutObjects` and every row in `disagreements`. Any disagreement
-means **not demonstrated** until explained. The PROTOCOL.md §9 criteria decide the verdict; the session account and `results.json`
-do not.
+On any failure stop, keep `$W2` and report; do not manually power off. On success set `ANALYSIS_SIZE` and
+`ANALYSIS_DIGEST` on the **[host]** from that line. The collector always calls its opaque output `export.tar`,
+including when the bytes are raw JSON. Do not parse it on the host.
+
+```sh
+(
+  set -euo pipefail
+  ENDO13_WORK=$W2 bash "$W/src/$T/qemu/host.sh" collect "$E/analysis" "${ANALYSIS_SIZE:?}" "${ANALYSIS_DIGEST:?}"
+  cd "$E/analysis"
+  sha256sum export.tar > HOST-SHA256SUMS
+  chmod a-w export.tar HOST-SHA256SUMS .
+)
+```
 
 ## 6. Teardown and cleanup verification [host]
 
@@ -303,7 +361,7 @@ pgrep -af "$W/vm|$W2/vm" || echo "no QEMU process"
 ss -ltunH | sort | diff "$E/listeners-before.txt" - && echo "no new host listener"
 ENDO13_WORK=$W2 bash "$W/src/$T/qemu/host.sh" teardown && test ! -e "$W2"
 ENDO13_WORK=$W bash "$W/src/$T/qemu/host.sh" teardown && test ! -e "$W"
-(cd "$E" && sha256sum -c HOST-SHA256SUMS)
+(cd "$E" && sha256sum -c HOST-SHA256SUMS && cd analysis && sha256sum -c HOST-SHA256SUMS)
 sha256sum "$OLD/vm/overlay.qcow2"       # still 26c0877e…febf18b: attempt 1 untouched
 ```
 

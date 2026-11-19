@@ -395,3 +395,49 @@ SHA-256: `guest/session.sh` 6a989d68101c44143f6c73d5733241f50b0243fde8738bae44e7
 `reanalyze.ts` bb6ce02f50b2a11f4110fd924fe3ff1759418cec99d58904054274d57e9bfda0;
 `tests/develop-verify-trust-004-reanalyze-repos.test.ts` da80ddac564236c8d7f81dc6cd7e2efed7502fbdbce20e0779ec6e2989ae7098.
 The adjacent frozen manifest replaces these four entries and pins this amended protocol. It still lists 32 entries.
+
+## Amendment 8 — raw custody, guest-only intake and record authority
+
+This amendment supersedes every earlier instruction to extract or inspect the guest export on the workstation.
+A previous guest was powered down without a session command (operator report). No previous attempt is replaced.
+The grading criteria and TRUST-003 are unchanged. Use fresh paths and retain failed or partial attempts.
+
+- **Protected ancestors (4634949200).** The eleven paths measured by capture.sh each require exactly one
+  parseable metadata row, the expected type and owner, and no group or other write permission. Missing, duplicate,
+  unexpected and malformed rows invalidate authority. A plausible record alone cannot compensate for missing ancestry.
+- **Custody (4634864029).** The workstation retains only an opaque byte prefix with the declared size and SHA-256,
+  plus host custody records. collect.py never enumerates archive members. A matching hash is a transport check,
+  not an authenticity finding. This applies both to the original export and to the returning raw analysis report.
+  Diagnosis of missing or corrupt captures happens only in the disposable analysis guest. A raw export can be retained
+  even when the pre-read capture failed; that run remains INCOMPLETE.
+- **Guest intake (4634864095).** Guest root verifies the exact size and digest on the copied disk before providing
+  a read-only input. The trusted code comes from the host-staged read-only disk and a root-owned checkout, not the
+  evidence. The unprivileged analyst runs that code on a separate, fresh data directory. extract.py admits only its
+  bounded regular-file/directory archive subset and normalizes modes. Absolute and noncanonical paths, parent
+  components, duplicate names, file/directory conflicts, links and special files are refused. Nested archives
+  used by the analyzer are preflighted and extracted with the same parser; metadata listing is not extraction.
+  Missing or rejected inputs are not successful reanalysis. Prior attempts and their disks stay untouched.
+- **Account publication (4634949204).** A failure producing, publishing, reading back or annotating the account
+  prohibits finish and export. Preserve the disk on refusal, with status 75 taking precedence on uncertain termination.
+- **Freeze retention (4634864033).** The durable lightweight tag `refs/tags/trust004-amendment-8` selects the
+  freeze even after the PR branch moves. The page inside the freeze resolves this tag instead of naming its parent.
+  The subsequent operator-page commit also pins the literal SHA. The full-history CI check requires the tag, selected
+  commit and manifest bytes to agree, verifies each frozen blob, and checks the digest quotations in both pages.
+
+Offline regressions cover omission of each protected ancestor, malformed and duplicate metadata, interrupted
+account publication, byte-for-byte collection of both archive and non-archive inputs, short reads and mismatched
+digests, inert invalid archive entries, separation of code and inputs, and the command blocks in OPERATOR.md.
+These checks are not a live result. The operator handoff still requires a reviewed head with no open findings.
+
+Changed or added pins (the manifest also records this amended protocol's own digest):
+
+- `research/develop-verify-trust-004/guest/check-input.py`: `061291e662710edfc8a4897559f4f5e45884a0206e6786bbba03bf1422b8c2ee`
+- `research/develop-verify-trust-004/guest/extract.py`: `788e8c202633e8c8bf158b3106c71408a8b30ddfb59fa6aa14971807660dc0aa`
+- `research/develop-verify-trust-004/guest/session.sh`: `08f46c4335622f48ded2dd405a64770e4263a2c333249e2294ee2e80d28ecef3`
+- `research/develop-verify-trust-004/guest/test_extract.py`: `c8b4fa38722410b1cd33fedde23a5b1da7e044cd90b55ca577c435edafe04efc`
+- `research/develop-verify-trust-004/guest/test_session.py`: `8bc37102228c9005822d5bdb2e5de9b55f3318ce973ddaddbe5f2991ad2afc05`
+- `research/develop-verify-trust-004/qemu/collect.py`: `1311f4eafd52d4d2e05ec133579e2f5beacc60ec1e8a45a919a71151b1455ff6`
+- `research/develop-verify-trust-004/qemu/host.sh`: `f888ed7956259be3353507e790ac9e059a6e074defb5924506bba8d016518377`
+- `research/develop-verify-trust-004/qemu/test_transport.py`: `d31c31e0f5bb30dc633b6062a5b2b189f3317347b020017088e484850bf3c668`
+- `research/develop-verify-trust-004/reanalyze.ts`: `e7687a6d617e5df97ab7a24f74d43280e6a1a572b3ac1df2662446f1650ee6cd`
+- `tests/develop-verify-trust-004-reanalyze-repos.test.ts`: `f1ebf8117be281f6b8e6d5237d8492f1e774ebc1129d129abe2885c402237a33`

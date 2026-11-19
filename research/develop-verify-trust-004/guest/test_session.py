@@ -202,7 +202,6 @@ class Flow(Session):
     MOCKS = """
 authorise() { cp "$SESSION/plan.txt" "$SESSION/authorised.txt"; }  # what a successful authorise leaves
 settle() { [ "${UNCERTAIN_AFTER:-0}" = 1 ] && UNCERTAIN=1; [ "${SETTLE_INT:-0}" = 1 ] && interrupted=1; :; }
-account() { echo account >&2; [ "${ACCOUNT_INT:-0}" = 1 ] && interrupted=1; :; }
 step() {
   local rc
   case $1 in stage) rc=${STAGE_RC:-0} ;; run) rc=${RUN_RC_MOCK:-0} ;;
@@ -212,10 +211,35 @@ step() {
 """
     SHA = "a" * 64
 
-    def flow(self, env):
+    def flow(self, env, real_account=False):
         subprocess.run(["rm", "-rf", str(self.tmp / "out")], check=True)
-        r = self.bash(self.MOCKS + env + '\nrun ' + hashlib.sha256(PLAN.encode()).hexdigest() + '; echo "rc=$?"')
+        mock_account = 'account() { echo account >&2; [ "${ACCOUNT_INT:-0}" = 1 ] && interrupted=1; :; }\n'
+        r = self.bash(self.MOCKS + ("" if real_account else mock_account) + env + '\nrun ' + hashlib.sha256(PLAN.encode()).hexdigest() + '; echo "rc=$?"')
         return r, r.stdout.strip().splitlines()[-1], [line[5:] for line in r.stderr.splitlines() if line.startswith("step:")]
+
+    def test_incomplete_account_refuses_export(self):
+        good = f"EXPORT='export size=10 sha256={self.SHA} device-prefix-sha256={self.SHA}'\n"
+        cases = [
+            ("create", "mktemp() { return 1; }", "rc=1"),
+            ("partial write", "printf() { builtin printf partial; return 1; }", "rc=1"),
+            ("read", 'cat() { [[ $1 != "$OUT/session/authorisation.txt" ]] && command cat "$@"; }', "rc=1"),
+            ("publish", "mv() { return 1; }", "rc=1"),
+            ("uncertain", "UNCERTAIN_AFTER=1; mktemp() { return 1; }", "rc=75"),
+            ("interrupt append", 'SETTLE_INT=1; echo() { [[ $1 != "operator interrupt: recorded"* ]] && builtin echo "$@"; }', "rc=1"),
+        ]
+        for name, fail, rc in cases:
+            with self.subTest(name):
+                r, got, ran = self.flow(good + fail, real_account=True)
+                self.assertEqual(ran, ["stage", "run"], r.stdout + r.stderr)
+                self.assertEqual(got, rc)
+                self.assertIn("export refused: session account incomplete", r.stdout)
+                self.assertNotIn("host.sh collect", r.stdout)
+                self.assertNotIn("operator interrupt recorded in the account", r.stdout)
+                if name != "interrupt append":
+                    self.assertFalse((self.tmp / "out/session/account.txt").exists())
+        r, got, ran = self.flow(good, real_account=True)
+        self.assertEqual((got, ran), ("rc=0", ["stage", "run", "finish"]), r.stdout + r.stderr)
+        self.assertIn("termination confirmed", (self.tmp / "out/session/account.txt").read_text())
 
     def test_flow(self):
         good = f"EXPORT='export size=10 sha256={self.SHA} device-prefix-sha256={self.SHA}'"

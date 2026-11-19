@@ -1,7 +1,7 @@
 #!/bin/bash
 # DEVELOP-VERIFY-TRUST-004 (ENDO-13) host side, as the operator's own uid. No sudo, no host share, no listener.
 #   host.sh stage <commit>      stage.img: a tar holding a git bundle of <commit> and the commit id; out.img: blank 2 GiB raw disk
-#   host.sh collect <dest>      read the export tar back from out.img (size and digest printed by the guest), extract to <dest>
+#   host.sh collect <dest> <size> <sha256>      retain verified opaque bytes from out.img in <dest>/export.tar
 #   host.sh audit               QEMU process, its argv, open files, listeners and forwarding, from /proc and ss
 #   host.sh teardown            remove the VM working directory after confirming no QEMU process uses it
 set -euo pipefail
@@ -19,11 +19,8 @@ stage)
   rm -f "$W/vm/out.img"; truncate -s 2G "$W/vm/out.img"
   sha256sum "$W/vm/stage.img"; tar -tvf "$W/vm/stage.img" ;;
 collect)
-  dest=$2 size=$3 digest=$4
-  got=$(head -c "$size" "$W/vm/out.img" | sha256sum | cut -c1-64)
-  [ "$got" = "$digest" ] || { echo "export digest $got, guest said $digest" >&2; exit 65; }
-  mkdir -p "$dest"; head -c "$size" "$W/vm/out.img" > "$dest/export.tar"; tar --no-same-owner -xf "$dest/export.tar" -C "$dest"
-  echo "export $size bytes sha256 $got verified on the host" ;;
+  [ "$#" = 4 ] || { echo "usage: host.sh collect DEST SIZE SHA256" >&2; exit 64; }
+  exec python3 -I "$(dirname "$0")/collect.py" "$W/vm/out.img" "$2" "$3" "$4" ;;
 audit)
   vm=$(cd "$W/vm" && pwd)
   p=$(cat "$vm/qemu.pid")

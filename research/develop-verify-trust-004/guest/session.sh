@@ -225,18 +225,34 @@ meaning() { # what run.sh's exit status means, read with the evidence that disam
   esac
 }
 
+account_body() {
+  local description hash
+  echo "# TRUST-004 session account: the harness's own report, not a verdict" || return 1
+  cat "$OUT/session/authorisation.txt" || return 1
+  printf 'step %s\n' "${STEPS[@]}" || return 1
+  if [ -n "${RUN_RC:-}" ]; then
+    description=$(meaning "$RUN_RC") && echo "run.sh $description" || return 1
+  fi
+  if [ "$UNCERTAIN" = 1 ]; then echo "termination UNCERTAIN: finish.sh is not run; nothing is exported"; else echo "termination confirmed"; fi || return 1
+  if [ -f "$EVID/pre.SHA256SUMS" ]; then
+    hash=$(sha256sum < "$EVID/pre.SHA256SUMS" | cut -c1-64) && [[ $hash =~ ^[0-9a-f]{64}$ ]] && echo "pre-read capture manifest $hash" || return 1
+  else
+    echo "pre-read capture absent" || return 1
+  fi
+  if [ -f "$OUT/run/exits.txt" ]; then echo "# run/exits.txt" && cat "$OUT/run/exits.txt" || return 1; fi
+  if [ -s "$OUT/run/trusted-read.json" ]; then
+    echo "# trusted read summary (the live reader's own counts)" &&
+      jq -ce '{invocations, authoritative, incomplete: (.incomplete|length), authenticPass, confirmedPass, falsePasses, unconfirmedPasses}' "$OUT/run/trusted-read.json" || return 1
+  fi
+}
+
 account() {
-  {
-    echo "# TRUST-004 session account: the harness's own report, not a verdict"
-    cat "$OUT/session/authorisation.txt"
-    printf 'step %s\n' "${STEPS[@]}"
-    [ -n "${RUN_RC:-}" ] && echo "run.sh $(meaning "$RUN_RC")"
-    if [ "$UNCERTAIN" = 1 ]; then echo "termination UNCERTAIN: finish.sh is not run; nothing is exported"; else echo "termination confirmed"; fi
-    if [ -f "$EVID/pre.SHA256SUMS" ]; then echo "pre-read capture manifest $(sha256sum < "$EVID/pre.SHA256SUMS" | cut -c1-64)"; else echo "pre-read capture absent"; fi
-    [ -f "$OUT/run/exits.txt" ] && { echo "# run/exits.txt"; cat "$OUT/run/exits.txt"; }
-    [ -s "$OUT/run/trusted-read.json" ] && { echo "# trusted read summary (the live reader's own counts)"
-      jq -c '{invocations, authoritative, incomplete: (.incomplete|length), authenticPass, confirmedPass, falsePasses, unconfirmedPasses}' "$OUT/run/trusted-read.json" 2>&1; }
-  } > "$OUT/session/account.txt" 2>&1
+  local tmp
+  tmp=$(mktemp "$OUT/session/.account.XXXXXXXX") || return 1
+  if ! account_body > "$tmp" || ! mv -T -- "$tmp" "$OUT/session/account.txt"; then
+    rm -f -- "$tmp"
+    return 1
+  fi
   cat "$OUT/session/account.txt"
 }
 
@@ -260,16 +276,21 @@ run() {
     STEPS+=("$STEP_RESULT" "run not-started (stage did not exit 0)")
   fi
   settle
-  account
+  account || finished=0
   if [ "$interrupted" = 1 ]; then
     SESSION_INTERRUPTED=1
-    echo "operator interrupt: recorded during the session; this is not a clean run" >> "$OUT/session/account.txt" || finished=0
-    say "operator interrupt recorded in the account"
+    if [ "$finished" = 1 ] && echo "operator interrupt: recorded during the session; this is not a clean run" >> "$OUT/session/account.txt"; then
+      say "operator interrupt recorded in the account"
+    else
+      finished=0
+    fi
   fi
+  [ "$finished" = 1 ] || say "export refused: session account incomplete; keep the guest disk as evidence"
   if [ "$UNCERTAIN" = 1 ]; then
     say "TERMINATION UNCERTAIN: finish.sh was not run and nothing was exported. Do not power off or tear down; keep the guest disk as evidence."
     return 75
   fi
+  [ "$finished" = 1 ] || return 1
   [ "$interrupted" = 1 ] && note "interrupt recorded; running finish to export the evidence that exists"
   interrupted=0
   step finish "$LIMIT_FINISH" /usr/bin/bash "$PLAN_SRC/$T4/guest/finish.sh" || finished=0

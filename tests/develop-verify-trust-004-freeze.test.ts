@@ -52,8 +52,10 @@ function contradictions(doc: string, manifest: Map<string, string>) {
 			if (m[1] !== digest && !EXTERNAL.has(m[1] as string))
 				problems.push(`${rel} is quoted as ${m[1]}, FROZEN.sha256 says ${digest}`);
 	}
-	const f = /^F=([0-9a-f]{40})$/m.exec(doc)?.[1];
-	const selected = /\*\*Selected source commit:\*\* `([0-9a-f]{40})`/.exec(doc)?.[1];
+	const f = /^F=([0-9a-f]{40}|refs\/tags\/trust004-amendment-\d+)$/m.exec(doc)?.[1];
+	const selected = /\*\*Selected source commit:\*\* `([0-9a-f]{40}|refs\/tags\/trust004-amendment-\d+)`/.exec(
+		doc,
+	)?.[1];
 	if (f === undefined || selected === undefined) problems.push("no F= line or no selected source commit");
 	else if (f !== selected) problems.push(`F=${f} but the selected source commit is ${selected}`);
 	return problems;
@@ -62,7 +64,8 @@ function contradictions(doc: string, manifest: Map<string, string>) {
 const doc = readFileSync(`${T}/OPERATOR.md`, "utf8");
 const manifestText = readFileSync(`${T}/FROZEN.sha256`, "utf8");
 const manifest = manifestOf(manifestText);
-const F = /^F=([0-9a-f]{40})$/m.exec(doc)?.[1] ?? "";
+const F = /^F=([^\s]+)$/m.exec(doc)?.[1] ?? "";
+const ref = /^FREEZE_REF=(refs\/tags\/trust004-amendment-\d+)$/m.exec(doc)?.[1] ?? "";
 const haveF = git("cat-file", "-e", `${F}^{commit}`).status === 0;
 const required = process.env.TRUST004_FREEZE_CHECK === "1";
 
@@ -78,12 +81,17 @@ describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
 			"43a348be67a002f14de87fa6769776742031b2ee348f67570d424079ea60896c",
 		);
 		expect(contradictions(stale, manifest).length).toBeGreaterThan(0);
-		const otherF = doc.replace(/^F=[0-9a-f]{40}$/m, `F=${"0".repeat(40)}`);
+		const otherF = doc.replace(/^F=\S+$/m, `F=${"0".repeat(40)}`);
 		expect(contradictions(otherF, manifest)).toContain(`F=${"0".repeat(40)} but the selected source commit is ${F}`);
 	});
 
 	it("has F available when the full-history check is required", () => {
-		if (required) expect(haveF, `selected source commit ${F} is not in this clone`).toBe(true);
+		if (!required) return;
+		expect(haveF, `selected source commit ${F} is not in this clone`).toBe(true);
+		expect(ref).not.toBe("");
+		const tag = git("rev-parse", "--verify", `${ref}^{commit}`);
+		expect(tag.status, tag.stderr).toBe(0);
+		expect(tag.stdout).toBe(git("rev-parse", "--verify", `${F}^{commit}`).stdout);
 	});
 
 	it.runIf(haveF)(
@@ -94,14 +102,8 @@ describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
 			expect(atF.stdout).toBe(manifestText);
 			const docAtF = git("show", `${F}:${T}/OPERATOR.md`);
 			expect(docAtF.status, docAtF.stderr).toBe(0);
-			expect(
-				contradictions(
-					docAtF.stdout
-						.replace(/^F=[0-9a-f]{40}$/m, `F=${F}`)
-						.replace(/(\*\*Selected source commit:\*\* `)[0-9a-f]{40}/, `$1${F}`),
-					manifest,
-				),
-			).toEqual([]);
+			expect(contradictions(docAtF.stdout, manifest)).toEqual([]);
+			expect(docAtF.stdout).toContain(`\nF=${ref}\n`);
 			for (const [path, digest] of manifest) {
 				const blob = spawnSync("git", ["show", `${F}:${path}`]);
 				expect(blob.status, path).toBe(0);

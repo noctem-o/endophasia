@@ -1,5 +1,7 @@
+import hashlib
 import os
 import io
+import tarfile
 import subprocess
 import sys
 import tempfile
@@ -86,6 +88,58 @@ class TransportTests(unittest.TestCase):
             finally:
                 if reader is not None:
                     os.close(reader)
+
+
+class CollectTests(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.work = Path(directory.name)
+        (self.work / "vm").mkdir()
+        self.image = self.work / "vm/out.img"
+        self.dest = self.work / "evidence"
+
+    def collect(self, size, digest):
+        return subprocess.run(["bash", Path(__file__).with_name("host.sh"), "collect", self.dest,
+                               str(size), digest], env={**os.environ, "ENDO13_WORK": str(self.work)},
+                              capture_output=True, text=True, timeout=5)
+
+    def test_collection_preserves_only_the_exact_bytes(self):
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w") as archive:
+            archive.addfile(tarfile.TarInfo("ordinary-file"))
+        for payload in (buffer.getvalue(), b'{"summary":"fixture"}\n'):
+            with self.subTest(size=len(payload)):
+                self.image.write_bytes(payload + b"unused disk tail")
+                result = self.collect(len(payload), hashlib.sha256(payload).hexdigest())
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual([p.name for p in self.dest.iterdir()], ["export.tar"])
+                artifact = self.dest / "export.tar"
+                self.assertEqual(artifact.read_bytes(), payload)
+                artifact.unlink()
+
+    def test_refusals_publish_nothing(self):
+        self.image.write_bytes(b"one")
+        digest = hashlib.sha256(b"one").hexdigest()
+        for size, claimed, reason in [(4, digest, "sufficiently long"), (3, "0"*64, "digest mismatch"),
+                                       (3, "oops", "invalid export digest"), (0, digest, "invalid export size"),
+                                       ("-1", digest, "invalid export size"), ("2G", digest, "invalid export size"),
+                                       (2**31+1, digest, "invalid export size")]:
+            with self.subTest(size=size, digest=claimed):
+                result = self.collect(size, claimed)
+                self.assertEqual(result.returncode, 65, result.stderr)
+                self.assertIn(reason, result.stderr)
+                self.assertFalse(self.dest.exists() and list(self.dest.iterdir()))
+
+    def test_existing_custody_is_never_overwritten(self):
+        self.dest.mkdir(mode=0o700)
+        artifact = self.dest / "export.tar"
+        artifact.write_bytes(b"prior")
+        self.image.write_bytes(b"new")
+        result = self.collect(3, hashlib.sha256(b"new").hexdigest())
+        self.assertEqual(result.returncode, 65, result.stderr)
+        self.assertIn("empty private directory", result.stderr)
+        self.assertEqual(artifact.read_bytes(), b"prior")
 
 
 if __name__ == "__main__":

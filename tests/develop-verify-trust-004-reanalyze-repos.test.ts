@@ -72,10 +72,25 @@ async function candidateOf(repo: string, commit: string) {
 }
 
 interface Shape {
+	ancestors?: readonly string[];
 	record?: (recFile: string) => void;
 	listedMode?: string;
 	journals?: string[];
 }
+
+const ancestorRows = [
+	"directory 0 0 755 20 /",
+	"directory 0 0 755 10 /var",
+	"directory 0 0 755 10 /var/lib",
+	"directory 968 968 700 4 /var/lib/endo-verify-002",
+	"directory 968 968 700 2 /var/lib/endo-verify-002/records",
+	"directory 968 968 700 2 /var/lib/endo-verify-002/journal",
+	"directory 0 0 755 10 /usr",
+	"directory 0 0 755 10 /usr/local",
+	"directory 0 0 755 10 /usr/local/lib",
+	"directory 0 0 755 4 /usr/local/lib/endo-verify-002",
+	"regular file 0 0 644 1 /usr/local/lib/endo-verify-002/installation.json",
+];
 
 async function analyse(candidate: Record<string, unknown>, place: (repos: string) => void, shape: Shape = {}) {
 	const pre = join(root, "evidence/pre");
@@ -139,7 +154,7 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 		join(pre, "principals.txt"),
 		"endo-verify-002:x:968:968::/var/lib/endo-verify-002-home:/usr/bin/nologin\n",
 	);
-	writeFileSync(join(pre, "ancestors.txt"), "directory 0 0 755 1 /var\n");
+	writeFileSync(join(pre, "ancestors.txt"), `${(shape.ancestors ?? ancestorRows).join("\n")}\n`);
 	for (const a of ["availability", "installed-1", "installed-2"]) {
 		const base = join(root, `ws-${a}`);
 		mkdirSync(join(base, "repos"), { recursive: true });
@@ -163,6 +178,45 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 }
 
 describe("TRUST-004 offline binding from archived repositories", () => {
+	describe("protected ancestor metadata", () => {
+		const inspect = async (ancestors: readonly string[]) =>
+			(await analyse({}, () => {}, { ancestors })).row.authenticity;
+
+		it("accepts the complete capture", async () => {
+			expect(await inspect(ancestorRows)).toEqual({ class: "PASS", authoritative: true, reason: null });
+		});
+
+		it.each(ancestorRows)("requires the row: %s", async (row) => {
+			expect(await inspect(ancestorRows.filter((r) => r !== row))).toMatchObject({
+				authoritative: false,
+				reason: `ancestor metadata: missing ${row.split(" ").at(-1)}`,
+			});
+		});
+
+		it.each([
+			["duplicate", [...ancestorRows, ancestorRows[0]], "duplicate /"],
+			["invalid mode", ["directory 0 0 758 2 /", ...ancestorRows.slice(1)], "malformed row"],
+			["invalid gid", ["directory 0 x 755 2 /", ...ancestorRows.slice(1)], "malformed row"],
+			["invalid links", ["directory 0 0 755 -1 /", ...ancestorRows.slice(1)], "malformed row"],
+			["absent", ["absent /", ...ancestorRows.slice(1)], "malformed row"],
+			["wrong type", ["symbolic link 0 0 755 1 /", ...ancestorRows.slice(1)], "wrong type for /"],
+			[
+				"wrong manifest type",
+				ancestorRows.map((r) => r.replace("regular file", "directory")),
+				"wrong type for /usr/local/lib/endo-verify-002/installation.json",
+			],
+			["unexpected path", [...ancestorRows, "directory 0 0 755 2 /unexpected"], "unexpected /unexpected"],
+			["root uid", ["directory 1500 0 755 2 /", ...ancestorRows.slice(1)], "wrong owner for /"],
+			[
+				"verifier uid",
+				ancestorRows.map((r) => r.replace("968 968", "0 968")),
+				"wrong owner for /var/lib/endo-verify-002",
+			],
+			["writable", ["directory 0 0 775 2 /", ...ancestorRows.slice(1)], "writable /"],
+		] as const)("rejects %s", async (_, rows, reason) => {
+			expect(await inspect(rows)).toMatchObject({ authoritative: false, reason: `ancestor metadata: ${reason}` });
+		});
+	});
 	it.each([
 		["sha1", false],
 		["sha1", true],

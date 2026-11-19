@@ -46,6 +46,8 @@ import {
 } from "../develop-verify-trust-003/guest/reader.ts";
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+const extract = (input: string, dest: string) =>
+	run("/usr/bin/python3", ["-I", fileURLToPath(new URL("./guest/extract.py", import.meta.url)), input, dest]);
 const run = (cmd: string, args: string[]) => {
 	const r = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 256 << 20 });
 	if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")}: ${r.stderr}`);
@@ -56,6 +58,40 @@ interface Entry {
 	mode: number;
 	uid: number;
 	links: number | null;
+}
+
+function protectedAncestorProblem(text: string, verifierUid: number): string | null {
+	const state = "/var/lib/endo-verify-002";
+	const install = "/usr/local/lib/endo-verify-002";
+	const manifest = `${install}/installation.json`;
+	const owners = new Map<string, number>([
+		["/", 0],
+		["/var", 0],
+		["/var/lib", 0],
+		[state, verifierUid],
+		[`${state}/records`, verifierUid],
+		[`${state}/journal`, verifierUid],
+		["/usr", 0],
+		["/usr/local", 0],
+		["/usr/local/lib", 0],
+		[install, 0],
+		[manifest, 0],
+	]);
+	const seen = new Set<string>();
+	for (const row of text.replace(/\n$/, "").split("\n")) {
+		const match = /^(directory|regular file|symbolic link) (\d+) \d+ ([0-7]{1,4}) [1-9]\d* (\/\S*)$/.exec(row);
+		if (!match) return "malformed row";
+		const [, type, uid, mode, path] = match;
+		const owner = owners.get(path);
+		if (owner === undefined) return `unexpected ${path}`;
+		if (seen.has(path)) return `duplicate ${path}`;
+		seen.add(path);
+		if (type !== (path === manifest ? "regular file" : "directory")) return `wrong type for ${path}`;
+		if (uid !== String(owner)) return `wrong owner for ${path}`;
+		if ((Number.parseInt(mode, 8) & 0o022) !== 0) return `writable ${path}`;
+	}
+	for (const path of owners.keys()) if (!seen.has(path)) return `missing ${path}`;
+	return null;
 }
 
 function readRegular(path: string) {
@@ -292,31 +328,21 @@ export async function reanalyze(evidence: string, liveRead: string) {
 			});
 		}
 		const ancestors = readFileSync(join(pre, "ancestors.txt"), "utf8");
-		const ancestorProblem = ancestors
-			.trim()
-			.split("\n")
-			.filter((l) =>
-				/ (\/|\/var|\/var\/lib|\/usr|\/usr\/local|\/usr\/local\/lib|\/usr\/local\/lib\/endo-verify-002(\/installation\.json)?)$/.test(
-					l,
-				),
-			)
-			.find((l) => {
-				const f = l.split(" ");
-				const mode = Number.parseInt(f[f.length - 3] as string, 8);
-				return f[f.length - 5] !== "0" || (mode & 0o022) !== 0;
-			});
+		const ancestorProblem = protectedAncestorProblem(ancestors, verifierUid);
 
 		// 3. The installation, from its archive; its manifest digest is the id records must name.
 		const install = join(scratch, "install");
-		mkdirSync(install);
-		run("/usr/bin/tar", ["--no-same-owner", "--no-same-permissions", "-xf", join(pre, "install.tar"), "-C", install]);
+		extract(join(pre, "install.tar"), install);
 		const installDir = join(install, "endo-verify-002");
 		const installationBytes = readFileSync(join(installDir, "installation.json"));
 		const installationId = sha256(installationBytes);
 		const installation = JSON.parse(installationBytes.toString("utf8")) as Installation;
-		for (const f of installation.files)
-			if (sha256(readFileSync(join(installDir, f.path))) !== f.sha256)
+		for (const f of installation.files) {
+			if (typeof f.path !== "string" || f.path.split("/").some((part) => !part || part === "." || part === ".."))
+				throw new Error("unsafe archived installation file path");
+			if (sha256(readRegular(join(installDir, f.path))) !== f.sha256)
 				throw new Error(`archived installation file ${f.path} differs`);
+		}
 		const oracleBytes = readFileSync(join(installDir, "oracle/roman-numerals-cli/manifest.json"));
 		if (sha256(oracleBytes) !== installation.tasks["roman-numerals-cli"]?.manifestSha256)
 			throw new Error("archived oracle is not pinned");
@@ -324,8 +350,12 @@ export async function reanalyze(evidence: string, liveRead: string) {
 
 		// 4. The records, from their archive.
 		const state = join(scratch, "state");
-		mkdirSync(state);
-		run("/usr/bin/tar", ["--no-same-owner", "--no-same-permissions", "-xf", join(pre, "state.tar"), "-C", state]);
+		let stateRefusal: string | null = null;
+		try {
+			extract(join(pre, "state.tar"), state);
+		} catch (err) {
+			stateRefusal = String(err);
+		}
 		const S = "/var/lib/endo-verify-002";
 		const dirProblem = [S, `${S}/records`].find((d) => {
 			const a = listed.get(d);
@@ -345,17 +375,15 @@ export async function reanalyze(evidence: string, liveRead: string) {
 		const repoNotes: Record<string, unknown>[] = [];
 		for (const t of repoArchives) {
 			const into = join(scratch, t.slice(0, -4));
-			mkdirSync(into);
-			run("/usr/bin/tar", [
-				"--no-same-owner",
-				"--no-same-permissions",
-				"--delay-directory-restore",
-				"-xf",
-				join(pre, t),
-				"-C",
-				into,
-			]);
-			run("/usr/bin/chmod", ["-R", "u+rwX", into]);
+			try {
+				extract(join(pre, t), into);
+			} catch (err) {
+				const names = run("/usr/bin/tar", ["-tf", join(pre, t)]).split("\n");
+				const roots = new Set(names.map((n) => /^repos\/([^/]+)/.exec(n)?.[1]).filter(Boolean));
+				for (const name of roots.size ? roots : [""])
+					repoNotes.push({ repo: `${t.slice(6, -4)}/${name}`, refused: String(err) });
+				continue;
+			}
 			if (!lstatSync(join(into, "repos"), { throwIfNoEntry: false })?.isDirectory()) {
 				repoNotes.push({ repo: `${t.slice(6, -4)}/`, refused: "repos is not a directory" });
 				continue;
@@ -369,10 +397,16 @@ export async function reanalyze(evidence: string, liveRead: string) {
 		}
 
 		// 6. Per invocation.
-		const recordIds = readdirSync(join(state, "endo-verify-002/records"))
+		const entries = (dir: string) =>
+			stateRefusal === null
+				? readdirSync(join(state, "endo-verify-002", dir))
+				: [...new Set([...listed.keys(), ...tarred.keys()])]
+						.filter((p) => p.startsWith(`${S}/${dir}/`))
+						.map((p) => p.slice(`${S}/${dir}/`.length));
+		const recordIds = entries("records")
 			.filter((n) => /^[0-9a-f]{32}\.json$/.test(n))
 			.map((n) => n.slice(0, 32));
-		const journalIds = readdirSync(join(state, "endo-verify-002/journal"))
+		const journalIds = entries("journal")
 			.filter((n) => /^[0-9a-f]{32}\.jsonl$/.test(n))
 			.map((n) => n.slice(0, 32));
 		const rows: Record<string, any>[] = [];
@@ -406,6 +440,10 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				unread("file-not-the-verifier's: record is not a regular file in the capture; not opened");
 				continue;
 			}
+			if (stateRefusal !== null) {
+				unread("state archive refused; not opened");
+				continue;
+			}
 			let rec: Record<string, any>;
 			try {
 				rec = JSON.parse(readRegular(join(state, "endo-verify-002/records", `${inv}.json`)).toString("utf8"));
@@ -428,7 +466,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 					: null;
 			const content = contentProblem(rec, installationId, installation);
 			const problem = ancestorProblem
-				? `not-root's: ${ancestorProblem}`
+				? `ancestor metadata: ${ancestorProblem}`
 				: (content ??
 					(rec.invocation?.id !== inv
 						? "invocation-mismatch"
@@ -586,6 +624,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				),
 				authenticPassCommitsBound: authentic.every((r) => r.binding.status === "valid"),
 				repositoriesRefused: repoNotes.filter((n) => "refused" in n).length,
+				stateArchiveRefusal: stateRefusal,
 				disagreementsWithLive: disagreements.length,
 			},
 			disagreements,
@@ -605,6 +644,7 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
 	writeFileSync(out, `${JSON.stringify(result, null, 1)}\n`);
 	console.log(JSON.stringify(result.summary, null, 1));
 	process.exitCode =
+		result.summary.stateArchiveRefusal === null &&
 		result.summary.disagreementsWithLive === 0 &&
 		result.summary.falsePasses.length === 0 &&
 		result.summary.unconfirmedPasses.length === 0

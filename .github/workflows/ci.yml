@@ -63,9 +63,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
+      # The selected source commit is kept reachable by its trust004-amendment-N tag, so a squash merge or rebase of the branch
+      # cannot drop it from history; the test fails if that tag is missing.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v4
         with:
           node-version: "22"

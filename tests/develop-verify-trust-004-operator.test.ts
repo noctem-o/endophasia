@@ -1,8 +1,18 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	statSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 // OPERATOR.md's host command blocks, run as written against stand-ins for host.sh, qemu-img and ss. No guest is started.
@@ -14,8 +24,9 @@ const blocks = (section: string) => {
 	return [...doc.slice(start, end).matchAll(/```sh\n([\s\S]*?)```/g)].map((m) => m[1] as string);
 };
 const sha = (b: string) => createHash("sha256").update(b).digest("hex");
-const SIZE = "10";
-const DIGEST = "d".repeat(64);
+const raw = "opaque, not a tar";
+const SIZE = String(Buffer.byteLength(raw));
+const DIGEST = sha(raw);
 
 let root: string;
 let W: string;
@@ -36,24 +47,14 @@ afterEach(() => {
 	rmSync(root, { recursive: true, force: true });
 });
 
-// collect stand-in: COLLECT=fail refuses; PRE=missing|bad and POST=missing|bad shape the extracted export.
 const HOST = `#!/bin/bash
-set -u
+set -eu
 [ "$1" = collect ] || { echo "host.sh $*"; exit 0; }
-dest=$2
-[ "\${COLLECT:-ok}" = fail ] && { echo "export digest x, guest said $4" >&2; exit 65; }
-mkdir -p "$dest"; echo tar > "$dest/export.tar"
-cap() { mkdir -p "$dest/out/evidence/$1"; echo a > "$dest/out/evidence/$1/a"; (cd "$dest/out/evidence/$1" && sha256sum a > SHA256SUMS); }
-[ "\${PRE:-good}" = missing ] || cap pre
-[ "\${PRE:-good}" = bad ] && echo tampered > "$dest/out/evidence/pre/a"
-[ -d "$dest/out/evidence/pre" ] && cp "$dest/out/evidence/pre/SHA256SUMS" "$dest/out/evidence/pre.SHA256SUMS"
-[ "\${POST:-good}" = missing ] || cap post
-[ "\${POST:-good}" = bad ] && echo tampered > "$dest/out/evidence/post/a"
-exit 0
+exec bash "${resolve(T, "qemu/host.sh")}" "$@"
 `;
-
 function custody(env: Record<string, string>) {
 	writeFileSync(join(W, "src", T, "qemu/host.sh"), HOST);
+	writeFileSync(join(W, "vm/out.img"), raw);
 	const [block] = blocks("4. Evidence custody");
 	return spawnSync("/usr/bin/bash", ["-c", block as string], {
 		env: { PATH: "/usr/bin:/bin", HOME: root, E, W, T, SIZE, DIGEST, ...env },
@@ -62,51 +63,42 @@ function custody(env: Record<string, string>) {
 }
 const exitOf = (r: { stdout: string }) => /custody exit=(\d+)/.exec(r.stdout)?.[1];
 
+it("aborts before staging when any selected path is occupied", () => {
+	const preflight = blocks("1. Preconditions").find((b) => b.includes("for p in"));
+	const check = preflight?.slice(preflight.indexOf("for p in"));
+	expect(check).toBeDefined();
+	for (const key of ["W", "W2", "E"]) {
+		const env = { W: join(root, "fresh1"), W2: join(root, "fresh2"), E: join(root, "fresh3"), [key]: W };
+		const r = shell(`${check}\necho STAGING`, env);
+		expect(r.status).toBe(2);
+		expect(r.stderr).toContain(`STOP: retained or occupied path: ${W}`);
+		expect(r.stdout).not.toContain("STAGING");
+	}
+});
+
 describe("TRUST-004 OPERATOR.md evidence custody", () => {
-	it("seals verified evidence read-only and leaves $E writable for the analysis collect", () => {
+	it("seals only the opaque raw bytes and host logs", () => {
 		const r = custody({});
-		expect(exitOf(r), r.stdout + r.stderr).toBe("0");
-		expect(r.stdout).toContain("post-read capture present and verified");
-		expect(readFileSync(join(E, "HOST-SHA256SUMS"), "utf8")).toContain(`${sha("tar\n")}  export.tar`);
-		for (const f of [
-			"export.tar",
-			"HOST-SHA256SUMS",
-			"console.log",
-			"out/evidence/pre/a",
-			"out/evidence/pre/SHA256SUMS",
-		])
-			expect(statSync(join(E, f)).mode & 0o222, f).toBe(0);
-		expect(statSync(join(E, "out")).mode & 0o222).toBe(0);
-		expect(statSync(E).mode & 0o200).toBe(0o200);
-		expect(statSync(join(E, "analysis")).isDirectory()).toBe(true);
-		const collect = spawnSync("/usr/bin/bash", [
-			"-c",
-			'mkdir -p "$1/analysis" && echo r > "$1/analysis/reanalysis.json"',
-			"_",
-			E,
-		]);
-		expect(collect.status).toBe(0);
+		expect(exitOf(r), r.stderr).toBe("0");
+		expect(readdirSync(E).sort()).toEqual(
+			[
+				"HOST-SHA256SUMS",
+				"export.tar",
+				"console.log",
+				"qemu-argv.log",
+				"qemu-offline.stderr",
+				"listeners-before.txt",
+			].sort(),
+		);
+		expect(readFileSync(join(E, "HOST-SHA256SUMS"), "utf8")).toContain(`${DIGEST}  export.tar`);
+		for (const f of readdirSync(E)) expect(statSync(join(E, f)).mode & 0o222, f).toBe(0);
 	});
 
-	it.each([
-		["collect fails", { COLLECT: "fail" }, "2", "STOP: collect failed"],
-		["the pre-read capture is missing", { PRE: "missing" }, "3", "STOP: pre-read capture MISSING"],
-		["the pre-read capture fails its checksums", { PRE: "bad" }, "3", "STOP: pre-read capture FAILS its checksums"],
-		["the post-read capture fails its checksums", { POST: "bad" }, "4", "STOP: post-read capture present but FAILS"],
-	])("stops without sealing when %s", (_, env, code, message) => {
-		const r = custody(env);
-		expect(exitOf(r), r.stdout + r.stderr).toBe(code);
-		expect(r.stderr).toContain(message);
+	it("stops without sealing when collect refuses", () => {
+		const r = custody({ DIGEST: "0".repeat(64) });
+		expect(exitOf(r)).toBe("2");
+		expect(r.stderr).toContain("STOP: collect failed");
 		expect(existsSync(join(E, "HOST-SHA256SUMS"))).toBe(false);
-		expect(existsSync(join(E, "console.log"))).toBe(false);
-	});
-
-	it("reports a missing post-read capture separately and still seals", () => {
-		const r = custody({ POST: "missing" });
-		expect(exitOf(r), r.stdout + r.stderr).toBe("0");
-		expect(r.stdout).toContain("post-read capture MISSING: list it as missing evidence");
-		expect(r.stderr).not.toContain("FAILS");
-		expect(existsSync(join(E, "HOST-SHA256SUMS"))).toBe(true);
 	});
 
 	it("refuses an existing evidence directory", () => {
@@ -133,9 +125,11 @@ describe("TRUST-004 OPERATOR.md analysis guest isolation audit", () => {
 		chmodSync(join(bin, "ss"), 0o755);
 		writeFileSync(join(W, "src", T, "qemu/host.sh"), HOST);
 		writeFileSync(join(W, "vm/stage.img"), "stage");
-		writeFileSync(join(W, "vm/out.img"), "out");
+		mkdirSync(E);
+		writeFileSync(join(E, "export.tar"), raw);
+		chmodSync(join(E, "export.tar"), 0o400);
 		writeFileSync(join(W, "vm/qemu-argv.log"), "first guest argv\n");
-		const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: root, W, W2, T, OLD: join(root, "endo13") };
+		const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: root, W, W2, T, E, OLD: join(root, "endo13") };
 		const s = spawnSync("/usr/bin/bash", ["-euc", setup as string], { env, encoding: "utf8" });
 		expect(s.status, s.stderr).toBe(0);
 		expect(existsSync(join(W2, "listeners-before.txt"))).toBe(true);
@@ -147,79 +141,131 @@ describe("TRUST-004 OPERATOR.md analysis guest isolation audit", () => {
 	});
 });
 
-describe("TRUST-004 OPERATOR.md analysis result write-back", () => {
-	const block = () => {
-		const b = blocks("5. Independent reanalysis").find((s) => s.includes("analysis.tar"));
-		expect(b).toBeDefined();
-		return (b as string)
-			.replaceAll("/root/", "$G/root/")
-			.replaceAll("/dev/vdc", "$G/vdc")
-			.replaceAll("/home/analyst", "$G/home/analyst");
-	};
-	const write = (dd: string) => {
-		const G = join(root, "guest");
-		mkdirSync(join(G, "root"), { recursive: true });
-		mkdirSync(join(G, "home/analyst"), { recursive: true });
-		writeFileSync(join(G, "home/analyst/reanalysis.json"), "{}\n");
-		writeFileSync(join(G, "vdc"), Buffer.alloc(1 << 16));
-		const stubs = `systemctl() { echo "POWEROFF $*"; }\ndd() { ${dd}; }\n`;
-		return spawnSync("/usr/bin/bash", ["-c", stubs + block()], {
-			env: { PATH: "/usr/bin:/bin", G },
-			encoding: "utf8",
-		});
-	};
+function guestBlock(marker: string) {
+	const block = blocks("5. Independent reanalysis").find((b) => b.includes(marker));
+	if (!block) throw new Error(`missing operator block: ${marker}`);
+	return block
+		.replaceAll("/root/", `${root}/root/`)
+		.replaceAll("/opt/", `${root}/opt/`)
+		.replaceAll("/dev/vdc", `${root}/vdc`)
+		.replaceAll("/home/analyst", `${root}/analyst`);
+}
 
-	it("powers off only after the result is on the disk with a matching digest", () => {
-		const r = write('command dd "$@"');
-		expect(r.stdout, r.stderr).toMatch(/analysis size=\d+ sha256=([0-9a-f]{64}) device-prefix-sha256=\1/);
-		expect(r.stdout).toContain("POWEROFF poweroff");
-	});
+function shell(script: string, env: Record<string, string> = {}) {
+	return spawnSync("/usr/bin/bash", ["-c", script], { env: { PATH: "/usr/bin:/bin", ...env }, encoding: "utf8" });
+}
 
+describe("TRUST-004 analysis guest intake", () => {
 	it.each([
-		["the write fails", "return 1"],
-		[
-			"the device prefix does not read back",
-			'command dd "$@" && printf X | command dd of="$G/vdc" conv=notrunc status=none',
-		],
-	])("stays up when %s", (_, dd) => {
-		const r = write(dd);
-		expect(r.stdout, r.stderr).toContain("ANALYSIS NOT WRITTEN");
-		expect(r.stdout).not.toContain("POWEROFF");
-		expect(r.stdout).not.toContain("analysis size=");
+		["the exact prefix", "12", sha("export bytes"), true],
+		["a short read with matching digest", "20", sha("export bytes!"), false],
+		["a prefix of the wrong length", "11", sha("export bytes"), false],
+		["a wrong digest", "12", "0".repeat(64), false],
+		["an unset size", "", sha("export bytes"), false],
+		["a non-decimal size", "12K", sha("export bytes"), false],
+	])("accepts only verified bytes: %s", (_, size, digest, ok) => {
+		mkdirSync(join(root, "root"));
+		mkdirSync(join(root, "opt"));
+		writeFileSync(join(root, "vdc"), "export bytes!");
+		const r = shell(guestBlock('head -c "$SIZE"'), { SIZE: size, DIGEST: digest });
+		expect(r.status === 0, r.stderr).toBe(ok);
+		expect(existsSync(join(root, "opt/trust004-export.tar"))).toBe(ok);
+		if (ok) expect(readFileSync(join(root, "opt/trust004-export.tar"), "utf8")).toBe("export bytes");
 	});
 });
 
-describe("TRUST-004 OPERATOR.md status-8 custody text", () => {
-	it("says a run without a verified pre-read capture stops at exit 3 unsealed", () => {
-		const text = doc.slice(doc.indexOf("\n## 4."), doc.indexOf("\n## 5.")).replace(/\s+/g, " ");
-		expect(text).toContain("which includes every run.sh status 8");
-		expect(text).toContain("stops at exit 3 and is not sealed");
-		expect(text).not.toMatch(/status 8[^.]*is reported and sealed/);
+describe("TRUST-004 analysis guest executes only the trusted checkout", () => {
+	it.each([
+		["extraction refusal", 2, 0, 0, false, 2],
+		["nested input refusal", 0, 4, 0, false, 4],
+		["failed analysis", 0, 0, 3, true, 3],
+		["successful analysis", 0, 0, 0, true, 0],
+		["bad pre checksum", 0, 0, 0, false, 1],
+		["bad post checksum", 0, 0, 0, false, 1],
+		["missing pre capture", 0, 0, 0, false, 1],
+	])("%s", (scenario, extract, preflight, analysis, runsAnalyzer, rc) => {
+		const source = join(root, "opt/trust004-source");
+		const input = join(root, "analyst/input");
+		mkdirSync(source, { recursive: true });
+		const cap = join(input, "out/evidence/pre");
+		mkdirSync(cap, { recursive: true });
+		const manifest = `${sha("sample")}  sample\n`;
+		writeFileSync(join(cap, "sample"), "sample");
+		writeFileSync(join(cap, "SHA256SUMS"), manifest);
+		writeFileSync(join(cap, "../pre.SHA256SUMS"), manifest);
+		if (scenario === "bad pre checksum") writeFileSync(join(cap, "sample"), "wrong");
+		if (scenario === "missing pre capture") rmSync(cap, { recursive: true });
+		if (scenario === "bad post checksum") {
+			mkdirSync(join(cap, "../post"));
+			writeFileSync(join(cap, "../post/sample"), "wrong");
+			writeFileSync(join(cap, "../post/SHA256SUMS"), manifest);
+			writeFileSync(join(cap, "../post.SHA256SUMS"), manifest);
+		}
+		const execution = guestBlock("runuser -u analyst");
+		const analysisScript = execution.split("bash -euc '")[1]?.split("'\necho")[0];
+		expect(analysisScript).toBeDefined();
+		const stubs = `python3() {
+		  test "$PWD" = "${source}" && test "$1" = -I || return 90
+		  case "$2" in
+		    "${source}/${T}/guest/extract.py") test "$3" = "${root}/opt/trust004-export.tar" && test "$4" = "${input}" || return 91; return ${extract};;
+		    "${source}/${T}/guest/check-input.py") test "$3" = "${cap}" || return 92; echo PREFLIGHT; return ${preflight};;
+		    *) return 93;;
+		  esac
+		}
+		node() {
+		  test "$PWD" = "${source}" && test "$1" = "${source}/${T}/reanalyze.ts" && test "$2" = "${input}/out/evidence" &&
+		  test "$3" = "${input}/out/run/trusted-read.json" && test "$4" = "${root}/opt/trust004-result/analysis.json" || return 94
+		  echo ANALYZING; return ${analysis}
+		}
+		`;
+		const r = shell(`set -eu\n${stubs}\n${analysisScript}`);
+		expect(r.status, r.stderr).toBe(rc);
+		expect(r.stdout.includes("PREFLIGHT")).toBe(extract === 0);
+		expect(r.stdout.includes("ANALYZING")).toBe(runsAnalyzer);
+		if (runsAnalyzer) {
+			expect(r.stdout).toContain(`reanalyze exit=${rc}`);
+			expect(r.stdout).toContain("post-read capture MISSING");
+		}
+		if (scenario === "bad pre checksum" || scenario === "bad post checksum")
+			expect(r.stdout).toContain("sample: FAILED");
+		if (scenario === "missing pre capture") expect(r.stderr).toContain("No such file or directory");
 	});
 });
 
-describe("TRUST-004 OPERATOR.md analyst command status", () => {
-	it.each([0, 3])("reports and propagates reanalyze.ts exit %i", (code) => {
-		const block = blocks("5. Independent reanalysis").find((s) => s.includes("runuser -u analyst"));
-		expect(block).toBeDefined();
-		const bin = join(root, "bin");
-		const home = join(root, "analyst");
-		mkdirSync(bin);
-		mkdirSync(home);
-		const stub = (name: string, body: string) => {
-			writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`);
-			chmodSync(join(bin, name), 0o755);
-		};
-		stub("runuser", 'shift 3; exec "$@"');
-		stub("tar", "exit 0");
-		stub("git", "mkdir -p src; exit 0");
-		stub("sha256sum", "exit 0");
-		stub("node", 'exit "$NODE_RC"');
-		const r = spawnSync("/bin/bash", ["-c", block as string], {
-			env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, C: "0".repeat(40), NODE_RC: String(code) },
-			encoding: "utf8",
+describe("TRUST-004 raw analysis return", () => {
+	it.each([
+		["successful write", 'command dd "$@"', true],
+		["failed write", "return 1", false],
+		["read-back mismatch", 'command dd "$@" && printf X > "$VDC"', false],
+	])("%s", (_, dd, ok) => {
+		const bytes = '{"example":true}\n';
+		mkdirSync(join(root, "root"));
+		mkdirSync(join(root, "opt/trust004-result"), { recursive: true });
+		writeFileSync(join(root, "opt/trust004-result/analysis.json"), bytes);
+		const r = shell(`dd() { ${dd}; }; systemctl() { echo "POWEROFF $*"; }\n${guestBlock("if=/root/analysis.json")}`, {
+			VDC: join(root, "vdc"),
 		});
-		expect(r.stdout, r.stderr).toContain(`reanalyze exit=${code}`);
-		expect(r.stdout).toContain(`analyst command exit=${code}`);
+		expect(r.status === 0, r.stderr).toBe(ok);
+		expect(r.stdout.includes("POWEROFF poweroff")).toBe(ok);
+		if (!ok) return;
+		expect(r.stdout).toContain(
+			`analysis size=${bytes.length} sha256=${sha(bytes)} device-prefix-sha256=${sha(bytes)}`,
+		);
+		mkdirSync(join(W2, "vm"), { recursive: true });
+		mkdirSync(E);
+		writeFileSync(join(W2, "vm/out.img"), readFileSync(join(root, "vdc")));
+		writeFileSync(join(W, "src", T, "qemu/host.sh"), HOST);
+		const collect = blocks("5. Independent reanalysis").find((b) => b.includes("ANALYSIS_SIZE"));
+		const host = shell(collect as string, {
+			W,
+			W2,
+			E,
+			T,
+			ANALYSIS_SIZE: String(bytes.length),
+			ANALYSIS_DIGEST: sha(bytes),
+		});
+		expect(host.status, host.stderr).toBe(0);
+		expect(readdirSync(join(E, "analysis")).sort()).toEqual(["HOST-SHA256SUMS", "export.tar"]);
+		expect(readFileSync(join(E, "analysis/export.tar"), "utf8")).toBe(bytes);
 	});
 });

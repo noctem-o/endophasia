@@ -1,0 +1,372 @@
+// DEVELOP-VERIFY-TRUST-004 (ENDO-13): independent offline reanalysis of the guest's pre-read evidence. Research only.
+//
+// Inputs are only the retained pre-read capture (evidence/pre: tar archives with numeric owners, their metadata listing and manifest)
+// and, for comparison only, the live trusted reader's output. Nothing from the guest's running system, the agent's workspace or any
+// harness PASS summary is consulted. Per invocation:
+//   authenticity  the record as archived: its directory and file owners, modes and link count from the archive's own metadata and the
+//                 capture listing; ancestors from the capture; content checked by records.ts' contentProblem against the archived
+//                 installation (whose manifest digest is the installation id every record names);
+//   binding       the record's commit resolved from the archived Git object databases only. Agent-written repository configuration is
+//                 never used: each repository's objects/ are copied into a fresh bare repository made here (alternates refused), so
+//                 no repository setting can run anything or redirect a read. Then objects.ts verifies every id and recomputes the export;
+//   correctness   those verified bytes, graded by the unchanged bounded grader (TRUST-003 reader.ts) as the caller, never root.
+// The result is compared with the live read by invocation id and export digest; any disagreement is reported, never resolved here.
+//   node reanalyze.ts <evidence dir> <live trusted-read.json> <out.json>
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { contentProblem } from "../develop-verify-trust-002/service/records.ts";
+import type { Installation } from "../develop-verify-trust-002/service/verifier.ts";
+import {
+	acquireObjects,
+	bindObjects,
+	gradeFiles,
+	type Oracle,
+	type RecordCandidate,
+} from "../develop-verify-trust-003/guest/reader.ts";
+
+const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
+const run = (cmd: string, args: string[]) => {
+	const r = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 256 << 20 });
+	if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")}: ${r.stderr}`);
+	return r.stdout;
+};
+interface Entry {
+	type: string;
+	mode: number;
+	uid: number;
+	links: number | null;
+}
+
+export async function reanalyze(evidence: string, liveRead: string) {
+	const pre = join(evidence, "pre");
+	// 1. The manifest: every listed file present with its digest; nothing else is read.
+	const manifest = readFileSync(join(pre, "SHA256SUMS"), "utf8").trim().split("\n");
+	for (const line of manifest) {
+		const [digest, name] = [line.slice(0, 64), line.slice(66)];
+		if (sha256(readFileSync(join(pre, name))) !== digest)
+			throw new Error(`pre-read capture: ${name} does not match its manifest`);
+	}
+	const principals = readFileSync(join(pre, "principals.txt"), "utf8");
+	const uidOf = (name: string) => Number(new RegExp(`^${name}:[^:]*:(\\d+):(\\d+):`, "m").exec(principals)?.[1]);
+	const verifierUid = uidOf("endo-verify-002");
+	if (!(verifierUid > 0)) throw new Error("verifier uid not in the capture");
+
+	const scratch = mkdtempSync(join(tmpdir(), "trust004-reanalysis-"));
+	try {
+		// 2. Metadata, from the capture's listing (find -P: type, mode, owner, links) cross-checked against the archive's own headers.
+		const listed = new Map<string, Entry>();
+		for (const l of readFileSync(join(pre, "listing.txt"), "utf8").trim().split("\n")) {
+			const f = l.split(" ");
+			listed.set(f.slice(9).join(" "), {
+				type: f[0] as string,
+				mode: Number.parseInt(f[1] as string, 8),
+				uid: Number(f[2]),
+				links: Number(f[4]),
+			});
+		}
+		const tarred = new Map<string, Entry>();
+		for (const l of run("/usr/bin/tar", ["--numeric-owner", "-tvf", join(pre, "state.tar")])
+			.trim()
+			.split("\n")) {
+			const m = /^(\S)(\S{9})\S? (\d+)\/(\d+) +\d+ \S+ \S+ (.*?)\/?(?: link to .*)?$/.exec(l);
+			if (m === null) throw new Error(`unparsed archive entry: ${l}`);
+			const bits = (m[2] as string).split("").map((c, i) => (c === "-" ? 0 : 1 << (8 - i)));
+			tarred.set(`/var/lib/${m[5]}`, {
+				type: m[1] as string,
+				mode: bits.reduce((a, b) => a + b, 0),
+				uid: Number(m[3]),
+				links: null,
+			});
+		}
+		const ancestors = readFileSync(join(pre, "ancestors.txt"), "utf8");
+		const ancestorProblem = ancestors
+			.trim()
+			.split("\n")
+			.filter((l) =>
+				/ (\/|\/var|\/var\/lib|\/usr|\/usr\/local|\/usr\/local\/lib|\/usr\/local\/lib\/endo-verify-002(\/installation\.json)?)$/.test(
+					l,
+				),
+			)
+			.find((l) => {
+				const f = l.split(" ");
+				const mode = Number.parseInt(f[f.length - 3] as string, 8);
+				return f[f.length - 5] !== "0" || (mode & 0o022) !== 0;
+			});
+
+		// 3. The installation, from its archive; its manifest digest is the id records must name.
+		const install = join(scratch, "install");
+		mkdirSync(install);
+		run("/usr/bin/tar", ["--no-same-owner", "--no-same-permissions", "-xf", join(pre, "install.tar"), "-C", install]);
+		const installDir = join(install, "endo-verify-002");
+		const installationBytes = readFileSync(join(installDir, "installation.json"));
+		const installationId = sha256(installationBytes);
+		const installation = JSON.parse(installationBytes.toString("utf8")) as Installation;
+		for (const f of installation.files)
+			if (sha256(readFileSync(join(installDir, f.path))) !== f.sha256)
+				throw new Error(`archived installation file ${f.path} differs`);
+		const oracleBytes = readFileSync(join(installDir, "oracle/roman-numerals-cli/manifest.json"));
+		if (sha256(oracleBytes) !== installation.tasks["roman-numerals-cli"]?.manifestSha256)
+			throw new Error("archived oracle is not pinned");
+		const oracle = JSON.parse(oracleBytes.toString("utf8")) as Oracle;
+
+		// 4. The records, from their archive.
+		const state = join(scratch, "state");
+		mkdirSync(state);
+		run("/usr/bin/tar", ["--no-same-owner", "--no-same-permissions", "-xf", join(pre, "state.tar"), "-C", state]);
+		const S = "/var/lib/endo-verify-002";
+		const dirProblem = [S, `${S}/records`].find((d) => {
+			const a = listed.get(d);
+			const b = tarred.get(d);
+			return (
+				a?.type !== "d" ||
+				b?.type !== "d" ||
+				a.uid !== verifierUid ||
+				b.uid !== verifierUid ||
+				(a.mode & 0o022) !== 0 ||
+				a.mode !== b.mode
+			);
+		});
+
+		// 5. The object databases, each copied into a fresh repository made here.
+		const clean: string[] = [];
+		const repoNotes: Record<string, unknown>[] = [];
+		for (const t of readdirSync(pre)
+			.filter((n) => /^repos-.*\.tar$/.test(n))
+			.sort()) {
+			const into = join(scratch, t.slice(0, -4));
+			mkdirSync(into);
+			run("/usr/bin/tar", [
+				"--no-same-owner",
+				"--no-same-permissions",
+				"--delay-directory-restore",
+				"-xf",
+				join(pre, t),
+				"-C",
+				into,
+			]);
+			run("/usr/bin/chmod", ["-R", "u+rwX", into]);
+			for (const name of readdirSync(join(into, "repos")).sort()) {
+				const src = existsSync(join(into, "repos", name, ".git"))
+					? join(into, "repos", name, ".git")
+					: join(into, "repos", name);
+				const alternates = existsSync(join(src, "objects/info/alternates"));
+				const replaceRefs = existsSync(join(src, "refs/replace")) ? readdirSync(join(src, "refs/replace")) : [];
+				const packed = existsSync(join(src, "packed-refs")) ? readFileSync(join(src, "packed-refs"), "utf8") : "";
+				const dest = join(scratch, "clean", `${t.slice(6, -4)}-${name}`);
+				run("/usr/bin/git", ["init", "-q", "--bare", dest]);
+				if (existsSync(join(src, "objects")) && !alternates)
+					cpSync(join(src, "objects"), join(dest, "objects"), {
+						recursive: true,
+						filter: (p) => !p.endsWith("/info/alternates"),
+					});
+				repoNotes.push({
+					repo: `${t.slice(6, -4)}/${name}`,
+					alternates,
+					replaceRefs,
+					packedReplaceRefs: packed.includes("refs/replace/"),
+				});
+				clean.push(dest);
+			}
+		}
+
+		// 6. Per invocation.
+		const recordIds = readdirSync(join(state, "endo-verify-002/records"))
+			.filter((n) => /^[0-9a-f]{32}\.json$/.test(n))
+			.map((n) => n.slice(0, 32));
+		const journalIds = readdirSync(join(state, "endo-verify-002/journal"))
+			.filter((n) => /^[0-9a-f]{32}\.jsonl$/.test(n))
+			.map((n) => n.slice(0, 32));
+		const rows: Record<string, any>[] = [];
+		for (const inv of [...new Set([...recordIds, ...journalIds])].sort()) {
+			if (!recordIds.includes(inv)) {
+				rows.push({
+					invocation: inv,
+					authenticity: { class: "INCOMPLETE", authoritative: false, reason: "journal-without-record" },
+					binding: { status: "not-applicable" },
+					grade: { status: "not-applicable" },
+					confirmedPass: false,
+					falsePass: false,
+					unconfirmedPass: false,
+				});
+				continue;
+			}
+			const path = `${S}/records/${inv}.json`;
+			const rec = JSON.parse(readFileSync(join(state, "endo-verify-002/records", `${inv}.json`), "utf8")) as Record<
+				string,
+				any
+			>;
+			const a = listed.get(path);
+			const b = tarred.get(path);
+			const fileProblem =
+				a?.type !== "f" ||
+				b?.type !== "-" ||
+				a.uid !== verifierUid ||
+				b.uid !== verifierUid ||
+				(a.mode & 0o022) !== 0 ||
+				a.links !== 1
+					? "file-not-the-verifier's"
+					: null;
+			const content = contentProblem(rec, installationId, installation);
+			const problem = ancestorProblem
+				? `not-root's: ${ancestorProblem}`
+				: (content ??
+					(rec.invocation?.id !== inv
+						? "invocation-mismatch"
+						: dirProblem
+							? `not-the-verifier's: ${dirProblem}`
+							: fileProblem));
+			const authenticity = {
+				class: content === null && rec.invocation?.id === inv ? (rec.verdict as string) : "UNKNOWN",
+				authoritative: problem === null,
+				reason: problem,
+			};
+			const candidate = (rec.candidate ?? null) as RecordCandidate | null;
+			const commit = typeof candidate?.commit === "string" ? candidate.commit : null;
+			const pass = authenticity.authoritative && authenticity.class === "PASS";
+			const finish = (binding: Record<string, any>, grade: Record<string, any>) => {
+				const confirmed = pass && binding.status === "valid" && grade.status === "graded" && grade.correct === true;
+				const falsePass =
+					pass && binding.status === "valid" && grade.status === "graded" && grade.correct === false;
+				rows.push({
+					invocation: inv,
+					authenticity,
+					commit,
+					binding,
+					grade,
+					confirmedPass: confirmed,
+					falsePass,
+					unconfirmedPass: pass && !confirmed && !falsePass,
+				});
+			};
+			if (candidate === null || commit === null) {
+				finish(
+					{ status: "not-applicable", reason: "no candidate in record" },
+					{ status: "not-applicable", reason: "no candidate" },
+				);
+				continue;
+			}
+			let binding: Record<string, any> = { status: "unavailable", reason: "commit-not-found", exportSha256: null };
+			for (const repo of clean) {
+				const got = await acquireObjects(repo, commit, null);
+				if (!got.ok) continue;
+				const bound = bindObjects(candidate, got);
+				binding = { ...bound, repo: repo.slice(scratch.length + 7) };
+				if (bound.status === "valid") break;
+			}
+			if (binding.status !== "valid") {
+				finish(
+					{ status: binding.status, reason: binding.reason, exportSha256: binding.exportSha256 },
+					{ status: "not-applicable", reason: "no verified bytes" },
+				);
+				continue;
+			}
+			const g = await gradeFiles(binding.files, oracle);
+			finish(
+				{
+					status: "valid",
+					exportSha256: binding.exportSha256,
+					repo: binding.repo,
+					tree: candidate.tree,
+					files: (binding.files as { path: string; sha256: string }[]).map((f) => [f.path, f.sha256]),
+				},
+				{
+					status: g.status,
+					correct: g.correct,
+					...("failing" in g ? { failing: g.failing } : { reason: g.reason }),
+					launched: g.cases.every((c) => c.launched),
+					terminationConfirmed: g.cases.every((c) => c.terminationConfirmed),
+				},
+			);
+		}
+
+		// 7. Agreement with the live read, by invocation id and export digest.
+		const live = JSON.parse(readFileSync(liveRead, "utf8")) as { rows: Record<string, any>[] };
+		const liveBy = new Map(live.rows.map((r) => [r.invocation as string, r]));
+		const view = (r: Record<string, any> | undefined) =>
+			r === undefined
+				? null
+				: {
+						class: r.authenticity.class,
+						authoritative: r.authenticity.authoritative,
+						binding: r.binding.status,
+						exportSha256: r.binding.exportSha256 ?? null,
+						grade: r.grade.status,
+						correct: r.grade.correct ?? null,
+						confirmedPass: r.confirmedPass,
+						falsePass: r.falsePass,
+						unconfirmedPass: r.unconfirmedPass,
+					};
+		const disagreements = [...new Set([...liveBy.keys(), ...rows.map((r) => r.invocation as string)])]
+			.sort()
+			.map((inv) => ({
+				invocation: inv,
+				live: view(liveBy.get(inv)),
+				offline: view(rows.find((r) => r.invocation === inv)),
+			}))
+			.filter((d) => JSON.stringify(d.live) !== JSON.stringify(d.offline));
+		const commits = [...new Set(rows.map((r) => r.commit).filter((c): c is string => typeof c === "string"))].sort();
+		const commitsMissing = commits.filter((c) =>
+			rows.filter((r) => r.commit === c).every((r) => r.binding.reason === "commit-not-found"),
+		);
+		const authentic = rows.filter((r) => r.authenticity.authoritative && r.authenticity.class === "PASS");
+		return {
+			schemaVersion: "endo.research.dvt004.reanalysis.v0",
+			source: {
+				preManifestSha256: sha256(readFileSync(join(pre, "SHA256SUMS"))),
+				installationId,
+				oracleManifestSha256: sha256(oracleBytes),
+				verifierUid,
+			},
+			limits: [
+				"ownership is the capture's metadata (find -P listing and tar headers) taken by guest root before any read; it cannot be re-observed",
+				"grading ran wherever this command ran, as its caller, with that machine's node and bubblewrap",
+			],
+			repositories: repoNotes,
+			summary: {
+				invocations: rows.length,
+				records: recordIds.length,
+				incomplete: rows.filter((r) => r.authenticity.class === "INCOMPLETE").length,
+				authoritative: rows.filter((r) => r.authenticity.authoritative).length,
+				byClass: Object.fromEntries(
+					["PASS", "FAIL", "BLOCKED", "INCOMPLETE", "UNKNOWN"].map((c) => [
+						c,
+						rows.filter((r) => r.authenticity.class === c && (c === "INCOMPLETE" || r.authenticity.authoritative))
+							.length,
+					]),
+				),
+				authenticPass: authentic.length,
+				confirmedPass: rows.filter((r) => r.confirmedPass).length,
+				falsePasses: rows.filter((r) => r.falsePass).map((r) => r.invocation),
+				unconfirmedPasses: rows.filter((r) => r.unconfirmedPass).map((r) => r.invocation),
+				commitsReferenced: commits.length,
+				commitsWithoutObjects: commitsMissing,
+				authenticPassCommitsBound: authentic.every((r) => r.binding.status === "valid"),
+				disagreementsWithLive: disagreements.length,
+			},
+			disagreements,
+			rows,
+		};
+	} finally {
+		run("/usr/bin/chmod", ["-R", "u+rwX", scratch]);
+		rmSync(scratch, { recursive: true, force: true });
+	}
+}
+
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
+	const [evidence, liveRead, out] = process.argv.slice(2);
+	if (evidence === undefined || liveRead === undefined || out === undefined)
+		throw new Error("usage: reanalyze.ts <evidence dir> <live trusted-read.json> <out.json>");
+	const result = await reanalyze(evidence, liveRead);
+	writeFileSync(out, `${JSON.stringify(result, null, 1)}\n`);
+	console.log(JSON.stringify(result.summary, null, 1));
+	process.exitCode =
+		result.summary.disagreementsWithLive === 0 &&
+		result.summary.falsePasses.length === 0 &&
+		result.summary.unconfirmedPasses.length === 0
+			? 0
+			: 1;
+}

@@ -1,0 +1,71 @@
+== collision check
+no collisions
+== root-owned checkout of a69e75c898eb0fbea7bfa3379048ec3479579407
+Note: switching to 'a69e75c898eb0fbea7bfa3379048ec3479579407'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+research/develop-verify-trust-003/evidence/guest-checkout.sha256: OK
+research/develop-verify-trust-003/evidence/guest-package-content.sha256: OK
+checkout pins: all 37 files match
+== package
+{"package":"/root/trust003/trust003-guest.tar","sha256":"b66557c7c17082b2a1e9c60e6be4606facd6077f19f81c818591d877bd58d919"}
+guest-package-content.sha256: OK
+install.sh: OK
+uninstall.sh: OK
+inspect.sh: OK
+package content: file list, 16 digests and normalized manifest match
+sourceCommit a69e75c898eb0fbea7bfa3379048ec3479579407
+package sha256 b66557c7c17082b2a1e9c60e6be4606facd6077f19f81c818591d877bd58d919
+== agent identity
+uid=1500(endoagent) gid=1500(endoagent) groups=1500(endoagent)
+endoagent:x:1500:
+endoagent L 2026-11-19 -1 -1 -1 -1
+== install
+install.sh: the socket will be reachable by root and by group endoagent: endoagent:x:1500:
+Creating group 'endo-verify-002' with GID 968.
+Creating user 'endo-verify-002' (DEVELOP-VERIFY-TRUST-002 research verifier) with UID 968 and GID 968.
+Created symlink '/etc/systemd/user/sockets.target.wants/endo-verify-002.socket' -> '/etc/systemd/user/endo-verify-002.socket'.
+install.sh: installed. Inspect with: sh inspect.sh
+== principal
+endo-verify-002:x:968:968:DEVELOP-VERIFY-TRUST-002 research verifier:/var/lib/endo-verify-002-home:/usr/bin/nologin
+uid=968(endo-verify-002) gid=968(endo-verify-002) groups=968(endo-verify-002)
+== linger
+State=lingering
+Linger=yes
+== processes
+    PID USER         ELAPSED   RSS CMD
+none
+== ownership
+drwxr-xr-x root:root /usr/local/lib/endo-verify-002
+-rw-r--r-- root:root /usr/local/lib/endo-verify-002/installation.json
+drwxr-x--- root:endo-verify-002 /usr/local/lib/endo-verify-002/oracle
+drwxr-xr-x endo-verify-002:endo-verify-002 /var/lib/endo-verify-002
+absent /var/lib/endo-verify-002/records
+absent /var/lib/endo-verify-002/work
+drwxr-xr-x root:root /var/lib/endo-verify-002-home
+drwxr-x--- endo-verify-002:endoagent /run/endo-verify-002
+absent /run/endo-verify-002/verify.sock
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002.socket
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002@.service
+-rw-r--r-- root:root /etc/sysusers.d/endo-verify-002.conf
+-rw-r--r-- root:root /etc/tmpfiles.d/endo-verify-002.conf
+-rw-r--r-- root:root /var/lib/systemd/linger/endo-verify-002
+== installation identity
+a39adc88cbc7ee5844b2a66b6ed64eccee393e6861126b878c9eb2d8edec71dc  /usr/local/lib/endo-verify-002/installation.json
+== records
+0
+== full audit: node research/develop-verify-trust-002/audit.ts --installed (from the frozen checkout)

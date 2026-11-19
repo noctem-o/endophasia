@@ -58,6 +58,23 @@ jobs:
           node "$D/guest/reanalyze.ts" "$D/guest-run" "$RUNNER_TEMP/reanalysis.json"
           diff <(jq -S . "$D/guest-run/reanalysis/reanalysis.json") <(jq -S . "$RUNNER_TEMP/reanalysis.json")
 
+  trust004-freeze:
+    name: TRUST-004 operator freeze consistency
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run tests/develop-verify-trust-004-freeze.test.ts
+        env:
+          TRUST004_FREEZE_CHECK: "1"
+
   check:
     name: Typecheck and lint
     runs-on: ubuntu-24.04

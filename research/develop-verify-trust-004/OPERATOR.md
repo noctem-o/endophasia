@@ -10,9 +10,11 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `870e8aafd3f92e81cbf392eb376c2fd5d43b5049` (Amendment 6 freeze; 32 entries in
-[FROZEN.sha256](FROZEN.sha256)). Stage exactly this commit, not the branch tip. Later commits on the branch only change
-documentation.
+**Selected source commit:** `6e9ecd38547d1c8265b7fe538a7600ea1724094e` (Amendment 6; 32 entries in
+[FROZEN.sha256](FROZEN.sha256), unchanged since the Amendment 6 freeze `870e8aafd`, and the first commit whose copy of this page
+quotes that manifest's digests). Stage exactly this commit, not the branch tip. Later commits on the branch only change
+documentation and tests outside the manifest; `tests/develop-verify-trust-004-freeze.test.ts` checks in CI that this page and the
+manifest agree, here and at this commit.
 
 ## 0. Authority and boundaries
 
@@ -35,7 +37,7 @@ retained evidence**. Nothing on this page writes there.
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=870e8aafd3f92e81cbf392eb376c2fd5d43b5049
+F=6e9ecd38547d1c8265b7fe538a7600ea1724094e
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
 W=$HOME/.capy/work/endo18                   # this attempt's disposable guest
 W2=$HOME/.capy/work/endo18-analysis         # the analysis guest

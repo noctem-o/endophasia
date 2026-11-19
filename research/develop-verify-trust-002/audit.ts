@@ -97,8 +97,9 @@ function writable(path: string, account: AccountSource): string {
 		try {
 			accessSync(path, constants.W_OK);
 			return "writable (access)";
-		} catch {
-			// not writable for this process either
+		} catch (e) {
+			const code = (e as NodeJS.ErrnoException).code;
+			if (code !== "EACCES" && code !== "EPERM" && code !== "EROFS") return code ?? "unknown";
 		}
 	}
 	return "not-writable";
@@ -191,13 +192,15 @@ export function audit(
 			observed: g.includes(name) ? `member: ${meaning}` : "not a member",
 			ok: !g.includes(name),
 		});
-	for (const p of ["/run/docker.sock", "/run/libvirt/libvirt-sock", "/run/podman/podman.sock"])
+	for (const p of ["/run/docker.sock", "/run/libvirt/libvirt-sock", "/run/podman/podman.sock"]) {
+		const observed = writable(p, account);
 		checks.push({
 			id: "h0-socket",
 			path: p,
-			observed: writable(p, account),
-			ok: writable(p, account) !== "writable" || p.includes("libvirt-sock"),
+			observed,
+			ok: socketExcluded(observed),
 		});
+	}
 	// Rules granting YES to a group known to be root-equivalent fail H0. Other passwordless grants are privileged actions that are not known
 	// routes to root (and whose local/active conditions are not evaluated): they are listed for the operator to review, not decided here.
 	const polkit = polkitGrants(account);
@@ -273,8 +276,23 @@ export function audit(
 			`/etc/systemd/user/${INSTALLED.unit}@.service`,
 		])
 			checks.push({ id: "installed-root", path: p, observed: owned(p), ok: owned(p) === "ok" });
-		for (const p of [INSTALLED.state, `${INSTALLED.state}/records`])
-			checks.push({ id: "installed-verifier", path: p, observed: owned(p, uid), ok: owned(p, uid) === "ok" });
+		const state = owned(INSTALLED.state, uid);
+		checks.push({ id: "installed-verifier", path: INSTALLED.state, observed: state, ok: state === "ok" });
+		const recordsPath = `${INSTALLED.state}/records`;
+		const records = look(recordsPath);
+		checks.push({
+			id: "installed-record-directory",
+			path: recordsPath,
+			observed:
+				typeof records === "string" ? records : `owner ${records.uid} mode ${(records.mode & 0o7777).toString(8)}`,
+			ok:
+				state === "ok" &&
+				(records === "absent" ||
+					(typeof records !== "string" &&
+						records.isDirectory() &&
+						records.uid === uid &&
+						(records.mode & 0o022) === 0)),
+		});
 		// The socket's gate: its directory is the verifier's, mode 0750, group the operator's primary group, which has no other member.
 		const dir = look(dirname(INSTALLED.socket));
 		const me = account.passwd
@@ -313,6 +331,10 @@ export function audit(
 		limits: H0_LIMITS,
 		checks,
 	};
+}
+
+export function socketExcluded(observed: string): boolean {
+	return ["absent", "EACCES", "not-writable"].includes(observed);
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === resolve(new URL(import.meta.url).pathname)) {

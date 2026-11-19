@@ -157,17 +157,22 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 		// Gate IP0 (PROTOCOL.md §6): H0 from this very session, before anything else.
 		const h0 = audit(true);
 		writeFileSync(join(W, "audit.json"), `${JSON.stringify(h0, null, 2)}\n`);
-		if (!h0.h0) {
-			log(`IP0: H0 does not hold in this session; no trial runs. ${JSON.stringify(h0.checks.filter((c) => !c.ok))}`);
+		if (!h0.h0 || !h0.closure) {
+			log(
+				`IP0: session or installation prerequisite missing; no trial runs. ${JSON.stringify(h0.checks.filter((c) => !c.ok))}`,
+			);
 			return 3;
 		}
 		// The audit cannot read sudo's rules. Here, in the installed phase only, sudo is asked never to prompt: it must refuse. A cached
 		// timestamp or a NOPASSWD rule would let it succeed, and either is a route the agent could use.
 		const sudo = exec("/usr/bin/sudo", ["-n", "true"], { env: { PATH: "/usr/bin" } });
-		writeFileSync(join(W, "sudo-n.json"), `${JSON.stringify({ status: sudo.status, refused: sudo.status !== 0 })}\n`);
-		if (sudo.status === 0) {
+		const refused =
+			sudo.status === 1 &&
+			/a password is required|not allowed to execute|not in the sudoers/.test(sudo.stderr ?? "");
+		writeFileSync(join(W, "sudo-n.json"), `${JSON.stringify({ status: sudo.status, refused })}\n`);
+		if (!refused) {
 			log(
-				"IP0: `sudo -n true` succeeded: a passwordless or cached sudo route exists in this session; no trial runs.",
+				"IP0: no recognized sudo policy refusal; a missing tool, execution error or success cannot qualify this session.",
 			);
 			return 3;
 		}

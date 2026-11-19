@@ -14,11 +14,10 @@
 //   node reanalyze.ts <guest-run dir> <out.json>
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import { build } from "../../develop-verify-trust-002/install/layout.ts";
 import { exportDigest, type StagedFile } from "../../develop-verify-trust-002/service/objects.ts";
 import { contentProblem } from "../../develop-verify-trust-002/service/records.ts";
 import type { Installation } from "../../develop-verify-trust-002/service/verifier.ts";
@@ -27,6 +26,9 @@ import { bindFiles, gradeFiles, type Oracle, type RecordCandidate } from "./read
 const REPO = fileURLToPath(new URL("../../..", import.meta.url));
 const STAGED_COMMIT = "c3718f1d20a0777742cb72d6a9dfd7a44ce938fa";
 const GUEST_INSTALLATION_ID = "7802fb0ef678696f37627c83418398806a1f516ed1d3d74369204d00ca61a222";
+/** The installation tree built from STAGED_COMMIT, retained beside the evidence so reanalysis needs no historical Git objects. */
+const INSTALLATION_TAR = "reanalysis/installation-c3718f1d.tar";
+const INSTALLATION_TAR_SHA256 = "5401d51e0a753eae6733ee346220eb8f1e14508217599aabb0bd38ad3deca50a";
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 
 export async function reanalyze(guestRun: string) {
@@ -37,21 +39,29 @@ export async function reanalyze(guestRun: string) {
 			throw new Error("unexpected guest record archive");
 		const untar = spawnSync("/usr/bin/tar", ["-xzf", archive, "-C", scratch]);
 		if (untar.status !== 0) throw new Error(`cannot extract ${archive}`);
-		// The installation, rebuilt from the staged commit's objects; it must be the one the guest inspected.
+		// The installation the guest inspected, restored from the retained tar: the tar's digest, the manifest's digest (the guest's
+		// installation id) and every listed file's digest must all match, and nothing unlisted may be present.
+		const tarPath = join(guestRun, INSTALLATION_TAR);
+		if (sha256(readFileSync(tarPath)) !== INSTALLATION_TAR_SHA256) throw new Error(`unexpected ${INSTALLATION_TAR}`);
 		const install = join(scratch, "install");
-		build({
-			commit: STAGED_COMMIT,
-			out: install,
-			mode: "installed",
-			operatorUid: 1500,
-			operatorHome: "/home/endoagent",
-			repository: REPO,
-		});
+		mkdirSync(install);
+		if (spawnSync("/usr/bin/tar", ["--no-same-owner", "-xf", tarPath, "-C", install]).status !== 0)
+			throw new Error(`cannot extract ${INSTALLATION_TAR}`);
 		const installationBytes = readFileSync(join(install, "installation.json"));
 		const installationId = sha256(installationBytes);
 		if (installationId !== GUEST_INSTALLATION_ID)
 			throw new Error(`rebuilt installation ${installationId} is not the guest's`);
 		const installation = JSON.parse(installationBytes.toString("utf8")) as Installation;
+		const present = readdirSync(install, { recursive: true, withFileTypes: true })
+			.filter((d) => !d.isDirectory())
+			.map((d) => relative(install, join(d.parentPath, d.name)))
+			.sort();
+		const listed = [...installation.files.map((f) => f.path), "installation.json"].sort();
+		if (JSON.stringify(present) !== JSON.stringify(listed))
+			throw new Error("retained installation has unlisted or missing files");
+		for (const f of installation.files)
+			if (sha256(readFileSync(join(install, f.path))) !== f.sha256)
+				throw new Error(`retained installation file ${f.path} differs`);
 		const oracleBytes = readFileSync(join(install, "oracle/roman-numerals-cli/manifest.json"));
 		const oracle = JSON.parse(oracleBytes.toString("utf8")) as Oracle;
 		// Bytes known by content: every committed fixture file, and Aslow (rehearsal.ts: A behind a 4 s wait).
@@ -144,7 +154,10 @@ export async function reanalyze(guestRun: string) {
 				commit: candidate.commit,
 				binding:
 					binding.status === "valid" ? { status: "valid", exportSha256: binding.exportSha256, sources } : binding,
-				grade: "cases" in grade ? { ...grade, cases: grade.cases.map(({ durationMs: _d, ...c }) => c) } : grade,
+				grade:
+					"cases" in grade
+						? { ...grade, cases: grade.cases.map(({ durationMs: _d, launched: _l, ...c }) => c) }
+						: grade,
 			});
 		}
 		type Row = (typeof rows)[number] & {

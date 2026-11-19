@@ -30,6 +30,8 @@ export interface Bounded {
 	signal: string | null;
 	stdout: Buffer;
 	stderrHead: string;
+	/** The first bytes written to descriptor 3, when `marker` was requested. */
+	marker: string;
 	/** The process group was gone (pipes closed, exit reported) within the grace period after the kill. */
 	terminationConfirmed: boolean;
 	durationMs: number;
@@ -49,6 +51,8 @@ export function runBounded(
 		deadlineMs: number;
 		maxOutput: number;
 		graceMs?: number;
+		/** Give the child a descriptor 3 pipe and report what it writes there. */
+		marker?: boolean;
 	},
 ): Promise<Bounded> {
 	const grace = options.graceMs ?? 2000;
@@ -57,15 +61,22 @@ export function runBounded(
 		const out: Buffer[] = [];
 		let outBytes = 0;
 		let err = "";
+		let marker = "";
 		let reason: "timeout" | "output-limit" | null = null;
 		let settled = false;
 		let hard: NodeJS.Timeout | undefined;
-		const finish = (r: Omit<Bounded, "stdout" | "stderrHead" | "durationMs">) => {
+		const finish = (r: Omit<Bounded, "stdout" | "stderrHead" | "durationMs" | "marker">) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(deadline);
 			clearTimeout(hard);
-			done({ ...r, stdout: Buffer.concat(out), stderrHead: err.slice(0, 2000), durationMs: Date.now() - start });
+			done({
+				...r,
+				stdout: Buffer.concat(out),
+				stderrHead: err.slice(0, 2000),
+				marker,
+				durationMs: Date.now() - start,
+			});
 		};
 		let child: ReturnType<typeof spawn>;
 		try {
@@ -73,7 +84,7 @@ export function runBounded(
 				env: options.env,
 				cwd: options.cwd,
 				detached: true,
-				stdio: ["pipe", "pipe", "pipe"],
+				stdio: options.marker === true ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
 			});
 		} catch (e) {
 			done({
@@ -82,6 +93,7 @@ export function runBounded(
 				signal: null,
 				stdout: Buffer.alloc(0),
 				stderrHead: String(e),
+				marker: "",
 				terminationConfirmed: true,
 				durationMs: 0,
 			});
@@ -118,6 +130,9 @@ export function runBounded(
 			if (err.length < 2000) err += b.subarray(0, 2000 - err.length).toString("utf8");
 		});
 		child.stdin?.on("error", () => {});
+		(child.stdio[3] as NodeJS.ReadableStream | null | undefined)?.on("data", (b: Buffer) => {
+			if (marker.length < 64) marker += b.subarray(0, 64 - marker.length).toString("latin1");
+		});
 		child.stdin?.end(options.input ?? Buffer.alloc(0));
 		child.on("close", async (code, signal) => {
 			if (settled) return;
@@ -309,6 +324,8 @@ export interface CaseGrade {
 	exitCode: number | null;
 	signal: string | null;
 	matched: boolean;
+	/** The sandbox was set up and its trusted launcher reached the candidate's command; false is an environment refusal, not a result. */
+	launched: boolean;
 	terminationConfirmed: boolean;
 	durationMs: number;
 }
@@ -354,7 +371,12 @@ export function stageFiles(files: readonly StagedFile[], graderUid: number) {
 export async function gradeFiles(
 	files: readonly StagedFile[],
 	oracle: Oracle,
-	options: { bwrapCandidates?: readonly string[]; deadlineMs?: number } = {},
+	options: {
+		bwrapCandidates?: readonly string[];
+		deadlineMs?: number;
+		/** Further restrictions on the grading identity's launch, applied after the identity drop (tests). */
+		launchWrapper?: readonly string[];
+	} = {},
 ): Promise<Grade> {
 	const detected =
 		options.bwrapCandidates === undefined ? detectBubblewrapV0() : detectBubblewrapV0(options.bwrapCandidates);
@@ -375,58 +397,90 @@ export async function gradeFiles(
 			? ["/usr/bin/setpriv", `--reuid=${graderUid}`, "--regid=65534", "--clear-groups", "--no-new-privs", "--"]
 			: [];
 	const deadline = options.deadlineMs ?? oracle.timeoutMs;
+	const bwrap = detected.bwrap.path;
+	const dir = staged.dir;
+	// The launcher writes the marker only after bubblewrap has finished setting the sandbox up and handed over: a refusal never writes it.
+	const sandboxed = (command: readonly string[]) => [
+		...asNobody,
+		...(options.launchWrapper ?? []),
+		bwrap,
+		"--unshare-all",
+		"--die-with-parent",
+		"--new-session",
+		"--cap-drop",
+		"ALL",
+		"--clearenv",
+		"--setenv",
+		"PATH",
+		"/usr/bin",
+		"--setenv",
+		"HOME",
+		"/work",
+		"--ro-bind",
+		"/usr",
+		"/usr",
+		"--symlink",
+		"usr/lib",
+		"/lib",
+		"--symlink",
+		"usr/lib64",
+		"/lib64",
+		"--symlink",
+		"usr/bin",
+		"/bin",
+		"--proc",
+		"/proc",
+		"--dev",
+		"/dev",
+		"--tmpfs",
+		"/tmp",
+		"--ro-bind",
+		dir,
+		"/work",
+		"--chdir",
+		"/work",
+		"--",
+		"/usr/bin/sh",
+		"-c",
+		'printf launched >&3 && exec "$@"',
+		"sh",
+		...command,
+	];
 	const cases: CaseGrade[] = [];
 	try {
+		// The detection above ran as the caller. The grading identity, with its own restrictions, must be able to start the same sandbox.
+		const probe = await runBounded(sandboxed(["/usr/bin/true"]), {
+			env: {},
+			deadlineMs: 10_000,
+			maxOutput: 4096,
+			marker: true,
+		});
+		if (
+			probe.marker !== "launched" ||
+			probe.outcome !== "exited" ||
+			probe.exitCode !== 0 ||
+			!probe.terminationConfirmed
+		)
+			return {
+				status: "incomplete",
+				correct: null,
+				reason: `grader-sandbox-unavailable: ${probe.outcome} exit ${probe.exitCode}: ${probe.stderrHead.trim().slice(0, 300)}`,
+				cases,
+			};
 		for (const k of oracle.cases) {
-			const argv = [
-				...asNobody,
-				detected.bwrap.path,
-				"--unshare-all",
-				"--die-with-parent",
-				"--new-session",
-				"--cap-drop",
-				"ALL",
-				"--clearenv",
-				"--setenv",
-				"PATH",
-				"/usr/bin",
-				"--setenv",
-				"HOME",
-				"/work",
-				"--ro-bind",
-				"/usr",
-				"/usr",
-				"--symlink",
-				"usr/lib",
-				"/lib",
-				"--symlink",
-				"usr/lib64",
-				"/lib64",
-				"--symlink",
-				"usr/bin",
-				"/bin",
-				"--proc",
-				"/proc",
-				"--dev",
-				"/dev",
-				"--tmpfs",
-				"/tmp",
-				"--ro-bind",
-				staged.dir,
-				"/work",
-				"--chdir",
-				"/work",
-				"--",
-				"/usr/bin/prlimit",
-				`--cpu=${Math.ceil(deadline / 1000) + 1}`,
-				"--fsize=1048576",
-				"--nofile=256",
-				"--core=0",
-				"--",
-				"/usr/bin/node",
-				...k.argv.slice(1),
-			];
-			const r = await runBounded(argv, { env: {}, deadlineMs: deadline, maxOutput: oracle.maxOutputBytes });
+			const r = await runBounded(
+				sandboxed([
+					"/usr/bin/prlimit",
+					`--cpu=${Math.ceil(deadline / 1000) + 1}`,
+					"--fsize=1048576",
+					"--nofile=256",
+					"--core=0",
+					"--",
+					"/usr/bin/node",
+					...k.argv.slice(1),
+				]),
+				{ env: {}, deadlineMs: deadline, maxOutput: oracle.maxOutputBytes, marker: true },
+			);
 			cases.push({
 				name: k.name,
 				outcome: r.outcome,
@@ -436,6 +490,7 @@ export async function gradeFiles(
 					r.outcome === "exited" &&
 					r.exitCode === k.expect.exitCode &&
 					r.stdout.toString("utf8") === k.expect.stdout,
+				launched: r.marker.startsWith("launched"),
 				terminationConfirmed: r.terminationConfirmed,
 				durationMs: r.durationMs,
 			});
@@ -455,6 +510,9 @@ export function gradeCases(cases: CaseGrade[]): Grade {
 			reason: `${unconfirmed.name}: ${unconfirmed.outcome}, termination ${unconfirmed.terminationConfirmed ? "confirmed" : "unconfirmed"}`,
 			cases,
 		};
+	const refused = cases.find((c) => !c.launched);
+	if (refused !== undefined)
+		return { status: "incomplete", correct: null, reason: `${refused.name}: sandbox launch refused`, cases };
 	const failing = cases.filter((c) => !c.matched).map((c) => c.name);
 	return { status: "graded", correct: failing.length === 0, failing, cases };
 }
@@ -486,6 +544,7 @@ export async function readRecord(options: {
 	oracle: Oracle;
 	fs?: FileSystem;
 	bwrapCandidates?: readonly string[];
+	launchWrapper?: readonly string[];
 }): Promise<RecordResult> {
 	const fs = options.fs ?? hostFileSystem;
 	const base = {
@@ -537,7 +596,10 @@ export async function readRecord(options: {
 	if (binding.status !== "valid") return result(binding, { status: "not-applicable", reason: "no verified bytes" });
 	return result(
 		binding,
-		await gradeFiles(binding.files, options.oracle, { bwrapCandidates: options.bwrapCandidates }),
+		await gradeFiles(binding.files, options.oracle, {
+			bwrapCandidates: options.bwrapCandidates,
+			launchWrapper: options.launchWrapper,
+		}),
 	);
 }
 

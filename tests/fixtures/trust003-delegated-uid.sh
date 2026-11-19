@@ -19,7 +19,7 @@ S=$(mktemp -d)
 export S
 trap 'rm -rf "$S"' EXIT
 mkdir "$S/bin"
-for b in bwrap node python3 setpriv prlimit true; do cp -L "/usr/bin/$b" "$S/bin/$b"; done
+for b in bwrap node python3 setpriv prlimit true sh; do cp -L "/usr/bin/$b" "$S/bin/$b"; done
 rc=0
 unshare --map-root-user --map-users="65534:$sub:1" --map-groups="65534:$sub:1" --pid --fork --kill-child /bin/bash -ceu '
   readlink /proc/self/ns/user > "$S/ns"

@@ -48,6 +48,15 @@ jobs:
       - run: npx vitest run tests/develop-verify-trust-003-reader.test.ts
         env:
           ENDO_REQUIRE_TRUST_SANDBOX: "1"
+      - name: Reanalyse the guest archive from this shallow checkout alone
+        run: |
+          test "$(git rev-parse --is-shallow-repository)" = true
+          if git cat-file -e 'c3718f1d20a0777742cb72d6a9dfd7a44ce938fa^{commit}' 2>/dev/null; then
+            echo 'the staged commit is present, so this step would not show reanalysis without it'; exit 1
+          fi
+          D=research/develop-verify-trust-003
+          node "$D/guest/reanalyze.ts" "$D/guest-run" "$RUNNER_TEMP/reanalysis.json"
+          diff <(jq -S . "$D/guest-run/reanalysis/reanalysis.json") <(jq -S . "$RUNNER_TEMP/reanalysis.json")
 
   check:
     name: Typecheck and lint

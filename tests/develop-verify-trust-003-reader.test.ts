@@ -385,6 +385,42 @@ describe("trusted reader: acquisition from an agent-controlled repository", () =
 });
 
 describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
+	it("never grades a case whose sandbox did not launch as a candidate failure", () => {
+		const result = gradeCases([
+			{
+				name: "refused",
+				outcome: "exited",
+				exitCode: 1,
+				signal: null,
+				matched: false,
+				launched: false,
+				terminationConfirmed: true,
+				durationMs: 3,
+			},
+		]);
+		expect(result).toMatchObject({ status: "incomplete", correct: null, reason: "refused: sandbox launch refused" });
+	});
+	it.runIf(sandbox)(
+		"reports a correct PASS as unconfirmed, not false, when only the grading identity cannot start the sandbox (review 4629370845)",
+		async () => {
+			const s = setup("grader-refused");
+			const id = s.write("PASS", await candidateOf(A));
+			const got = await readRecord({
+				state: s.state,
+				installDir: s.install,
+				verifierUid: VERIFIER,
+				invocation: id,
+				repos: [A.dir],
+				oracle: ORACLE,
+				fs: standIn(s),
+				launchWrapper: ["/usr/bin/prlimit", "--nproc=0", "--"],
+			});
+			expect(got.grade).toMatchObject({ status: "incomplete", correct: null });
+			expect((got.grade as { reason: string }).reason).toMatch(/^grader-sandbox-unavailable: /);
+			expect([got.confirmedPass, got.falsePass, got.unconfirmedPass]).toEqual([false, false, true]);
+		},
+		60_000,
+	);
 	it("grades as a distinct delegated UID on a non-root host", (ctx) => {
 		const r = spawnSync("bash", [join(REPO, "tests/fixtures/trust003-delegated-uid.sh")], {
 			cwd: REPO,
@@ -404,6 +440,7 @@ describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
 				exitCode: 0,
 				signal: null,
 				matched: true,
+				launched: true,
 				terminationConfirmed: false,
 				durationMs: 20,
 			},

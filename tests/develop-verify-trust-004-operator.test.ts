@@ -129,6 +129,20 @@ it("stops at either invalid custody manifest and retains both work directories",
 });
 
 describe("TRUST-004 OPERATOR.md analysis guest isolation audit", () => {
+	it.each(["install", "truncate"])("stops preparation if %s fails", (command) => {
+		const [setup] = blocks("5. Independent reanalysis");
+		mkdirSync(E);
+		writeFileSync(join(E, "export.tar"), raw);
+		writeFileSync(join(W, "vm/stage.img"), "stage");
+		const r = shell(`qemu-img() { :; }; ss() { :; }; ${command}() { return 42; }\n${setup}`, {
+			W,
+			W2,
+			E,
+			OLD: root,
+		});
+		expect(r.status).toBe(42);
+		expect(existsSync(join(W2, "vm/con.in"))).toBe(false);
+	});
 	it("captures the analysis guest's own baseline before launch and audits it against $W2", () => {
 		const [setup, audit] = blocks("5. Independent reanalysis");
 		const section = doc.slice(doc.indexOf("\n## 5."), doc.indexOf("\n## 6."));

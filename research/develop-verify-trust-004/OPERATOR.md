@@ -225,12 +225,19 @@ on the workstation, because grading executes candidate code. It reads the export
 `trusted-read.json` only, never harness summaries.
 
 ```sh
-mkdir -m 0700 -- "$W2" && mkdir -m 0700 -- "$W2/vm" || exit 2
+(
+set -euo pipefail
+mkdir -m 0700 -- "$W2"
+mkdir -m 0700 -- "$W2/vm"
 qemu-img convert -O qcow2 -l snapshot.name=provisioned "$OLD/vm/overlay.qcow2" "$W2/vm/overlay.qcow2"
 cp "$W/vm/stage.img" "$W2/vm/stage.img"
-install -m 0600 "$E/export.tar" "$W2/vm/out.img" && truncate -s 2G "$W2/vm/out.img"     # writable copy; keep the sealed prefix unchanged
+install -m 0600 "$E/export.tar" "$W2/vm/out.img"
+truncate -s 2G "$W2/vm/out.img"
 mkfifo -m 0600 "$W2/vm/con.in" "$W2/vm/con.out"
 ss -ltunH | sort > "$W2/listeners-before.txt"     # this guest's baseline, before it is launched
+)
+prep_status=$?
+if (( prep_status != 0 )); then echo "STOP: keep the partial analysis directory; do not launch" >&2; exit "$prep_status"; fi
 export ENDO13_WORK=$W2                              # in all three terminals
 ```
 

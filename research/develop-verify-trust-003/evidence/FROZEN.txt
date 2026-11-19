@@ -1,0 +1,4 @@
+base           a04659326efe70a0969cad6dc4a3e322412a4970  origin/main when the study started
+trials frozen  89b6100b3b17779925da45cc170f5a657a307b0d  C1-C4 ran from this commit (definitions.sha256, runtime.sha256, pi-dist-tree.txt)
+evidence       feb8f161994477dd43d16ff40d002799104f0d1c  this evidence was first committed here
+amended later  audit.ts, rehearsal.ts, tests/develop-verify-trust-003.test.ts (PROTOCOL.md A1-A3); no recorded row depends on them

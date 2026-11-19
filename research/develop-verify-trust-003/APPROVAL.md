@@ -1,13 +1,17 @@
 # Approval boundary: a guest first, not this workstation
 
-**Requested decision:** authorize a single disposable Linux VM with a dedicated **guest** agent and the 002 verifier, or keep DEVELOP at protected, review-only C. No workstation install, group removal, socket permission change or promotion is requested. Do not run the following on the workstation. These are proposed operator actions, not results. No guest was created.
+**Status:** George approved the disposable-guest research path (Part 1). The IA1–IA4 matrix will be **executed by a separate thread in a separate, isolated environment**, not by the thread that wrote this package and not on the workstation. Nothing here has been executed: no guest was created or started, and the workstation was not changed. Part 2 is the workstation socket restriction George chose as the long-term direction; it needs its own approval and is not part of the guest run.
+
+## Part 1: guest run
+
+**What the guest run can and cannot establish.** The guest has no libvirt and no Docker socket. A guest pass can establish the **separate-principal mechanism**: a restricted agent uid cannot modify the verifier, its dependencies, staging, oracle or records, cannot read its environment or signal it, and IA1–IA4 hold with an authentic PASS for a correct candidate and none for an incorrect one. It establishes **nothing** about libvirt socket permissions, about H0 on the workstation, or about polkit. Do not read a guest pass as validation of Part 2 or of any gate exception; those stay unproven until a separately approved workstation run.
 
 Use a clean, snapshotted guest with systemd user managers, cgroup v2, unprivileged user namespaces, package-managed Node/bwrap/Python/bash/Git, a compiler for the 002 fixtures, the classic `sudo` package, and no Docker/libvirt sockets. **sudo is required:** the installed gate stops unless `sudo -n true` returns status 1 with one of classic sudo's policy messages (*a password is required*, *not allowed to execute*, *not in the sudoers*), so a sudo-less guest reports BLOCKED for a reason unrelated to H0. **sudo-rs caveat (untested):** sudo-rs words its non-interactive refusal differently (for example *interactive authentication is required*), which the check does not recognise, so a guest with sudo-rs would also be falsely BLOCKED. That is a gate defect, not an H0 result; do not widen the pattern on the spot. Fix it in the repository with a test first. Give it bounded disk/CPU/RAM and no shared folders, host devices, SSH agent, host session bus or host credentials. Keep a separate trusted guest root console. If prerequisites need installing, agree the image separately; do not change the host to accommodate it. The package's uid, home and group are **not** the workstation operator's.
 
 **Staging (unprivileged). Pinned by content, not by commit.** The trials ran at `89b6100b3b17779925da45cc170f5a657a307b0d`, which exists only on this branch; a squash merge and branch deletion would remove it. So the precondition is that the checkout **contains the pinned bytes**, whatever commit they arrive in (this branch, or `main` after a squash). Two pin lists in this directory carry the content: [guest-checkout.sha256](evidence/guest-checkout.sha256) covers the harness, audit, layout, install scripts, their import closure and fixtures (37 files); [guest-package-content.sha256](evidence/guest-package-content.sha256) covers every file of the package except its manifest. Compare these two literal digests of the lists themselves with an independent view of this review before trusting either:
 
 ```text
-d812f1f776c756f9cceffa52538074cd27dd02490d65c8be63fe1e0025847bad  research/develop-verify-trust-003/evidence/guest-checkout.sha256
+b55f8941437fde6d4a1a7677ed52847ec3a58ec781a3a4800ab3526aef85fcc0  research/develop-verify-trust-003/evidence/guest-checkout.sha256
 ff2387c48893461095b786c0619627b0b87fe6227d175aade26831fc75adac7c  research/develop-verify-trust-003/evidence/guest-package-content.sha256
 ```
 
@@ -19,7 +23,7 @@ e=research/develop-verify-trust-003/evidence
 a=research/develop-verify-trust-002
 test -z "$(git status --porcelain)"
 sha256sum -c - <<'PINS'
-d812f1f776c756f9cceffa52538074cd27dd02490d65c8be63fe1e0025847bad  research/develop-verify-trust-003/evidence/guest-checkout.sha256
+b55f8941437fde6d4a1a7677ed52847ec3a58ec781a3a4800ab3526aef85fcc0  research/develop-verify-trust-003/evidence/guest-checkout.sha256
 ff2387c48893461095b786c0619627b0b87fe6227d175aade26831fc75adac7c  research/develop-verify-trust-003/evidence/guest-package-content.sha256
 PINS
 sha256sum --quiet -c "$e/guest-checkout.sha256"
@@ -74,3 +78,58 @@ sh /root/trust003/inspect.sh
 ```
 
 Verify the archive and preserve only reviewed evidence outside the guest. Restore the pre-experiment VM snapshot or discard the VM, including the agent account, staging, credentials and scratch space. If installation/cleanup failed partway, retain its diagnostics and discard the guest rather than attempting a live-host repair. No workstation rollback is needed. This package does **not** authorize applying the guest commands to the workstation.
+
+## Part 2: workstation socket restriction (later, separately approved)
+
+Not requested now and not executed. This is the libvirt half of George's chosen design: strict socket-denial gate (unchanged), a restricted agent identity, and restricted libvirt socket permissions. Run as root from a trusted console with no agent session open.
+
+**Observed on this host, read-only** ([libvirt-units.txt](evidence/libvirt-units.txt)). libvirt 12.9.0, **monolithic** `libvirtd` under socket activation; the modular daemons are installed but disabled; no drop-ins exist.
+
+| Unit | State | Listens on | SocketMode / group | Needs a change |
+|---|---|---|---|---|
+| `libvirtd.socket` | enabled, listening | `/run/libvirt/libvirt-sock` | 0666, none | **yes** |
+| `libvirtd-ro.socket` | enabled, listening; `BindsTo=libvirtd.socket` | `/run/libvirt/libvirt-sock-ro` | 0666, none | **yes** (read-only, but it exposes domain inventory and XML) |
+| `libvirtd-admin.socket` | enabled, listening; `BindsTo=libvirtd.socket` | `/run/libvirt/libvirt-admin-sock` | 0600 | no, already root-only |
+| `virtlogd.socket`, `virtlockd.socket` | disabled, pulled in by `libvirtd.service` | `virtlogd-sock`, `virtlockd-sock` | 0600 | no |
+| `libvirtd.service` | disabled, socket-activated, `--timeout 120` (exits when idle), `KillMode=process` | — | — | stopped and re-activated by both routes |
+
+**Which setting governs.** A socket's mode and group are fixed when it is bound. Under socket activation, systemd binds it when the *socket unit* starts (at boot, through `sockets.target`), applying that unit's `SocketMode=`/`SocketGroup=`. libvirtd starts later, on the first connection, and receives the already-bound descriptor; it never binds, chmods or chowns it, so its own `unix_sock_group`/`unix_sock_ro_perms`/`unix_sock_rw_perms` have no effect. Those settings apply only when libvirtd binds the sockets itself, which happens only when no descriptors are passed to it, that is when socket activation is off. Here every `unix_sock_*` line in `libvirtd.conf` is commented out, and libvirt's own defaults (rw 0770, ro 0777, admin 0700) are not what the distro's socket units use: the units make `libvirt-sock` *more* permissive than the daemon default.
+
+Consequences:
+- Editing a socket unit, or adding a drop-in, and running `daemon-reload` does **not** change an existing socket. The socket unit must be stopped (`RemoveOnStop=yes` unlinks the path) and started again, so systemd re-binds it with the new mode.
+- A **running** `libvirtd` keeps the listening descriptor it was given. If only the socket unit were restarted, the daemon would keep serving its old, now-unlinked socket, while connections to the new path would queue unanswered: systemd only activates a service that is not running. So `libvirtd.service` must be stopped in the same step, and it re-activates on the next connection with the new descriptors.
+- Connections a running daemon has already accepted are separate descriptors. The socket's mode is checked only at `connect(2)`, so changing it never cuts an open session; stopping `libvirtd` does, and clients such as virt-manager reconnect. With `KillMode=process` only the daemon process is stopped; QEMU guests keep running, and libvirtd re-attaches to them when it starts (libvirt's documented behaviour, not exercised here).
+
+**Route A, recommended: systemd drop-ins (socket activation kept).**
+
+```sh
+set -eu
+for u in libvirtd libvirtd-ro; do
+  install -d -m 0755 /etc/systemd/system/$u.socket.d
+  printf '[Socket]\nSocketGroup=libvirt\nSocketMode=0660\n' > /etc/systemd/system/$u.socket.d/50-endo-restrict.conf
+done
+systemctl daemon-reload
+systemctl stop libvirtd.service libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket
+systemctl start libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket
+stat -c '%n %a %U:%G' /run/libvirt/libvirt-sock /run/libvirt/libvirt-sock-ro /run/libvirt/libvirt-admin-sock
+# expect: libvirt-sock 660 root:libvirt, libvirt-sock-ro 660 root:libvirt, libvirt-admin-sock 600 root:root
+```
+
+The admin socket is restarted only because it `BindsTo=libvirtd.socket`; it keeps 0600. Members of `libvirt`, George included, keep full access; other accounts get `EACCES` at `connect(2)`. Rollback: remove both `50-endo-restrict.conf` files, `systemctl daemon-reload`, then the same stop and start.
+
+**Route B: daemon configuration (socket activation off).** In `/etc/libvirt/libvirtd.conf` set `unix_sock_group = "libvirt"`, `unix_sock_ro_perms = "0770"` and `unix_sock_rw_perms = "0770"`, leaving `unix_sock_admin_perms` at its 0700 default. Then:
+
+```sh
+set -eu
+printf 'LIBVIRTD_ARGS=""\n' > /etc/conf.d/libvirtd     # drop --timeout 120: nothing would restart an idle-exited daemon
+systemctl stop libvirtd.service libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket
+systemctl mask libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket   # disable is not enough: libvirtd.service Wants= them
+systemctl enable --now libvirtd.service
+stat -c '%n %a %U:%G' /run/libvirt/libvirt-sock /run/libvirt/libvirt-sock-ro   # expect 770 root:libvirt each
+```
+
+`/etc/conf.d/libvirtd` is the unit's `EnvironmentFile=`, which is read after its `Environment=` line and so overrides it. Downside: libvirtd then starts eagerly at boot and runs permanently, with no idle exit; the masks diverge from the distro's defaults and persist across package upgrades. Rollback: unmask and re-enable the three sockets, disable the service, revert `libvirtd.conf`, delete `/etc/conf.d/libvirtd`, and stop then start as in Route A.
+
+**If the host later migrates to modular libvirt** (it has not): `libvirt-sock` is then served by `virtproxyd.socket` (with `virtproxyd-ro.socket`), and each driver has its own `virtqemud.socket`, `virtnetworkd.socket`, `virtstoraged.socket` and so on, each shipped with `SocketMode=0666` here. The same logic applies per unit: a drop-in per read-write and read-only socket, then stop that daemon's service with its sockets and start the sockets again; for Route B, the `unix_sock_*` settings in each daemon's own `virt*d.conf`. The gate already checks those sockets (PROTOCOL.md A4).
+
+**Afterwards.** From a fresh login of the restricted agent account, `audit.ts` must report `not-writable` for every daemon socket and `h0: true` with the remaining H0 conditions. That is still a necessary check, not the workstation result: the IA1–IA4 matrix on the workstation needs its own approved run.

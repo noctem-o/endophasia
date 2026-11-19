@@ -166,3 +166,9 @@ tar to the out disk with its size and digest, re-read from the device. On the ho
 guest's; evidence copied into this directory with separate manifests. Then poweroff, the analysis boot (§8), poweroff, `host.sh
 teardown` (overlay, base image, seed, stage/out disks, FIFOs, console log), and checks that no QEMU process, no endo13 path and no new
 listener remain. Nothing on the workstation changes; there is nothing to roll back outside `~/.capy/work/endo13`.
+
+## Amendment 1 (before any guest boot of the frozen code)
+
+The first `host.sh stage` of `c84981f4` failed on the host: the git bundle is 97.9 MB and `host.sh` truncated the stage disk to a
+fixed 64 MiB, cutting the tar (`tar: Unexpected EOF`). Nothing was booted with it; the broken stage.img was overwritten. Fix:
+round the disk up to the next MiB (`truncate -s %1M`) instead of a fixed size. No criterion, guest script or pin changed.

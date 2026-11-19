@@ -12,10 +12,10 @@ stage)
   c=$2; t=$(mktemp -d "$W/stage.XXXX")
   [ "$(git -C "$REPO" rev-parse develop-verify-trust-004)" = "$c" ] || { echo "branch tip is not $c" >&2; exit 65; }
   git -C "$REPO" bundle create "$t/repo.bundle" develop-verify-trust-004 2>/dev/null
-  git -C "$REPO" bundle verify "$t/repo.bundle" >/dev/null
+  git -C "$REPO" bundle verify "$t/repo.bundle" >/dev/null 2>&1
   echo "$c" > "$t/commit"
   tar --format=pax --numeric-owner --owner=0 --group=0 -cf "$W/vm/stage.img" -C "$t" repo.bundle commit
-  truncate -s 64M "$W/vm/stage.img"; rm -rf "$t"
+  truncate -s %1M "$W/vm/stage.img"; rm -rf "$t"
   rm -f "$W/vm/out.img"; truncate -s 2G "$W/vm/out.img"
   sha256sum "$W/vm/stage.img"; tar -tvf "$W/vm/stage.img" ;;
 collect)

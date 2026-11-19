@@ -29,10 +29,13 @@ start_run() { # start_run <k>: the agent's installed run, in the background
   systemd-run --quiet --collect --unit="endoagent-run-$1" --uid=endoagent --gid=endoagent -p PAMName=login \
     -p StandardOutput=file:"$OUT/run-$1.out" -p StandardError=file:"$OUT/run-$1.err" -p WorkingDirectory=/home/endoagent \
     /usr/bin/env -i PATH=/usr/bin HOME=/home/endoagent LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/1500 \
-    /usr/bin/node "$SRC/research/develop-verify-trust-002/rehearsal.ts" run "/home/endoagent/dvt/installed-$1" --commit "$COMMIT" --target installed
+    /usr/bin/node "$SRC/research/develop-verify-trust-002/rehearsal.ts" run "/home/endoagent/dvt/installed-$1" --commit "$COMMIT" --target installed || return 1
+  invocation=$(systemctl show --property=InvocationID --value "endoagent-run-$1.service")
+  [[ $invocation =~ ^[0-9a-f]{32}$ ]] || { stop_unit "endoagent-run-$1.service"; return 1; }
 }
 run_status() { # the run's exit status from the system journal (the transient unit is gone once it ends); unknown is not a status
-  local j; j=$(journalctl -q -o cat -u "endoagent-run-$1.service" 2>/dev/null)
+  local j; j=$(journalctl --boot --invocation="$invocation" -q -o cat -u "endoagent-run-$1.service" _PID=1) || { echo unknown; return; }
+  if grep -Eq 'code=(killed|dumped)|Failed with result' <<<"$j"; then echo failed; return; fi
   if grep -q 'Main process exited, code=exited, status=' <<<"$j"; then sed -n 's/.*Main process exited, code=exited, status=\([0-9]*\).*/\1/p' <<<"$j" | tail -n 1
   elif grep -q 'Deactivated successfully' <<<"$j"; then echo 0
   else echo unknown; fi
@@ -67,13 +70,13 @@ on_prompts() {
   local k=$1 log="$OUT/run-$1.out"
   if [ "$traced" = no ] && grep -q 'installed run; installation' "$log" 2>/dev/null; then
     traced=yes; local main; main=$(systemctl show -p MainPID --value "endoagent-run-$k.service")
-    systemd-run --quiet --collect --unit="operator-strace-$k" /usr/bin/strace -f -qq -Z -o "$OUT/run-$k.strace" -p "$main"
-    log_exit "strace attached to $main"
+    systemd-run --quiet --collect --unit="operator-strace-$k" /usr/bin/strace -f -qq -Z -o "$OUT/run-$k.strace" -p "$main" || return 1
+    log_exit "strace requested for $main; attachment not established by launch"
   fi
   if [ "$t10" = no ] && grep -q '^T10: interrupt' "$log" 2>/dev/null; then
     t10=yes
     { echo "# T10 prompt at $(date -u +%FT%TZ); verifier processes:"; ps -o pid,ppid,uid,user,etimes,cmd -u endo-verify-002; } > "$OUT/run-$k-T10-ps.txt"
-    probe "live-$k" $(pgrep -u endo-verify-002 | tr '\n' ' ')
+    probe "live-$k" $(pgrep -u endo-verify-002 | tr '\n' ' ') || return 1
     echo "# dedicated guest verifier instance(s) confirmed: $(pgrep -u endo-verify-002 -f 'verifier.ts serve' | tr '\n' ' '); acting: pkill -KILL -u endo-verify-002 -f 'verifier.ts serve'" >> "$OUT/run-$k-T10-ps.txt"
     pkill -KILL -u endo-verify-002 -f 'verifier.ts serve'; echo "pkill exit=$?" >> "$OUT/run-$k-T10-ps.txt"
   fi
@@ -90,7 +93,7 @@ wait_run() {
   traced=no; t10=no; e3=no
   for ((i = 0; i < POLL_BUDGET; i++)); do
     sleep 1
-    on_prompts "$k"
+    on_prompts "$k" || { log_exit "measurement failed during run-$k"; stop_unit "$unit"; return 1; }
     unit_active "$unit" || { log_exit "run-$k ended after $((i + 1)) polls; t10=$t10 e3=$e3"; return 0; }
   done
   stop_unit "$unit"
@@ -116,20 +119,21 @@ collect() {
 }
 
 main() {
-  COMMIT=$(cat /root/stage/commit)
+  COMMIT=$(cat /root/stage/commit) || return 3
+  [[ $COMMIT =~ ^[0-9a-f]{40}$ && $COMMIT == "$(git -C "$SRC" rev-parse --verify HEAD)" ]] || { echo "invalid or mismatched staged commit"; return 3; }
   mkdir -p "$OUT"
   echo "== verifier principal before testing"; inspect inspect-before.txt
   echo "== first stop (as endoagent)"
   first_stop || { log_exit "ABORT: first stop failed; nothing else runs"; return 3; }
   echo "== operator policy review (root view)"; policy_review
-  echo "== probe while idle (verifier manager only)"; probe idle
+  echo "== passive census while idle"; probe idle || { log_exit "ABORT: idle census failed"; return 3; }
   for k in 1 2; do
     echo "== installed run $k"
     start_run "$k" || { log_exit "ABORT: run-$k did not start"; return 4; }
     wait_run "$k" || { log_exit "ABORT: run-$k did not end in time; no further run, no trusted read"; return 5; }
     local status; status=$(run_status "$k")
     log_exit "run-$k ExecMainStatus=$status"
-    case "$status" in 0 | 1) ;; *) log_exit "ABORT: run-$k ended with status $status"; return 6 ;; esac
+    case "$status" in 0) ;; *) log_exit "ABORT: run-$k ended with status $status"; return 6 ;; esac
   done
   local reader_rc=0
   echo "== trusted read (root)"; trusted_read || reader_rc=$?

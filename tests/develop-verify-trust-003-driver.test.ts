@@ -24,6 +24,8 @@ function drive(o: {
 	active?: number;
 	stopWorks?: boolean;
 	status?: string;
+	commit?: string;
+	promptExit?: number;
 	readerExit?: number;
 	name: string;
 }) {
@@ -49,13 +51,14 @@ agent() {
 }
 polls=0
 start_run() { rec start_run "$1"; polls=0; stopped=no; }
-on_prompts() { :; }
+on_prompts() { return ${o.promptExit ?? 0}; }
 unit_active() { polls=$((polls + 1)); if [ "$stopped" = yes ]; then [ ${o.stopWorks === false ? "yes" : "no"} = yes ]; return; fi; [ ${o.active ?? 1} -lt 0 ] || [ $polls -le ${o.active ?? 1} ]; }
 stop_unit() { rec stop_unit "$1"; stopped=yes; }
 run_status() { echo ${o.status ?? 0}; }
 trusted_read() { rec trusted_read; return ${o.readerExit ?? 0}; }
 collect() { rec collect; }
-cat() { if [ "$1" = /root/stage/commit ]; then echo deadbeef; else command cat "$@"; fi; }
+git() { echo 0123456789012345678901234567890123456789; }
+cat() { if [ "$1" = /root/stage/commit ]; then echo '${o.commit ?? "0123456789012345678901234567890123456789"}'; else command cat "$@"; fi; }
 main; echo "main=$?" >> ${calls}
 `;
 	const r = spawnSync("/usr/bin/bash", ["-c", script], { encoding: "utf8", env: { PATH: "/usr/bin" } });
@@ -135,6 +138,34 @@ describe("matrix driver: a failed first stop stops everything (review 4627690170
 });
 
 describe("matrix driver: the polling budget (review 4627690189)", () => {
+	it("reads only this invocation's manager messages and rejects a signal even beside a success line", () => {
+		const r = spawnSync(
+			"bash",
+			[
+				"-c",
+				`
+MATRIX_LIB=1 source "$1"
+invocation=abababababababababababababababab
+journalctl() { printf '%s\\n' "$@" >&2; echo 'Main process exited, code=killed, status=9/KILL'; echo 'Deactivated successfully'; }
+run_status 1`,
+				"--",
+				MATRIX,
+			],
+			{ encoding: "utf8" },
+		);
+		expect(r.stdout.trim()).toBe("failed");
+		expect(r.stderr.split("\n")).toEqual(
+			expect.arrayContaining(["--boot", "--invocation=abababababababababababababababab", "_PID=1"]),
+		);
+	});
+	it("rejects a staged commit that is not the checkout", () => {
+		expect(drive({ name: "bad-pin", commit: "f".repeat(40) }).recorded).toEqual(["main=3"]);
+	});
+	it("aborts on nonzero rehearsal status and on lost measurement", () => {
+		expect(drive({ name: "failed-run", status: "1" }).recorded.at(-1)).toBe("main=6");
+		const failed = drive({ name: "failed-probe", promptExit: 1 }).recorded;
+		expect(failed.slice(-2)).toEqual(["stop_unit endoagent-run-1.service", "main=5"]);
+	});
 	it("preserves a failed trusted read after collecting the evidence", () => {
 		const d = drive({ name: "reader-failure", readerExit: 1 });
 		expect(d.recorded.slice(-3)).toEqual(["trusted_read", "collect", "main=1"]);

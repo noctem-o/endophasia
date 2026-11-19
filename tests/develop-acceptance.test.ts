@@ -3,10 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { acceptance } from "../research/develop-acceptance-001/report.ts";
+import { acceptance, observedClass } from "../research/develop-acceptance-001/report.ts";
 
 describe("fixture replay only: the acceptance reader", () => {
 	const roots: string[] = [];
+	it("does not classify a declared model as an observed exchange", () => {
+		expect(observedClass(true, null, false)).toBe("unknown");
+		expect(observedClass(true, null, true)).toBe("isolated-process observation");
+		const recording = JSON.parse(
+			readFileSync(new URL("../research/develop-acceptance-001/evidence/pi/record.json", import.meta.url), "utf8"),
+		).recording;
+		expect(observedClass(true, recording, true)).toBe("model-connected observation");
+		expect(observedClass(false, recording, false)).toBe("unknown");
+		expect(observedClass(true, { ...recording, exchanges: [] }, false)).toBe("unknown");
+	});
 	afterEach(() => {
 		for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true });
 	});

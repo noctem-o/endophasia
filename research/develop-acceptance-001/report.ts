@@ -3,13 +3,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ENDO_EVALUATOR_DRIVER_SHA256_V0, loadEvaluatorV0 } from "../../adapters/sandbox/evaluator.ts";
+import { successfulExchangeV0 } from "../../adapters/sandbox/model-evidence.ts";
 import { exportSubmissionV0 } from "../../adapters/sandbox/submission.ts";
 import { reportProtectedExperimentV0 } from "../../cli/experiment-protected.ts";
+import type { EndoProtectedRecordingV1 } from "../../protocol/protected-experiment.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	readEndoProtectedRunFileV0,
 	readEndoProtectedTrialFileV0,
 } from "../../runtime/contracts/protected-experiment.ts";
+
+export function observedClass(modelAccess: boolean, recording: EndoProtectedRecordingV1 | null, scoped: boolean) {
+	if (modelAccess && recording?.exchanges.some(successfulExchangeV0)) return "model-connected observation";
+	return scoped ? "isolated-process observation" : "unknown";
+}
 
 export function acceptance(directory: string, pin: string) {
 	const run = readEndoProtectedRunFileV0(join(directory, "protected-run.json"));
@@ -79,11 +86,13 @@ export function acceptance(directory: string, pin: string) {
 		r.agent.termination === "confirmed" &&
 		r.evaluation.outputSha256 !== null &&
 		r.evaluation.cases?.total === checks.evaluator.definition.cases.length;
+	const recording = "recording" in r ? r.recording : null;
 	return {
-		evidenceClass:
-			spec.schemaVersion === "endo.protected-experiment-spec.v1"
-				? "model-connected observation"
-				: "isolated-process observation",
+		evidenceClass: observedClass(
+			report.modelAccess !== undefined,
+			recording,
+			r.preflight.status === "established" && r.agent.scope?.established === true,
+		),
 		decision: "operator only",
 		authority: "experimental, non-authoritative",
 		recommendation: !complete ? "incomplete" : cell.passed === 1 ? "review candidate" : "reject candidate",
@@ -99,7 +108,7 @@ export function acceptance(directory: string, pin: string) {
 		hostAgent: r.agent,
 		providerReports: "Not used for grading or tool attribution",
 		model: report.modelAccess ?? null,
-		recording: r.schemaVersion === "endo.protected-trial.v1" ? r.recording : null,
+		recording,
 		submission: r.submission,
 		evaluatedCandidateSha256: r.evaluation.cases === null ? null : checkedCandidate,
 		evaluation: r.evaluation,

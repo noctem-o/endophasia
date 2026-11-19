@@ -110,11 +110,17 @@ isolation gates. Decide only whether to retain this experimental slice.
   reported one pre-existing unused-parameter warning at
   `tests/endo-cockpit-eighteenth-review.test.ts:674`.
 - `npm test -- tests/develop-acceptance.test.ts tests/protected-{records,model-records}.test.ts`:
-  42 passed, zero skipped (8 fixture reader tests plus 34 existing record and
+  43 passed, zero skipped (9 fixture reader tests plus 34 existing record and
   local relay controls, no real model in those suites).
 - `ENDO_REQUIRE_ISOLATION=1 npm test -- tests/protected-isolation.test.ts -t 'has the required real sandbox host|kills a timed-out agent|fails a submission that forges'`:
-  3 passed, 45 excluded by name; real kernel tests, not mocks. The complete
-  suite was not run.
+  3 passed, 45 excluded by name. Those 45 in `tests/protected-isolation.test.ts`
+  include refusal of unsafe submissions, evaluator/profile identity, lifetime
+  of scopes and resumed attempts, and sealed-record integrity. The unfiltered
+  workstation run executed all 48 in that file: 48 passed, zero skipped.
+- Full workstation suite: `ENDO_REQUIRE_ISOLATION=1 npm test -- --maxWorkers=4`
+  in a disposable HOME and clean environment with the user manager available.
+  **6,962 passed, 97 skipped, zero failed** across 278 passing and 11 skipped
+  files in 645.31 s. Skips elsewhere are not evidence for the skipped behavior.
 - During development the spec validator refused two generator drafts (ID
   prefix; v1-only fields in v0). Neither refusal launched that condition.
   One fixture mutation initially failed on a read-only test copy; writing

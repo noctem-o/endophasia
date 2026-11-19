@@ -1,0 +1,79 @@
+{
+  "evidenceClass": "isolated-process observation",
+  "decision": "operator only",
+  "authority": "experimental, non-authoritative",
+  "recommendation": "reject candidate",
+  "run": {
+    "id": "endo.experiment.acceptance-ad93ca46-7278-4672-b5b9-c046d16c441e",
+    "specSha256": "9f8e2e3b7fc0ce9dfd41cd79a0848c0f910d2dccf14b91b02fef60d573f39620",
+    "seed": 20261109
+  },
+  "trial": {
+    "position": 0,
+    "task": "strict-positive",
+    "condition": "unchanged",
+    "trial": 0,
+    "attempt": 1,
+    "retryOf": null
+  },
+  "recordSha256": "91de415723bf2d3c90beab6570cf2be686f681249b4983fc22e4b74d48698756",
+  "task": "strict-positive",
+  "objective": "Read count.mjs. Fix countPositive(values) to count only strictly positive numbers, excluding zero. Use edit, then stop.",
+  "startingWorkspaceSha256": "421b2c4caf3de50ec8dc5ac97cbe6f4aae9d98704ab0b8795650e22e389d7d40",
+  "condition": [
+    "/usr/bin/node",
+    "/agent/fixture.mjs"
+  ],
+  "profileSha256": "34c1a9fad470eb849cbc7372c053f6f4be7054747004196037adb093e63d5d72",
+  "preflight": "established",
+  "hostAgent": {
+    "status": "completed",
+    "exitCode": 0,
+    "signal": null,
+    "durationMs": 68,
+    "termination": "confirmed",
+    "outputSha256": "c26de83abdc9496cd1301470918ec39ecca1cf389ef0ae1c6504da1800d1c431",
+    "scope": {
+      "unit": "endo-sandbox-c03001296111122e09f56a89",
+      "established": true,
+      "ended": "confirmed"
+    }
+  },
+  "providerReports": "Not used for grading or tool attribution",
+  "model": null,
+  "recording": null,
+  "submission": {
+    "status": "collected",
+    "files": [
+      {
+        "path": "count.mjs",
+        "bytes": 84,
+        "sha256": "05cef43355be22ef5f197ab94f2cb03c939e3084677ad3fe63cc35ca6d62ef43"
+      }
+    ],
+    "sha256": "185eb62c6d804be07ab7ac17317cebe0c67a4d8e9f3360a963d8131b62f4b1e8",
+    "refusals": []
+  },
+  "evaluatedCandidateSha256": "185eb62c6d804be07ab7ac17317cebe0c67a4d8e9f3360a963d8131b62f4b1e8",
+  "evaluation": {
+    "status": "failed",
+    "definitionSha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa",
+    "driverSha256": "05996836f46b0e0449d0f11e810b3146c329b3282298f21de318dd3be0f6e3f2",
+    "cases": {
+      "total": 5,
+      "passed": 3
+    },
+    "reason": null,
+    "outputSha256": "e76df0026c54b317edf0ec497ad68979662fe52f8abcf3be60ab253f82616c72"
+  },
+  "qualification": [
+    {
+      "task": "strict-positive",
+      "definitionSha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa",
+      "driverSha256": "05996836f46b0e0449d0f11e810b3146c329b3282298f21de318dd3be0f6e3f2",
+      "reference": "passed",
+      "negative": "failed"
+    }
+  ],
+  "invalidating": []
+}

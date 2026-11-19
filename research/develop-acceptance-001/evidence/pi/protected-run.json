@@ -1,0 +1,112 @@
+{
+	"createdAt": "2026-11-19T06:08:57.107Z",
+	"evaluators": [
+		{
+			"definitionSha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa",
+			"driverSha256": "05996836f46b0e0449d0f11e810b3146c329b3282298f21de318dd3be0f6e3f2",
+			"negative": "failed",
+			"reference": "passed",
+			"task": "strict-positive"
+		}
+	],
+	"isolation": {
+		"containment": {
+			"mechanism": "systemd-user-scope",
+			"systemdRunSha256": "aef6c1677ae93f9d44d32dbbd12bb5958854013806b207599843bbc520010865",
+			"tasksMax": 512,
+			"version": "262"
+		},
+		"executableSha256": "33516b9cd1fa6432307ad71f23765fa30604b0a8d769dac0d2ba054e85aeec83",
+		"mechanism": "bubblewrap",
+		"version": "0.13.1"
+	},
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"plan": [
+		{
+			"condition": "pi",
+			"position": 0,
+			"task": "strict-positive",
+			"trial": 0
+		}
+	],
+	"profiles": [
+		{
+			"condition": "pi",
+			"sha256": "59f8a8d6165b310325aae14f3834e49d5917e8637ee1f1d0cdd237466a7559ea"
+		}
+	],
+	"runner": "endo-protected-runner.2",
+	"schemaVersion": "endo.protected-run.v1",
+	"seed": 20261109,
+	"seedSource": "spec",
+	"spec": {
+		"conditions": [
+			{
+				"agent": {
+					"argv": [
+						"/usr/bin/node",
+						"/agent/launch.mjs",
+						"--read-edit-pilot"
+					],
+					"directory": "/tmp/endo7.9EmSzO1C/runs/pi/agent"
+				},
+				"description": "Pi, with the declared model through the relay",
+				"id": "pi"
+			}
+		],
+		"description": "Read count.mjs. Fix countPositive(values) to count only strictly positive numbers, excluding zero. Use edit, then stop.",
+		"id": "endo.experiment.acceptance-f4c808e8-559c-4364-ad61-f00ae751d3dd",
+		"limits": {
+			"agentTimeoutMs": 120000,
+			"cpuQuotaPercent": 400,
+			"evaluationTimeoutMs": 30000,
+			"maxFileBytes": 65536,
+			"maxTotalBytes": 262144,
+			"memoryMaxBytes": 2147483648,
+			"outputBytes": 4194304,
+			"tmpfsBytes": 67108864
+		},
+		"modelAccess": {
+			"maxCompletionTokens": 512,
+			"maxConnections": 8,
+			"maxExchanges": 5,
+			"maxRequestBytes": 98304,
+			"maxTotalConnections": 1024,
+			"maxTransferredBytes": 2097152,
+			"minExchanges": 1,
+			"model": "Ornith-1.5-9B-Q8_0",
+			"routes": [
+				{
+					"method": "POST",
+					"path": "/v1/chat/completions"
+				}
+			],
+			"upstream": "http://127.0.0.1:8090"
+		},
+		"runtime": {
+			"aliases": [],
+			"executables": [
+				"/usr/bin/node"
+			]
+		},
+		"schemaVersion": "endo.protected-experiment-spec.v1",
+		"seed": 20261109,
+		"tasks": [
+			{
+				"evaluator": {
+					"file": "/home/noctem/.capy/worktrees/jam_01M7S6KZG2C2RDPRP5JQ26RCF4/endophasia/research/develop-acceptance-001/checks/evaluator.json",
+					"sha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa"
+				},
+				"id": "strict-positive",
+				"submission": [
+					"count.mjs"
+				],
+				"workspace": {
+					"count.mjs": "export function countPositive(values) { return values.filter(x => x >= 0).length; }\n"
+				}
+			}
+		],
+		"trials": 1
+	},
+	"specSha256": "48de9faa2770c4e5cc9482a4baa85bf865303c959242567f75d9afda8c5be71e"
+}

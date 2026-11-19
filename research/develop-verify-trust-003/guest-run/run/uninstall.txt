@@ -1,0 +1,2 @@
+uninstall.sh: records and journals saved to /root/trust003/verifier-records.tar.gz
+uninstall.sh: removed completely

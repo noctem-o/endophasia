@@ -1,0 +1,14 @@
+node:fs:1956
+  const result = binding.readdir(
+                         ^
+
+Error: ENOENT: no such file or directory, scandir '/var/lib/endo-verify-002/records'
+    at readdirSync (node:fs:1956:26)
+    at file:///opt/trust003/src/research/develop-verify-trust-003/guest/read-records.ts:53:20 {
+  errno: -2,
+  code: 'ENOENT',
+  syscall: 'scandir',
+  path: '/var/lib/endo-verify-002/records'
+}
+
+Node.js v26.13.1

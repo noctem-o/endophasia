@@ -1,0 +1,7 @@
+# Amendment 3: reanalysis without the staged commit
+
+Amendment 1's reanalysis rebuilt the guest installation from Git objects at the staged commit `c3718f1d`. A checkout of the reviewed head alone (shallow, or after a squash) has no such objects, so the reanalysis stopped before reading any record. That made the result reproducible only where the development history happened to survive.
+
+[reanalysis/installation-c3718f1d.tar](reanalysis/installation-c3718f1d.tar) now retains that installation tree. It was produced by the same `build` from `c3718f1d` and written as a fixed-order tar with fixed times and owners. It is not guest output, and nothing in the historical run was changed. Reanalysis accepts it only when three independent checks hold: the tar's SHA-256 is the one pinned in `reanalyze.ts`; `installation.json` hashes to `7802fb0e…`, the installation id the guest inspected and every archived record names; and the extracted file set equals the manifest's list, each file matching its listed digest.
+
+The CI reader job runs the reanalysis from its depth-one checkout, after confirming the staged commit is absent, and requires the output to equal the committed [reanalysis.json](reanalysis/reanalysis.json). The per-case launch evidence that the grader now records is omitted from that output, as duration already was. A graded case always launched: a refused launch makes the grade incomplete instead.

@@ -1,0 +1,64 @@
+# Cleanup verification, 2026-11-19T11:05:14Z, host 7.3.4-arch1-2, uid 1000
+## before deletion
+2.4G	/home/noctem/.capy/work/endo11
+/home/noctem/.capy/work/endo11:
+total 12
+drwx------  7 noctem noctem   91 Nov 19 11:03 .
+drwxr-xr-x 10 noctem noctem 4096 Nov 19 10:16 ..
+drwxr-xr-x  2 noctem noctem   27 Nov 19 10:22 bin
+drwxr-xr-x  3 noctem noctem   17 Nov 19 11:03 evidence
+drwx------  2 noctem noctem 4096 Nov 19 10:16 img
+drwxr-xr-x  2 noctem noctem   51 Nov 19 10:44 stage
+drwxr-xr-x  3 noctem noctem 4096 Nov 19 11:03 vm
+
+/home/noctem/.capy/work/endo11/img:
+total 563200
+drwx------ 2 noctem noctem      4096 Nov 19 10:16 .
+drwx------ 7 noctem noctem        91 Nov 19 11:03 ..
+-r-------- 1 noctem noctem 576697856 Nov 19 10:20 Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2
+-rw------- 1 noctem noctem       115 Nov 19 10:20 Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2.SHA256.alt
+-rw------- 1 noctem noctem       115 Nov 19 10:16 Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2.SHA256.geo
+-rw------- 1 noctem noctem       119 Nov 19 10:16 Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2.sig
+
+/home/noctem/.capy/work/endo11/vm:
+total 1776544
+drwxr-xr-x 3 noctem noctem       4096 Nov 19 11:03 .
+drwx------ 7 noctem noctem         91 Nov 19 11:03 ..
+-rw-r--r-- 1 noctem noctem        795 Nov 19 10:22 boot.sh
+prw------- 1 noctem noctem          0 Nov 19 11:03 con.in
+prw------- 1 noctem noctem          0 Nov 19 11:03 con.out
+-rw------- 1 noctem noctem     163819 Nov 19 11:03 console.log
+-rw------- 1 noctem noctem 2147483648 Nov 19 11:03 out.img
+-rw------- 1 noctem noctem 1613037568 Nov 19 11:03 overlay.qcow2
+-rw-r--r-- 1 noctem noctem          0 Nov 19 10:45 qemu.stderr
+drwxr-xr-x 2 noctem noctem         40 Nov 19 10:22 seed
+-rw------- 1 noctem noctem     378880 Nov 19 10:22 seed.iso
+-rw-r--r-- 1 noctem noctem  100663296 Nov 19 10:45 stage.img
+-rw------- 1 noctem noctem         76 Nov 19 10:45 stage.img.sha256
+Snapshot list:
+ID      TAG               VM_SIZE                DATE        VM_CLOCK     ICOUNT
+1       provisioned           0 B 2026-11-19 10:34:09  0000:00:00.000          0
+## after deletion
+total 164
+drwxr-xr-x  9 noctem noctem   4096 Nov 19 11:05 .
+drwx------ 12 noctem noctem   4096 Nov 18 17:18 ..
+drwxr-xr-x 22 noctem noctem   4096 Nov 19 08:19 endo10
+-rw-r--r--  1 noctem noctem 143360 Nov 19 08:18 endo10-pkg.tar
+drwxr-xr-x  4 noctem noctem     31 Nov 19 08:18 endo10-pkgx
+-rw-r--r--  1 noctem noctem    424 Nov 19 08:16 endo10-verify.mjs
+drwxr-xr-x  2 noctem noctem     66 Nov 18 06:05 endo4-handoff
+-rw-r--r--  1 noctem noctem     22 Nov 18 05:49 endo4-pilot-path
+drwx------  3 noctem noctem     67 Nov 19 06:18 endo7
+drwx------  2 noctem noctem      6 Nov 19 08:08 endo9
+drwxr-xr-x  3 noctem noctem   4096 Nov 19 06:55 private-activity
+drwxr-xr-x  2 noctem noctem    135 Nov 18 17:26 tool-visibility
+endo11 work directory: absent
+## qemu processes
+none
+## processes referencing endo11
+none
+## listeners owned by this user (ss -lntup / -lx)
+no qemu inet listener
+no qemu/endo11 unix listener
+## FIFOs / files left under ~/.capy/work matching endo11
+none

@@ -13,6 +13,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  trust-reader:
+    name: TRUST reader (real sandbox)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install the pinned namespace-capable sandbox in the disposable runner
+        env:
+          BWRAP_COMMIT: 9ca3b05ec787acfb4b17bed37db5719fa777834f
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build libcap-dev
+          git init -q "$RUNNER_TEMP/bwrap"
+          git -C "$RUNNER_TEMP/bwrap" fetch --depth 1 https://github.com/containers/bubblewrap "$BWRAP_COMMIT"
+          git -C "$RUNNER_TEMP/bwrap" checkout -q --detach FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/bwrap" rev-parse HEAD)" = "$BWRAP_COMMIT"
+          meson setup "$RUNNER_TEMP/bwrap/build" "$RUNNER_TEMP/bwrap" -Dtests=false -Dman=disabled -Dbash_completion=disabled -Dzsh_completion=disabled
+          ninja -C "$RUNNER_TEMP/bwrap/build" bwrap
+          sudo install -m 0755 "$RUNNER_TEMP/bwrap/build/bwrap" /usr/bin/bwrap
+          sudo install -m 0755 "$(command -v node)" /usr/bin/node
+      - name: Check the actual reader namespace profile
+        run: |
+          uname -sr
+          /usr/bin/bwrap --version
+          for helper in newuidmap newgidmap; do command -v "$helper" || echo "$helper not installed"; done
+          echo 'Delegated-UID fixture skipped on this runner; it requires the opted-in Arch device. The seven sandbox cases are required.'
+          /usr/bin/bwrap --unshare-all --unshare-user --disable-userns --assert-userns-disabled --die-with-parent --new-session --cap-drop ALL --clearenv --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 --remount-ro / -- /usr/bin/true
+      - run: npm ci
+      - run: npx vitest run tests/develop-verify-trust-003-reader.test.ts
+        env:
+          ENDO_REQUIRE_TRUST_SANDBOX: "1"
+      - name: Reanalyse the guest archive from this shallow checkout alone
+        run: |
+          test "$(git rev-parse --is-shallow-repository)" = true
+          if git cat-file -e 'c3718f1d20a0777742cb72d6a9dfd7a44ce938fa^{commit}' 2>/dev/null; then
+            echo 'the staged commit is present, so this step would not show reanalysis without it'; exit 1
+          fi
+          D=research/develop-verify-trust-003
+          node "$D/guest/reanalyze.ts" "$D/guest-run" "$RUNNER_TEMP/reanalysis.json"
+          diff <(jq -S . "$D/guest-run/reanalysis/reanalysis.json") <(jq -S . "$RUNNER_TEMP/reanalysis.json")
+
   check:
     name: Typecheck and lint
     runs-on: ubuntu-24.04

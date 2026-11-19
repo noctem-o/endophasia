@@ -1,0 +1,14 @@
+identity exit=0
+gate exit=0
+sudo-n exit=0
+probe-idle exit=0
+strace attached to 1161
+probe-live-1 exit=0
+Result=success
+ExecMainStatus=0
+run-1 t10=yes e3=yes
+strace attached to 18427
+probe-live-2 exit=0
+Result=success
+ExecMainStatus=0
+run-2 t10=yes e3=yes

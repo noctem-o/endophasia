@@ -1,0 +1,52 @@
+# Read-only inspection of libvirt socket ownership on archlinux, 2026-11-19T09:34:48Z. No unit, file or daemon was changed.
+libvirt 1:12.9.0-1
+
+## systemctl show (socket units)
+libvirtd.socket ActiveState=active UnitFileState=enabled SocketGroup= SocketMode=0666 Listen=/run/libvirt/libvirt-sock (Stream) 
+libvirtd-ro.socket ActiveState=active UnitFileState=enabled SocketGroup= SocketMode=0666 Listen=/run/libvirt/libvirt-sock-ro (Stream) 
+libvirtd-admin.socket ActiveState=active UnitFileState=enabled SocketGroup= SocketMode=0600 Listen=/run/libvirt/libvirt-admin-sock (Stream) 
+virtlogd.socket ActiveState=active UnitFileState=disabled SocketGroup= SocketMode=0600 Listen=/run/libvirt/virtlogd-sock (Stream) 
+virtlockd.socket ActiveState=active UnitFileState=disabled SocketGroup= SocketMode=0600 Listen=/run/libvirt/virtlockd-sock (Stream) 
+virtproxyd.socket ActiveState=inactive UnitFileState=disabled SocketGroup= SocketMode=0666 Listen=/run/libvirt/libvirt-sock (Stream) 
+virtqemud.socket ActiveState=inactive UnitFileState=disabled SocketGroup= SocketMode=0666 Listen=/run/libvirt/virtqemud-sock (Stream) 
+virtnetworkd.socket ActiveState=inactive UnitFileState=disabled SocketGroup= SocketMode=0666 Listen=/run/libvirt/virtnetworkd-sock (Stream) 
+virtstoraged.socket ActiveState=inactive UnitFileState=disabled SocketGroup= SocketMode=0666 Listen=/run/libvirt/virtstoraged-sock (Stream) 
+
+## daemon services
+libvirtd.service ActiveState=active UnitFileState=disabled KillMode=process 
+virtproxyd.service ActiveState=inactive UnitFileState=disabled KillMode=control-group 
+virtqemud.service ActiveState=inactive UnitFileState=disabled KillMode=process 
+virtnetworkd.service ActiveState=inactive UnitFileState=disabled KillMode=process 
+virtstoraged.service ActiveState=inactive UnitFileState=disabled KillMode=control-group 
+Environment="LIBVIRTD_ARGS=--timeout 120" SECRETS_ENCRYPTION_KEY=/run/credentials/libvirtd.service/secrets-encryption-key
+
+## drop-ins
+ls: cannot access '/etc/systemd/system/libvirtd*.d': No such file or directory
+ls: cannot access '/etc/systemd/system/virt*.d': No such file or directory
+
+## on-disk sockets
+/run/libvirt/common drwx------ 700 root:root
+/run/libvirt/hostdevmgr drwxr-xr-x 755 root:root
+/run/libvirt/interface drwx------ 700 root:root
+/run/libvirt/libvirt-admin-sock srw------- 600 root:root
+/run/libvirt/libvirt-sock srw-rw-rw- 666 root:root
+/run/libvirt/libvirt-sock-ro srw-rw-rw- 666 root:root
+/run/libvirt/lxc drwxr-xr-x 755 root:root
+/run/libvirt/network drwxr-xr-x 755 root:root
+/run/libvirt/nodedev drwx------ 700 root:root
+/run/libvirt/nwfilter drwx------ 700 root:root
+/run/libvirt/nwfilter-binding drwx------ 700 root:root
+/run/libvirt/qemu drwxr-xr-x 755 libvirt-qemu:libvirt-qemu
+/run/libvirt/secrets drwx------ 700 root:root
+/run/libvirt/storage drwxr-xr-x 755 root:root
+/run/libvirt/virtlockd-sock srw------- 600 root:root
+/run/libvirt/virtlogd-sock srw------- 600 root:root
+
+## /etc/libvirt/libvirtd.conf unix_sock_* lines (all commented)
+85:#unix_sock_group = "libvirt"
+95:#unix_sock_ro_perms = "0777"
+108:#unix_sock_rw_perms = "0770"
+117:#unix_sock_admin_perms = "0700"
+
+## libvirt processes at inspection time
+623067 /usr/bin/libvirtd --timeout 120

@@ -1,0 +1,26 @@
+DEVELOP-VERIFY-TRUST-002 installed run; installation 7802fb0ef678696f37627c83418398806a1f516ed1d3d74369204d00ca61a222; commit c3718f1d20a0777742cb72d6a9dfd7a44ce938fa
+truth: {"A":"correct","B":"incorrect(8)","D":"incorrect(1)","E":"incorrect(1)","P":"correct","S":"correct","X":"correct","M":"incorrect(15)"}
+held   T1: PASS/PASS, authoritative yes (null)   (expected PASS, authoritative yes)
+held   T2: FAIL/FAIL   (expected FAIL)
+held   T3: FAIL/FAIL; verifier environment clean: true   (expected FAIL; no hostile name in the verifier)
+held   T4: B FAIL, A PASS; markers 2, from a verifier 0; verifier environment clean: true   (expected B FAIL, A PASS; markers only from client processes)
+held   T5a: FAIL/FAIL; plain git shows A for B: true   (expected FAIL (B's own objects))
+held   T5b: BLOCKED object-missing   (expected BLOCKED object-missing)
+held   T5c: client object-unreadable; BLOCKED object-missing; marker absent   (expected BLOCKED object-missing; no marker)
+held   T6: tamper EACCES; FAIL ; authoritative yes   (expected tamper write EACCES; FAIL, auth yes)
+held   T7: code write EACCES; drop-in etc EACCES; operator's own written; FAIL/FAIL (null); authoritative yes   (expected writes fail; FAIL, auth yes)
+held   T8: (a) write EACCES, read UNKNOWN auth no (no-record: ENOENT); (b) auth no (not-root's: <W>/attacker); (c) link EACCES, read UNKNOWN (no-record: ENOENT)   (expected (a) EACCES; (b) refused; (c) EACCES)
+held   T9: UNKNOWN candidate-mismatch; consumer B FAIL; consumer A PASS   (expected candidate-mismatch; consumer verdict for B not PASS; for A PASS)
+T10: interrupt the instance now with the approved operator command; waiting up to 120 s
+held   T10: kill EPERM; first response none; interrupted INCOMPLETE (journal-without-record); retry PASS new id true; orphan work removed true; hang-up record PASS   (expected kill EPERM; interrupted INCOMPLETE; retry PASS under a new id; hang-up record PASS)
+held   T11: {"a":"service-unavailable: ENOENT"}   (expected BLOCKED each, never PASS)
+held   T12: P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]   (expected P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND])
+held   E1: BLOCKED unsupported-120000; BLOCKED unsupported-160000; BLOCKED unsupported-name   (expected BLOCKED unsupported-120000, unsupported-160000, unsupported-name)
+held   E2: A PASS, B FAIL, distinct true   (expected PASS and FAIL, distinct invocations)
+E3: restart the verifier's manager now with the approved operator command; waiting up to 120 s
+held   E3: stop not-applicable; INCOMPLETE (journal-without-record); next PASS; orphan collected by next true   (expected INCOMPLETE; the next instance removes the orphan)
+held   E4: D FAIL, E FAIL, S FAIL   (expected FAIL each)
+held   E5: {"big":"request-too-large","env":"request-invalid","argv":"request-invalid","expect":"request-invalid","unreferenced":"object-unreferenced","task":"task-unknown","junk":"request-invalid"}   (expected BLOCKED each, with its reason)
+held   E6: EACCES, EACCES, EPERM; run PASS   (expected EACCES, EACCES, EPERM)
+acceptance: {"IA1":true,"IA2":true,"IA3":true,"IA4":true}
+records: {"total":32,"forgedByAttacker":0,"authoritative":32,"authoritativeFalsePasses":[],"overwritten":[]}; wall 99311 ms

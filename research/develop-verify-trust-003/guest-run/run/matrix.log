@@ -1,0 +1,108 @@
+== verifier principal before testing
+== principal
+endo-verify-002:x:968:968:DEVELOP-VERIFY-TRUST-002 research verifier:/var/lib/endo-verify-002-home:/usr/bin/nologin
+uid=968(endo-verify-002) gid=968(endo-verify-002) groups=968(endo-verify-002)
+== linger
+State=lingering
+Linger=yes
+== processes
+    PID USER         ELAPSED   RSS CMD
+    578 endo-ve+       11:32 12540 /usr/lib/systemd/systemd --user
+    580 endo-ve+       11:32  3944 (sd-pam)
+== ownership
+drwxr-xr-x root:root /usr/local/lib/endo-verify-002
+-rw-r--r-- root:root /usr/local/lib/endo-verify-002/installation.json
+drwxr-x--- root:endo-verify-002 /usr/local/lib/endo-verify-002/oracle
+drwxr-xr-x endo-verify-002:endo-verify-002 /var/lib/endo-verify-002
+absent /var/lib/endo-verify-002/records
+absent /var/lib/endo-verify-002/work
+drwxr-xr-x root:root /var/lib/endo-verify-002-home
+drwxr-x--- endo-verify-002:endoagent /run/endo-verify-002
+srw-rw-rw- endo-verify-002:endo-verify-002 /run/endo-verify-002/verify.sock
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002.socket
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002@.service
+-rw-r--r-- root:root /etc/sysusers.d/endo-verify-002.conf
+-rw-r--r-- root:root /etc/tmpfiles.d/endo-verify-002.conf
+-rw-r--r-- root:root /var/lib/systemd/linger/endo-verify-002
+== first stop (as endoagent)
+identity exit=0
+uid=1500(endoagent) gid=1500(endoagent) groups=1500(endoagent)
+Uid:	1500	1500	1500	1500
+Gid:	1500	1500	1500	1500
+Groups:	1500 
+CapEff:	0000000000000000
+NoNewPrivs:	0
+Name=endoagent
+Remote=no
+Type=unspecified
+Class=background
+XDG_SESSION_ID=
+gate exit=0
+{"h0":true,"closure":true,"failing":[]}
+sudo-n exit=0
+sudo stdout: status=1
+sudo stderr: sudo: a password is required
+== operator policy review (root view)
+== probe while idle (verifier manager only)
+probe-idle exit=0
+{"held":true,"pids":[578,580],"broken":[{"invariant":"2-evaluator","op":"opendir","target":"/var/lib/endo-verify-002/work","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"invariant":"2-evaluator","op":"open(O_CREAT)","target":"/var/lib/endo-verify-002/work/evil","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"invariant":"2-evaluator","op":"rename","target":"/var/lib/endo-verify-002/work","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"invariant":"2-evaluator","op":"symlink","target":"/var/lib/endo-verify-002/work/x","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"invariant":"3-records","op":"open(O_CREAT)","target":"/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"invariant":"3-records","op":"open(O_CREAT)","target":"/var/lib/endo-verify-002/journal/0000000000000000000000000000dead.json","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"invariant":"3-records","op":"symlink","target":"/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"invariant":"3-records","op":"rename","target":"/var/lib/endo-verify-002/records","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"}]}
+== installed run 1
+probe-live-1 exit=0
+DEVELOP-VERIFY-TRUST-002 installed run; installation 7802fb0ef678696f37627c83418398806a1f516ed1d3d74369204d00ca61a222; commit c3718f1d20a0777742cb72d6a9dfd7a44ce938fa
+truth: {"A":"correct","B":"incorrect(8)","D":"incorrect(1)","E":"incorrect(1)","P":"correct","S":"correct","X":"correct","M":"incorrect(15)"}
+held   T1: PASS/PASS, authoritative yes (null)   (expected PASS, authoritative yes)
+held   T2: FAIL/FAIL   (expected FAIL)
+held   T3: FAIL/FAIL; verifier environment clean: true   (expected FAIL; no hostile name in the verifier)
+held   T4: B FAIL, A PASS; markers 2, from a verifier 0; verifier environment clean: true   (expected B FAIL, A PASS; markers only from client processes)
+held   T5a: FAIL/FAIL; plain git shows A for B: true   (expected FAIL (B's own objects))
+held   T5b: BLOCKED object-missing   (expected BLOCKED object-missing)
+held   T5c: client object-unreadable; BLOCKED object-missing; marker absent   (expected BLOCKED object-missing; no marker)
+held   T6: tamper EACCES; FAIL ; authoritative yes   (expected tamper write EACCES; FAIL, auth yes)
+held   T7: code write EACCES; drop-in etc EACCES; operator's own written; FAIL/FAIL (null); authoritative yes   (expected writes fail; FAIL, auth yes)
+held   T8: (a) write EACCES, read UNKNOWN auth no (no-record: ENOENT); (b) auth no (not-root's: <W>/attacker); (c) link EACCES, read UNKNOWN (no-record: ENOENT)   (expected (a) EACCES; (b) refused; (c) EACCES)
+held   T9: UNKNOWN candidate-mismatch; consumer B FAIL; consumer A PASS   (expected candidate-mismatch; consumer verdict for B not PASS; for A PASS)
+T10: interrupt the instance now with the approved operator command; waiting up to 120 s
+held   T10: kill EPERM; first response none; interrupted INCOMPLETE (journal-without-record); retry PASS new id true; orphan work removed true; hang-up record PASS   (expected kill EPERM; interrupted INCOMPLETE; retry PASS under a new id; hang-up record PASS)
+held   T11: {"a":"service-unavailable: ENOENT"}   (expected BLOCKED each, never PASS)
+held   T12: P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]   (expected P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND])
+held   E1: BLOCKED unsupported-120000; BLOCKED unsupported-160000; BLOCKED unsupported-name   (expected BLOCKED unsupported-120000, unsupported-160000, unsupported-name)
+held   E2: A PASS, B FAIL, distinct true   (expected PASS and FAIL, distinct invocations)
+E3: restart the verifier's manager now with the approved operator command; waiting up to 120 s
+held   E3: stop not-applicable; INCOMPLETE (journal-without-record); next PASS; orphan collected by next true   (expected INCOMPLETE; the next instance removes the orphan)
+held   E4: D FAIL, E FAIL, S FAIL   (expected FAIL each)
+held   E5: {"big":"request-too-large","env":"request-invalid","argv":"request-invalid","expect":"request-invalid","unreferenced":"object-unreferenced","task":"task-unknown","junk":"request-invalid"}   (expected BLOCKED each, with its reason)
+held   E6: EACCES, EACCES, EPERM; run PASS   (expected EACCES, EACCES, EPERM)
+acceptance: {"IA1":true,"IA2":true,"IA3":true,"IA4":true}
+records: {"total":32,"forgedByAttacker":0,"authoritative":32,"authoritativeFalsePasses":[],"overwritten":[]}; wall 99311 ms
+== installed run 2
+probe-live-2 exit=0
+DEVELOP-VERIFY-TRUST-002 installed run; installation 7802fb0ef678696f37627c83418398806a1f516ed1d3d74369204d00ca61a222; commit c3718f1d20a0777742cb72d6a9dfd7a44ce938fa
+truth: {"A":"correct","B":"incorrect(8)","D":"incorrect(1)","E":"incorrect(1)","P":"correct","S":"correct","X":"correct","M":"incorrect(15)"}
+held   T1: PASS/PASS, authoritative yes (null)   (expected PASS, authoritative yes)
+held   T2: FAIL/FAIL   (expected FAIL)
+held   T3: FAIL/FAIL; verifier environment clean: true   (expected FAIL; no hostile name in the verifier)
+held   T4: B FAIL, A PASS; markers 2, from a verifier 0; verifier environment clean: true   (expected B FAIL, A PASS; markers only from client processes)
+held   T5a: FAIL/FAIL; plain git shows A for B: true   (expected FAIL (B's own objects))
+held   T5b: BLOCKED object-missing   (expected BLOCKED object-missing)
+held   T5c: client object-unreadable; BLOCKED object-missing; marker absent   (expected BLOCKED object-missing; no marker)
+held   T6: tamper EACCES; FAIL ; authoritative yes   (expected tamper write EACCES; FAIL, auth yes)
+held   T7: code write EACCES; drop-in etc EACCES; operator's own written; FAIL/FAIL (null); authoritative yes   (expected writes fail; FAIL, auth yes)
+held   T8: (a) write EACCES, read UNKNOWN auth no (no-record: ENOENT); (b) auth no (not-root's: <W>/attacker); (c) link EACCES, read UNKNOWN (no-record: ENOENT)   (expected (a) EACCES; (b) refused; (c) EACCES)
+held   T9: UNKNOWN candidate-mismatch; consumer B FAIL; consumer A PASS   (expected candidate-mismatch; consumer verdict for B not PASS; for A PASS)
+T10: interrupt the instance now with the approved operator command; waiting up to 120 s
+held   T10: kill EPERM; first response none; interrupted INCOMPLETE (journal-without-record); retry PASS new id true; orphan work removed true; hang-up record PASS   (expected kill EPERM; interrupted INCOMPLETE; retry PASS under a new id; hang-up record PASS)
+held   T11: {"a":"service-unavailable: ENOENT"}   (expected BLOCKED each, never PASS)
+held   T12: P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]   (expected P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND])
+held   E1: BLOCKED unsupported-120000; BLOCKED unsupported-160000; BLOCKED unsupported-name   (expected BLOCKED unsupported-120000, unsupported-160000, unsupported-name)
+held   E2: A PASS, B FAIL, distinct true   (expected PASS and FAIL, distinct invocations)
+E3: restart the verifier's manager now with the approved operator command; waiting up to 120 s
+held   E3: stop not-applicable; INCOMPLETE (journal-without-record); next PASS; orphan collected by next true   (expected INCOMPLETE; the next instance removes the orphan)
+held   E4: D FAIL, E FAIL, S FAIL   (expected FAIL each)
+held   E5: {"big":"request-too-large","env":"request-invalid","argv":"request-invalid","expect":"request-invalid","unreferenced":"object-unreferenced","task":"task-unknown","junk":"request-invalid"}   (expected BLOCKED each, with its reason)
+held   E6: EACCES, EACCES, EPERM; run PASS   (expected EACCES, EACCES, EPERM)
+acceptance: {"IA1":true,"IA2":true,"IA3":true,"IA4":true}
+records: {"total":64,"forgedByAttacker":0,"authoritative":64,"authoritativeFalsePasses":[],"overwritten":[]}; wall 98385 ms
+== trusted read (root, installed reader)
+reader exit=0
+{"records":64,"authoritative":64,"authoritativePass":16,"falsePasses":[]}
+== done

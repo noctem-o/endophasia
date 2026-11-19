@@ -1,0 +1,1 @@
+{"controller": 606970, "samples": 38, "host18080": "absent in every sample", "observed": [["-ltnp", "127.0.0.1:44821"], ["-lxnp", "/tmp/endo-preflight-gXgolx/socket"], ["-lxnp", "@endo-preflight-f91b50e503edd10b"]], "stillListeningAfterExit": [], "cliExit": 0}

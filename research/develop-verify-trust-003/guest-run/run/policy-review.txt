@@ -1,0 +1,115 @@
+# sudoers (non-comment)
+Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
+root ALL=(ALL:ALL) ALL
+@includedir /etc/sudoers.d
+total 0
+drwxr-x--- 1 root root    0 Jun 16 09:31 .
+drwxr-xr-x 1 root root 2034 Nov 19 10:45 ..
+# polkit rules
+ls: cannot access '/etc/polkit-1/rules.d': No such file or directory
+/usr/share/polkit-1/rules.d:
+total 12
+drwxr-xr-x 1 root root 178 Nov 19 10:23 .
+drwxr-xr-x 1 root root  28 Nov  1 12:03 ..
+-rw-r--r-- 1 root root 863 Nov  5 13:36 10-systemd-logind-root-ignore-inhibitors.rules.example
+-rw-r--r-- 1 root root 260 Nov  5 13:36 empower.rules
+-rw-r--r-- 1 root root 620 Nov  5 13:36 systemd-networkd.rules
+// Allow all actions for users who are in the "empower" group. Users are added to the
+// "empower" group by running run0 --empower.
+
+polkit.addRule(function(action, subject) {
+    if (subject.isInGroup("empower")) {
+        return polkit.Result.YES;
+    }
+});
+// This file is part of systemd.
+// See systemd-networkd.service(8) and polkit(8) for more information.
+
+// Allow systemd-networkd to set timezone, get product UUID,
+// transient hostname and control ModemManager
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.hostname1.set-hostname" ||
+         action.id == "org.freedesktop.hostname1.get-product-uuid" ||
+         action.id == "org.freedesktop.timedate1.set-timezone" ||
+         action.id == "org.freedesktop.ModemManager1.Device.Control") &&
+        subject.user == "systemd-network") {
+        return polkit.Result.YES;
+    }
+});
+# setuid/setgid
+/usr/bin/unix_chkpwd
+/usr/bin/chage
+/usr/bin/gpasswd
+/usr/bin/passwd
+/usr/bin/chfn
+/usr/bin/chsh
+/usr/bin/mount
+/usr/bin/newgrp
+/usr/bin/su
+/usr/bin/umount
+/usr/bin/wall
+/usr/bin/write
+/usr/bin/ksu
+/usr/bin/sudo
+/usr/lib/ssh/ssh-keysign
+/usr/lib/dbus-daemon-launch-helper
+# file capabilities
+/usr/bin/newgidmap cap_setgid=ep
+/usr/bin/newuidmap cap_setuid=ep
+# members of endoagent group / primary gid 1500
+endoagent:x:1500:
+endoagent:x:1500:1500::/home/endoagent:/usr/bin/bash
+# ACLs on install
+# listening sockets
+Netid State  Recv-Q Send-Q                                        Local Address:Port  Peer Address:PortProcess
+u_str LISTEN 0      4096                    /run/systemd/io.systemd.BootControl 6336             * 0    users:(("systemd",pid=1,fd=128))
+u_str LISTEN 0      4096                         /run/systemd/io.systemd.Import 6337             * 0    users:(("systemd",pid=1,fd=129))
+u_str LISTEN 0      4096                         /run/systemd/io.systemd.sysext 6338             * 0    users:(("systemd",pid=1,fd=130))
+u_str LISTEN 0      4096        /run/systemd/sysupdate/notify/io.systemd.sysext 6339             * 0    users:(("systemd",pid=1,fd=131))
+u_str LISTEN 0      4096                         /run/user/1500/systemd/private 66817            * 0    users:(("systemd",pid=1046,fd=27))
+u_str LISTEN 0      4096                          /run/user/968/systemd/private 8066             * 0    users:(("systemd",pid=578,fd=27))
+u_str LISTEN 0      4096              /run/user/1500/systemd/io.systemd.Manager 66819            * 0    users:(("systemd",pid=1046,fd=31))
+u_str LISTEN 0      4096               /run/user/968/systemd/io.systemd.Manager 8068             * 0    users:(("systemd",pid=578,fd=31))
+u_str LISTEN 0      4096                            /run/user/0/systemd/private 9246             * 0    users:(("systemd",pid=381,fd=27))
+u_str LISTEN 0      4096           /run/systemd/resolve.hook/io.systemd.Network 4690             * 0    users:(("systemd-network",pid=302,fd=6),("systemd",pid=1,fd=89))
+u_str LISTEN 0      4096                 /run/user/0/systemd/io.systemd.Manager 9248             * 0    users:(("systemd",pid=381,fd=31))
+u_str LISTEN 0      4096       /run/user/1500/systemd/report/io.systemd.Manager 66822            * 0    users:(("systemd",pid=1046,fd=32))
+u_str LISTEN 0      4096        /run/user/968/systemd/report/io.systemd.Manager 8071             * 0    users:(("systemd",pid=578,fd=32))
+u_str LISTEN 0      4096                                     /run/user/1500/bus 66830            * 0    users:(("systemd",pid=1046,fd=10))
+u_str LISTEN 0      4096                                      /run/user/968/bus 8079             * 0    users:(("systemd",pid=578,fd=10))
+u_str LISTEN 0      4096          /run/user/0/systemd/report/io.systemd.Manager 9251             * 0    users:(("systemd",pid=381,fd=32))
+u_str LISTEN 0      4096                                        /run/user/0/bus 9259             * 0    users:(("systemd",pid=381,fd=10))
+u_str LISTEN 0      4096                         /run/user/1500/gnupg/S.dirmngr 66831            * 0    users:(("systemd",pid=1046,fd=38))
+u_str LISTEN 0      4096                          /run/user/968/gnupg/S.dirmngr 8080             * 0    users:(("systemd",pid=578,fd=38))
+u_str LISTEN 0      4096               /run/user/1500/gnupg/S.gpg-agent.browser 66832            * 0    users:(("systemd",pid=1046,fd=39))
+u_str LISTEN 0      4096                /run/user/968/gnupg/S.gpg-agent.browser 8082             * 0    users:(("systemd",pid=578,fd=40))
+u_str LISTEN 0      4096                            /run/user/0/gnupg/S.dirmngr 9260             * 0    users:(("systemd",pid=381,fd=38))
+u_str LISTEN 0      4096                 /run/user/1500/gnupg/S.gpg-agent.extra 66833            * 0    users:(("systemd",pid=1046,fd=40))
+u_str LISTEN 0      4096                  /run/user/968/gnupg/S.gpg-agent.extra 8083             * 0    users:(("systemd",pid=578,fd=42))
+u_str LISTEN 0      4096                  /run/user/0/gnupg/S.gpg-agent.browser 9261             * 0    users:(("systemd",pid=381,fd=39))
+u_str LISTEN 0      4096                   /run/user/1500/gnupg/S.gpg-agent.ssh 66834            * 0    users:(("systemd",pid=1046,fd=42))
+u_str LISTEN 0      4096                    /run/user/968/gnupg/S.gpg-agent.ssh 8084             * 0    users:(("systemd",pid=578,fd=43))
+u_str LISTEN 0      4096                    /run/user/0/gnupg/S.gpg-agent.extra 9262             * 0    users:(("systemd",pid=381,fd=40))
+u_str LISTEN 0      4096                       /run/user/1500/gnupg/S.gpg-agent 66835            * 0    users:(("systemd",pid=1046,fd=43))
+u_str LISTEN 0      4096                        /run/user/968/gnupg/S.gpg-agent 8085             * 0    users:(("systemd",pid=578,fd=44))
+u_str LISTEN 0      4096                      /run/user/0/gnupg/S.gpg-agent.ssh 9263             * 0    users:(("systemd",pid=381,fd=42))
+u_str LISTEN 0      4096                         /run/user/1500/gnupg/S.keyboxd 66836            * 0    users:(("systemd",pid=1046,fd=44))
+u_str LISTEN 0      4096                          /run/user/968/gnupg/S.keyboxd 8086             * 0    users:(("systemd",pid=578,fd=45))
+u_str LISTEN 0      4096                          /run/user/0/gnupg/S.gpg-agent 9264             * 0    users:(("systemd",pid=381,fd=43))
+u_str LISTEN 0      4096           /run/user/968/systemd/io.systemd.AskPassword 8087             * 0    users:(("systemd",pid=578,fd=46))
+u_str LISTEN 0      4096                            /run/user/0/gnupg/S.keyboxd 9265             * 0    users:(("systemd",pid=381,fd=44))
+u_str LISTEN 0      5                             /run/user/1500/p11-kit/pkcs11 66837            * 0    users:(("systemd",pid=1046,fd=45))
+u_str LISTEN 0      4096                        /run/systemd/io.systemd.Manager 1927             * 0    users:(("systemd",pid=1,fd=66))
+u_str LISTEN 0      4096          /run/user/1500/systemd/io.systemd.AskPassword 66838            * 0    users:(("systemd",pid=1046,fd=46))
+Netid State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess
+udp   UNCONN 0      0            0.0.0.0:5353      0.0.0.0:*    users:(("systemd-resolve",pid=276,fd=17))
+udp   UNCONN 0      0            0.0.0.0:5355      0.0.0.0:*    users:(("systemd-resolve",pid=276,fd=13))
+udp   UNCONN 0      0         127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=276,fd=24))
+udp   UNCONN 0      0      127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=276,fd=22))
+udp   UNCONN 0      0               [::]:5353         [::]:*    users:(("systemd-resolve",pid=276,fd=18))
+udp   UNCONN 0      0               [::]:5355         [::]:*    users:(("systemd-resolve",pid=276,fd=15))
+tcp   LISTEN 0      4096         0.0.0.0:5355      0.0.0.0:*    users:(("systemd-resolve",pid=276,fd=14))
+tcp   LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=276,fd=23))
+tcp   LISTEN 0      4096      127.0.0.54:53        0.0.0.0:*    users:(("systemd-resolve",pid=276,fd=25))
+tcp   LISTEN 0      4096            [::]:5355         [::]:*    users:(("systemd-resolve",pid=276,fd=16))

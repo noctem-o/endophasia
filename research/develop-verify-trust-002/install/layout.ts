@@ -159,7 +159,7 @@ TasksMax=1024
 
 /** The principal: a locked system user, no login shell, a root-owned home that holds only masks (INSTALL-PLAN.md §2). */
 export const SYSUSERS = `# DEVELOP-VERIFY-TRUST-002 research verifier principal. Research only; removed by uninstall.sh.
-u! ${INSTALLED.user} - "DEVELOP-VERIFY-TRUST-002 research verifier" ${INSTALLED.state}-home /usr/bin/nologin
+u ${INSTALLED.user} - "DEVELOP-VERIFY-TRUST-002 research verifier" ${INSTALLED.state}-home /usr/bin/nologin
 `;
 const GROUP = /^[a-z_][a-z0-9_-]{0,31}$/;
 /**

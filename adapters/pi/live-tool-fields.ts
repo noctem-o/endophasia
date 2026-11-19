@@ -1,18 +1,5 @@
 // Private transcript projection only. Admit known syntax rather than attempting to scrub arbitrary shell, paths or file contents.
-export type ToolField = {
-	label:
-		| "Command"
-		| "Path"
-		| "Directory"
-		| "Offset"
-		| "Limit"
-		| "Timeout"
-		| "Edits"
-		| "Content"
-		| "Arguments"
-		| "Exit code"
-		| "Output";
-} & ({ state: "reported" | "truncated" | "observed"; text: string } | { state: "unavailable" | "redacted" });
+import type { ActivityField as ToolField } from "../../protocol/private-activity.ts";
 
 const record = (x: unknown): Record<string, unknown> =>
 	typeof x === "object" && x !== null && !Array.isArray(x) ? (x as Record<string, unknown>) : {};
@@ -46,7 +33,7 @@ const paths = new Set([
 ]);
 const hidden = (label: ToolField["label"], raw: unknown): ToolField => ({
 	label,
-	state: raw === undefined ? "unavailable" : "redacted",
+	state: raw === undefined ? "unavailable" : "withheld",
 });
 const known = (label: ToolField["label"], raw: unknown, allowed: Set<string>): ToolField =>
 	typeof raw === "string" && raw.length <= 128 && allowed.has(raw)
@@ -83,7 +70,7 @@ export function startFields(name: string, input: unknown): ToolField[] {
 		return [
 			known("Path", args.path, paths),
 			Array.isArray(args.edits)
-				? { label: "Edits", state: "observed", text: String(args.edits.length) }
+				? { label: "Edits", state: "counted", text: String(args.edits.length) }
 				: hidden("Edits", args.oldText ?? args.newText ?? args.edits),
 		];
 	return [hidden("Arguments", input)];

@@ -406,7 +406,7 @@ describe("reasoning at the broker's boundary", () => {
 		const read = await call("transcript", grant);
 		expect(read.status).toBe(200);
 		const body = read.body as { schemaVersion: string; open: unknown };
-		expect(body.schemaVersion).toBe("endo.workbench-transcript.v2");
+		expect(body.schemaVersion).toBe("endo.workbench-transcript.v3");
 		expect(JSON.stringify(body)).toContain(THOUGHT);
 		expect(JSON.stringify(body.open)).toContain(`${THOUGHT}-open`);
 		// The session ends: the reasoning goes with it, the open message included.

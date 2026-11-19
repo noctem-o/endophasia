@@ -17,6 +17,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import type { ActivityDescriptor, DescriptorBasis } from "../../../protocol/private-activity.ts";
 import { nextStep, requestWords, shortAttempt } from "../model/attempt-request.ts";
 import { presentLivePi } from "../model/develop-session.ts";
 import { REASON_WORDS } from "../model/project.ts";
@@ -138,55 +139,130 @@ function rowsOf(items: readonly TranscriptItem[]): Row[] {
 	return rows;
 }
 
-function ToolDisclosure({ item }: { item: Extract<TranscriptItem, { kind: "tool" }> }) {
+const BASIS_WORDS: Readonly<Record<DescriptorBasis, string>> = {
+	assessed: "admitted by the runtime assessment",
+	observed: "seen on this connection",
+	advertised: "claimed by the provider, not checked",
+	unavailable: "no path in this integration",
+	unknown: "not established",
+};
+const OBSERVATION_WORDS: Readonly<Record<keyof ActivityDescriptor["observation"], string>> = {
+	nativeSessionIdentity: "Stable native session identity",
+	stableCallIdentity: "Stable tool-call identity",
+	toolBoundaries: "Tool start and end reports",
+	argumentPreview: "Bounded argument previews",
+	resultPreview: "Bounded result previews",
+	fileChanges: "Structured file-change reports",
+	subagents: "Subagent observation",
+};
+const CONTROL_WORDS: Readonly<Record<keyof ActivityDescriptor["providerControls"], string>> = {
+	interrupt: "Interruption",
+	steer: "Steering",
+	approvals: "Interactive approvals",
+	toolCancellation: "Tool cancellation",
+	resume: "Session resume",
+};
+
+/**
+ * What the source said about its activity reports. Words only: the offers above, session control and execution protection decide what
+ * this page may request, and none of them reads this.
+ */
+function ActivityDescriptorView({ descriptor }: { descriptor: ActivityDescriptor | null }): ReactElement | null {
+	if (descriptor === null) return null;
+	const list = <K extends string>(map: Record<K, DescriptorBasis>, words: Record<K, string>, id: string) => (
+		<ul className="plain" data-testid={id}>
+			{(Object.keys(words) as K[]).map((key) => (
+				<li key={key} data-key={key} data-basis={map[key]}>
+					{words[key]}: {BASIS_WORDS[map[key]]}
+				</li>
+			))}
+		</ul>
+	);
+	return (
+		<>
+			<h4>What its activity reports can show</h4>
+			{list(descriptor.observation, OBSERVATION_WORDS, "activity-observation")}
+			<h4>Provider control features (descriptive)</h4>
+			{list(descriptor.providerControls, CONTROL_WORDS, "provider-controls")}
+			<p className="dim small">
+				A description, not a permission: what this page can request is only what is offered above, and the broker
+				decides each request. A feature listed here enables nothing and is not enforcement.
+			</p>
+		</>
+	);
+}
+
+type Activity = Extract<TranscriptItem, { kind: "tool" | "file-change" | "activity" }>;
+
+/** What a row is, in the reader's words: the observation type the provider reported, never the category it is drawn under. */
+const ACTIVITY_WORDS: Readonly<Record<Activity["kind"], { role: string; what: string; caveat: string }>> = {
+	tool: {
+		role: "tool",
+		what: "Tool call",
+		caveat: "Arguments come from the start report. No independent check of execution or correctness.",
+	},
+	"file-change": {
+		role: "file change",
+		what: "File-change report",
+		caveat: "The provider's report that files changed. Not a tool call, and not an observed filesystem write.",
+	},
+	activity: {
+		role: "activity",
+		what: "Activity report",
+		caveat: "The provider's report of its own activity. No independent check of what happened.",
+	},
+};
+const STATUS_WORDS: Readonly<Record<Activity["status"], string>> = {
+	requested: "requested",
+	running: "running",
+	"in-progress": "in progress",
+	reported: "reported, no lifecycle",
+	completed: "completed",
+	failed: "error (reported)",
+	declined: "declined (reported)",
+	unknown: "outcome unavailable",
+};
+
+function ActivityDisclosure({ item }: { item: Activity }) {
 	const reflow = useContext(ReflowContext);
 	const main = item.fields.find((f) => f.label === "Command" || f.label === "Path");
-	const status =
-		item.status === "ok"
-			? "completed"
-			: item.status === "ended"
-				? "ended · outcome unavailable"
-				: item.status === "error"
-					? "error (reported)"
-					: "running";
-	const fields = [...item.fields];
-	if (!fields.some((f) => f.label !== "Exit code" && f.label !== "Output"))
-		fields.unshift({
-			label: item.name === "bash" ? "Command" : ["read", "write", "edit"].includes(item.name) ? "Path" : "Arguments",
-			state: "unavailable",
-		});
-	for (const label of ["Exit code", "Output"] as const)
-		if (!fields.some((f) => f.label === label)) fields.push({ label, state: "unavailable" });
+	const words = ACTIVITY_WORDS[item.kind];
 	return (
-		<details className="turn-body tool-disclosure" onToggle={() => reflow?.()}>
+		<details className="turn-body tool-disclosure" data-activity={item.kind} onToggle={() => reflow?.()}>
 			<summary>
 				<span className="mono">
-					{item.name}
+					{item.kind === "file-change" ? "file change" : item.name}
 					{main && "text" in main ? ` · ${main.text}` : ""}
 				</span>{" "}
-				· {status} <small className="dim">Pi-reported</small>
+				· {STATUS_WORDS[item.status]} <small className="dim">reported by {item.source}</small>
 			</summary>
 			<dl>
-				{fields.map((f) => (
+				{item.fields.map((f) => (
 					<div key={f.label}>
 						<dt>{f.label === "Command" ? "Requested command" : f.label}</dt>
 						<dd>
 							{"text" in f ? (
 								<>
 									<code>{f.text || "(empty)"}</code>{" "}
-									<small>{f.state === "truncated" ? "reported · truncated" : f.state}</small>
+									<small>
+										{f.state === "truncated"
+											? "reported · truncated after validation"
+											: f.state === "counted"
+												? "counted in provider report"
+												: "provider-reported"}
+									</small>
 								</>
-							) : f.state === "redacted" ? (
-								"withheld for privacy"
+							) : f.state === "withheld" ? (
+								"withheld by safe-preview policy"
 							) : (
-								"unavailable"
+								"unavailable · not supplied by the provider"
 							)}
 						</dd>
 					</div>
 				))}
 			</dl>
 			<p className="dim small">
-				Call #{item.seq} · Arguments come from Pi’s start report. No independent check of execution or correctness.
+				{words.what} · activity #{item.occurrence} · {item.category} · {item.source} report. {words.caveat}
 			</p>
 		</details>
 	);
@@ -265,11 +341,15 @@ const Turn = memo(function Turn({
 				<span>{item.state === "started" ? "run started" : "run ended"}</span>
 			</li>
 		);
-	if (item.kind === "tool")
+	if (item.kind !== "message")
 		return (
-			<li className={`turn turn-tool tool-${item.status}`} data-testid="tool-row">
-				<span className="turn-role">tool</span>
-				<ToolDisclosure item={item} />
+			<li
+				className={`turn turn-tool tool-${item.status}`}
+				data-testid={item.kind === "tool" ? "tool-row" : "activity-row"}
+				data-activity={item.kind}
+			>
+				<span className="turn-role">{ACTIVITY_WORDS[item.kind].role}</span>
+				<ActivityDisclosure item={item} />
 			</li>
 		);
 	const empty = item.parts.length === 0;
@@ -502,14 +582,14 @@ function Transcript({ wb, reasoning }: { wb: Workbench; reasoning: ReasoningView
 					<details className="turn-body">
 						<summary>
 							{row.items.length} tool calls
-							{row.items.some((i) => i.status === "error")
-								? ` (${row.items.filter((i) => i.status === "error").length} error)`
+							{row.items.some((i) => i.status === "failed")
+								? ` (${row.items.filter((i) => i.status === "failed").length} error)`
 								: ""}
 						</summary>
 						<ul className="plain">
 							{row.items.map((i) => (
 								<li key={i.seq} className="mono">
-									<ToolDisclosure item={i} />
+									<ActivityDisclosure item={i} />
 								</li>
 							))}
 						</ul>
@@ -1448,6 +1528,7 @@ export function LiveContext({
 			<details className="more block" data-testid="source-capabilities">
 				<summary>Source and capabilities</summary>
 				<SurfaceView session={presentLivePi(status, wb.state.unreachable)} />
+				<ActivityDescriptorView descriptor={wb.state.activityDescriptor} />
 				<h4>Where the text lives</h4>
 				<p className="dim small">
 					The conversation is held in the attached process's memory only, bounded, and cleared when the session

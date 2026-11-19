@@ -1,6 +1,7 @@
 // The browser's side of model-provided reasoning: the wire gate for the v1 transcript (every new field checked, a body that breaks a rule
 // refused whole), the state that holds the message being written, the page's own bound, and the pure display rules (keys that carry a
 // trace's state from the snapshot to the completed message, folding, clamping, and what each trace's head says).
+
 import { describe, expect, it } from "vitest";
 import {
 	CLAMP_CHARS,
@@ -21,10 +22,12 @@ import {
 	type WorkbenchStatus,
 	type WorkbenchTranscript,
 } from "../studio-ui/src/model/workbench-wire.ts";
+import { unknownDescriptor } from "./fixtures/private-activity.ts";
 
 const LAUNCH = "0123456789abcdef";
 const body = (over: Record<string, unknown> = {}) => ({
-	schemaVersion: "endo.workbench-transcript.v2",
+	schemaVersion: "endo.workbench-transcript.v3",
+	descriptor: unknownDescriptor,
 	launchId: LAUNCH,
 	items: [
 		{

@@ -99,7 +99,7 @@ import {
 	endoProjectRouteV0,
 } from "../../runtime/contracts/workspace-routes.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
-import { LIVE_TRANSCRIPT_SCHEMA_V2, LiveTranscriptV0 } from "./live-transcript.ts";
+import { LIVE_TRANSCRIPT_SCHEMA_V3, LiveTranscriptV0 } from "./live-transcript.ts";
 import { piEndoSessionIdV0 } from "./mapping.ts";
 import { PiRpcRefusalV0 } from "./rpc.ts";
 import {
@@ -121,6 +121,7 @@ export const ENDO_WORKBENCH_STATUS_SCHEMA_V0 = "endo.workbench-status.v0";
 /** What the broker needs of the attached session (PiSessionAttachmentV0 satisfies it). */
 export interface WorkbenchSessionV0 {
 	readonly piSessionId: string | null;
+	readonly capabilityState?: import("../../protocol/harness.ts").EndoCapabilityStateV0;
 	/** The Pi process is running and can receive a command. */
 	readonly live: boolean;
 	/** A run is open, by the live lifecycle. */
@@ -334,7 +335,8 @@ const refuse = (status: number, error: string) => reply(status, { error });
 
 export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	readonly launchId = randomBytes(8).toString("hex");
-	readonly transcript = new LiveTranscriptV0();
+	readonly transcript: LiveTranscriptV0;
+	readonly #transcriptSession: string | null;
 	readonly #o: Required<Pick<WorkbenchOptionsV0, "approvalWindowMs" | "pairingWindowMs" | "grantMs">> &
 		WorkbenchOptionsV0;
 	readonly #now: () => number;
@@ -358,6 +360,12 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	#ended = false;
 
 	constructor(options: WorkbenchOptionsV0) {
+		this.#transcriptSession = options.session.piSessionId;
+		this.transcript = new LiveTranscriptV0((id) => {
+			const status = options.session.capabilityState?.capabilities.find((c) => c.capability === id)?.status;
+			// Only what the existing assessment admits is "assessed"; partial or missing evidence is not support.
+			return status === "admitted" ? "assessed" : status === "unavailable" ? "unavailable" : "unknown";
+		});
 		this.#o = {
 			approvalWindowMs: 5 * 60_000,
 			pairingWindowMs: 10 * 60_000,
@@ -461,6 +469,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		// The desk records consequences when it finishes: a prompt still waiting for the terminal is withdrawn then too.
 		options.interventions?.onFinishing(() => this.beginClose());
 		options.session.onLiveEvent = (event) => {
+			if (options.session.piSessionId !== this.#transcriptSession) this.transcript.clear();
 			this.transcript.push(event);
 			this.#interventions?.observe(event);
 			this.#watchRun(event.type);
@@ -666,6 +675,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		// A runtime that is no longer running ends the session before anything is answered: no private text outlives it.
 		if (!this.#o.session.live) this.endSession();
 		const [a, b, ...more] = request.route;
+		if (this.#o.session.piSessionId !== this.#transcriptSession) this.transcript.clear();
 		if (a === "status" && b === undefined && request.method === "GET" && request.query === "")
 			return reply(200, this.#status(this.#granted(request.grant), request.grant));
 		if (a === "pair" && b === undefined && request.method === "POST" && request.query === "") {
@@ -681,7 +691,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			const match = /^after=(0|[1-9][0-9]{0,15})$/.exec(request.query);
 			if (request.query !== "" && match === null) return refuse(400, "bad-request");
 			const view = this.transcript.view(match === null ? 0 : Number(match[1]));
-			return reply(200, { schemaVersion: LIVE_TRANSCRIPT_SCHEMA_V2, launchId: this.launchId, ...view });
+			return reply(200, { schemaVersion: LIVE_TRANSCRIPT_SCHEMA_V3, launchId: this.launchId, ...view });
 		}
 		// The operator's tasks: metadata only, behind the grant. Without a registered project the workbench says so with one constant answer.
 		if (a === "workspace") {

@@ -3833,7 +3833,7 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	font-size: 10.5px;
 }
 
-.develop[data-appearance="field"] .turn-tool.tool-error .dim {
+.develop[data-appearance="field"] .turn-tool.tool-failed .dim {
 	color: var(--fault);
 }
 

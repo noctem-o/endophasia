@@ -56,9 +56,13 @@ const state = (over: Partial<WorkbenchState> = {}): WorkbenchState => ({
 	...over,
 });
 const run = (seq: number, s: "started" | "ended"): TranscriptItem => ({ seq, kind: "run", state: s });
-const tool = (seq: number, st: "running" | "ok" | "error"): TranscriptItem => ({
+const tool = (seq: number, st: "running" | "completed" | "failed"): TranscriptItem => ({
 	seq,
 	kind: "tool",
+	source: "pi-live",
+	turn: null,
+	category: "file-read",
+	occurrence: seq,
 	fields: [],
 	callId: `c${seq}`,
 	name: "bash",
@@ -188,7 +192,7 @@ describe("the live course", () => {
 	});
 
 	it("counts runs from the markers it holds, and what came before the first marker as a run whose start is not held", () => {
-		const items = [tool(1, "ok"), run(2, "ended"), run(3, "started"), tool(4, "error"), message(5, "error")];
+		const items = [tool(1, "completed"), run(2, "ended"), run(3, "started"), tool(4, "failed"), message(5, "error")];
 		const runs = runsOf(items, [
 			intervention({ afterSeq: 4, state: "accepted" }),
 			intervention({ proposalId: "early", afterSeq: 2, operation: "queue" }),
@@ -207,7 +211,9 @@ describe("the live course", () => {
 		expect(course.totals).toEqual({ runs: 2, tools: 2, errors: 1, dropped: 3 });
 		// The operator's message between runs belongs to no run; a tool call after an end with no new start is not invented into one.
 		const user: TranscriptItem = { ...(message(7) as TranscriptItem & { kind: "message" }), role: "user" };
-		expect(runsOf([run(1, "started"), run(2, "ended"), user, tool(8, "ok")], []).map((r) => r.tools)).toEqual([0]);
+		expect(runsOf([run(1, "started"), run(2, "ended"), user, tool(8, "completed")], []).map((r) => r.tools)).toEqual([
+			0,
+		]);
 		// A prompt held before its run's start marker opens no phantom run.
 		expect(runsOf([{ ...user, seq: 1 }, run(2, "started")], []).length).toBe(1);
 	});

@@ -33,7 +33,7 @@ Pi (RPC stdout)
             ├─ adapters/pi/mapping.ts             canonical evidence: message_end → role, stop reason, usage. No content, no reasoning.
             └─ adapters/pi/workbench.ts           the broker hands every live event to its transcript
                  └─ adapters/pi/live-transcript.ts   memory only, bounded (§3)
-                      └─ GET api/v0/workbench/transcript?after=n   grant required; endo.workbench-transcript.v2
+                      └─ GET api/v0/workbench/transcript?after=n   grant required; endo.workbench-transcript.v3
                            └─ studio-ui/src/model/workbench-wire.ts   the whole body checked; one failure refuses it whole
                                 └─ studio-ui/src/model/workbench.ts   the page's copy, bounded again
                                      └─ develop/Live.tsx → develop/Reasoning.tsx   drawn as text (a React child), never markup
@@ -105,8 +105,8 @@ before the answer.
 
 ## 5. The wire
 
-`GET api/v0/workbench/transcript` answers `endo.workbench-transcript.v2`. The page and the broker are one bundle served by one process,
-so earlier versions are no longer accepted. v2 adds private tool fields (see [the tool disclosure](develop-workbench.md#inspecting-tool-reports)); the message and reasoning contract remains:
+`GET api/v0/workbench/transcript` answers `endo.workbench-transcript.v3`. The page and the broker are one bundle served by one process,
+so earlier versions are no longer accepted. v3 carries [private activity occurrences and source capabilities](private-activity.md); the message and reasoning contract remains:
 
 ```ts
 // a message item

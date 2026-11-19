@@ -138,13 +138,14 @@ export function runsOf(items: readonly TranscriptItem[], interventions: readonly
 		}
 		// Before any held marker, a tool call or an assistant message belongs to a run whose start is not held. After one, an item outside
 		// a run (the user's next message) is part of no run held here.
-		if (open === null && !marked && (item.kind === "tool" || item.role === "assistant")) open = begin(null);
+		if (open === null && !marked && (item.kind === "tool" || (item.kind === "message" && item.role === "assistant")))
+			open = begin(null);
 		if (open === null) continue;
 		if (item.kind === "tool") {
 			open.tools += 1;
 			if (item.status === "running") open.running += 1;
-			if (item.status === "error") open.errors += 1;
-		} else {
+			if (item.status === "failed") open.errors += 1;
+		} else if (item.kind === "message") {
 			open.messages += 1;
 			if (item.stopReason === "error") open.reportedError = true;
 			if (item.stopReason === "aborted") open.reportedAbort = true;

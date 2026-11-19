@@ -57,7 +57,7 @@ describe("the live transcript", () => {
 			["message", "user"],
 			["message", "assistant"],
 			["tool", "running"],
-			["tool", "ok"],
+			["tool", "completed"],
 			["run", "ended"],
 		]);
 		const assistant = view.items[2]!;
@@ -72,13 +72,17 @@ describe("the live transcript", () => {
 		expect(t.view(4).items).toEqual([
 			{
 				seq: 5,
+				occurrence: 4,
 				kind: "tool",
+				source: "pi-live",
+				turn: null,
+				category: "file-read",
 				callId: "c1",
 				name: "read",
-				status: "ok",
+				status: "completed",
 				fields: [
 					{ label: "Exit code", state: "unavailable" },
-					{ label: "Output", state: "redacted" },
+					{ label: "Output", state: "withheld" },
 				],
 			},
 			{ seq: 6, kind: "run", state: "ended" },
@@ -102,7 +106,7 @@ describe("the live transcript", () => {
 		const t = new LiveTranscriptV0();
 		t.push({ type: "tool_execution_start", record: { toolCallId: "x", toolName: "bash" } });
 		t.push({ type: "tool_execution_end", record: { toolCallId: "x", toolName: "bash", isError: true } });
-		expect(t.view().items.map((i) => i.kind === "tool" && i.status)).toEqual(["running", "error"]);
+		expect(t.view().items.map((i) => i.kind === "tool" && i.status)).toEqual(["running", "failed"]);
 		for (let i = 0; i < LIVE_TRANSCRIPT_MAX_ITEMS_V0 + 50; i++) t.push(textMessage("user", `m${i}`));
 		const view = t.view(0);
 		expect(t.size.items).toBeLessThanOrEqual(LIVE_TRANSCRIPT_MAX_ITEMS_V0);
@@ -541,6 +545,56 @@ describe("the approval is attributed only when it happened", () => {
 });
 
 describe("the end of the runtime", () => {
+	it("gives no authority for a descriptor that claims every control feature: offers and requests are decided as before", async () => {
+		const { session, pair, call, broker } = setup();
+		// The attachment's assessment admits steering and stop; this broker has no intervention desk, so neither may be offered.
+		Object.assign(session, {
+			capabilityState: {
+				capabilities: ["steering.steer", "steering.stop", "session.identity", "tool.activity"].map(
+					(capability) => ({
+						capability,
+						status: "admitted",
+					}),
+				),
+			},
+		});
+		const grant = await pair();
+		session.runActive = true;
+		const page = (await call("GET", "transcript", null, grant)).body as {
+			descriptor: { providerControls: Record<string, string> };
+		};
+		expect(page.descriptor.providerControls).toMatchObject({ interrupt: "assessed", steer: "assessed" });
+		const status = (await call("GET", "status", null, grant)).body as {
+			offers: Record<string, { offered: boolean }>;
+			sessionControl: { state: string };
+			protection: { state: string };
+		};
+		expect([status.offers.steer?.offered, status.offers.stop?.offered]).toEqual([false, false]);
+		expect(status.sessionControl.state).toBe("none");
+		expect(status.protection.state).toBe("not-enforced");
+		for (const operation of ["steer", "stop"]) {
+			const reply = await call(
+				"POST",
+				"intervention/propose",
+				{ operation, message: operation === "stop" ? null : "x", nonce: "0".repeat(32) },
+				grant,
+			);
+			expect(reply.status, operation).toBeGreaterThanOrEqual(400);
+		}
+		expect(session.promptCalls).toEqual([]);
+		void broker;
+	});
+	it("does not resume the old private transcript across an observed native-session replacement", async () => {
+		const { session, pair, call, broker } = setup();
+		const grant = await pair();
+		session.live_(textMessage("user", SECRET));
+		const original = session.piSessionId;
+		session.piSessionId = "replacement";
+		session.live_(textMessage("user", "replacement text"));
+		expect(broker.transcript.cleared).toBe(true);
+		session.piSessionId = original;
+		expect((await call("GET", "transcript", null, grant)).body).toMatchObject({ items: [], open: null });
+	});
 	it("withdraws a waiting approval, revokes the grant and clears the transcript as soon as the runtime is gone", async () => {
 		const { session, call, pair, broker, approval } = setup();
 		const grant = await pair();

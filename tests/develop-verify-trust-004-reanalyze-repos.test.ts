@@ -138,6 +138,7 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 	return {
 		row: result.rows.find((r) => r.invocation === INV) as Record<string, any>,
 		repo: (result.repositories as Record<string, any>[]).find((n) => n.repo === "installed-1/A"),
+		repositories: result.repositories as Record<string, any>[],
 		summary: result.summary,
 	};
 }
@@ -184,6 +185,28 @@ describe("TRUST-004 offline binding from archived repositories", () => {
 		},
 		60_000,
 	);
+
+	it("refuses a repository with a file where a fan-out directory belongs and still analyses the others", async () => {
+		const repo = join(root, "candidate");
+		const commit = makeRepo(repo, "sha1", false);
+		const candidate = await candidateOf(repo, commit);
+		const {
+			row,
+			repo: note,
+			repositories,
+			summary,
+		} = await analyse(candidate, (repos) => {
+			cpSync(repo, join(repos, "A"), { recursive: true });
+			cpSync(repo, join(repos, "B"), { recursive: true });
+			writeFileSync(join(repos, "B/.git/objects/ab"), "not a directory");
+		});
+		expect(note).toMatchObject({ objectFormat: "sha1" });
+		expect(row.binding).toMatchObject({ status: "valid", exportSha256: candidate.exportSha256 });
+		expect(summary.repositoriesRefused).toBe(1);
+		expect(repositories.find((n) => n.repo === "installed-1/B")?.refused).toBe(
+			"object format: objects/ab is not a directory",
+		);
+	}, 60_000);
 
 	// Each layout leaves every retained object path empty: the commit is reachable only through a link out of the capture.
 	const outside: [string, (repos: string, external: string) => void][] = [

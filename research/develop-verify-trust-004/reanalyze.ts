@@ -125,6 +125,7 @@ export function objectFormatProblem(objects: string, declared: ObjectFormat): st
 	const observed: [string, ObjectFormat][] = [];
 	for (const fan of readdirSync(objects).sort()) {
 		if (!/^[0-9a-f]{2}$/.test(fan)) continue;
+		if (!lstatSync(join(objects, fan)).isDirectory()) return `objects/${fan} is not a directory`;
 		for (const rest of readdirSync(join(objects, fan)).sort()) {
 			if (!/^(?:[0-9a-f]{38}|[0-9a-f]{62})$/.test(rest)) continue;
 			const f = formatOf(fan + rest);
@@ -186,9 +187,13 @@ export function prepareRepository(worktree: string, dest: string): RepositoryNot
 	if (dotgit !== undefined && !dotgit.isDirectory())
 		return { refused: `.git is ${dotgit.isSymbolicLink() ? "a symbolic link" : "not a directory"}` };
 	const src = dotgit === undefined ? worktree : join(worktree, ".git");
-	for (const rel of ["config", "packed-refs", "objects", "refs"]) {
-		const p = linkProblem(src, rel);
-		if (p !== null) return { refused: p };
+	try {
+		for (const rel of ["config", "packed-refs", "objects", "refs"]) {
+			const p = linkProblem(src, rel);
+			if (p !== null) return { refused: p };
+		}
+	} catch (err) {
+		return { refused: `unreadable: ${(err as Error).message}` };
 	}
 	let objectFormat: ObjectFormat;
 	try {
@@ -197,7 +202,12 @@ export function prepareRepository(worktree: string, dest: string): RepositoryNot
 		return { refused: `object format: ${(err as Error).message}` };
 	}
 	const objects = lstatSync(join(src, "objects"), { throwIfNoEntry: false })?.isDirectory() === true;
-	const problem = objects ? objectFormatProblem(join(src, "objects"), objectFormat) : null;
+	let problem: string | null;
+	try {
+		problem = objects ? objectFormatProblem(join(src, "objects"), objectFormat) : null;
+	} catch (err) {
+		problem = `unreadable: ${(err as Error).message}`;
+	}
 	if (problem !== null) return { refused: `object format: ${problem}` };
 	const alternates = lstatSync(join(src, "objects/info/alternates"), { throwIfNoEntry: false }) !== undefined;
 	const replace = join(src, "refs/replace");

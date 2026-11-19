@@ -185,19 +185,39 @@ reports that the guest console closed.
 
 ## 4. Evidence custody [host]
 
-Use SIZE and DIGEST exactly as the guest printed them, never estimates:
+Set `SIZE` and `DIGEST` exactly as the guest printed them, never estimates, then run this block as one paste. It runs in a
+child bash with `-euo pipefail`, so each step runs only if every earlier one succeeded, and nothing is sealed after a failure:
 
 ```sh
-test ! -e "$E" && install -d -m 0700 "$E"
-bash "$W/src/$T/qemu/host.sh" collect "$E" "${SIZE:?}" "${DIGEST:?}"
-(cd "$E/out/evidence/pre" && sha256sum -c SHA256SUMS) && cmp "$E/out/evidence/pre/SHA256SUMS" "$E/out/evidence/pre.SHA256SUMS"
-test -d "$E/out/evidence/post" && (cd "$E/out/evidence/post" && sha256sum -c SHA256SUMS)
+E=$E W=$W T=$T SIZE=${SIZE:?} DIGEST=${DIGEST:?} bash -euo pipefail <<'CUSTODY'
+test ! -e "$E" || { echo "STOP: $E already exists" >&2; exit 2; }
+install -d -m 0700 "$E"
+bash "$W/src/$T/qemu/host.sh" collect "$E" "$SIZE" "$DIGEST" || { echo "STOP: collect failed; nothing sealed" >&2; exit 2; }
+test -f "$E/out/evidence/pre/SHA256SUMS" || { echo "STOP: pre-read capture MISSING" >&2; exit 3; }
+(cd "$E/out/evidence/pre" && sha256sum -c SHA256SUMS) || { echo "STOP: pre-read capture FAILS its checksums" >&2; exit 3; }
+cmp "$E/out/evidence/pre/SHA256SUMS" "$E/out/evidence/pre.SHA256SUMS" || { echo "STOP: pre-read manifest differs from its exported copy" >&2; exit 3; }
+if test -d "$E/out/evidence/post"; then
+  (cd "$E/out/evidence/post" && sha256sum -c SHA256SUMS) || { echo "STOP: post-read capture present but FAILS its checksums" >&2; exit 4; }
+  echo "post-read capture present and verified"
+else
+  echo "post-read capture MISSING: list it as missing evidence; it is not a pass"
+fi
 cp "$W/vm/console.log" "$W/vm/qemu-argv.log" "$W/vm/qemu-offline.stderr" "$W/listeners-before.txt" "$E/"
-(cd "$E" && sha256sum export.tar console.log qemu-argv.log > HOST-SHA256SUMS) && chmod -R a-w "$E"
+(cd "$E" && sha256sum export.tar console.log qemu-argv.log > HOST-SHA256SUMS)
+chmod -R a-w "$E"
+chmod u+w "$E"
+install -d -m 0700 "$E/analysis"
+echo "custody sealed: evidence files read-only; $E/analysis is ready for section 5"
+CUSTODY
+echo "custody exit=$?"
 ```
 
-`collect` refuses a digest mismatch. If any check fails, keep `$W` and stop. For an incomplete run, list missing evidence
-explicitly; an absent file is never a pass. Keep every failed attempt's directory.
+`collect` refuses a digest mismatch. Exit 0 with `custody sealed` is the only success. Exit 2 means collect failed or `$E` already
+existed, 3 means the pre-read capture is missing or fails its checksums, 4 means a post-read capture is present but fails its
+checksums, and any other nonzero exit means copying or sealing failed. On any of them, keep `$W` and stop. A **missing** post-read
+capture is not a checksum failure: an incomplete run (run.sh status 8, or a failure before the post-read capture) has none, so it
+is reported and sealed, and listed as missing evidence. An absent file is never a pass. Only `$E` itself is left writable, so that
+section 5 can collect into `$E/analysis`; every evidence file stays read-only. Keep every failed attempt's directory.
 
 ## 5. Independent reanalysis in a second fresh guest [host, guest root, analyst]
 
@@ -210,7 +230,19 @@ install -d -m 0700 "$W2" "$W2/vm"
 qemu-img convert -O qcow2 -l snapshot.name=provisioned "$OLD/vm/overlay.qcow2" "$W2/vm/overlay.qcow2"
 cp "$W/vm/stage.img" "$W/vm/out.img" "$W2/vm/"      # copies; the originals stay with this attempt
 mkfifo -m 0600 "$W2/vm/con.in" "$W2/vm/con.out"
-export ENDO13_WORK=$W2                              # in all three terminals; then launch, attach and audit as in section 2
+ss -ltunH | sort > "$W2/listeners-before.txt"     # this guest's baseline, before it is launched
+export ENDO13_WORK=$W2                              # in all three terminals
+```
+
+Launch and attach as in section 2, with `ENDO13_WORK=$W2` in each terminal: terminal 1 runs
+`bash "$W/src/$T/qemu/boot.sh" offline 2> "$W2/vm/qemu-offline.stderr"` and terminal 2 runs `python3 -I "$W/src/$T/qemu/attach.py"`.
+Then audit **this** guest against its own baseline and argv log. The expected results are the same as in section 2, with `$W2/vm` in
+place of `$W/vm`:
+
+```sh
+bash "$W/src/$T/qemu/host.sh" audit
+ss -ltunH | sort | diff "$W2/listeners-before.txt" - && echo "no new host listener"
+tail -n1 "$W2/vm/qemu-argv.log"
 ```
 
 At the analysis guest's console, **[guest root]** first, with SIZE and DIGEST from section 4:

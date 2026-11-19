@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -21,6 +22,17 @@ while True:
         break
     os.write(o, data.upper())
 """
+# A guest that stops consuming input: con.in is held open but never read, and output keeps arriving on con.out.
+STALLED = r"""
+import os, sys, time
+w = sys.argv[1]
+i = os.open(w + "/con.in", os.O_RDWR)
+o = os.open(w + "/con.out", os.O_RDWR)
+os.write(o, b"login banner\n")
+time.sleep(1)
+os.write(o, b"late output\n")
+time.sleep(60)
+"""
 
 
 class Attach(unittest.TestCase):
@@ -35,8 +47,8 @@ class Attach(unittest.TestCase):
         self.log = self.vm / "console.log"
         self.env = {**os.environ, "ENDO13_WORK": str(self.work)}
 
-    def guest(self):
-        g = subprocess.Popen([sys.executable, "-I", "-c", GUEST, str(self.vm)])
+    def guest(self, script=GUEST):
+        g = subprocess.Popen([sys.executable, "-I", "-c", script, str(self.vm)])
         self.addCleanup(g.wait)
         self.addCleanup(g.kill)
         deadline = time.monotonic() + 5
@@ -76,6 +88,30 @@ class Attach(unittest.TestCase):
         self.assertEqual(a.returncode, 0, err)
         self.assertIn(b"HELLO", out)
         self.assertIn(b"detached", err)
+
+    def test_detaches_while_the_guest_stops_reading_a_large_paste(self):
+        self.guest(STALLED)
+        a = self.attach()
+        self.wait_log(b"login banner")
+
+        def paste():
+            try:
+                a.stdin.write(b"x" * (1 << 20))
+                a.stdin.flush()
+            except (BrokenPipeError, ValueError):
+                pass
+
+        writer = threading.Thread(target=paste, daemon=True)
+        writer.start()
+        writer.join(5)
+        self.assertFalse(writer.is_alive(), "attach stopped reading the terminal while the guest was not reading input")
+        self.wait_log(b"late output")
+        a.stdin.write(b"\x1d")
+        a.stdin.flush()
+        _, err = a.communicate(timeout=5)
+        self.assertEqual(a.returncode, 0, err)
+        self.assertIn(b"detached", err)
+        self.assertIn(b"were not accepted by the guest", err)
 
     def test_ends_when_the_guest_closes_its_console(self):
         g = self.guest()

@@ -11,6 +11,7 @@ set -uo pipefail
 export PATH=/usr/bin LC_ALL=C
 SESSION=/root/session
 STAGE=/root/stage
+STAGE_DISK=/dev/vdb
 PLAN_SRC=/root/plan-src
 SRC=/opt/trust003/src
 OUT=/root/out
@@ -39,6 +40,12 @@ say() { echo "[session] $*"; }
 note() { say "$*"; [ -d "$OUT/session" ] && echo "$(date -u +%FT%T.%NZ) $*" >> "$OUT/session/timeline.txt"; return 0; }
 on_console() { [ -t 0 ] && [ "$(tty)" = "$CONSOLE" ]; }
 
+digest_line() { # digest_line <field> <path> <what>: the SHA-256 of <path>, or UNAVAILABLE and a refusal; a failed read never prints a digest
+  local h
+  if h=$(sha256sum < "$2" 2>/dev/null) && h=${h:0:64} && [[ $h =~ ^[0-9a-f]{64}$ ]]; then echo "$1 $h"; return; fi
+  echo "$1 UNAVAILABLE"; problems+=("$3 SHA-256 could not be computed")
+}
+
 plan_body() { # every line is an observation or a fixed statement; the same guest state gives the same bytes
   local problems=() c head bad links shared disks name want got p u
   echo "schema endo.research.dvt004.session-plan.v0"
@@ -46,13 +53,13 @@ plan_body() { # every line is an observation or a fixed statement; the same gues
   c=$(cat "$STAGE/commit" 2>/dev/null)
   echo "staged-commit $c"
   [[ $c =~ ^[0-9a-f]{40}$ ]] || problems+=("staged commit missing or malformed")
-  echo "stage-disk-sha256 $(sha256sum < /dev/vdb 2>/dev/null | cut -c1-64)"
-  echo "bundle-sha256 $(sha256sum < "$STAGE/repo.bundle" 2>/dev/null | cut -c1-64)"
+  digest_line stage-disk-sha256 "$STAGE_DISK" "stage disk"
+  digest_line bundle-sha256 "$STAGE/repo.bundle" "bundle"
   head=$(git -C "$PLAN_SRC" rev-parse --verify HEAD 2>/dev/null)
   echo "plan-checkout-head $head"
   [ -n "$c" ] && [ "$head" = "$c" ] || problems+=("plan checkout is not the staged commit")
   [ -z "$(git -C "$PLAN_SRC" status --porcelain 2>&1)" ] || problems+=("plan checkout is not clean")
-  echo "frozen-manifest-sha256 $(sha256sum < "$PLAN_SRC/$T4/FROZEN.sha256" 2>/dev/null | cut -c1-64)"
+  digest_line frozen-manifest-sha256 "$PLAN_SRC/$T4/FROZEN.sha256" "frozen manifest"
   bad=$(cd "$PLAN_SRC" 2>/dev/null && sha256sum -c "$T4/FROZEN.sha256" 2>&1 | grep -v ': OK$')
   if [ -z "$bad" ] && [ -s "$PLAN_SRC/$T4/FROZEN.sha256" ]; then echo "frozen-check all $(wc -l < "$PLAN_SRC/$T4/FROZEN.sha256") entries match"
   else echo "frozen-check FAILED"; printf '%s\n' "$bad" | sed 's/^/  /'; problems+=("frozen manifest does not match the plan checkout"); fi
@@ -141,6 +148,7 @@ stopped() { case $(systemctl show -p ActiveState --value "$1" 2>/dev/null) in in
 step() { # step <name> <limit> <command...>: one transient unit; STEP_RESULT names its end; returns 0 only for exit status 0
   local name=$1 limit=$2; shift 2
   local u="trust004-$name.service" log="$OUT/session/$name.log" waited=0 sub result code status
+  [ "$interrupted" = 1 ] && { STEP_RESULT="$name not-started (operator interrupt)"; note "$STEP_RESULT"; return 1; }
   note "start $name: $*"
   systemd-run --quiet --unit="$u" --service-type=exec -p RemainAfterExit=yes -p RuntimeMaxSec="$limit" -p TimeoutStopSec=60 \
     -p StandardOutput="append:$log" -p StandardError="append:$log" -- "$@" || { STEP_RESULT="$name not-started"; note "$STEP_RESULT"; return 1; }
@@ -161,14 +169,18 @@ step() { # step <name> <limit> <command...>: one transient unit; STEP_RESULT nam
   done
   result=$(systemctl show -p Result --value "$u"); code=$(systemctl show -p ExecMainCode --value "$u"); status=$(systemctl show -p ExecMainStatus --value "$u")
   timeout 150 systemctl stop "$u"; systemctl reset-failed "$u" 2>/dev/null
-  stopped "$u" || { UNCERTAIN=1; note "$u did not stop after its process ended"; }
-  if [ "$result" = success ] && [ "$code" = 1 ] && [ "$status" = 0 ]; then STEP_RESULT="$name exit=0"; note "$STEP_RESULT"; return 0; fi
-  case $result in
-  timeout) STEP_RESULT="$name timeout after ${limit}s" ;;
-  exit-code) STEP_RESULT="$name exit=$status" ;;
-  *) STEP_RESULT="$name ended result=$result code=$code status=$status" ;;
-  esac
-  note "$STEP_RESULT"; return 1
+  if [ "$result" = success ] && [ "$code" = 1 ] && [ "$status" = 0 ]; then STEP_RESULT="$name exit=0"
+  else
+    case $result in
+    timeout) STEP_RESULT="$name timeout after ${limit}s" ;;
+    exit-code) STEP_RESULT="$name exit=$status" ;;
+    *) STEP_RESULT="$name ended result=$result code=$code status=$status" ;;
+    esac
+  fi
+  stopped "$u" || { UNCERTAIN=1; STEP_RESULT+=", stop not confirmed"; }
+  [ "$interrupted" = 1 ] && STEP_RESULT+=", operator interrupt"
+  note "$STEP_RESULT"
+  [ "$STEP_RESULT" = "$name exit=0" ]
 }
 
 settle() { # after the run: every experiment unit stopped and no agent process left; what cannot be confirmed is UNCERTAIN

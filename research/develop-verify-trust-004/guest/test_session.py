@@ -106,7 +106,7 @@ class Steps(Session):
     # systemctl answers from variables: SUB, RESULT, CODE, STATUS, ACTIVE (ACTIVE_AFTER_STOP for a unit once it was stopped)
     MOCKS = """
 mkdir -p "$OUT/session"
-systemd-run() { echo "systemd-run $*" >&2; }
+systemd-run() { echo "systemd-run $*" >&2; [ "${INT_AT_LAUNCH:-}" = 1 ] && interrupted=1; :; }
 timeout() { shift; "$@"; }
 stopped=" "
 systemctl() {
@@ -129,18 +129,26 @@ systemctl() {
             ("exit status", "SUB=failed RESULT=exit-code CODE=1 STATUS=3", "rc=1 result=x exit=3 uncertain=0"),
             ("unit limit", "SUB=failed RESULT=timeout CODE=2 STATUS=9", "rc=1 result=x timeout after 10s uncertain=0"),
             ("signal", "SUB=failed RESULT=signal CODE=2 STATUS=9", "rc=1 result=x ended result=signal code=2 status=9 uncertain=0"),
-            ("interrupt", "SUB=running interrupted=1", "rc=1 result=x interrupted uncertain=0"),
-            ("interrupt, stop unconfirmed", "SUB=running interrupted=1 ACTIVE_AFTER_STOP=deactivating",
+            ("interrupt", "SUB=running INT_AT_LAUNCH=1", "rc=1 result=x interrupted uncertain=0"),
+            ("interrupt, stop unconfirmed", "SUB=running INT_AT_LAUNCH=1 ACTIVE_AFTER_STOP=deactivating",
              "rc=1 result=x interrupted, stop not confirmed uncertain=1"),
             ("state unreadable", "SHOW_FAILS=yes", "rc=1 result=x state-unreadable uncertain=1"),
             ("ended but not stopped", "SUB=exited RESULT=success CODE=1 STATUS=0 ACTIVE_AFTER_STOP=active",
-             "rc=0 result=x exit=0 uncertain=1"),
+             "rc=1 result=x exit=0, stop not confirmed uncertain=1"),
+            ("interrupt before the first poll, unit already ended",
+             "INT_AT_LAUNCH=1 SUB=exited RESULT=success CODE=1 STATUS=0",
+             "rc=1 result=x exit=0, operator interrupt uncertain=0"),
         ]
         for name, env, want in cases:
             with self.subTest(name):
                 r, got = self.step(env)
                 self.assertEqual(got, want, r.stdout + r.stderr)
                 self.assertIn("RuntimeMaxSec=10", r.stderr)
+
+    def test_interrupt_before_launch_starts_nothing(self):
+        r, got = self.step("interrupted=1 SUB=exited RESULT=success CODE=1 STATUS=0")
+        self.assertEqual(got, "rc=1 result=x not-started (operator interrupt) uncertain=0", r.stdout + r.stderr)
+        self.assertNotIn("systemd-run", r.stderr)
 
     def test_settle_stops_leftover_units_and_reports_failure(self):
         script = self.MOCKS + """
@@ -204,6 +212,108 @@ step() {
         r = self.bash("meaning 3; meaning 0")
         self.assertIn("a post-capture step failed with 3", r.stdout)
         self.assertIn("every post-capture step returned 0 (harness report; not a verdict)", r.stdout)
+
+
+class Interlocks(Steps):
+    # run() with the real step(): authorisation, settle and account stubbed; LAUNCH_HOOK runs inside systemd-run for the named unit
+    FLOW = """
+authorise() { return 0; }
+settle() { :; }
+account() { :; }
+systemd-run() { echo "systemd-run $*" >&2; [[ " $* " == *" --unit=${HOOK_UNIT:-none} "* ]] && interrupted=1; :; }
+SUB=exited RESULT=success CODE=1 STATUS=0
+"""
+
+    def run_session(self, env):
+        r = self.bash(self.MOCKS.replace('mkdir -p "$OUT/session"\n', "") + self.FLOW + env + '\nrun ' + "0" * 64 + '; rc=$?; printf "steps %s\\n" "${STEPS[@]}"; echo "rc=$rc"')
+        launched = [line.split("--unit=")[1].split()[0] for line in r.stderr.splitlines() if line.startswith("systemd-run")]
+        return r, r.stdout.strip().splitlines()[-1], launched
+
+    def test_staging_not_confirmed_stopped_never_launches_the_run(self):
+        r, rc, launched = self.run_session("ACTIVE_AFTER_STOP=deactivating")
+        self.assertEqual(launched, ["trust004-stage.service"], r.stdout + r.stderr)
+        self.assertEqual(rc, "rc=75")
+        self.assertIn("steps stage exit=0, stop not confirmed", r.stdout)
+
+    def test_interrupt_as_staging_ends_never_launches_the_run(self):
+        r, rc, launched = self.run_session("HOOK_UNIT=trust004-stage.service")
+        self.assertNotIn("trust004-run.service", launched, r.stdout + r.stderr)
+        self.assertIn("steps stage exit=0, operator interrupt", r.stdout)
+        self.assertEqual(rc, "rc=1")
+
+    def test_interrupt_before_the_runs_first_poll_is_recorded(self):
+        r, rc, launched = self.run_session("HOOK_UNIT=trust004-run.service")
+        self.assertIn("steps run exit=0, operator interrupt", r.stdout, r.stderr)
+        self.assertEqual(rc, "rc=1")
+
+
+class PlanDigests(Session):
+    # plan_body() on a fixture guest that is authorisable when every digest can be computed
+    C = "0123456789abcdef0123456789abcdef01234567"
+    MOCKS = f"""
+C={C}
+STAGE=$2/stage PLAN_SRC=$2/plan-src STAGE_DISK=$2/stage.img
+cat() {{ case $1 in /sys/block/vdb/ro) echo 1 ;; /sys/block/vdc/ro) echo 0 ;; /sys/block/vdc/size) echo 2048 ;;
+  /proc/sys/kernel/hostname) echo endo13-guest ;; *) command cat "$@" ;; esac; }}
+ls() {{ case $1 in /sys/class/net) echo lo ;; /sys/block) printf 'vda\\nvdb\\nvdc\\n' ;; *) command ls "$@" ;; esac; }}
+awk() {{ :; }}
+cmp() {{ return 0; }}
+git() {{ case $3 in rev-parse) echo "$C" ;; esac; }}
+systemd-detect-virt() {{ echo kvm; }}
+uname() {{ echo 7.3.4-arch1-2; }}
+pacman() {{ grep "^$2 " <<< "$PINNED"; }}
+getent() {{ return 2; }}
+systemctl() {{ echo not-found; }}
+on_console() {{ return 0; }}
+step() {{ echo "step:$1" >&2; STEP_RESULT="$1 exit=0"; }}
+"""
+
+    def setUp(self):
+        super().setUp()
+        (self.tmp / "stage").mkdir()
+        (self.tmp / "stage/commit").write_text(self.C + "\n")
+        (self.tmp / "stage/repo.bundle").write_bytes(b"bundle")
+        (self.tmp / "stage.img").write_bytes(b"disk")
+        t4 = self.tmp / "plan-src/research/develop-verify-trust-004"
+        t4.mkdir(parents=True)
+        (t4 / "x").write_text("x\n")
+        (t4 / "FROZEN.sha256").write_text(hashlib.sha256(b"x\n").hexdigest() + "  research/develop-verify-trust-004/x\n")
+
+    def body(self, extra=""):
+        return self.bash(self.MOCKS + extra + "\nplan_body").stdout
+
+    def test_fixture_guest_is_authorisable(self):
+        out = self.body()
+        self.assertIn("verdict AUTHORISABLE", out, out)
+        self.assertRegex(out, r"bundle-sha256 [0-9a-f]{64}\n")
+
+    def test_an_unreadable_input_refuses_the_plan(self):
+        for name, path in [("stage disk", "stage.img"), ("bundle", "stage/repo.bundle"),
+                           ("frozen manifest", "plan-src/research/develop-verify-trust-004/FROZEN.sha256")]:
+            with self.subTest(name):
+                self.setUp()
+                (self.tmp / path).unlink()
+                (self.tmp / path).mkdir()
+                out = self.body()
+                self.assertIn(f"refused {name} SHA-256 could not be computed", out)
+                self.assertIn("UNAVAILABLE", out)
+                self.assertNotIn("verdict AUTHORISABLE", out)
+
+    def test_a_failing_hash_command_refuses_and_cannot_be_authorised(self):
+        failing = ('\nsha256sum() { case $(readlink /proc/$BASHPID/fd/0) in */stage.img|*/repo.bundle) return 1 ;; esac; '
+                   'command sha256sum "$@"; }\n')
+        out = self.body(failing)
+        self.assertIn("refused stage disk SHA-256 could not be computed", out)
+        self.assertIn("refused bundle SHA-256 could not be computed", out)
+        self.assertIn("verdict REFUSED", out)
+        r = self.bash(self.MOCKS + failing + """
+d=$(plan | sed -n 's/^plan-digest //p')
+run "$d"; echo "rc=$?"
+""", "AUTHORISE 0000000000000000\n")
+        self.assertIn("the plan itself was refused", r.stdout, r.stdout + r.stderr)
+        self.assertEqual(r.stdout.strip().splitlines()[-1], "rc=10")
+        self.assertNotIn("step:", r.stderr)
+        self.assertFalse((self.tmp / "out").exists())
 
 
 class Plan(Session):

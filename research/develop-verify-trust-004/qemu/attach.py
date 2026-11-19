@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # DEVELOP-VERIFY-TRUST-004 serial console for a human operator (Amendment 4), under the operator's own uid. No listener, no network.
 #   attach.py     guest console output to this terminal and appended to vm/console.log; keystrokes, Ctrl-C included, to the guest.
-#                 Ctrl-] detaches. Exits when QEMU closes the console.
+#                 Ctrl-] detaches, even while the guest has stopped reading input: keystrokes queue until con.in is writable.
+#                 Exits when QEMU closes the console.
 # One reader drains vm/con.out: attach holds an exclusive lock on console.log and refuses to start without it. While nobody is
 # attached, console output waits in the pipe; reattaching drains it. console.py can still run single commands while attached.
 import errno
@@ -30,8 +31,14 @@ def write_all(fd, data):
 
 
 def relay(guest_in, guest_out, log, stdin):
+    pending = b""
     while True:
-        ready = select.select([guest_out, stdin], [], [])[0]
+        ready, writable, _ = select.select([guest_out, stdin], [guest_in] if pending else [], [])
+        if guest_in in writable:
+            try:
+                pending = pending[os.write(guest_in, pending):]
+            except BlockingIOError:
+                pass
         if guest_out in ready:
             try:
                 data = os.read(guest_out, 65536)
@@ -47,10 +54,16 @@ def relay(guest_in, guest_out, log, stdin):
         if stdin in ready:
             data = os.read(stdin, 1024)
             if not data or DETACH in data:
-                write_all(guest_in, data.split(DETACH)[0])
+                pending += data.split(DETACH)[0]
+                try:
+                    pending = pending[os.write(guest_in, pending):] if pending else pending
+                except BlockingIOError:
+                    pass
+                if pending:
+                    say(f"{len(pending)} bytes of input were not accepted by the guest and were dropped")
                 say("detached; guest output waits in the pipe until the next attach")
                 return 0
-            write_all(guest_in, data)
+            pending += data
 
 
 def main():

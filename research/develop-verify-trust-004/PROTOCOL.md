@@ -209,3 +209,59 @@ The host audit must identify this guest without relying on a process name trunca
 transfer requires a successful child and guest result, and console connection must respect the command
 deadline. These are evidence collection and acceptance changes; they do not change the guest image,
 package versions, candidate fixtures, oracle or verifier. Amendment 2 remains available at `861cd826b`.
+
+## Amendment 4 — evidence binding and operator authorisation, before the next guest attempt
+
+No guest booted for attempts 2 and 3, and none has booted against this amendment. Attempt 1's retained overlay and console
+(`~/.capy/work/endo13/vm/`, SHA-256 `26c0877e…febf18b` and `114f3469…a7dcbce`, unchanged at this amendment) stay as they are.
+The criteria in §9, the verifier, the reader, the driver, the pins, `run.sh`, `finish.sh`, `capture.sh`, `host.sh`, `boot.sh` and
+`console.py` do not change.
+
+**Offline binding.** [reanalyze.ts](reanalyze.ts) made every clean repository with Git's default SHA-1 format, so a SHA-256
+candidate could not be bound offline. It also copied a captured `objects/` with `cpSync`, which keeps symbolic links: a fan-out
+directory or `.git` linking outside the capture let the offline binding read objects that were never retained and call a PASS
+bound. Now each archived repository is refused unless no path on the way to it, and nothing under its `objects/`, `refs/`,
+`config` or `packed-refs`, is a symbolic link or special file. Its object format is the one its archived configuration declares,
+read as text (includes, continuations, repeated or unknown values, or the extension in a version 0 repository are refused).
+That format is accepted only if every loose object hashes to its own name and every pack and index carries its own trailing
+checksum under it. The clean repository is created with `--object-format` set to that value. A refused repository is listed with
+its reason and is never searched for a commit, so a PASS that needs it is unconfirmed (§9: not demonstrated). Tests: valid SHA-1
+and SHA-256 repositories, loose and packed, bind; contradictory configuration (loose and packed) and malformed format metadata are
+refused; a commit reached only through linked fan-out directories, `objects`, `.git` or `objects/pack` is never bound. Run
+against the previous reanalyze.ts, both SHA-256 cases come back `unavailable`, and the fan-out and `.git` cases come back
+`valid` from outside the capture.
+
+**Operator authorisation.** The supported workflow is **one complete frozen experiment per fresh guest, started by an operator**.
+It is not a split operator/reader session: run.sh is unchanged and still runs without a pause from the first stop to trace analysis.
+[guest/session.sh](guest/session.sh) adds one decision point, before anything is installed. `session.sh plan` records the staged
+commit, the stage-disk and bundle digests, the plan checkout and its frozen-manifest check, whether the running session.sh is the
+staged commit's, the network interfaces, shared or FUSE mounts, block devices and their write state, virtualisation, hostname,
+kernel and pinned package versions, and whether the guest is fresh. It also lists the pending actions, and prints the plan's
+digest. `session.sh run <digest>` accepts only a terminal on `/dev/ttyS0` as guest root. It refuses a digest that is not the
+current plan's, a plan older than 1800 s, a refused plan, or a guest whose recomputed plan differs by a byte. It then requires
+the operator to type `AUTHORISE <first 16 hex digits>` within 300 s, and refuses if `/root/out` already exists. Then TRUST-003
+`stage.sh`, `run.sh` and `finish.sh` run in transient units (limits 1800 s, 18000 s, 1800 s). Ctrl-C stops the current unit and is
+recorded as an interruption. A unit limit is recorded as a timeout. A unit or experiment unit that cannot be confirmed stopped, or
+an agent process that survives, is TERMINATION UNCERTAIN: finish.sh is not run, nothing is exported, and the guest disk is kept.
+Otherwise finish.sh always runs and the session prints the export size and digest only when both guest digests agree. The account
+the session prints is the harness's own report. It interprets run.sh's status with the timeline: 8 before a trusted read means the
+pre-read capture failed and the read was prohibited. [qemu/attach.py](qemu/attach.py) gives the host operator the serial console:
+keystrokes in, output to the terminal and to `console.log`, under an exclusive lock so that only one reader drains the pipe. A new
+regression in [guest/test_run.py](guest/test_run.py) confirms that a failed pre-read capture returns 8 without calling the reader.
+
+**Limits.** The confirmation proves that something wrote it to the serial console within the time limit. It does not prove that a
+person did, because whoever controls the host's `con.in` can type it; console.py's `</dev/null` wrapping cannot satisfy the
+terminal check, but that is not authentication. Principals stay separate and are recorded as before: the agent `endoagent`
+(1500), the verifier `endo-verify-002`, the grading identity `nobody` (65534), guest root as the evidence operator, and the host
+operator's own uid outside the guest. An authentic record, a correct grade and independently reanalysed evidence remain three
+different findings (`authenticity`, `grade`, and the reanalysis's agreement and binding).
+
+SHA-256: `reanalyze.ts` 078acd7ae894601bad45b0075fdcd55a445577d3bc2cf9f353394182a4a5630f;
+`guest/session.sh` 122f0f02769bfc8c3236155b9cedd77f37c7bc75478b7097e9f263bc5323033f;
+`guest/test_session.py` 585e50ff8a43229038f260558430b83baa0795ac103a5f02a6ba74524880c93d;
+`guest/test_run.py` 099f371a5bbf1003ffecf1600a656528dd41f0bebcefae1b32b5379a639abbdc;
+`qemu/attach.py` 71a50503eb5170807dd2ad2718e34367abbf7b93c86ac4b279b5d0f877d5540d;
+`qemu/test_attach.py` 009b1c807d0babbfb0066869917ae0620475719eff8b949207ad268cfe2864fd;
+`tests/develop-verify-trust-004-reanalyze.test.ts` a4e92c043d09f6408db03af0531b4c1310bf524260e4d95d47ed4e325054193b;
+`tests/develop-verify-trust-004-reanalyze-repos.test.ts` d4e4061809a123a98aa8b20d76a864e6249b7951d9acb0103df5e21c2851dac3.
+The adjacent frozen manifest lists these new files and pins this amended protocol. Amendment 3 remains available at `c3d16713b`.

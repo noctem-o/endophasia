@@ -9,6 +9,7 @@ import {
 	sudoRefused,
 	writable,
 } from "../research/develop-verify-trust-002/audit.ts";
+import { SYSUSERS } from "../research/develop-verify-trust-002/install/layout.ts";
 
 // A fixture account: uid 1500, its own primary group only, no supplementary groups, and this process's access(2) answers for it.
 const account = {
@@ -111,5 +112,17 @@ describe("installed gate: the records directory", () => {
 		["unreadable", true, "EACCES", false],
 	] as const)("%s", (_name, stateOk, records, ok) => {
 		expect(recordDirectoryOk(stateOk, records as Stats | string, uid)).toBe(ok);
+	});
+});
+
+describe("installation: the verifier principal can run its user manager (guest run, PROTOCOL.md amendment A5)", () => {
+	// systemd-sysusers' `u!` also sets the account's expiry date (shadow field 8 = 1), and pam_unix then refuses user@.service's
+	// account check: the lingering manager fails with status 224/PAM and the socket never exists. Observed in the TRUST-003 guest.
+	const line = SYSUSERS.split("\n").find((l) => /^u!?\s/.test(l)) ?? "";
+	it("declares a plain system user, not a fully locked (expired) one", () => {
+		expect(line.split(/\s+/)[0]).toBe("u");
+	});
+	it("keeps the principal without a login shell", () => {
+		expect(line.trim().endsWith("/usr/bin/nologin")).toBe(true);
 	});
 });

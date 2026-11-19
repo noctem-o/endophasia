@@ -6,7 +6,7 @@ The protected agent did useful work without access to the operator's daemon sock
 
 ## Guest run (ENDO-11)
 
-**BOUNDARY DEMONSTRATED, in a disposable guest only.** In a qemu guest with no network, Docker or libvirt, the restricted agent (uid 1500) ran two installed IA1–IA4 runs against the separate verifier principal (uid 968). Every row held. 16 authentic PASS records went to correct candidates and none to an incorrect one. Each attack was refused with a kernel-level EACCES or EPERM, recorded by strace. Running the package exposed an installation defect: `u!` expired the verifier account and stopped its manager. It was fixed with a test and the pins re-derived ([PROTOCOL.md A5](PROTOCOL.md)). The run says nothing about this workstation's H0, the libvirt socket restriction or polkit, so the workstation verdict below is unchanged. Full rows, refusals and cleanup: [guest-run/RESULTS.md](guest-run/RESULTS.md).
+**BOUNDARY DEMONSTRATED, in a disposable guest only.** In a qemu guest with no network, Docker or libvirt, the restricted agent (uid 1500) ran two installed IA1–IA4 runs against the separate verifier principal (uid 968). Every row held. Conditional on the old root reader’s ownership observations and the integrity of the post-read archive, all 16 historical PASS exports graded correct offline. This is not a fresh commit-to-tree or ownership check. Each attack was refused with a kernel-level EACCES or EPERM, recorded by strace. Running the package exposed an installation defect: `u!` expired the verifier account and stopped its manager. It was fixed with a test and the pins re-derived ([PROTOCOL.md A5](PROTOCOL.md)). The run says nothing about this workstation's H0, the libvirt socket restriction or polkit, so the workstation verdict below is unchanged. Full rows, refusals and cleanup: [guest-run/RESULTS.md](guest-run/RESULTS.md).
 
 ## What changed since 002
 
@@ -86,7 +86,7 @@ done
 
 The evaluator pin is `61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa`. Runtime pins cover the enumerated executables and ELF libraries, not the whole OS, running model server, interpreter modules or system manager. The prepared spec pins paths; the controller digests and copies the actual condition tree at launch. This trusts the pre-launch controller, not hostile same-uid writers. Inspect decision contents, not only command exits: a rejected candidate can be a *completed* trial.
 
-Local validation: 64/64 focused tests (26 TRUST-002, 29 IP0 and installed-gate, nine #159 reader), none failed/skipped; typecheck passed and lint passed with one pre-existing unused-parameter warning. Four process trials completed the preregistered observations, including the expected timeout; zero privileged trials run. The full workstation suite was not run: it includes listener/service scenarios beyond this run's narrow approval. No paid review.
+For current validation, run the TRUST-002, TRUST-003, acceptance, reader and driver suites. The dedicated CI reader job requires actual bubblewrap rather than counting skipped grades. The **only automated coverage of the root stager → distinct grader identity** is the opt-in delegated-UID test on the Arch device: `ENDO_TRUST_SUBID_TEST=1 npx vitest run tests/develop-verify-trust-003-reader.test.ts`. Missing opt-in, mapping support or an available delegated ID is reported as a skip, not evidence. The ordinary same-UID sandbox test cannot establish that property. See [Amendment 2](guest-run/AMENDMENT-2.md) for what has never run in the guest.
 
 ## Decision
 

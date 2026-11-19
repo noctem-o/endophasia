@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { detectBubblewrapV0 } from "../../../adapters/sandbox/bubblewrap.ts";
 import { GIT_ENV } from "../../develop-verify-trust-002/client/client.ts";
 import {
@@ -319,21 +319,35 @@ export type Grade =
 const SEGMENT = /^(?!\.{1,2}$)[A-Za-z0-9._-]{1,100}$/;
 
 /** Write verified files into a fresh directory; any path that is not plain segments refuses the whole set. */
-export function stageFiles(files: readonly StagedFile[]): string {
+export function stageFiles(files: readonly StagedFile[], graderUid: number) {
 	const dir = mkdtempSync(join(tmpdir(), "trust003-grade-"));
-	for (const f of files) {
-		const parts = f.path.split("/");
-		if (parts.length === 0 || !parts.every((p) => SEGMENT.test(p))) {
-			rmSync(dir, { recursive: true, force: true });
-			throw new Error(`unsupported path ${JSON.stringify(f.path)}`);
+	const directories = new Set([dir]);
+	const dispose = () => {
+		for (const path of directories) chmodSync(path, 0o700);
+		rmSync(dir, { recursive: true, force: true });
+	};
+	try {
+		for (const f of files) {
+			const parts = f.path.split("/");
+			if (!parts.every((p) => SEGMENT.test(p))) throw new Error(`unsupported path ${JSON.stringify(f.path)}`);
+			let parent = dir;
+			for (const segment of parts.slice(0, -1)) {
+				parent = join(parent, segment);
+				if (directories.has(parent)) continue;
+				mkdirSync(parent, { mode: 0o700 });
+				directories.add(parent);
+			}
+			const target = join(dir, ...parts);
+			writeFileSync(target, f.content, { flag: "wx", mode: 0o600 });
+			chmodSync(target, f.mode === "100755" ? 0o555 : 0o444);
 		}
-		const target = join(dir, ...parts);
-		mkdirSync(dirname(target), { recursive: true, mode: 0o755 });
-		writeFileSync(target, f.content, { flag: "wx", mode: 0o644 });
-		chmodSync(target, f.mode === "100755" ? 0o555 : 0o444);
+		const mode = graderUid === process.geteuid?.() ? 0o500 : 0o555;
+		for (const path of [...directories].reverse()) chmodSync(path, mode);
+		return { dir, dispose };
+	} catch (error) {
+		dispose();
+		throw error;
 	}
-	chmodSync(dir, 0o755);
-	return dir;
 }
 
 /** Grade exactly these files. Each case runs in a fresh bubblewrap PID namespace; SIGKILL to bubblewrap ends everything inside it. */
@@ -346,15 +360,19 @@ export async function gradeFiles(
 		options.bwrapCandidates === undefined ? detectBubblewrapV0() : detectBubblewrapV0(options.bwrapCandidates);
 	if (!detected.ok)
 		return { status: "incomplete", correct: null, reason: `containment-unavailable: ${detected.reason}`, cases: [] };
-	let dir: string;
+	const callerUid = process.geteuid?.();
+	if (callerUid === undefined)
+		return { status: "incomplete", correct: null, reason: "unknown grader identity", cases: [] };
+	const graderUid = callerUid === 0 ? 65534 : callerUid;
+	let staged: ReturnType<typeof stageFiles>;
 	try {
-		dir = stageFiles(files);
+		staged = stageFiles(files, graderUid);
 	} catch (e) {
 		return { status: "incomplete", correct: null, reason: `staging: ${(e as Error).message}`, cases: [] };
 	}
 	const asNobody =
-		process.getuid?.() === 0
-			? ["/usr/bin/setpriv", "--reuid=65534", "--regid=65534", "--clear-groups", "--no-new-privs", "--"]
+		graderUid !== callerUid
+			? ["/usr/bin/setpriv", `--reuid=${graderUid}`, "--regid=65534", "--clear-groups", "--no-new-privs", "--"]
 			: [];
 	const deadline = options.deadlineMs ?? oracle.timeoutMs;
 	const cases: CaseGrade[] = [];
@@ -394,7 +412,7 @@ export async function gradeFiles(
 				"--tmpfs",
 				"/tmp",
 				"--ro-bind",
-				dir,
+				staged.dir,
 				"/work",
 				"--chdir",
 				"/work",
@@ -423,7 +441,7 @@ export async function gradeFiles(
 			});
 		}
 	} finally {
-		rmSync(dir, { recursive: true, force: true });
+		staged.dispose();
 	}
 	const unconfirmed = cases.find((c) => !c.terminationConfirmed || c.outcome === "spawn-error");
 	if (unconfirmed !== undefined)

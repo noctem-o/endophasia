@@ -358,27 +358,37 @@ describe("trusted reader: acquisition from an agent-controlled repository", () =
 	it("stages only plain relative paths", () => {
 		const f = (path: string) => ({ path, mode: "100644" as const, bytes: 1, sha256: "", content: Buffer.from("x") });
 		for (const p of ["../x", "/abs", "a/../b", "a//b", ""])
-			expect(() => stageFiles([f(p)])).toThrow(/unsupported path/);
-		const dir = stageFiles([f("a/b.mjs")]);
+			expect(() => stageFiles([f(p)], VERIFIER)).toThrow(/unsupported path/);
+		const { dir, dispose } = stageFiles([f("a/b.mjs")], VERIFIER);
 		expect(readFileSync(join(dir, "a/b.mjs"), "utf8")).toBe("x");
-		rmSync(dir, { recursive: true, force: true });
+		dispose();
 	});
 	it("preserves executable and non-executable file modes when staging", () => {
 		const file = { path: "helper", bytes: 1, sha256: "", content: Buffer.from("x") };
-		const dir = stageFiles([
-			{ ...file, mode: "100755" },
-			{ ...file, path: "data", mode: "100644" },
-		]);
+		const { dir, dispose } = stageFiles(
+			[
+				{ ...file, mode: "100755" },
+				{ ...file, path: "data", mode: "100644" },
+			],
+			VERIFIER,
+		);
 		try {
 			expect(statSync(join(dir, "helper")).mode & 0o777).toBe(0o555);
 			expect(statSync(join(dir, "data")).mode & 0o777).toBe(0o444);
 		} finally {
-			rmSync(dir, { recursive: true, force: true });
+			dispose();
 		}
 	});
 });
 
 describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
+	it.runIf(sandbox)("grades nested imports with restrictive umask and rejects writable stages", () => {
+		const r = spawnSync(process.execPath, [join(REPO, "tests/fixtures/trust003-nested-grade.mjs")], {
+			encoding: "utf8",
+			timeout: 12_000,
+		});
+		expect(r.status, r.stdout + r.stderr).toBe(0);
+	});
 	it("enforces the deadline even if a finite job would exit normally later", async () => {
 		const got = await runBounded([process.execPath, "-e", "setTimeout(() => {}, 1700)"], {
 			env: {},

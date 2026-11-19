@@ -20,7 +20,10 @@ const oracle = JSON.parse(readFileSync(join(installDir, "oracle/roman-numerals-c
 const repos = workspaces.flatMap((w) => readdirSync(join(w, "repos")).map((r) => join(w, "repos", r)));
 const gitSafe = ["-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"];
 const git = (repo: string, args: string[]) =>
-	spawnSync("/usr/bin/git", [...gitSafe, "-C", repo, ...args], { env: { PATH: "/usr/bin", GIT_CONFIG_NOSYSTEM: "1", HOME: "/nonexistent" }, maxBuffer: 64 << 20 });
+	spawnSync("/usr/bin/git", [...gitSafe, "-C", repo, ...args], {
+		env: { PATH: "/usr/bin", GIT_CONFIG_NOSYSTEM: "1", HOME: "/nonexistent" },
+		maxBuffer: 64 << 20,
+	});
 
 function grade(repo: string, commit: string) {
 	const dir = mkdtempSync("/tmp/trust003-grade-");
@@ -30,9 +33,16 @@ function grade(repo: string, commit: string) {
 	spawnSync("/usr/bin/chown", ["-R", "65534:65534", dir]);
 	const failing: string[] = [];
 	for (const k of oracle.cases) {
-		const r = spawnSync("/usr/bin/setpriv", ["--reuid=65534", "--regid=65534", "--clear-groups", "/usr/bin/node", ...k.argv.slice(1)], {
-			cwd: dir, env: { PATH: "/usr/bin", HOME: dir }, timeout: oracle.timeoutMs, maxBuffer: 8 << 20,
-		});
+		const r = spawnSync(
+			"/usr/bin/setpriv",
+			["--reuid=65534", "--regid=65534", "--clear-groups", "/usr/bin/node", ...k.argv.slice(1)],
+			{
+				cwd: dir,
+				env: { PATH: "/usr/bin", HOME: dir },
+				timeout: oracle.timeoutMs,
+				maxBuffer: 8 << 20,
+			},
+		);
 		if (r.status !== k.expect.exitCode || r.stdout?.toString("utf8") !== k.expect.stdout) failing.push(k.name);
 	}
 	rmSync(dir, { recursive: true, force: true });
@@ -44,7 +54,13 @@ for (const name of readdirSync(join(state, "records")).sort()) {
 	const invocation = name.replace(/\.json$/, "");
 	const plain = readAuthoritative({ state, installDir, verifierUid, invocation });
 	const cand = (plain.record?.candidate ?? {}) as { commit?: string; exportSha256?: string };
-	const row: Record<string, unknown> = { name, class: plain.class, authoritative: plain.authoritative, reason: plain.reason, commit: cand.commit ?? null };
+	const row: Record<string, unknown> = {
+		name,
+		class: plain.class,
+		authoritative: plain.authoritative,
+		reason: plain.reason,
+		commit: cand.commit ?? null,
+	};
 	if (plain.authoritative && typeof cand.commit === "string") {
 		const repo = repos.find((r) => git(r, ["cat-file", "-e", `${cand.commit}^{commit}`]).status === 0);
 		if (repo === undefined) row.bound = "commit-not-found";
@@ -52,7 +68,13 @@ for (const name of readdirSync(join(state, "records")).sort()) {
 			const o = collectObjects(repo, cand.commit);
 			const c = o.ok ? resolveCandidate(o.objectFormat, cand.commit, o.objects) : o;
 			const exportSha256 = c.ok ? c.candidate.exportSha256 : null;
-			const bound = readAuthoritative({ state, installDir, verifierUid, invocation, expect: { commit: cand.commit, exportSha256: exportSha256 ?? "" } });
+			const bound = readAuthoritative({
+				state,
+				installDir,
+				verifierUid,
+				invocation,
+				expect: { commit: cand.commit, exportSha256: exportSha256 ?? "" },
+			});
 			row.export = exportSha256;
 			row.bound = { class: bound.class, authoritative: bound.authoritative, reason: bound.reason };
 			row.independentGrade = grade(repo, cand.commit);
@@ -62,4 +84,17 @@ for (const name of readdirSync(join(state, "records")).sort()) {
 }
 const authPass = rows.filter((r) => r.authoritative && r.class === "PASS");
 const falsePasses = authPass.filter((r) => (r.independentGrade as { correct?: boolean } | undefined)?.correct !== true);
-console.log(JSON.stringify({ verifierUid, records: rows.length, authoritative: rows.filter((r) => r.authoritative).length, authoritativePass: authPass.length, falsePasses: falsePasses.map((r) => r.name), rows }, null, 1));
+console.log(
+	JSON.stringify(
+		{
+			verifierUid,
+			records: rows.length,
+			authoritative: rows.filter((r) => r.authoritative).length,
+			authoritativePass: authPass.length,
+			falsePasses: falsePasses.map((r) => r.name),
+			rows,
+		},
+		null,
+		1,
+	),
+);

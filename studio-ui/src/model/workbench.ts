@@ -88,23 +88,49 @@ const OPEN: ReadonlySet<string> = new Set(["requested", "running", "in-progress"
 
 export class WorkbenchReadGeneration {
 	current = 0;
+	#pair: symbol | null = null;
+	beginPair() {
+		this.#pair = Symbol();
+		return { kind: "pair", id: this.#pair } as const;
+	}
+	beginRead() {
+		return { kind: "read", epoch: this.current, pair: this.#pair } as const;
+	}
 	invalidate(): void {
+		this.#pair = null;
 		this.current += 1;
 	}
-	accept(since: number, held: WorkbenchState, reply: WorkbenchReply): boolean {
-		if (since !== this.current) return false;
-		if (
-			reply.kind === "grant" ||
-			reply.kind === "absent" ||
+	accept(
+		ticket: ReturnType<WorkbenchReadGeneration["beginPair" | "beginRead"]>,
+		held: WorkbenchState,
+		reply: WorkbenchReply,
+	): boolean {
+		if (ticket.kind === "pair") {
+			if (ticket.id !== this.#pair) return false;
+			this.#pair = null;
+			if (reply.kind === "grant") this.current += 1;
+			return true;
+		}
+		if (reply.kind === "grant") return false;
+		const pending = this.#pair !== null && ticket.pair === this.#pair;
+		const grantLost =
 			(reply.kind === "failure" && reply.status === 401 && reply.code === "grant-required") ||
 			((reply.kind === "status" || reply.kind === "host") &&
-				((held.grant !== null && !reply.record.paired) ||
-					(held.launchId !== null && held.launchId !== reply.record.launchId))) ||
+				!reply.record.paired &&
+				(held.grant !== null || pending));
+		if (grantLost && pending) this.#pair = null;
+		if (ticket.epoch !== this.current) return false;
+		if (
+			reply.kind === "absent" ||
+			((reply.kind === "status" || reply.kind === "host") &&
+				held.launchId !== null &&
+				held.launchId !== reply.record.launchId) ||
 			(reply.kind === "status" &&
 				(reply.record.connection === "disconnected" ||
 					(held.status !== null && held.status.session !== reply.record.session)))
 		)
 			this.invalidate();
+		else if (grantLost) this.current += 1;
 		return true;
 	}
 }

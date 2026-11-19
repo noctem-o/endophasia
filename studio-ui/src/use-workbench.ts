@@ -53,18 +53,16 @@ export function useWorkbench(active: boolean) {
 	// new grant, which no later status can bring back: the broker never repeats the token.
 	const generation = useRef(new WorkbenchReadGeneration());
 
-	const send = useCallback(
-		async (request: WorkbenchRequest, since = generation.current.current): Promise<WorkbenchReply> => {
-			const abort = controller.current ?? new AbortController();
-			controller.current = abort;
-			const reply = await fetchWorkbench(request, latest.current.grant, abort.signal);
-			if (abort.signal.aborted || !generation.current.accept(since, latest.current, reply))
-				return { kind: "failure", status: 0, code: "", message: "Request superseded", retrySeconds: null };
-			dispatch({ type: "reply", reply, at: new Date() });
-			return reply;
-		},
-		[],
-	);
+	const send = useCallback(async (request: WorkbenchRequest): Promise<WorkbenchReply> => {
+		const since = request.kind === "pair" ? generation.current.beginPair() : generation.current.beginRead();
+		const abort = controller.current ?? new AbortController();
+		controller.current = abort;
+		const reply = await fetchWorkbench(request, latest.current.grant, abort.signal);
+		if (abort.signal.aborted || !generation.current.accept(since, latest.current, reply))
+			return { kind: "failure", status: 0, code: "", message: "Request superseded", retrySeconds: null };
+		dispatch({ type: "reply", reply, at: new Date() });
+		return reply;
+	}, []);
 
 	const schedule = useCallback(() => {
 		if (timer.current !== null) clearTimeout(timer.current);
@@ -90,7 +88,7 @@ export function useWorkbench(active: boolean) {
 		const since = generation.current.current;
 		dispatch({ type: "started" });
 		try {
-			const status = await send({ kind: "status" }, since);
+			const status = await send({ kind: "status" });
 			if (
 				since === generation.current.current &&
 				status.kind === "status" &&
@@ -100,8 +98,8 @@ export function useWorkbench(active: boolean) {
 				let after = status.record.launchId === latest.current.launchId ? latest.current.watermark : 0;
 				const from = after;
 				let more = false;
-				for (let page = 0; page < MAX_PAGES; page += 1) {
-					const reply = await send({ kind: "transcript", after }, since);
+				for (let page = 0; page < MAX_PAGES && since === generation.current.current; page += 1) {
+					const reply = await send({ kind: "transcript", after });
 					more = reply.kind === "transcript" && reply.record.more && reply.record.items.length > 0;
 					if (!more || reply.kind !== "transcript") break;
 					after = reply.record.items.at(-1)?.seq ?? after;

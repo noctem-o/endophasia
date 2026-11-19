@@ -16,6 +16,7 @@ import {
 import type {
 	TranscriptItem,
 	WorkbenchIntervention,
+	WorkbenchReply,
 	WorkbenchStatus,
 	WorkbenchTranscript,
 } from "../studio-ui/src/model/workbench-wire.ts";
@@ -204,6 +205,72 @@ describe("the transcript is incremental", () => {
 });
 
 describe("launch, pairing and availability", () => {
+	const freshGrant = { kind: "grant", record: { grant: "n".repeat(43), expiresAtMs: 1000 } } as const;
+	function deferredPage(initial = withStatus()) {
+		let state = initial;
+		const gate = new WorkbenchReadGeneration();
+		return {
+			get state() {
+				return state;
+			},
+			issue(pair = false) {
+				const ticket = pair ? gate.beginPair() : gate.beginRead();
+				let resolve!: (reply: WorkbenchReply) => void;
+				const done = new Promise<WorkbenchReply>((r) => {
+					resolve = r;
+				}).then((reply) => {
+					if (gate.accept(ticket, state, reply)) state = reduceWorkbench(state, { type: "reply", reply, at });
+				});
+				return async (reply: WorkbenchReply) => {
+					resolve(reply);
+					await done;
+				};
+			},
+		};
+	}
+	it.each([true, false])("preserves the new pairing when the older status settles first: %s", async (statusFirst) => {
+		const app = deferredPage();
+		const read = app.issue(),
+			pair = app.issue(true);
+		const denied: WorkbenchReply = { kind: "status", record: status({ paired: false }) };
+		if (statusFirst) {
+			await read(denied);
+			await pair(freshGrant);
+		} else {
+			await pair(freshGrant);
+			await read(denied);
+		}
+		expect(app.state.grant).toBe(freshGrant.record.grant);
+	});
+	it.each([
+		["unpaired", { kind: "status", record: status({ paired: false }) }],
+		["disconnected", { kind: "status", record: status({ connection: "disconnected" }) }],
+		["launch replaced", { kind: "status", record: status({ launchId: "fedcba9876543210" }) }],
+		["session replaced", { kind: "status", record: status({ session: "endo.session.pi.other" }) }],
+		["absent", { kind: "absent" }],
+		[
+			"grant refused",
+			{ kind: "failure", status: 401, code: "grant-required", message: "refused", retrySeconds: null },
+		],
+	] satisfies [string, WorkbenchReply][])(
+		"rejects the pending pair after a newer read reports %s",
+		async (_, loss) => {
+			const app = deferredPage({ ...withStatus(), grant: null });
+			const pair = app.issue(true),
+				read = app.issue();
+			await read(loss);
+			await pair(freshGrant);
+			expect(app.state.grant).toBeNull();
+		},
+	);
+	it("does not let a superseded pairing reply replace the latest grant", async () => {
+		const app = deferredPage();
+		const first = app.issue(true),
+			second = app.issue(true);
+		await second(freshGrant);
+		await first({ kind: "grant", record: { grant: "stale", expiresAtMs: 1000 } });
+		expect(app.state.grant).toBe(freshGrant.record.grant);
+	});
 	it("ignores an earlier page and invalidates outstanding reads before re-pair or reconnect", () => {
 		const held = give(withStatus(), page([msg(2)], 2));
 		expect(give(held, page([msg(1)], 1))).toBe(held);
@@ -214,13 +281,13 @@ describe("launch, pairing and availability", () => {
 			status({ launchId: "fedcba9876543210" }),
 		]) {
 			const gate = new WorkbenchReadGeneration();
-			const pending = gate.current;
+			const pending = gate.beginRead();
 			const reply = { kind: "status", record: next } as const;
 			expect(gate.accept(pending, held, reply)).toBe(true);
 			const cleared = reduceWorkbench(held, { type: "reply", reply, at });
 			expect(cleared).toMatchObject({ grant: null, items: [], open: null });
 			const grant = { kind: "grant", record: { grant: "r".repeat(43), expiresAtMs: 1000 } } as const;
-			expect(gate.accept(gate.current, cleared, grant)).toBe(true);
+			expect(gate.accept(gate.beginPair(), cleared, grant)).toBe(true);
 			const repaired = reduceWorkbench(cleared, { type: "reply", reply: grant, at });
 			expect(gate.accept(pending, repaired, { kind: "transcript", record: page([msg(2)], 2) })).toBe(false);
 			expect(gate.accept(pending, repaired, grant)).toBe(false);

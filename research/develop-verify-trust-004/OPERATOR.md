@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `f6e9d23d62e3e91056c24af66f49f722321a045b` (Amendment 5 freeze; 32 entries in
+**Selected source commit:** `870e8aafd3f92e81cbf392eb376c2fd5d43b5049` (Amendment 6 freeze; 32 entries in
 [FROZEN.sha256](FROZEN.sha256)). Stage exactly this commit, not the branch tip. Later commits on the branch only change
 documentation.
 
@@ -35,7 +35,7 @@ retained evidence**. Nothing on this page writes there.
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=f6e9d23d62e3e91056c24af66f49f722321a045b
+F=870e8aafd3f92e81cbf392eb376c2fd5d43b5049
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
 W=$HOME/.capy/work/endo18                   # this attempt's disposable guest
 W2=$HOME/.capy/work/endo18-analysis         # the analysis guest
@@ -66,7 +66,7 @@ git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-00
 git -C "$W/src" rev-parse HEAD                                    # must print $F
 test -z "$(git -C "$W/src" status --porcelain)" && echo clean
 (cd "$W/src" && sha256sum -c $T/FROZEN.sha256 | grep -vc ': OK$')  # must print 0
-grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 43a348be67a002f14de87fa6769776742031b2ee348f67570d424079ea60896c
+grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 61c42b4525c43c0059729075583f14f85900a199e388522c1f8342fd2ceede3e
 ```
 
 **Image and signature.** The protocol image is `Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2`, SHA-256
@@ -144,7 +144,7 @@ bash /root/session.sh plan
 ```
 
 Expected: only `lo`; disks `vda`, `vdb` (read-only) and `vdc`; the commit is `$F`; session.sh is
-`43a348be67a002f14de87fa6769776742031b2ee348f67570d424079ea60896c`. The plan should end with `verdict AUTHORISABLE` and a
+`61c42b4525c43c0059729075583f14f85900a199e388522c1f8342fd2ceede3e`. The plan should end with `verdict AUTHORISABLE` and a
 `plan-digest`. Read every line before authorising: staged commit, stage-disk and bundle digests (the bundle is inside the stage
 disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all 32 entries match`, `session-script is the staged commit's`, `network-interfaces lo`,
 `shared-filesystems none`, `block-devices vda vdb vdc`, `stage-disk-read-only 1`, `virtualization kvm`, hostname

@@ -42,8 +42,12 @@ principals() { # root's view of both principals, and what the agent can write (r
     python3 -I "$T4/operator.py" census
     echo "# capabilities of every verifier process"; for p in $(pgrep -u endo-verify-002); do echo "$p $(grep -E '^(Uid|Gid|Groups|CapEff|CapPrm|CapBnd|NoNewPrivs)' /proc/$p/status | tr '\t\n' '  ')"; done
     echo "# user units and sockets"; ls -la /run/endo-verify-002 /run/user 2>&1; ss -lxp | grep -E 'endo|968' ; } > "$OUT/principals.txt" 2>&1
-  agent writable /usr/bin/bash -c 'find / -xdev \( -path /proc -o -path /sys -o -path /home/endoagent \) -prune -o -writable -print 2>/dev/null | sort; echo "# sockets connectable"; for s in $(find /run /var/run -xdev -type s 2>/dev/null); do [ -w "$s" ] && echo "writable-socket $s"; done; true'
-  ! grep -E '(^| )(/usr/local/lib/endo-verify-002|/var/lib/endo-verify-002|/run/endo-verify-002|/run/user/[0-9]+|/etc/systemd|/etc/sysusers.d|/etc/tmpfiles.d|/var/lib/systemd/linger|/var/lib/trust004-evidence|/opt/trust003|/usr/bin|/usr/lib)' "$OUT/writable.out" | grep -v '/run/user/1500' > "$OUT/writable-protected.txt"
+  agent writable /usr/bin/bash -c 'find / -xdev \( -path /proc -o -path /sys -o -path /home/endoagent \) -prune -o -writable -print 2>/dev/null | sort; echo "# sockets connectable"; for s in $(find /run /var/run -xdev -type s 2>/dev/null); do [ -w "$s" ] && echo "writable-socket $s"; done; true' || return 1
+  agent census-access /usr/bin/python3 -I "$T4/review.py" agent || return 1
+  local rc=0
+  grep -E '(^| )(/usr/local/lib/endo-verify-002|/var/lib/endo-verify-002|/run/endo-verify-002|/run/user/[0-9]+|/etc/systemd|/etc/sysusers.d|/etc/tmpfiles.d|/var/lib/systemd/linger|/var/lib/trust004-evidence|/opt/trust003|/usr/bin|/usr/lib)' "$OUT/writable.out" > "$OUT/writable-candidates.txt" || rc=$?
+  [ "$rc" -le 1 ] || return 1
+  python3 -I "$T4/review.py" "$OUT/census-access.out" "$OUT/writable-candidates.txt" > "$OUT/writable-protected.txt"
 }
 
 availability() { # one attributable request, separate from H0 and closure

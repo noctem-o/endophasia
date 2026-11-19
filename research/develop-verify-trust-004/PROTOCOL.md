@@ -172,3 +172,28 @@ listener remain. Nothing on the workstation changes; there is nothing to roll ba
 The first `host.sh stage` of `c84981f4` failed on the host: the git bundle is 97.9 MB and `host.sh` truncated the stage disk to a
 fixed 64 MiB, cutting the tar (`tar: Unexpected EOF`). Nothing was booted with it; the broken stage.img was overwritten. Fix:
 round the disk up to the next MiB (`truncate -s %1M`) instead of a fixed size. No criterion, guest script or pin changed.
+
+## Amendment 2 — 2026-11-19, before attempt 2
+
+The [attempt-1 diagnosis](https://github.com/noctem-o/endophasia/pull/161) is historical evidence only. Section 4's
+supplemental census distinguishes two exact entries from writable protected state. Neither is a prefix exemption.
+
+- For `/run/endo-verify-002/verify.sock`, guest root requires a verifier:verifier socket (0666) in a verifier:endoagent
+  directory (0750), with uid 1500 the group's only member across primary and supplementary membership. A separate
+  endoagent PAM login checks its own identity, walks the directory without descending into symlinks, and measures
+  effective write access: the socket must be the only writable node. Read or enumeration errors abort the review.
+  This permits submission, not replacement of the socket or trust in a message, response, parser or record.
+- For `/var/lib/endo-verify-002-home/.config/systemd/user/p11-kit-server.socket`, lstat must show a root:root 0777
+  symlink and readlink must return exactly `/dev/null`. The 0755 seen in attempt 1 belonged to its parent. Write
+  access through this link reaches the null device; it does not grant the directory write needed to replace the link.
+
+Both checks require real ancestor directories, root-owned except for the verifier's socket directory, no group or
+other write bits, and no effective ancestor write access in the agent session. A missing or mismatched observation
+stops the census even if neither entry occurs in its original output. No state, record, installation file or unit
+in /etc qualifies. These point-in-time checks do not establish that metadata cannot subsequently change.
+
+SHA-256: `guest/run.sh` a4d2ba2a45f45ed5c83ab1f6c75d3072762d6b3c2b212181c8a5e56a7ec2199b;
+`guest/review.py` ccf333984bf2807c02bd4e69a40883f8c656be004703fcfb34e886b67e12c44d;
+`guest/test_review.py` 887c903c5203d1a7478b8fc1790e5e877df5465206979373fb9266cc30a200ad;
+`tests/develop-verify-trust-004.test.ts` ebd36f58be07e3fd18e8cca07907836fabc379371498dcd1c7e15302442f227b.
+The adjacent frozen manifest also pins this amended protocol.

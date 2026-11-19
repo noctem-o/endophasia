@@ -5,6 +5,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 const TRACES = "research/develop-verify-trust-004/guest/traces.py";
+it("rejects mutated protected-path census exceptions", () => {
+	const r = spawnSync("python3", ["-I", "-B", "-m", "unittest", "discover", "-v", "-s", ".", "-p", "test_review.py"], {
+		cwd: "research/develop-verify-trust-004/guest",
+		encoding: "utf8",
+	});
+	expect(r.status, r.stderr).toBe(0);
+});
 const dirs: string[] = [];
 const scratch = () => {
 	const d = mkdtempSync(join(tmpdir(), "dvt004-"));

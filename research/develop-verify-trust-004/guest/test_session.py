@@ -1,0 +1,225 @@
+import hashlib
+import os
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+SESSION = Path(__file__).with_name("session.sh")
+PLAN = "schema endo.research.dvt004.session-plan.v0\nverdict AUTHORISABLE\n"
+
+
+class Session(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.tmp = Path(directory.name)
+        (self.tmp / "session").mkdir()
+        self.plan(PLAN)
+
+    def plan(self, text, age=0):
+        path = self.tmp / "session/plan.txt"
+        path.write_text(text)
+        if age:
+            os.utime(path, (path.stat().st_mtime - age,) * 2)
+        return hashlib.sha256(text.encode()).hexdigest()
+
+    def bash(self, script, stdin=""):
+        prelude = """
+source "$1"
+SESSION=$2/session OUT=$2/out EVID=$2/evid POLL=0
+id() { echo 0; }
+tty() { echo /dev/ttyS0; }
+"""
+        return subprocess.run(["/usr/bin/bash", "-c", prelude + script, "mock", str(SESSION), str(self.tmp)],
+                              input=stdin, capture_output=True, text=True, env={"PATH": "/usr/bin"}, timeout=30)
+
+
+class Authorisation(Session):
+    MOCKS = """
+on_console() { return 0; }
+plan_body() { cat "$SESSION/plan.txt"; }
+step() { echo "step:$1" >&2; STEP_RESULT="$1 exit=0"; }
+settle() { :; }
+account() { :; }
+CONFIRM_SECONDS=2
+"""
+
+    def attempt(self, digest, stdin, extra=""):
+        r = self.bash(self.MOCKS + extra + f'run {digest}\necho "rc=$?"', stdin)
+        return r, r.stdout.strip().splitlines()[-1]
+
+    def assertRefused(self, r, rc, reason):
+        self.assertEqual(rc, "rc=10", r.stdout + r.stderr)
+        self.assertIn(reason, r.stdout)
+        self.assertNotIn("step:", r.stderr)
+        self.assertFalse((self.tmp / "out").exists())
+
+    def test_refusals_change_nothing(self):
+        good = hashlib.sha256(PLAN.encode()).hexdigest()
+        cases = [
+            ("not on the console", good, f"AUTHORISE {good[:16]}\n", "on_console() { return 1; }\n", "terminal on /dev/ttyS0"),
+            ("malformed digest", "abc", f"AUTHORISE {good[:16]}\n", "", "malformed digest"),
+            ("another digest", "0" * 64, "AUTHORISE 0000000000000000\n", "", "is not the current plan's digest"),
+            ("changed guest", good, f"AUTHORISE {good[:16]}\n", "plan_body() { echo different; }\n", "the guest changed since the plan"),
+            ("wrong confirmation", good, "AUTHORISE 0123456789abcdef\n", "", "confirmation did not match"),
+            ("no confirmation", good, "", "", "no confirmation within"),
+            ("not root", good, f"AUTHORISE {good[:16]}\n", "id() { echo 1000; }\n", "not guest root"),
+        ]
+        for name, digest, stdin, extra, reason in cases:
+            with self.subTest(name):
+                r, rc = self.attempt(digest, stdin, extra)
+                self.assertRefused(r, rc, reason)
+
+    def test_stale_refused_and_missing_plans(self):
+        for name, text, age, reason in [("stale", PLAN, 1801, "s old (limit 1800s)"),
+                                        ("refused plan", "verdict REFUSED\nrefused x\n", 0, "the plan itself was refused")]:
+            with self.subTest(name):
+                digest = self.plan(text, age)
+                r, rc = self.attempt(digest, f"AUTHORISE {digest[:16]}\n")
+                self.assertRefused(r, rc, reason)
+        (self.tmp / "session/plan.txt").unlink()
+        r, rc = self.attempt("0" * 64, "")
+        self.assertRefused(r, rc, "no plan")
+
+    def test_real_console_check_rejects_a_pipe(self):
+        r = self.bash("on_console && echo console || echo refused", "x\n")
+        self.assertEqual(r.stdout.strip(), "refused")
+
+    def test_one_attempt_per_guest(self):
+        (self.tmp / "out").mkdir()
+        digest = hashlib.sha256(PLAN.encode()).hexdigest()
+        r = self.bash(self.MOCKS + f'run {digest}\necho "rc=$?"', f"AUTHORISE {digest[:16]}\n")
+        self.assertIn("already ran an attempt", r.stdout)
+        self.assertIn("rc=10", r.stdout)
+        self.assertNotIn("step:", r.stderr)
+
+    def test_authorised_plan_is_recorded_before_staging(self):
+        digest = hashlib.sha256(PLAN.encode()).hexdigest()
+        r, rc = self.attempt(digest, f"AUTHORISE {digest[:16]}\n")
+        self.assertIn("step:stage", r.stderr)
+        self.assertEqual((self.tmp / "out/session/plan.txt").read_text(), PLAN)
+        self.assertIn(f"plan-digest {digest}", (self.tmp / "out/session/authorisation.txt").read_text())
+
+
+class Steps(Session):
+    # systemctl answers from variables: SUB, RESULT, CODE, STATUS, ACTIVE (ACTIVE_AFTER_STOP for a unit once it was stopped)
+    MOCKS = """
+mkdir -p "$OUT/session"
+systemd-run() { echo "systemd-run $*" >&2; }
+timeout() { shift; "$@"; }
+stopped=" "
+systemctl() {
+  case $1 in
+  show) [ "${SHOW_FAILS:-no}" = yes ] && return 1
+        case $3 in SubState) echo "$SUB" ;; Result) echo "$RESULT" ;; ExecMainCode) echo "$CODE" ;; ExecMainStatus) echo "$STATUS" ;;
+          ActiveState) if [[ $stopped == *" $5 "* ]]; then echo "${ACTIVE_AFTER_STOP:-inactive}"; else echo "${ACTIVE:-inactive}"; fi ;; esac ;;
+  stop) echo "stop:$2" >&2; stopped+="$2 " ;;
+  esac
+}
+"""
+
+    def step(self, env):
+        r = self.bash(self.MOCKS + env + '\nstep x 10 /bin/true; echo "rc=$? result=$STEP_RESULT uncertain=$UNCERTAIN"')
+        return r, r.stdout.strip().splitlines()[-1]
+
+    def test_states(self):
+        cases = [
+            ("success", "SUB=exited RESULT=success CODE=1 STATUS=0", "rc=0 result=x exit=0 uncertain=0"),
+            ("exit status", "SUB=failed RESULT=exit-code CODE=1 STATUS=3", "rc=1 result=x exit=3 uncertain=0"),
+            ("unit limit", "SUB=failed RESULT=timeout CODE=2 STATUS=9", "rc=1 result=x timeout after 10s uncertain=0"),
+            ("signal", "SUB=failed RESULT=signal CODE=2 STATUS=9", "rc=1 result=x ended result=signal code=2 status=9 uncertain=0"),
+            ("interrupt", "SUB=running interrupted=1", "rc=1 result=x interrupted uncertain=0"),
+            ("interrupt, stop unconfirmed", "SUB=running interrupted=1 ACTIVE_AFTER_STOP=deactivating",
+             "rc=1 result=x interrupted, stop not confirmed uncertain=1"),
+            ("state unreadable", "SHOW_FAILS=yes", "rc=1 result=x state-unreadable uncertain=1"),
+            ("ended but not stopped", "SUB=exited RESULT=success CODE=1 STATUS=0 ACTIVE_AFTER_STOP=active",
+             "rc=0 result=x exit=0 uncertain=1"),
+        ]
+        for name, env, want in cases:
+            with self.subTest(name):
+                r, got = self.step(env)
+                self.assertEqual(got, want, r.stdout + r.stderr)
+                self.assertIn("RuntimeMaxSec=10", r.stderr)
+
+    def test_settle_stops_leftover_units_and_reports_failure(self):
+        script = self.MOCKS + """
+getent() { return 2; }
+ACTIVE=active
+settle; echo "uncertain=$UNCERTAIN"
+"""
+        r = self.bash(script)
+        self.assertIn("stop:endoagent-run-1.service", r.stderr)
+        self.assertEqual(r.stdout.strip().splitlines()[-1], "uncertain=0")
+        r = self.bash(script.replace("ACTIVE=active", "ACTIVE=active ACTIVE_AFTER_STOP=active"))
+        self.assertEqual(r.stdout.strip().splitlines()[-1], "uncertain=1")
+
+
+class Flow(Session):
+    # STAGE_RC, RUN_RC_MOCK, FINISH_RC: each step's status; UNCERTAIN_AFTER: settle's outcome; EXPORT: finish's export line
+    MOCKS = """
+authorise() { return 0; }
+settle() { [ "${UNCERTAIN_AFTER:-0}" = 1 ] && UNCERTAIN=1; :; }
+account() { echo account >&2; }
+step() {
+  local rc
+  case $1 in stage) rc=${STAGE_RC:-0} ;; run) rc=${RUN_RC_MOCK:-0} ;; finish) rc=${FINISH_RC:-0}; echo "${EXPORT-}" > "$OUT/session/finish.log" ;; esac
+  echo "step:$1" >&2; STEP_RESULT="$1 exit=$rc"; return "$rc"
+}
+"""
+    SHA = "a" * 64
+
+    def flow(self, env):
+        subprocess.run(["rm", "-rf", str(self.tmp / "out")], check=True)
+        r = self.bash(self.MOCKS + env + '\nrun ' + "0" * 64 + '; echo "rc=$?"')
+        return r, r.stdout.strip().splitlines()[-1], [line[5:] for line in r.stderr.splitlines() if line.startswith("step:")]
+
+    def test_flow(self):
+        good = f"EXPORT='export size=10 sha256={self.SHA} device-prefix-sha256={self.SHA}'"
+        cases = [
+            ("complete", good, "rc=0", ["stage", "run", "finish"]),
+            ("stage failed: no run, finish exports", good + " STAGE_RC=66", "rc=1", ["stage", "finish"]),
+            ("run failed: finish exports", good + " RUN_RC_MOCK=8", "rc=1", ["stage", "run", "finish"]),
+            ("uncertain termination: nothing exported", good + " UNCERTAIN_AFTER=1", "rc=75", ["stage", "run"]),
+            ("export digests disagree", f"EXPORT='export size=10 sha256={self.SHA} device-prefix-sha256={'b' * 64}'", "rc=1",
+             ["stage", "run", "finish"]),
+            ("no export line", "EXPORT=", "rc=1", ["stage", "run", "finish"]),
+        ]
+        for name, env, rc, steps in cases:
+            with self.subTest(name):
+                r, got, ran = self.flow(env)
+                self.assertEqual(got, rc, r.stdout + r.stderr)
+                self.assertEqual(ran, steps)
+        r, _, _ = self.flow(good)
+        self.assertIn(f'host.sh collect "$DEST" 10 {self.SHA}', r.stdout)
+
+    def test_meaning_uses_the_timeline(self):
+        (self.tmp / "out/run").mkdir(parents=True)
+        timeline = self.tmp / "out/run/timeline.txt"
+        timeline.write_text("2026-11-19T00:00:00Z pre-read capture\n")
+        r = self.bash("meaning 8; meaning 3")
+        self.assertIn("the trusted read was prohibited and did not run", r.stdout)
+        self.assertIn("BLOCKED: a prerequisite failed", r.stdout)
+        timeline.write_text("2026-11-19T00:00:00Z trusted read\n")
+        r = self.bash("meaning 3; meaning 0")
+        self.assertIn("a post-capture step failed with 3", r.stdout)
+        self.assertIn("every post-capture step returned 0 (harness report; not a verdict)", r.stdout)
+
+
+class Plan(Session):
+    def test_refuses_outside_a_staged_fresh_guest(self):
+        r = self.bash('STAGE=$2/none PLAN_SRC=$2/none; plan_body')
+        self.assertIn("verdict REFUSED", r.stdout)
+        self.assertIn("refused staged commit missing or malformed", r.stdout)
+        self.assertIn("refused this session.sh is not the staged commit's", r.stdout)
+        self.assertNotIn("verdict AUTHORISABLE", r.stdout)
+
+    def test_plan_requires_root_and_stage(self):
+        r = self.bash('id() { echo 1000; }; plan; echo "rc=$?"')
+        self.assertIn("rc=10", r.stdout)
+        r = self.bash('STAGE=$2/none; plan; echo "rc=$?"')
+        self.assertIn("rc=10", r.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main()

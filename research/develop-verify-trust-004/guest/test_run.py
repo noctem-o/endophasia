@@ -56,6 +56,27 @@ after_capture
                 if failure == "post":
                     self.assertNotIn("stage:compare", r.stderr)
 
+    def test_capture_gates_the_trusted_read(self):
+        # main() through both installed runs with every prerequisite mocked as passing; only the pre-read capture's status varies.
+        for capture, rc in (("capture", 8), ("none", 0)):
+            with self.subTest(capture):
+                r = self.harness("""
+c=0123456789abcdef0123456789abcdef01234567
+cat() { echo "$c"; }
+git() { echo "$c"; }
+for f in inspect first_stop policy_review principals availability probe start_run wait_run quiesce; do eval "$f() { :; }"; done
+run_status() { echo 0; }
+bash() { if [[ $1 == */capture.sh && $2 == pre ]]; then stage capture; fi; }
+after_capture() { stage reader; }
+main
+""", capture)
+                self.assertEqual(r.returncode, rc, r.stderr)
+                if rc:
+                    self.assertIn("ABORT: pre-read capture failed; no read", r.stderr)
+                    self.assertNotIn("stage:reader", r.stderr)
+                else:
+                    self.assertIn("stage:reader", r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

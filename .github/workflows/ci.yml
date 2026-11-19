@@ -13,6 +13,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  trust-reader:
+    name: TRUST reader (real sandbox)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y bubblewrap nodejs
+      - run: npm ci
+      - run: npx vitest run tests/develop-verify-trust-003-reader.test.ts
+        env:
+          ENDO_REQUIRE_TRUST_SANDBOX: "1"
+
   check:
     name: Typecheck and lint
     runs-on: ubuntu-24.04

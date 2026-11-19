@@ -15,6 +15,7 @@ import {
 	acquireObjects,
 	bindObjects,
 	gitArgv,
+	gradeCases,
 	gradeFiles,
 	invocations,
 	type Oracle,
@@ -35,6 +36,8 @@ const VERIFIER = 61001;
 const READER = 61002;
 const detected = detectBubblewrapV0();
 const sandbox = detected.ok;
+if (!detected.ok && process.env.ENDO_REQUIRE_TRUST_SANDBOX === "1")
+	throw new Error(`required sandbox: ${detected.reason}: ${detected.detail}`);
 if (!sandbox)
 	process.stderr.write(`develop-verify-trust-003-reader: sandboxed grading cases skipped: ${detected.reason}\n`);
 
@@ -382,6 +385,35 @@ describe("trusted reader: acquisition from an agent-controlled repository", () =
 });
 
 describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
+	it("grades as a distinct delegated UID on a non-root host", (ctx) => {
+		const r = spawnSync("bash", [join(REPO, "tests/fixtures/trust003-delegated-uid.sh")], {
+			cwd: REPO,
+			encoding: "utf8",
+			timeout: 20_000,
+		});
+		if (r.status === 77) ctx.skip(r.stdout.trim());
+		expect(r.status, r.stdout + r.stderr).toBe(0);
+		expect(r.stdout).toContain('"stagerUid":0,"expectedGraderUid":65534');
+		expect(r.stdout).toContain("no remaining real, effective, saved or filesystem UID");
+	});
+	it("never grades a matching exit whose termination is unconfirmed", () => {
+		const result = gradeCases([
+			{
+				name: "match",
+				outcome: "exited",
+				exitCode: 0,
+				signal: null,
+				matched: true,
+				terminationConfirmed: false,
+				durationMs: 20,
+			},
+		]);
+		expect(result).toMatchObject({
+			status: "incomplete",
+			correct: null,
+			reason: "match: exited, termination unconfirmed",
+		});
+	});
 	it.runIf(sandbox)("grades nested imports with restrictive umask and rejects writable stages", () => {
 		const r = spawnSync(process.execPath, [join(REPO, "tests/fixtures/trust003-nested-grade.mjs")], {
 			encoding: "utf8",

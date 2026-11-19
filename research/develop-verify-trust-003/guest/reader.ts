@@ -443,6 +443,10 @@ export async function gradeFiles(
 	} finally {
 		staged.dispose();
 	}
+	return gradeCases(cases);
+}
+
+export function gradeCases(cases: CaseGrade[]): Grade {
 	const unconfirmed = cases.find((c) => !c.terminationConfirmed || c.outcome === "spawn-error");
 	if (unconfirmed !== undefined)
 		return {

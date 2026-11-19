@@ -1,0 +1,55 @@
+{
+	"schemaVersion": "endo.function-evaluator.v0",
+	"entry": "count.mjs",
+	"export": "countPositive",
+	"cases": [
+		{
+			"name": "empty",
+			"input": [
+				[]
+			],
+			"expected": 0
+		},
+		{
+			"name": "mixed",
+			"input": [
+				[
+					-1,
+					2,
+					0,
+					4
+				]
+			],
+			"expected": 2
+		},
+		{
+			"name": "zero",
+			"input": [
+				[
+					0
+				]
+			],
+			"expected": 0
+		},
+		{
+			"name": "negative",
+			"input": [
+				[
+					-8
+				]
+			],
+			"expected": 0
+		},
+		{
+			"name": "fraction",
+			"input": [
+				[
+					0.01
+				]
+			],
+			"expected": 1
+		}
+	],
+	"reference": "reference",
+	"negative": "negative"
+}

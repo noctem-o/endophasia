@@ -65,9 +65,17 @@ for (const name of readdirSync(join(state, "records")).sort()) {
 		const repo = repos.find((r) => git(r, ["cat-file", "-e", `${cand.commit}^{commit}`]).status === 0);
 		if (repo === undefined) row.bound = "commit-not-found";
 		else {
-			const o = collectObjects(repo, cand.commit);
+			// The client runs git as the caller; root refuses an agent-owned repository (safe.directory). Read a root-owned bare copy instead.
+			const copy = mkdtempSync("/tmp/trust003-objects-");
+			const cloned = git(repo, ["clone", "--quiet", "--bare", "--no-local", repo, join(copy, "r.git")]);
+			const o =
+				cloned.status === 0
+					? collectObjects(join(copy, "r.git"), cand.commit)
+					: { ok: false, reason: "clone-failed" };
+			rmSync(copy, { recursive: true, force: true });
 			const c = o.ok ? resolveCandidate(o.objectFormat, cand.commit, o.objects) : o;
 			const exportSha256 = c.ok ? c.candidate.exportSha256 : null;
+			if (!c.ok) row.exportError = c.reason;
 			const bound = readAuthoritative({
 				state,
 				installDir,

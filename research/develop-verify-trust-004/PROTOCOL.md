@@ -359,3 +359,39 @@ SHA-256: `guest/session.sh` 61c42b4525c43c0059729075583f14f85900a199e388522c1f83
 `tests/develop-verify-trust-004-reanalyze-repos.test.ts` 3bdc71bbdf783cd98a4443320fae98a53c82251962dd17636c14752ee542b24a.
 The adjacent frozen manifest replaces these four entries and pins this amended protocol. It still lists 32 entries. Amendment 5
 remains available at `f6e9d23d6`.
+
+## Amendment 7 — third operator-path review round and freeze selection, before the next guest attempt
+
+No session command has run against Amendment 6. Two process corrections come first. At the Amendment 6 freeze `870e8aafd`,
+`FROZEN.sha256` pinned `guest/session.sh` while that commit's OPERATOR.md still quoted the Amendment 5 digest. A cold operator
+staging that commit would have aborted a valid run. The selected source commit is therefore no longer the commit that adds an
+amendment. It is the first later commit that carries the same manifest and whose OPERATOR.md quotes exactly the manifest's digests.
+`tests/develop-verify-trust-004-freeze.test.ts` (CI job "TRUST-004 operator freeze consistency", full history) enforces this:
+every frozen-file digest the page quotes must be that file's manifest entry, and the selected commit must carry this manifest, a
+page that passes the same check, and files that hash to it. Four further review findings are corrected. None of them changes the
+verifier, the reader, the driver, run.sh, finish.sh, the pins, the §9 criteria or TRUST-003's files.
+
+**session.sh.** An interrupt that arrived during `settle` or `account` was cleared before `finish` and could leave a session
+reported as exit 0. It is now appended to `account.txt` before the export, and a session with any recorded interrupt never
+returns 0.
+
+**reanalyze.ts.** (1) `summary.byClass.UNKNOWN` counted only authoritative rows, so unread and malformed records were reported
+as zero. It now counts every `UNKNOWN` row, as `INCOMPLETE` already did. (2) A retained commit whose objects could not be read
+was reported as `commit-not-found` and counted in `commitsWithoutObjects`. A failed acquisition now counts as absence only when
+`git cat-file --batch-check` confirms `missing`. Otherwise the binding is `commit-unreadable`, with each repository's failure
+listed, and the summary lists it under `commitsUnreadable`.
+
+**OPERATOR.md** (not frozen). The analyst command printed `reanalyze exit=` but then exited 0. It now exits with reanalyze.ts's
+status, and the block prints `analyst command exit=`.
+
+Tests, each failing against Amendment 6 and passing now: `guest/test_session.py` `Flow` cases "interrupt during settle" and
+"interrupt during the account" (rc=1, recorded in `account.txt`); `tests/develop-verify-trust-004-reanalyze-repos.test.ts`
+"commits that cannot be bound" (a retained commit with a missing tree object is `commit-unreadable`; the control, an absent
+commit, is `commit-not-found`; a malformed record counts under `UNKNOWN`); `tests/develop-verify-trust-004-operator.test.ts`
+"analyst command status" (exits 0 and 3 propagate).
+
+SHA-256: `guest/session.sh` 6a989d68101c44143f6c73d5733241f50b0243fde8738bae44e7b201e4d57abf;
+`guest/test_session.py` 1727d31a488969b1dc6d7256f174cf17e084225797565c197b36e601dabf16fd;
+`reanalyze.ts` bb6ce02f50b2a11f4110fd924fe3ff1759418cec99d58904054274d57e9bfda0;
+`tests/develop-verify-trust-004-reanalyze-repos.test.ts` da80ddac564236c8d7f81dc6cd7e2efed7502fbdbce20e0779ec6e2989ae7098.
+The adjacent frozen manifest replaces these four entries and pins this amended protocol. It still lists 32 entries.

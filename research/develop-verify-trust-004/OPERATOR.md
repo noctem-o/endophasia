@@ -270,8 +270,12 @@ Then as **[analyst]**, through runuser:
 ```sh
 runuser -u analyst -- bash -c 'cd && mkdir a && tar -xf export.tar -C a && git clone -q --no-checkout repo.bundle src &&
   git -C src -c advice.detachedHead=false checkout -q '"$C"' && (cd src && sha256sum --quiet -c research/develop-verify-trust-004/FROZEN.sha256) &&
-  { node src/research/develop-verify-trust-004/reanalyze.ts a/out/evidence a/out/run/trusted-read.json reanalysis.json; echo "reanalyze exit=$?"; }'
+  { node src/research/develop-verify-trust-004/reanalyze.ts a/out/evidence a/out/run/trusted-read.json reanalysis.json; rc=$?; echo "reanalyze exit=$rc"; exit "$rc"; }'
+echo "analyst command exit=$?"
 ```
+
+The analyst command exits with reanalyze.ts's own status, so `reanalyze exit=` and `analyst command exit=` are nonzero for a
+failed reanalysis (disagreements, a false or unconfirmed PASS). Write the result out below either way, so that the host can read why.
 
 Back as **[guest root]**, write the result to the copied evidence disk. The guest powers off only when the write succeeded and
 the device prefix reads back with the archive's digest; otherwise it prints `ANALYSIS NOT WRITTEN` and stays up, so do not power

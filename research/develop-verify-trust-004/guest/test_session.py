@@ -201,8 +201,8 @@ class Flow(Session):
     # STAGE_RC, RUN_RC_MOCK, FINISH_RC: each step's status; UNCERTAIN_AFTER: settle's outcome; EXPORT: finish's export line
     MOCKS = """
 authorise() { cp "$SESSION/plan.txt" "$SESSION/authorised.txt"; }  # what a successful authorise leaves
-settle() { [ "${UNCERTAIN_AFTER:-0}" = 1 ] && UNCERTAIN=1; :; }
-account() { echo account >&2; }
+settle() { [ "${UNCERTAIN_AFTER:-0}" = 1 ] && UNCERTAIN=1; [ "${SETTLE_INT:-0}" = 1 ] && interrupted=1; :; }
+account() { echo account >&2; [ "${ACCOUNT_INT:-0}" = 1 ] && interrupted=1; :; }
 step() {
   local rc
   case $1 in stage) rc=${STAGE_RC:-0} ;; run) rc=${RUN_RC_MOCK:-0} ;;
@@ -228,6 +228,8 @@ step() {
              ["stage", "run", "finish"]),
             ("no export line", "EXPORT=", "rc=1", ["stage", "run", "finish"]),
             ("finish not confirmed stopped: export not announced", good + " FINISH_UNCERTAIN=1", "rc=75", ["stage", "run", "finish"]),
+            ("interrupt during settle: not a clean run", good + " SETTLE_INT=1", "rc=1", ["stage", "run", "finish"]),
+            ("interrupt during the account: not a clean run", good + " ACCOUNT_INT=1", "rc=1", ["stage", "run", "finish"]),
         ]
         for name, env, rc, steps in cases:
             with self.subTest(name):
@@ -236,6 +238,9 @@ step() {
                 self.assertEqual(ran, steps)
         r, _, _ = self.flow(good)
         self.assertIn(f'host.sh collect "$DEST" 10 {self.SHA}', r.stdout)
+        for late in ("SETTLE_INT=1", "ACCOUNT_INT=1"):
+            self.flow(good + " " + late)
+            self.assertIn("operator interrupt: recorded during the session", (self.tmp / "out/session/account.txt").read_text())
         r, _, _ = self.flow(good + " FINISH_UNCERTAIN=1")
         self.assertIn("TERMINATION UNCERTAIN after finish", r.stdout)
         self.assertNotIn("host.sh collect", r.stdout)

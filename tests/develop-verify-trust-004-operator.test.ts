@@ -197,3 +197,29 @@ describe("TRUST-004 OPERATOR.md status-8 custody text", () => {
 		expect(text).not.toMatch(/status 8[^.]*is reported and sealed/);
 	});
 });
+
+describe("TRUST-004 OPERATOR.md analyst command status", () => {
+	it.each([0, 3])("reports and propagates reanalyze.ts exit %i", (code) => {
+		const block = blocks("5. Independent reanalysis").find((s) => s.includes("runuser -u analyst"));
+		expect(block).toBeDefined();
+		const bin = join(root, "bin");
+		const home = join(root, "analyst");
+		mkdirSync(bin);
+		mkdirSync(home);
+		const stub = (name: string, body: string) => {
+			writeFileSync(join(bin, name), `#!/bin/bash\n${body}\n`);
+			chmodSync(join(bin, name), 0o755);
+		};
+		stub("runuser", 'shift 3; exec "$@"');
+		stub("tar", "exit 0");
+		stub("git", "mkdir -p src; exit 0");
+		stub("sha256sum", "exit 0");
+		stub("node", 'exit "$NODE_RC"');
+		const r = spawnSync("/bin/bash", ["-c", block as string], {
+			env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, C: "0".repeat(40), NODE_RC: String(code) },
+			encoding: "utf8",
+		});
+		expect(r.stdout, r.stderr).toContain(`reanalyze exit=${code}`);
+		expect(r.stdout).toContain(`analyst command exit=${code}`);
+	});
+});

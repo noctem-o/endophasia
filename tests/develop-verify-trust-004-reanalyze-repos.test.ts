@@ -278,6 +278,44 @@ describe("TRUST-004 offline binding from archived repositories", () => {
 		}, 60_000);
 	});
 
+	describe("commits that cannot be bound", () => {
+		it("reports a retained commit whose objects cannot be read as unreadable, not as absent", async () => {
+			const repo = join(root, "candidate");
+			const commit = makeRepo(repo, "sha1", false);
+			const candidate = await candidateOf(repo, commit);
+			const tree = sh("git", ["-C", repo, "rev-parse", "HEAD^{tree}"]);
+			const { row, summary } = await analyse(candidate, (repos) => {
+				cpSync(repo, join(repos, "A"), { recursive: true });
+				rmSync(join(repos, "A/.git/objects", tree.slice(0, 2), tree.slice(2)));
+			});
+			expect(row.binding).toMatchObject({ status: "unavailable", reason: "commit-unreadable" });
+			expect(row.binding.unreadable).toEqual(["installed-1-A: commit-unreadable"]);
+			expect(summary.commitsUnreadable).toEqual([commit]);
+			expect(summary.commitsWithoutObjects).toEqual([]);
+			expect(row.confirmedPass).toBe(false);
+		}, 60_000);
+
+		it("reports a commit no retained repository holds as absent", async () => {
+			const repo = join(root, "candidate");
+			const commit = makeRepo(repo, "sha1", false);
+			const candidate = await candidateOf(repo, commit);
+			const { row, summary } = await analyse(candidate, (repos) => sh("git", ["init", "-q", join(repos, "A")]));
+			expect(row.binding).toMatchObject({ status: "unavailable", reason: "commit-not-found" });
+			expect(summary.commitsWithoutObjects).toEqual([commit]);
+			expect(summary.commitsUnreadable).toEqual([]);
+		}, 60_000);
+
+		it("counts unread and malformed records under UNKNOWN", async () => {
+			const repo = join(root, "candidate");
+			const commit = makeRepo(repo, "sha1", false);
+			const candidate = await candidateOf(repo, commit);
+			const { summary } = await analyse(candidate, (repos) => cpSync(repo, join(repos, "A"), { recursive: true }), {
+				record: (f) => writeFileSync(f, "{"),
+			});
+			expect(summary.byClass.UNKNOWN).toBe(1);
+		}, 60_000);
+	});
+
 	// Each layout leaves every retained object path empty: the commit is reachable only through a link out of the capture.
 	const outside: [string, (repos: string, external: string) => void][] = [
 		[

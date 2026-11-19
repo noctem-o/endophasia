@@ -33,7 +33,7 @@ strace 7.3-1
 util-linux 2.42.4-1
 tar 1.35-5
 acl 2.4.0-1"
-interrupted=0 UNCERTAIN=0 STEP_RESULT=
+interrupted=0 SESSION_INTERRUPTED=0 UNCERTAIN=0 STEP_RESULT=
 STEPS=()
 
 say() { echo "[session] $*"; }
@@ -261,6 +261,11 @@ run() {
   fi
   settle
   account
+  if [ "$interrupted" = 1 ]; then
+    SESSION_INTERRUPTED=1
+    echo "operator interrupt: recorded during the session; this is not a clean run" >> "$OUT/session/account.txt" || finished=0
+    say "operator interrupt recorded in the account"
+  fi
   if [ "$UNCERTAIN" = 1 ]; then
     say "TERMINATION UNCERTAIN: finish.sh was not run and nothing was exported. Do not power off or tear down; keep the guest disk as evidence."
     return 75
@@ -281,7 +286,7 @@ run() {
   else
     say "EXPORT NOT CONFIRMED: ${line:-no export line}; do not tear down the guest disk"; finished=0
   fi
-  [ "$finished" = 1 ] && [ "${STEPS[*]}" = "stage exit=0 run exit=0" ] && return 0
+  [ "$finished" = 1 ] && [ "$SESSION_INTERRUPTED" = 0 ] && [ "$interrupted" = 0 ] && [ "${STEPS[*]}" = "stage exit=0 run exit=0" ] && return 0
   return 1
 }
 

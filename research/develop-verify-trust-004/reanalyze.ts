@@ -466,16 +466,34 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				continue;
 			}
 			let binding: Record<string, any> = { status: "unavailable", reason: "commit-not-found", exportSha256: null };
+			const unreadable: string[] = [];
 			for (const repo of clean) {
 				const got = await acquireObjects(repo, commit, null);
-				if (!got.ok) continue;
+				if (!got.ok) {
+					const probe = spawnSync("/usr/bin/git", ["--git-dir", repo, "cat-file", "--batch-check"], {
+						input: `${commit}\n`,
+						encoding: "utf8",
+						env: { PATH: "/usr/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null" },
+						timeout: 30_000,
+					});
+					if (probe.status !== 0 || probe.stdout !== `${commit} missing\n`)
+						unreadable.push(`${repo.slice(scratch.length + 7)}: ${got.reason}`);
+					continue;
+				}
 				const bound = bindObjects(candidate, got);
 				binding = { ...bound, repo: repo.slice(scratch.length + 7) };
 				if (bound.status === "valid") break;
 			}
+			if (binding.reason === "commit-not-found" && unreadable.length > 0)
+				binding = { status: "unavailable", reason: "commit-unreadable", unreadable, exportSha256: null };
 			if (binding.status !== "valid") {
 				finish(
-					{ status: binding.status, reason: binding.reason, exportSha256: binding.exportSha256 },
+					{
+						status: binding.status,
+						reason: binding.reason,
+						exportSha256: binding.exportSha256,
+						...(binding.unreadable ? { unreadable: binding.unreadable } : {}),
+					},
 					{ status: "not-applicable", reason: "no verified bytes" },
 				);
 				continue;
@@ -550,8 +568,11 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				byClass: Object.fromEntries(
 					["PASS", "FAIL", "BLOCKED", "INCOMPLETE", "UNKNOWN"].map((c) => [
 						c,
-						rows.filter((r) => r.authenticity.class === c && (c === "INCOMPLETE" || r.authenticity.authoritative))
-							.length,
+						rows.filter(
+							(r) =>
+								r.authenticity.class === c &&
+								(c === "INCOMPLETE" || c === "UNKNOWN" || r.authenticity.authoritative),
+						).length,
 					]),
 				),
 				authenticPass: authentic.length,
@@ -560,6 +581,9 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				unconfirmedPasses: rows.filter((r) => r.unconfirmedPass).map((r) => r.invocation),
 				commitsReferenced: commits.length,
 				commitsWithoutObjects: commitsMissing,
+				commitsUnreadable: commits.filter((c) =>
+					rows.some((r) => r.commit === c && r.binding.reason === "commit-unreadable"),
+				),
 				authenticPassCommitsBound: authentic.every((r) => r.binding.status === "valid"),
 				repositoriesRefused: repoNotes.filter((n) => "refused" in n).length,
 				disagreementsWithLive: disagreements.length,

@@ -315,3 +315,47 @@ SHA-256: `guest/session.sh` 43a348be67a002f14de87fa6769776742031b2ee348f67570d42
 `tests/develop-verify-trust-004-reanalyze-repos.test.ts` 7f024826bf269828f759d0d26749d75a081fd9588d66484f681d2ab212e1010f.
 The adjacent frozen manifest replaces these six entries and pins this amended protocol; it still lists 32 entries. Amendment 4
 remains available at `0759a4c31`.
+
+## Amendment 6 — second operator-path review round, before the next guest attempt
+
+No session command has run against Amendment 5. A guest was booted and attached for a handoff on the strength of a green
+Amendment 5 head, and the operator powered it off without running `plan` or `run`, as the console log confirms. Eight further
+review findings were open at that point. A handoff now requires green checks **and** zero open review findings. None of these
+corrections changes the verifier, the reader, the driver, run.sh, finish.sh, the pins, the §9 criteria or TRUST-003's files.
+
+**session.sh.** (1) `run` checked the digest, the age and the recomputed plan only before the blocking confirmation, and then
+archived whatever `plan.txt` held. After the confirmation it now snapshots the plan to `authorised.txt`, requires the snapshot's
+digest to be the confirmed one, the plan to be within its age limit (measured from the time the plan was read before the
+prompt), and a fresh `plan_body` to match the snapshot byte for byte. The archived `out/session/plan.txt` is that snapshot, and
+its digest is checked again after the copy. (2) A failed write of the plan, its digest or its copy is a refusal (status 10), and
+no plan is left current. A failed write of the archived plan or of `authorisation.txt` is a refusal before anything starts.
+(3) A finish unit that is not confirmed stopped is TERMINATION UNCERTAIN: no export line and no collect command are printed, and
+the session returns 75.
+
+**reanalyze.ts.** (4) A record is trusted only if the capture listing's mode and the archive header's mode agree and neither
+grants group or other write. (5) A record is opened only when both the listing and the archive say it is a regular file, and then
+only through `readRegular` (`O_NOFOLLOW`, regular-file check). Otherwise its row is `UNKNOWN`, non-authoritative and
+`not opened`. (6) A record that does not parse as a JSON object gets a non-authoritative `malformed-record` row, and the other
+invocations are still analysed.
+
+**OPERATOR.md** (not frozen). (7) The analysis guest powers off only after the result was written and the device prefix reads
+back with the archive's digest; otherwise it prints `ANALYSIS NOT WRITTEN` and stays up. (8) Amendment 5's text said an
+incomplete run, including run.sh status 8, was reported and sealed. That was wrong: without a verified pre-read capture, custody
+stops at exit 3 and nothing is sealed. The text now says so and tells the operator to keep `$W` and `$E` and report INCOMPLETE.
+
+Tests, each failing against the Amendment 5 code or text and passing now: `guest/test_session.py` `Authorisation.test_checks_again_after_the_confirmation`
+(expired, replaced plan, changed guest), `Authorisation.test_a_failed_authorisation_record_starts_nothing` (copy fails, archived
+bytes are not the confirmed ones, `authorisation.txt` unwritable), `PlanWrites.test_a_failed_plan_write_leaves_no_current_plan`,
+and the `Flow` case "finish not confirmed stopped: export not announced". Also
+`tests/develop-verify-trust-004-reanalyze-repos.test.ts` "record metadata and content": two mode disagreements, a symbolically
+linked record and a malformed record beside a second invocation. The controls are a listing with an unsafe mode and agreeing safe
+modes. Finally `tests/develop-verify-trust-004-operator.test.ts` covers the analysis write-back (a failed write and a mismatched
+read-back stay up) and the status-8 custody text. The session test fixtures that stub `authorise` now leave the snapshot a
+successful `authorise` leaves, and pass the plan's real digest.
+
+SHA-256: `guest/session.sh` 61c42b4525c43c0059729075583f14f85900a199e388522c1f8342fd2ceede3e;
+`guest/test_session.py` d376012055e3768df20f140c8d9e41d9e55d56d3be368ae0b2217f4cde33271c;
+`reanalyze.ts` 9ea8db46be1aed4f8a28bc3b21bd6763c024624d93bc0e3c54e28f5f45049716;
+`tests/develop-verify-trust-004-reanalyze-repos.test.ts` 3bdc71bbdf783cd98a4443320fae98a53c82251962dd17636c14752ee542b24a.
+The adjacent frozen manifest replaces these four entries and pins this amended protocol. It still lists 32 entries. Amendment 5
+remains available at `f6e9d23d6`.

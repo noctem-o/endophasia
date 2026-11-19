@@ -1,8 +1,8 @@
 95f401c0de1e249359cd6adbe5b04a8efc6a31419de7b99a529d6b89a2a57ace  ./FROZEN.txt
 4acd7323ab7e4b81997fc947d4eaac3e7e0c4d1adc9b19d6b2fadb56e06bb3a1  ./definitions.sha256
-b55f8941437fde6d4a1a7677ed52847ec3a58ec781a3a4800ab3526aef85fcc0  ./guest-checkout.sha256
+05cb46a763e8b8748336c76dc64ab3f380979277262bd0f7c7cf939ab6f0a6a0  ./guest-checkout.sha256
 aff8d21ac0e97a48ae66538dab35c692cf3bad0e8334a27bd51d792804449b67  ./guest-installation.json
-ff2387c48893461095b786c0619627b0b87fe6227d175aade26831fc75adac7c  ./guest-package-content.sha256
+84aa73ecafadc0561a9409f10071e866ce1fc35b778b5cb0f4e7fbff4ad1f523  ./guest-package-content.sha256
 f82740fea4a505a77a4f338adcc9d767f8fbc76f4fd924b852670ee3e722b95d  ./host-audit.json
 01e87787e8888323a4feacb40efcfcdb4e2ae0dff7196281d3c511a96d1b53f8  ./host.txt
 4b238c6257b93278c7e1db7cccbeb062f202802b75db4f4c3b8d8a6d4906fc31  ./libvirt-units.txt

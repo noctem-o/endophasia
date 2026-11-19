@@ -11,8 +11,8 @@ Use a clean, snapshotted guest with systemd user managers, cgroup v2, unprivileg
 **Staging (unprivileged). Pinned by content, not by commit.** The trials ran at `89b6100b3b17779925da45cc170f5a657a307b0d`, which exists only on this branch; a squash merge and branch deletion would remove it. So the precondition is that the checkout **contains the pinned bytes**, whatever commit they arrive in (this branch, or `main` after a squash). Two pin lists in this directory carry the content: [guest-checkout.sha256](evidence/guest-checkout.sha256) covers the harness, audit, layout, install scripts, their import closure and fixtures (37 files); [guest-package-content.sha256](evidence/guest-package-content.sha256) covers every file of the package except its manifest. Compare these two literal digests of the lists themselves with an independent view of this review before trusting either:
 
 ```text
-b55f8941437fde6d4a1a7677ed52847ec3a58ec781a3a4800ab3526aef85fcc0  research/develop-verify-trust-003/evidence/guest-checkout.sha256
-ff2387c48893461095b786c0619627b0b87fe6227d175aade26831fc75adac7c  research/develop-verify-trust-003/evidence/guest-package-content.sha256
+05cb46a763e8b8748336c76dc64ab3f380979277262bd0f7c7cf939ab6f0a6a0  research/develop-verify-trust-003/evidence/guest-checkout.sha256
+84aa73ecafadc0561a9409f10071e866ce1fc35b778b5cb0f4e7fbff4ad1f523  research/develop-verify-trust-003/evidence/guest-package-content.sha256
 ```
 
 Then, from a clean checkout of whichever commit holds them:
@@ -23,8 +23,8 @@ e=research/develop-verify-trust-003/evidence
 a=research/develop-verify-trust-002
 test -z "$(git status --porcelain)"
 sha256sum -c - <<'PINS'
-b55f8941437fde6d4a1a7677ed52847ec3a58ec781a3a4800ab3526aef85fcc0  research/develop-verify-trust-003/evidence/guest-checkout.sha256
-ff2387c48893461095b786c0619627b0b87fe6227d175aade26831fc75adac7c  research/develop-verify-trust-003/evidence/guest-package-content.sha256
+05cb46a763e8b8748336c76dc64ab3f380979277262bd0f7c7cf939ab6f0a6a0  research/develop-verify-trust-003/evidence/guest-checkout.sha256
+84aa73ecafadc0561a9409f10071e866ce1fc35b778b5cb0f4e7fbff4ad1f523  research/develop-verify-trust-003/evidence/guest-package-content.sha256
 PINS
 sha256sum --quiet -c "$e/guest-checkout.sha256"
 c=$(git rev-parse HEAD)
@@ -38,7 +38,7 @@ The package's manifest names its source commit, so the **tar digest depends on t
 set -eu
 cd /root/trust003
 sha256sum -c - <<'PINS'
-ff2387c48893461095b786c0619627b0b87fe6227d175aade26831fc75adac7c  guest-package-content.sha256
+84aa73ecafadc0561a9409f10071e866ce1fc35b778b5cb0f4e7fbff4ad1f523  guest-package-content.sha256
 400d9cfec70e6f5156922f3cdc01678847a9200a3cebb700b759b5d0192ed94b  install.sh
 b58320b5a2824f5841c83c55464f1555fef044666fbe2e2c4da0d887eecc4727  uninstall.sh
 f1433420c6d8429114bc8ba5a05b6061ed64da9d52bdd439d828cb38ffc874e4  inspect.sh

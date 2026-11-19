@@ -1,5 +1,7 @@
 # DEVELOP-VERIFY-TRUST-003
 
+The disposable guest run is complete. Read [Amendment 1](guest-run/AMENDMENT-1.md) alongside the historical results: it separates the archived export grades from the live commit and ownership checks that can no longer be repeated.
+
 The protected agent did useful work without access to the operator's daemon sockets. The incorrect program printed PASS and exited zero; the evaluator rejected it. **Neither program received an authoritative decision.** The host operator remains in `docker` and `libvirt`; there is no installed verifier here. Keep the developer's groups.
 
 ## Guest run (ENDO-11)

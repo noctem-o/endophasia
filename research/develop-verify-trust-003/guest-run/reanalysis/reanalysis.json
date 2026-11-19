@@ -1,0 +1,6399 @@
+{
+ "schemaVersion": "endo.research.dvt003.reanalysis.v0",
+ "source": {
+  "archive": "research/develop-verify-trust-003/guest-run/run/verifier-records.tar.gz",
+  "archiveSha256": "17e03b7bc3323775f6242d945b991df05f922da381e6a33681c820a53d4a1768",
+  "stagedCommit": "c3718f1d20a0777742cb72d6a9dfd7a44ce938fa",
+  "installationId": "7802fb0ef678696f37627c83418398806a1f516ed1d3d74369204d00ca61a222",
+  "oracleManifestSha256": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31"
+ },
+ "limits": [
+  "ownership of the protected state root is the in-guest reader's historical observation; it cannot be re-observed offline",
+  "commit and tree objects were not retained: the binding here is record file list and export digest against bytes recovered by SHA-256 match",
+  "grading ran on the analysis host (bubblewrap, this host's node), not in the guest"
+ ],
+ "summary": {
+  "invocations": 68,
+  "records": 64,
+  "incomplete": 4,
+  "offlineContentProblems": 0,
+  "authenticPass": 16,
+  "confirmedPass": 16,
+  "falsePasses": [],
+  "unconfirmedPasses": [],
+  "bindingUnavailable": [],
+  "correctButNotPass": []
+ },
+ "rows": [
+  {
+   "invocation": "0147d38474a9a55a00cccad03d2c8c67",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "08545a1b7fa566fe10e619291e431121",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "0b530949ae77611b79f4bf9917ef230c",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "0d7a42a8b3f31e5d42cd12023c7c5de7",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "0f3273a54822e2e5dbffb1843c40fd9d",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "0fcf1fea814a0f3f41363055fe8ab9f8",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "1591f519590a2652b4a29209e489c024",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "16f49cf007694efa01df61aa126ea321",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "1e645e13c4ed96503ef62a5c6e62051d",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "248761cb31c166cf26ed0b3f44f159e4",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "dc5296b28c930fa3b17525f7543834e1f468b3c6",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "6591fcad1cdf95993648791ed9361ed6b279a6da01042d0324e1078ddc5045f1",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/P/roman.mjs",
+     "table.json <- research/develop-verify-trust/fixtures/candidates/P/table.json"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "2865f44c0032f3cfefe893d4622c364c",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "34579559470fd9d7b8a25bda591b1328",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "345f4137fcd6ebd5b4c1c37ff8d7d63d",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "38e9e7196f6ba0cbc228acad2cabfcec8a422c00",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "35198c463112d1754110fa7fe3dda396",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "3b4f523d89c80067971eea6dfd95cec3",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "92062701886b437a4b5deaf5980f3c9b7b7ea2f6",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "e6f30a8147943207b658c90a39068cee38f83b9eb2a1e4b9dcca7d35b497ddfc",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust-002/fixtures/candidates/S/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "rejects-zero",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "rejects-4000",
+     "rejects-word",
+     "rejects-negative",
+     "rejects-fraction",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "411c1fb8e6c35e65b1c7427f15ad9f65",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "4a2fb6145663a86ada82d92a970d0719",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "665e0a3183e252fe02774e093d4fbf07ae04135f",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "6c307013a1d3a6535bac684573e0b7d695fe0500a924cb2dc6d7bd9a9836dad8",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/D/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "timeout",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "5070074b41adc8fe3dda1797085de053",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "51e8fed3a8553233f8d31f2dfb17fece",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "b066f36b8309c76ff06640b2247f2e47eabe7122",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "ecb50bcfda84b43419434852ae2379086983af536f6aabe6d4e9fa80d6d718ff",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust-002/fixtures/candidates/M/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "rejects-zero",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "rejects-4000",
+     "rejects-word",
+     "rejects-negative",
+     "rejects-fraction",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "56860dd3227aa1190ae3b413ee21e7b5",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "38e9e7196f6ba0cbc228acad2cabfcec8a422c00",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "5acb1ec975755b944e6b66942f697d6a",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "5c9cf7f590fb2db28b31d9b88289c252",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "5e0a209855d11142c332fc13689117eb",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "6285e5808fc8bfa3da21927778b6d577",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "62b05fb8c556f29bd9e4ae2efb0a1959",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "64b5fb2be9675b5daec2a286de81493c",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "69733f07839ece11f59f16d96fbbcff4",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "6aa3c6b4ca66909926025a947f91d39e",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "70061d5d1e09a2313539ee3baebb071d",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "71b543885871ecf3b86ec61e0aef7eb0",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "7308273cb12f33b9dd602b94a7007369",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "dc5296b28c930fa3b17525f7543834e1f468b3c6",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "6591fcad1cdf95993648791ed9361ed6b279a6da01042d0324e1078ddc5045f1",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/P/roman.mjs",
+     "table.json <- research/develop-verify-trust/fixtures/candidates/P/table.json"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "74088fab088b31495fa57d2b28ee614f",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "78243ccb68a56c4a816950cd1f5c5150",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "7e98e1554301f7d010aa9a73431ae13f",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "7f8d61e065450ee08e27eb40b8e8d387",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "8588689166c0dd6c2223e490408a0cb2",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "879e383d01a8e1aec68213665dc08cc6",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "8f8aee74c2774fce1d9bd3bcf07bb259",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "971a961341dfa8dbddec0eb40d928191",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "9cd45eb8845e765c9d885bfd9d1a662a",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "9fc837cd7ce3a98b1f5aa565df664023",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "a30cc6c91c50a9e9706343cdca662a9e",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "a4c62553825a7e782e02fbc5c7fe9d4d",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "b066f36b8309c76ff06640b2247f2e47eabe7122",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "ecb50bcfda84b43419434852ae2379086983af536f6aabe6d4e9fa80d6d718ff",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust-002/fixtures/candidates/M/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "rejects-zero",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "rejects-4000",
+     "rejects-word",
+     "rejects-negative",
+     "rejects-fraction",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "a6617d48c3637c511952831e4b880262",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "c3192ab5b134018cfdfb7794ddd3aaf10a256910",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "fa43294fb4a1a651d9380b7c63237dbaa44773f91966d646110565a294b8585b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/E/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "year-2026"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "a81704c4822a0d0bea2593dc25df34b8",
+   "authenticity": {
+    "class": "INCOMPLETE",
+    "reason": "journal-without-record"
+   }
+  },
+  {
+   "invocation": "ac7780aa4cf235ab8354629bb5dacbf0",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "acef37de2006121b3bc13cfe09a57177",
+   "authenticity": {
+    "class": "INCOMPLETE",
+    "reason": "journal-without-record"
+   }
+  },
+  {
+   "invocation": "aebe49b26f96179703fd28658291f78a",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "afeea072e41931a525a2ae4af38fede8",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "92062701886b437a4b5deaf5980f3c9b7b7ea2f6",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "e6f30a8147943207b658c90a39068cee38f83b9eb2a1e4b9dcca7d35b497ddfc",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust-002/fixtures/candidates/S/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "rejects-zero",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "rejects-4000",
+     "rejects-word",
+     "rejects-negative",
+     "rejects-fraction",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "b5e7a5ccf1247f50551b0d18d83b5388",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "bb2c7e7342723982336323436f9724e1",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "c2dd49bfaba4e100accba986e3c722fb",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "cbee600fe2053a969e124a41468c6671",
+   "authenticity": {
+    "class": "INCOMPLETE",
+    "reason": "journal-without-record"
+   }
+  },
+  {
+   "invocation": "cfad255a3b66b8dc31a69a90d02748b1",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "d23e31f92797eb5d2162c511402f3fc6",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "d3bc20d751c271b81b254ee175c3dfcf",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "dc54861c6c80931c66556f9e791a9e75",
+   "authenticity": {
+    "class": "INCOMPLETE",
+    "reason": "journal-without-record"
+   }
+  },
+  {
+   "invocation": "ded8376295f934d2aeac7ffe7716629e",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "c3192ab5b134018cfdfb7794ddd3aaf10a256910",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "fa43294fb4a1a651d9380b7c63237dbaa44773f91966d646110565a294b8585b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/E/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "year-2026"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "output-limit",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "ded9f90022863ad3b3fdbb9ab10e5154",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "e119b9bfd4b35fe335c4741714596c37",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "4865936ded5e1274968ae3ba785020caeb44bf1d",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "c8d4dbdb507e495402097367c645862619f76159a18e6039ab27c1b53a56be71",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust-002/fixtures/candidates/X/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "e36b6cf9c63725f355e592070f38b250",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "e5e245ae79b6b127120f8d455cbc5f0c",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "4865936ded5e1274968ae3ba785020caeb44bf1d",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "c8d4dbdb507e495402097367c645862619f76159a18e6039ab27c1b53a56be71",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust-002/fixtures/candidates/X/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 1,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "f052c755da1ef1ee50afcbb32c9eb374",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/B/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "f0d9337c04d71d6b6b165cffe98c1e5b",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "f14e264e4c39128a56dad2efbde78ae1",
+   "authenticity": {
+    "class": "PASS",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/A/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": true,
+    "failing": [],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  },
+  {
+   "invocation": "f378b4de2b6bdc848db16d0774eba6d1",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "f5fef1389a31eb6b69897ab4640785fe",
+   "authenticity": {
+    "class": "BLOCKED",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": null
+   },
+   "binding": {
+    "status": "not-applicable"
+   },
+   "grade": {
+    "status": "not-applicable"
+   }
+  },
+  {
+   "invocation": "f78a73333e8609e6b32aeedb66e4c688",
+   "authenticity": {
+    "class": "FAIL",
+    "historicalAuthoritative": true,
+    "offlineContentProblem": null,
+    "oracleManifestMatches": true
+   },
+   "commit": "665e0a3183e252fe02774e093d4fbf07ae04135f",
+   "binding": {
+    "status": "valid",
+    "exportSha256": "6c307013a1d3a6535bac684573e0b7d695fe0500a924cb2dc6d7bd9a9836dad8",
+    "sources": [
+     "roman.mjs <- research/develop-verify-trust/fixtures/candidates/D/roman.mjs"
+    ]
+   },
+   "grade": {
+    "status": "graded",
+    "correct": false,
+    "failing": [
+     "max-3999"
+    ],
+    "cases": [
+     {
+      "name": "subtractive-1994",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-zero",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "runs-14",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "one",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "nine",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "forty",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "ninety",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "four-hundred",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "year-2026",
+      "outcome": "exited",
+      "exitCode": 0,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-4000",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-word",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-negative",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "rejects-fraction",
+      "outcome": "exited",
+      "exitCode": 2,
+      "signal": null,
+      "matched": true,
+      "terminationConfirmed": true
+     },
+     {
+      "name": "max-3999",
+      "outcome": "timeout",
+      "exitCode": null,
+      "signal": "SIGKILL",
+      "matched": false,
+      "terminationConfirmed": true
+     }
+    ]
+   }
+  }
+ ]
+}

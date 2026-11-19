@@ -265,3 +265,53 @@ SHA-256: `reanalyze.ts` 078acd7ae894601bad45b0075fdcd55a445577d3bc2cf9f353394182
 `tests/develop-verify-trust-004-reanalyze.test.ts` a4e92c043d09f6408db03af0531b4c1310bf524260e4d95d47ed4e325054193b;
 `tests/develop-verify-trust-004-reanalyze-repos.test.ts` d4e4061809a123a98aa8b20d76a864e6249b7951d9acb0103df5e21c2851dac3.
 The adjacent frozen manifest lists these new files and pins this amended protocol. Amendment 3 remains available at `c3d16713b`.
+
+## Amendment 5 — operator-path fail-closed corrections, before the next guest attempt
+
+No guest has booted against Amendment 4 or this amendment; attempt 1's retained overlay and console are unchanged. Eight review
+findings on the operator path are corrected. None changes the verifier, the reader, the driver, run.sh, finish.sh, the pins, the
+§9 criteria or TRUST-003's files. Measurement and operator code only; every correction makes a failure refuse or stop rather
+than proceed.
+
+**session.sh.** (1) `plan` printed an empty stage-disk, bundle or frozen-manifest digest when the read or the hash failed, so a
+plan could be AUTHORISABLE, and a repeated failure in `run` made the two plans equal without binding approval to the stage disk.
+Each digest is now accepted only as 64 lowercase hex digits from a hash command that succeeded; otherwise the field reads
+`UNAVAILABLE` and the plan is REFUSED (`refused <input> SHA-256 could not be computed`). The stage disk path is `STAGE_DISK`
+(`/dev/vdb`) so that the fixture can substitute it. (2) A step whose unit could not be confirmed stopped after its process ended
+set TERMINATION UNCERTAIN but still returned 0, so `run` could start after staging that might be alive. A step now returns 0
+only for exit status 0 **and** a confirmed stop; otherwise its result carries `, stop not confirmed` and nothing further is
+launched. (3) An operator interrupt that arrived as a unit reached a terminal state, or before the next unit's first poll, was
+ignored. A step now refuses to launch while an interrupt is pending (`<name> not-started (operator interrupt)`), and a terminal
+state seen with an interrupt pending is recorded with `, operator interrupt` and is not success.
+
+**attach.py.** Input to `con.in` was written synchronously, so a large paste into a guest that stopped reading also stopped the
+relay draining `con.out` and reading the terminal, and Ctrl-] never detached. Input is now queued and written only when `con.in`
+is writable, multiplexed with output and the terminal. Detach always returns; input the guest never accepted is dropped and
+its size reported.
+
+**reanalyze.ts.** A file where a fan-out directory belongs reached `readdirSync` and aborted the whole reanalysis. A two-hex
+fan-out entry that is not a directory now refuses that repository (`object format: objects/<xx> is not a directory`), and an I/O
+error during link or format validation refuses the repository (`unreadable: …`). The other repositories are still analysed.
+
+**OPERATOR.md** (not frozen; operator instructions only). Section 4 runs as one gated block, so a failed collect, a missing or
+checksum-invalid pre-read capture or a checksum-invalid post-read capture stops before anything is copied or sealed. A missing
+post-read capture is reported separately and sealed as missing evidence. After sealing, `$E` alone is made writable again and
+`$E/analysis` is created, so section 5's collect can run; the evidence files stay read-only. Section 5 records the analysis
+guest's own listener baseline before launch and audits against `$W2`.
+
+Tests, each failing against the Amendment 4 code and passing now: `guest/test_session.py` `PlanDigests` (an unreadable stage
+disk, bundle or manifest, and a failing hash command, end to end through `plan` and `run`), `Interlocks` (stage not confirmed
+stopped never launches run; an interrupt as stage ends, or before run's first poll) and `Steps` (interrupt before launch; the
+updated `ended but not stopped` case); `qemu/test_attach.py` `test_detaches_while_the_guest_stops_reading_a_large_paste`;
+`tests/develop-verify-trust-004-reanalyze-repos.test.ts` "refuses a repository with a file where a fan-out directory belongs";
+and `tests/develop-verify-trust-004-operator.test.ts` (new, not frozen), which runs OPERATOR.md's section 4 and section 5 host
+blocks against stand-ins.
+
+SHA-256: `guest/session.sh` 43a348be67a002f14de87fa6769776742031b2ee348f67570d424079ea60896c;
+`guest/test_session.py` e6f4ce85ce351d86a2884eff4530779eee752b8884bee9ab1945ba33009c745e;
+`qemu/attach.py` a61db093d56cbc81c61d622f72587784ca327249fc6a8ab1012f3470e3133014;
+`qemu/test_attach.py` 9f922fd62d5838ed9b3a7b3314bbe258e04ca7acaf6cf0619bd1406bda3a7ce1;
+`reanalyze.ts` f800d015876a3673beabe857fb1108ac0631b7e99c9acbcf11c2cbcc177150f9;
+`tests/develop-verify-trust-004-reanalyze-repos.test.ts` 7f024826bf269828f759d0d26749d75a081fd9588d66484f681d2ab212e1010f.
+The adjacent frozen manifest replaces these six entries and pins this amended protocol; it still lists 32 entries. Amendment 4
+remains available at `0759a4c31`.

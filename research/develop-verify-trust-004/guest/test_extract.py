@@ -52,6 +52,7 @@ class GuestIntakeTests(unittest.TestCase):
         for entries, reason in [
             ([("../label", f)], "unsafe member name"), ([("/label", f)], "unsafe member name"),
             ([("a/./b", f)], "unsafe member name"), ([("a//b", f)], "unsafe member name"),
+            ([("label//", d)], "unsafe member name"),
             ([("back\\slash", f)], "unsafe member name"), ([("line\nbreak", f)], "unsafe member name"),
             ([("label", tarfile.SYMTYPE)], "symbolic link"), ([("label", tarfile.LNKTYPE)], "hard link"),
             ([("label", tarfile.FIFOTYPE)], "only regular"), ([("label", tarfile.CHRTYPE)], "only regular"),
@@ -74,6 +75,22 @@ class GuestIntakeTests(unittest.TestCase):
             self.assertEqual(result.returncode, 65, result.stderr)
             self.assertIn(reason, result.stderr)
         self.assertEqual(list(self.dest.iterdir()), [])
+
+    def test_ustar_directory_validates_the_prefix_name_boundary(self):
+        member = tarfile.TarInfo("/")
+        member.type = tarfile.DIRTYPE
+        header = bytearray(member.tobuf(format=tarfile.USTAR_FORMAT))
+        header[345:350] = b"label"
+        for magic in (b"ustar\0", b"ustar "):
+            header[257:263] = magic
+            header[148:156] = b" " * 8
+            header[148:156] = f"{sum(header):06o}\0 ".encode()
+            self.source.write_bytes(header + bytes(1024))
+            for args in [("--check", self.source), (self.source, self.dest)]:
+                result = self.invoke(*args)
+                self.assertEqual(result.returncode, 65)
+                self.assertIn("unsafe member name", result.stderr)
+                self.assertFalse(self.dest.exists())
 
     def test_trailing_nonzero_data_is_not_an_ignored_second_archive(self):
         self.archive([("one", tarfile.REGTYPE)])

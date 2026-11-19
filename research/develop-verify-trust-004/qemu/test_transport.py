@@ -91,6 +91,18 @@ class TransportTests(unittest.TestCase):
 
 
 class CollectTests(unittest.TestCase):
+    def test_teardown_is_not_a_supported_operation(self):
+        protected = self.work / ".capy/work/endo13"
+        protected.mkdir(parents=True)
+        sentinel = protected / "fixture"
+        sentinel.write_text("retained")
+        for work in ("", str(protected)):
+            result = subprocess.run(["bash", Path(__file__).with_name("host.sh"), "teardown"],
+                                    env={**os.environ, "HOME": str(self.work), "ENDO13_WORK": work},
+                                    capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(sentinel.read_text(), "retained")
+
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)

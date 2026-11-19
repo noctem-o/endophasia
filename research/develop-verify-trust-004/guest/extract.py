@@ -68,6 +68,11 @@ def intake(src, dest):
                 raise ValueError("only regular files and directories are accepted")
             if directory and size:
                 raise ValueError("directory has data")
+            raw_name = header[:100].split(b"\0", 1)[0]
+            prefix = header[345:500].split(b"\0", 1)[0]
+            raw_path = prefix + b"/" + raw_name if prefix else raw_name
+            if directory and b"//" in raw_path:
+                raise ValueError("unsafe member name")
             name = member.name if override is None else override
             if directory:
                 name = name.removesuffix("/")

@@ -372,13 +372,16 @@ export async function reanalyze(evidence: string, liveRead: string) {
 
 		// 5. The object databases, each copied into a fresh repository made here.
 		const clean: string[] = [];
+		const refusedRepositoryArchives: string[] = [];
 		const repoNotes: Record<string, unknown>[] = [];
 		for (const t of repoArchives) {
 			const into = join(scratch, t.slice(0, -4));
 			try {
 				extract(join(pre, t), into);
 			} catch (err) {
-				const names = run("/usr/bin/tar", ["-tf", join(pre, t)]).split("\n");
+				refusedRepositoryArchives.push(t);
+				const listing = spawnSync("/usr/bin/tar", ["-tf", join(pre, t)], { encoding: "utf8" });
+				const names = listing.status === 0 ? listing.stdout.split("\n") : [];
 				const roots = new Set(names.map((n) => /^repos\/([^/]+)/.exec(n)?.[1]).filter(Boolean));
 				for (const name of roots.size ? roots : [""])
 					repoNotes.push({ repo: `${t.slice(6, -4)}/${name}`, refused: String(err) });
@@ -625,6 +628,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				authenticPassCommitsBound: authentic.every((r) => r.binding.status === "valid"),
 				repositoriesRefused: repoNotes.filter((n) => "refused" in n).length,
 				stateArchiveRefusal: stateRefusal,
+				refusedRepositoryArchives,
 				disagreementsWithLive: disagreements.length,
 			},
 			disagreements,
@@ -645,6 +649,7 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
 	console.log(JSON.stringify(result.summary, null, 1));
 	process.exitCode =
 		result.summary.stateArchiveRefusal === null &&
+		result.summary.refusedRepositoryArchives.length === 0 &&
 		result.summary.disagreementsWithLive === 0 &&
 		result.summary.falsePasses.length === 0 &&
 		result.summary.unconfirmedPasses.length === 0

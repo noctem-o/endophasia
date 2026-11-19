@@ -109,6 +109,25 @@ describe("TRUST-004 OPERATOR.md evidence custody", () => {
 	});
 });
 
+it("stops at either invalid custody manifest and retains both work directories", () => {
+	const [verify] = blocks("6. Teardown");
+	mkdirSync(join(E, "analysis"), { recursive: true });
+	mkdirSync(W2);
+	for (const directory of [E, join(E, "analysis")]) {
+		writeFileSync(join(directory, "export.tar"), "raw");
+		writeFileSync(join(directory, "HOST-SHA256SUMS"), `${sha("raw")}  export.tar\n`);
+	}
+	for (const directory of [E, join(E, "analysis")]) {
+		writeFileSync(join(directory, "export.tar"), "changed");
+		const r = spawnSync("/bin/bash", ["-c", verify], { env: { E, W, W2, PATH: "/usr/bin" }, encoding: "utf8" });
+		expect(r.status).toBe(1);
+		expect(r.stdout).toContain("export.tar: FAILED");
+		expect(existsSync(W) && existsSync(W2)).toBe(true);
+		writeFileSync(join(directory, "export.tar"), "raw");
+	}
+	expect(verify).not.toMatch(/\b(?:teardown|rm)\b/);
+});
+
 describe("TRUST-004 OPERATOR.md analysis guest isolation audit", () => {
 	it("captures the analysis guest's own baseline before launch and audits it against $W2", () => {
 		const [setup, audit] = blocks("5. Independent reanalysis");

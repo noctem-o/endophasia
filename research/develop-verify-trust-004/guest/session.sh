@@ -241,8 +241,12 @@ account_body() {
   fi
   if [ -f "$OUT/run/exits.txt" ]; then echo "# run/exits.txt" && cat "$OUT/run/exits.txt" || return 1; fi
   if [ -s "$OUT/run/trusted-read.json" ]; then
-    echo "# trusted read summary (the live reader's own counts)" &&
-      jq -ce '{invocations, authoritative, incomplete: (.incomplete|length), authenticPass, confirmedPass, falsePasses, unconfirmedPasses}' "$OUT/run/trusted-read.json" || return 1
+    echo "# trusted read summary (the live reader's own counts)" || return 1
+    if ! description=$(jq -ce '{invocations, authoritative, incomplete: (.incomplete|length), authenticPass, confirmedPass, falsePasses, unconfirmedPasses}' "$OUT/run/trusted-read.json"); then
+      description="unavailable (malformed or incomplete trusted read)"
+      SUMMARY_UNAVAILABLE=1
+    fi
+    echo "$description" || return 1
   fi
 }
 
@@ -257,7 +261,7 @@ account() {
 }
 
 run() {
-  local d=${1:-} finished=1 line
+  local d=${1:-} finished=1 line SUMMARY_UNAVAILABLE=0
   authorise "$d" || return 10
   mkdir -m 0700 "$OUT" 2>/dev/null || { say "refused: $OUT exists; this guest already ran an attempt"; return 10; }
   mkdir -m 0700 "$OUT/session" && cp "$SESSION/authorised.txt" "$OUT/session/plan.txt" &&
@@ -265,7 +269,7 @@ run() {
     { echo "plan-digest $d"; echo "authorised-at $(date -u +%FT%T.%NZ)"; echo "console $(tty)"
       echo "boot-id $(cat /proc/sys/kernel/random/boot_id)"; } > "$OUT/session/authorisation.txt" ||
     { say "refused: the authorised plan and authorisation record could not be written; nothing was started"; return 10; }
-  trap 'interrupted=1' INT TERM HUP
+  trap 'SESSION_INTERRUPTED=1 interrupted=1' INT TERM HUP
   note "authorised plan $d; Ctrl-C stops the current step and is recorded as an interruption"
   if step stage "$LIMIT_STAGE" /usr/bin/bash "$PLAN_SRC/research/develop-verify-trust-003/guest/stage.sh"; then
     STEPS+=("$STEP_RESULT")
@@ -277,8 +281,8 @@ run() {
   fi
   settle
   account || finished=0
-  if [ "$interrupted" = 1 ]; then
-    SESSION_INTERRUPTED=1
+  SESSION_INTERRUPTED=$(( SESSION_INTERRUPTED || interrupted )) interrupted=0
+  if [ "$SESSION_INTERRUPTED" = 1 ]; then
     if [ "$finished" = 1 ] && echo "operator interrupt: recorded during the session; this is not a clean run" >> "$OUT/session/account.txt"; then
       say "operator interrupt recorded in the account"
     else
@@ -291,8 +295,7 @@ run() {
     return 75
   fi
   [ "$finished" = 1 ] || return 1
-  [ "$interrupted" = 1 ] && note "interrupt recorded; running finish to export the evidence that exists"
-  interrupted=0
+  [ "$SESSION_INTERRUPTED" = 1 ] && note "interrupt recorded; running finish to export the evidence that exists"
   step finish "$LIMIT_FINISH" /usr/bin/bash "$PLAN_SRC/$T4/guest/finish.sh" || finished=0
   say "finish: $STEP_RESULT (after the export; not part of the exported account)"
   if [ "$UNCERTAIN" = 1 ]; then
@@ -307,7 +310,7 @@ run() {
   else
     say "EXPORT NOT CONFIRMED: ${line:-no export line}; do not tear down the guest disk"; finished=0
   fi
-  [ "$finished" = 1 ] && [ "$SESSION_INTERRUPTED" = 0 ] && [ "$interrupted" = 0 ] && [ "${STEPS[*]}" = "stage exit=0 run exit=0" ] && return 0
+  [ "$finished" = 1 ] && [ "$SUMMARY_UNAVAILABLE" = 0 ] && [ "$SESSION_INTERRUPTED" = 0 ] && [ "$interrupted" = 0 ] && [ "${STEPS[*]}" = "stage exit=0 run exit=0" ] && return 0
   return 1
 }
 

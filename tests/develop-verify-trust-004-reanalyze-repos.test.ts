@@ -411,7 +411,8 @@ describe("TRUST-004 offline binding from archived repositories", () => {
 			const external = join(root, "outside-the-capture");
 			const commit = makeRepo(external, "sha1", false);
 			const candidate = await candidateOf(external, commit);
-			const { row, repo: note } = await analyse(candidate, (repos) => place(repos, external));
+			const { row, repo: note, summary } = await analyse(candidate, (repos) => place(repos, external));
+			expect(summary.refusedRepositoryArchives).toEqual(["repos-installed-1.tar"]);
 			expect(row.authenticity).toMatchObject({ class: "PASS", authoritative: true });
 			expect(row.binding.status).not.toBe("valid");
 			expect(row.confirmedPass).toBe(false);

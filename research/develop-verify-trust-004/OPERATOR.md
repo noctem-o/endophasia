@@ -1,7 +1,7 @@
 # TRUST-004 operator package: one complete frozen experiment in a disposable guest
 
 This page is self-contained. It takes an operator from a clean host shell to retained, independently reanalysed evidence and a
-removed guest. It does not report a result. TRUST-004's live verdict stays **INCOMPLETE** until a run made this way has
+powered-off guest. It does not report a result. TRUST-004's live verdict stays **INCOMPLETE** until a run made this way has
 been collected and reanalysed, and workstation H0 stays **BLOCKED** whatever the guest shows.
 
 **What is supported.** An operator starts **one complete frozen experiment per fresh guest**. After one typed authorisation, the
@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `925d1d573cc48cd25c22d1e97fe96517a0984d34` (Amendment 8; exact file list in
+**Selected source commit:** `refs/tags/trust004-amendment-9` (Amendment 9; exact file list in
 [FROZEN.sha256](FROZEN.sha256); this commit's own copy of this page already quotes that manifest's digests). Stage exactly this commit, not the branch tip. Later commits on the branch only change
 documentation and tests outside the manifest; `tests/develop-verify-trust-004-freeze.test.ts` checks in CI that this page and the
 manifest agree, here and at this commit.
@@ -28,20 +28,20 @@ read-write `/dev/kvm` for the operator's uid. If `test -r /dev/kvm -a -w /dev/kv
 The guest gets no network (`-nic none`), no shared host filesystem, no host secrets and no host listener. Its only inputs are
 a read-only disk holding a git bundle of the commit and a blank evidence disk.
 
-Never run any `host.sh` command without `ENDO13_WORK` set: it defaults to `~/.capy/work/endo13`, which holds **attempt 1's
-retained evidence**. Nothing on this page writes there.
+Set `ENDO13_WORK` explicitly in every terminal: `host.sh` refuses an empty setting. Never point it at
+`~/.capy/work/endo13`, which holds **attempt 1's retained evidence**.
 
 ## 1. Preconditions and inputs [host]
 
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=925d1d573cc48cd25c22d1e97fe96517a0984d34
-FREEZE_REF=refs/tags/trust004-amendment-8
+F=refs/tags/trust004-amendment-9
+FREEZE_REF=refs/tags/trust004-amendment-9
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment8-run1
-W2=$HOME/.capy/work/trust004-amendment8-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment8-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment9-run1
+W2=$HOME/.capy/work/trust004-amendment9-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment9-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -73,7 +73,7 @@ git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-00
 git -C "$W/src" rev-parse HEAD                                    # must print $F
 test -z "$(git -C "$W/src" status --porcelain)" && echo clean
 (cd "$W/src" && sha256sum -c $T/FROZEN.sha256 | grep -vc ': OK$')  # must print 0
-grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 08f46c4335622f48ded2dd405a64770e4263a2c333249e2294ee2e80d28ecef3
+grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c
 ```
 
 **Image and signature.** The protocol image is `Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2`, SHA-256
@@ -151,7 +151,7 @@ bash /root/session.sh plan
 ```
 
 Expected: only `lo`; disks `vda`, `vdb` (read-only) and `vdc`; the commit is `$F`; session.sh is
-`08f46c4335622f48ded2dd405a64770e4263a2c333249e2294ee2e80d28ecef3`. The plan should end with `verdict AUTHORISABLE` and a
+`8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c`. The plan should end with `verdict AUTHORISABLE` and a
 `plan-digest`. Read every line before authorising: staged commit, stage-disk and bundle digests (the bundle is inside the stage
 disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all 36 entries match`, `session-script is the staged commit's`, `network-interfaces lo`,
 `shared-filesystems none`, `block-devices vda vdb vdc`, `stage-disk-read-only 1`, `virtualization kvm`, hostname
@@ -354,20 +354,17 @@ including when the bytes are raw JSON. Do not parse it on the host.
 
 ## 6. Teardown and cleanup verification [host]
 
-Only after both guests have exited and `$E` holds verified evidence:
+After both guests have exited, verify the two host-generated custody manifests first. Stop on failure and retain all files:
 
 ```sh
+(cd "$E" && sha256sum --strict -c HOST-SHA256SUMS && cd analysis && sha256sum --strict -c HOST-SHA256SUMS) || exit 1
 pgrep -af "$W/vm|$W2/vm" || echo "no QEMU process"
 ss -ltunH | sort | diff "$E/listeners-before.txt" - && echo "no new host listener"
-ENDO13_WORK=$W2 bash "$W/src/$T/qemu/host.sh" teardown && test ! -e "$W2"
-ENDO13_WORK=$W bash "$W/src/$T/qemu/host.sh" teardown && test ! -e "$W"
-(cd "$E" && sha256sum -c HOST-SHA256SUMS && cd analysis && sha256sum -c HOST-SHA256SUMS)
 sha256sum "$OLD/vm/overlay.qcow2"       # still 26c0877e…febf18b: attempt 1 untouched
 ```
 
-The second teardown also removes the clone that host.sh runs from; bash keeps the open script, and nothing runs after it. The work directories hold the guest
-disks, the copies, the FIFOs and the source clone, and no credential. Record what was removed. If identity, export integrity or
-teardown is uncertain, stop and report that uncertainty rather than claiming a clean run.
+Keep both work directories, the guest disks, logs, staged source and custody files, regardless of outcome.
+This procedure does not delete them. If identity, process termination or export integrity is uncertain, report that uncertainty.
 
 ## 7. What each result can and cannot show
 

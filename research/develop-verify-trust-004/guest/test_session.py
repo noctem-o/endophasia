@@ -270,6 +270,27 @@ step() {
         self.assertNotIn("host.sh collect", r.stdout)
         self.assertNotIn("export size=", r.stdout)
 
+    def test_interrupt_between_account_and_finish_cannot_be_cleared(self):
+        env = f"EXPORT='export size=10 sha256={self.SHA} device-prefix-sha256={self.SHA}'\n" + """
+set -T
+signal_before_finish() {
+  if [[ $BASH_COMMAND == '[ "$finished" = 1 ]' && -f "$OUT/session/account.txt" && ! -e "$SESSION/signalled" ]]; then
+    touch "$SESSION/signalled"; kill -INT "$$"
+  fi
+}
+trap signal_before_finish DEBUG
+"""
+        r, rc, _ = self.flow(env, real_account=True)
+        self.assertTrue((self.tmp / "session/signalled").exists(), r.stderr)
+        self.assertEqual(rc, "rc=1", r.stdout + r.stderr)
+
+    def test_partial_trusted_read_is_preserved_and_never_clean(self):
+        env = f"EXPORT='export size=10 sha256={self.SHA} device-prefix-sha256={self.SHA}'\n"
+        env += 'settle() { mkdir -p "$OUT/run"; echo "{" > "$OUT/run/trusted-read.json"; }'
+        r, rc, ran = self.flow(env, real_account=True)
+        self.assertEqual((rc, ran), ("rc=1", ["stage", "run", "finish"]), r.stdout + r.stderr)
+        self.assertIn("unavailable (malformed or incomplete trusted read)", (self.tmp / "out/session/account.txt").read_text())
+
     def test_meaning_uses_the_timeline(self):
         (self.tmp / "out/run").mkdir(parents=True)
         timeline = self.tmp / "out/run/timeline.txt"

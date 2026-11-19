@@ -441,3 +441,32 @@ Changed or added pins (the manifest also records this amended protocol's own dig
 - `research/develop-verify-trust-004/qemu/test_transport.py`: `d31c31e0f5bb30dc633b6062a5b2b189f3317347b020017088e484850bf3c668`
 - `research/develop-verify-trust-004/reanalyze.ts`: `e7687a6d617e5df97ab7a24f74d43280e6a1a572b3ac1df2662446f1650ee6cd`
 - `tests/develop-verify-trust-004-reanalyze-repos.test.ts`: `f1ebf8117be281f6b8e6d5237d8492f1e774ebc1129d129abe2885c402237a33`
+
+## Amendment 9 — independent review of Amendment 8, before operator handoff
+
+The Amendment 8 tag remains unchanged. This successor freeze preserves its custody model, authority requirements,
+roles and acceptance criteria. Independent review identified three corrections:
+
+- Reject an invalid raw directory spelling before tarfile normalizes it, including repeated separators at the USTAR prefix/name boundary.
+- Record required repository archive extraction refusals in the report and exit nonzero on any such failure, independently of PASS counts.
+- Latch every session interrupt in the signal trap. Consume the pre-finish flag before annotating the account; a later interrupt remains
+  pending for finish and cannot turn the session into a clean success.
+
+The review of the pushed head identified three more corrections:
+
+- **4636323032:** host.sh requires an explicit work directory and has no teardown command. This workflow does not delete any guest work directory.
+- **4636323065:** verify both host custody manifests before the final host checks. Retain the disks, logs and source on both success and failure.
+- **4636323041:** incomplete trusted-read JSON makes its optional summary unavailable, not the account unwritable. Record that fact, allow
+  cleanup/export when termination is confirmed, and return nonzero. An actual failure writing the account still prohibits finish/export.
+
+Offline fixtures cover an inert noncanonical directory header, repository archive refusals, a signal at the transition to finish,
+a partial trusted read, a refused teardown with an isolated fake HOME, and corruption in either custody manifest.
+No live guest result is asserted. Changed pins, in addition to this protocol:
+- `research/develop-verify-trust-004/guest/extract.py`: `d2a2e2fd6baa72e99278b141fca7acb5b07ad7531dac899d887b36de61f6f652`
+- `research/develop-verify-trust-004/guest/session.sh`: `8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c`
+- `research/develop-verify-trust-004/guest/test_extract.py`: `bb6e1553a9cc5bf9da6aaeed64aee317e5c22f629d92adc49a84cc98e6969cd4`
+- `research/develop-verify-trust-004/guest/test_session.py`: `0b6ec30b0e44e4360ffe546ddf82520a9f9c8daceeaf6b4fc81517e86a26bd05`
+- `research/develop-verify-trust-004/qemu/host.sh`: `91707e509a974e4facd9babde83cd3c43d27ceeac97de5e20f088052ef2ccf4a`
+- `research/develop-verify-trust-004/qemu/test_transport.py`: `6b7531248baee45e799b4c9481bdf1483fea802066ec8bd4c2cfe645ebda89da`
+- `research/develop-verify-trust-004/reanalyze.ts`: `100b8e36b483d6369c7e4d3ec1352cf0432e6bbac46777c1a967ffba3ee443e9`
+- `tests/develop-verify-trust-004-reanalyze-repos.test.ts`: `aa1a0188b40eef9352c5d31ffb8664851aa5a7309ae531f99ad24139c6486254`

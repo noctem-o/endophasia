@@ -3,9 +3,8 @@
 #   host.sh stage <commit>      stage.img: a tar holding a git bundle of <commit> and the commit id; out.img: blank 2 GiB raw disk
 #   host.sh collect <dest> <size> <sha256>      retain verified opaque bytes from out.img in <dest>/export.tar
 #   host.sh audit               QEMU process, its argv, open files, listeners and forwarding, from /proc and ss
-#   host.sh teardown            remove the VM working directory after confirming no QEMU process uses it
 set -euo pipefail
-W=${ENDO13_WORK:-$HOME/.capy/work/endo13}
+W=${ENDO13_WORK:?set a disposable work directory explicitly}
 REPO=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 case "$1" in
 stage)
@@ -45,8 +44,5 @@ audit)
   echo "# sockets of pid $p"; sockets=$(ss -anp)
   grep -F "pid=$p," <<< "$sockets" || echo none
   echo "# qemu processes: 1 (identified guest)" ;;
-teardown)
-  ! pgrep -f "$W/vm" >/dev/null || { echo "a process still uses $W/vm" >&2; exit 66; }
-  du -sh "$W"; rm -rf "$W"; echo "removed $W" ;;
-*) echo "usage: host.sh stage|collect|audit|teardown" >&2; exit 64 ;;
+*) echo "usage: host.sh stage|collect|audit (work directories are retained)" >&2; exit 64 ;;
 esac

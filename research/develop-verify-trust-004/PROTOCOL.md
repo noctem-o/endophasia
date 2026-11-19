@@ -197,3 +197,15 @@ SHA-256: `guest/run.sh` a4d2ba2a45f45ed5c83ab1f6c75d3072762d6b3c2b212181c8a5e56a
 `guest/test_review.py` 887c903c5203d1a7478b8fc1790e5e877df5465206979373fb9266cc30a200ad;
 `tests/develop-verify-trust-004.test.ts` ebd36f58be07e3fd18e8cca07907836fabc379371498dcd1c7e15302442f227b.
 The adjacent frozen manifest also pins this amended protocol.
+
+## Amendment 3 — evidence integrity, before the second guest attempt
+
+No guest was launched against Amendment 2 for attempt 2. The offline reader must refuse missing or unlisted
+evidence inputs and must not follow links or block on special files when reading packed refs. A failed
+operator action, evidence comparison, control or trace check must reach the caller as a failure. A process
+that exits during identification is a refusal, not a successful interruption.
+
+The host audit must identify this guest without relying on a process name truncated by Linux. Console
+transfer requires a successful child and guest result, and console connection must respect the command
+deadline. These are evidence collection and acceptance changes; they do not change the guest image,
+package versions, candidate fixtures, oracle or verifier. Amendment 2 remains available at `861cd826b`.

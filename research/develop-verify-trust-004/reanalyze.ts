@@ -14,7 +14,20 @@
 //   node reanalyze.ts <evidence dir> <live trusted-read.json> <out.json>
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	cpSync,
+	existsSync,
+	fstatSync,
+	mkdirSync,
+	mkdtempSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,22 +54,69 @@ interface Entry {
 	links: number | null;
 }
 
-export async function reanalyze(evidence: string, liveRead: string) {
-	const pre = join(evidence, "pre");
-	// 1. The manifest: every listed file present with its digest; nothing else is read.
-	const manifest = readFileSync(join(pre, "SHA256SUMS"), "utf8").trim().split("\n");
-	for (const line of manifest) {
-		const [digest, name] = [line.slice(0, 64), line.slice(66)];
-		if (sha256(readFileSync(join(pre, name))) !== digest)
-			throw new Error(`pre-read capture: ${name} does not match its manifest`);
+function readRegular(path: string) {
+	const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+	try {
+		if (!fstatSync(fd).isFile()) throw new Error(`not a regular file: ${path}`);
+		return readFileSync(fd);
+	} finally {
+		closeSync(fd);
 	}
-	const principals = readFileSync(join(pre, "principals.txt"), "utf8");
-	const uidOf = (name: string) => Number(new RegExp(`^${name}:[^:]*:(\\d+):(\\d+):`, "m").exec(principals)?.[1]);
-	const verifierUid = uidOf("endo-verify-002");
-	if (!(verifierUid > 0)) throw new Error("verifier uid not in the capture");
+}
 
+export function readPackedRefs(path: string) {
+	try {
+		return readRegular(path).toString("utf8");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return "";
+		throw err;
+	}
+}
+
+export function verifyCapture(source: string, pre: string) {
+	const manifest = readRegular(join(source, "SHA256SUMS"));
+	const digests = new Map<string, string>();
+	for (const line of manifest.toString("utf8").replace(/\n$/, "").split("\n")) {
+		const m = /^([a-f0-9]{64}) {2}([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(line);
+		if (!m || digests.has(m[2]!) || m[2] === "SHA256SUMS") throw new Error("invalid pre-read capture manifest");
+		digests.set(m[2]!, m[1]!);
+	}
+	const repoArchives = ["repos-availability.tar", "repos-installed-1.tar", "repos-installed-2.tar"];
+	for (const name of readdirSync(source)) {
+		if (name.endsWith(".tar") && !digests.has(name))
+			throw new Error(`pre-read capture: ${name} absent from manifest`);
+		if (name.startsWith("repos-") && name.endsWith(".tar") && !repoArchives.includes(name))
+			throw new Error(`unexpected repository archive: ${name}`);
+	}
+	const required = new Set([
+		"principals.txt",
+		"listing.txt",
+		"ancestors.txt",
+		"state.tar",
+		"install.tar",
+		...repoArchives,
+	]);
+	for (const name of required) {
+		if (!digests.has(name)) throw new Error(`pre-read capture: ${name} absent from manifest`);
+	}
+	for (const [name, digest] of digests) {
+		const bytes = readRegular(join(source, name));
+		if (sha256(bytes) !== digest) throw new Error(`pre-read capture: ${name} does not match its manifest`);
+		if (required.has(name)) writeFileSync(join(pre, name), bytes, { flag: "wx", mode: 0o600 });
+	}
+	return { repoArchives, preManifestSha256: sha256(manifest) };
+}
+
+export async function reanalyze(evidence: string, liveRead: string) {
 	const scratch = mkdtempSync(join(tmpdir(), "trust004-reanalysis-"));
 	try {
+		const pre = join(scratch, "pre");
+		mkdirSync(pre);
+		const { repoArchives, preManifestSha256 } = verifyCapture(join(evidence, "pre"), pre);
+		const principals = readFileSync(join(pre, "principals.txt"), "utf8");
+		const uidOf = (name: string) => Number(new RegExp(`^${name}:[^:]*:(\\d+):(\\d+):`, "m").exec(principals)?.[1]);
+		const verifierUid = uidOf("endo-verify-002");
+		if (!(verifierUid > 0)) throw new Error("verifier uid not in the capture");
 		// 2. Metadata, from the capture's listing (find -P: type, mode, owner, links) cross-checked against the archive's own headers.
 		const listed = new Map<string, Entry>();
 		for (const l of readFileSync(join(pre, "listing.txt"), "utf8").trim().split("\n")) {
@@ -134,9 +194,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 		// 5. The object databases, each copied into a fresh repository made here.
 		const clean: string[] = [];
 		const repoNotes: Record<string, unknown>[] = [];
-		for (const t of readdirSync(pre)
-			.filter((n) => /^repos-.*\.tar$/.test(n))
-			.sort()) {
+		for (const t of repoArchives) {
 			const into = join(scratch, t.slice(0, -4));
 			mkdirSync(into);
 			run("/usr/bin/tar", [
@@ -155,7 +213,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 					: join(into, "repos", name);
 				const alternates = existsSync(join(src, "objects/info/alternates"));
 				const replaceRefs = existsSync(join(src, "refs/replace")) ? readdirSync(join(src, "refs/replace")) : [];
-				const packed = existsSync(join(src, "packed-refs")) ? readFileSync(join(src, "packed-refs"), "utf8") : "";
+				const packed = readPackedRefs(join(src, "packed-refs"));
 				const dest = join(scratch, "clean", `${t.slice(6, -4)}-${name}`);
 				run("/usr/bin/git", ["init", "-q", "--bare", dest]);
 				if (existsSync(join(src, "objects")) && !alternates)
@@ -316,7 +374,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 		return {
 			schemaVersion: "endo.research.dvt004.reanalysis.v0",
 			source: {
-				preManifestSha256: sha256(readFileSync(join(pre, "SHA256SUMS"))),
+				preManifestSha256,
 				installationId,
 				oracleManifestSha256: sha256(oracleBytes),
 				verifierUid,

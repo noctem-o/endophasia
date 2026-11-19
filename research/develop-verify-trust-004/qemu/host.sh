@@ -25,13 +25,29 @@ collect)
   mkdir -p "$dest"; head -c "$size" "$W/vm/out.img" > "$dest/export.tar"; tar --no-same-owner -xf "$dest/export.tar" -C "$dest"
   echo "export $size bytes sha256 $got verified on the host" ;;
 audit)
-  for p in $(pgrep -x qemu-system-x86_64 || true); do
-    echo "# pid $p uid $(stat -c %u /proc/$p)"; tr '\0' ' ' < /proc/$p/cmdline; echo
-    ls -l /proc/$p/fd | awk '{print $NF}' | grep -v -e '^pipe:' -e '^anon_inode:' -e '^socket:' | sort -u
-    grep -o -- '-nic [^ ]*\|hostfwd[^ ]*\|-netdev [^ ]*\|-device [^ ]*\|-virtfs[^ ]*\|-chardev [^ ]*' /proc/$p/cmdline | tr '\0' ' ' || true
-    echo "# sockets of pid $p"; ss -anp 2>/dev/null | grep "pid=$p," || echo none
-  done
-  echo "# qemu processes: $(pgrep -c -x qemu-system-x86_64 || true)" ;;
+  vm=$(cd "$W/vm" && pwd)
+  p=$(cat "$vm/qemu.pid")
+  [[ $p =~ ^[1-9][0-9]*$ ]] || { echo "invalid guest pidfile" >&2; exit 66; }
+  proc=/proc/$p
+  exe=$(type -P qemu-system-x86_64)
+  uid=$(stat -c %u "$proc")
+  [[ $proc/exe -ef $exe && $uid == "$EUID" ]] || { echo "not the guest executable or uid" >&2; exit 66; }
+  mapfile -d '' -t argv < "$proc/cmdline"
+  has_pair() {
+    local i
+    for ((i=0; i+1<${#argv[@]}; i++)); do
+      [[ ${argv[i]} == "$1" && ${argv[i+1]} == "$2" ]] && return 0
+    done
+    return 1
+  }
+  if ! has_pair -name endo13-guest || ! has_pair -pidfile "$vm/qemu.pid" || ! has_pair -serial "pipe:$vm/con"; then
+    echo "pidfile does not identify this guest" >&2; exit 66
+  fi
+  echo "# pid $p uid $uid"; printf '%q ' "${argv[@]}"; echo
+  ls -l "$proc/fd"
+  echo "# sockets of pid $p"; sockets=$(ss -anp)
+  grep -F "pid=$p," <<< "$sockets" || echo none
+  echo "# qemu processes: 1 (identified guest)" ;;
 teardown)
   ! pgrep -f "$W/vm" >/dev/null || { echo "a process still uses $W/vm" >&2; exit 66; }
   du -sh "$W"; rm -rf "$W"; echo "removed $W" ;;

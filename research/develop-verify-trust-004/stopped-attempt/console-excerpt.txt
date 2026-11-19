@@ -1,0 +1,17 @@
+sourceCommit 42abf71b8280d301ca53d212659688c432a2fa99
+uid=1500(endoagent) gid=1500(endoagent) groups=1500(endoagent)
+uid=968(endo-verify-002) gid=968(endo-verify-002) groups=968(endo-verify-002)
+gate exit=0
+sudo-n exit=0
+writable exit=0
+ABORT: the agent can write a protected path (writable-protected.txt)
+/var/lib/endo-verify-002-home/.config/systemd/user/p11-kit-server.socket
+writable-socket /run/endo-verify-002/verify.sock
+gate exit=0
+sudo-n exit=0
+writable exit=0
+ABORT: the agent can write a protected path (writable-protected.txt)
+directory root:root 755 /var/lib/endo-verify-002-home/.config/systemd/user
+symbolic link root:root 777 /var/lib/endo-verify-002-home/.config/systemd/user/p11-kit-server.socket -> /dev/null
+directory endo-verify-002:endoagent 750 /run/endo-verify-002
+socket endo-verify-002:endo-verify-002 666 /run/endo-verify-002/verify.sock

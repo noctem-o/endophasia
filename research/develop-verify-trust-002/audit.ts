@@ -200,7 +200,7 @@ export function audit(
 			observed: g.includes(name) ? `member: ${meaning}` : "not a member",
 			ok: !g.includes(name),
 		});
-	for (const p of ["/run/docker.sock", "/run/libvirt/libvirt-sock", "/run/podman/podman.sock"]) {
+	for (const p of DAEMON_SOCKETS) {
 		const observed = writable(p, account, view);
 		checks.push({
 			id: "h0-socket",
@@ -335,6 +335,20 @@ export function audit(
 		checks,
 	};
 }
+
+/**
+ * Read-write management sockets of root-run daemons. libvirt's monolithic libvirtd and, in its modular layout, virtproxyd listen on
+ * libvirt-sock; each modular driver daemon has its own. Read-only (-ro) and admin sockets are not listed: -ro grants no management, and
+ * the admin sockets ship 0600 root.
+ */
+export const DAEMON_SOCKETS = [
+	"/run/docker.sock",
+	"/run/podman/podman.sock",
+	"/run/libvirt/libvirt-sock",
+	...["qemu", "network", "storage", "nodedev", "interface", "nwfilter", "secret", "lxc", "ch", "vbox"].map(
+		(d) => `/run/libvirt/virt${d}d-sock`,
+	),
+];
 
 /** The sandbox's descriptor sanitizer (bubblewrap.ts) runs /usr/bin/python3; its real file is part of the closure. */
 function python3(): string {

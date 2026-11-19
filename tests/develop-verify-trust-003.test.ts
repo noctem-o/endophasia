@@ -2,6 +2,7 @@ import type { Stats } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
 	audit,
+	DAEMON_SOCKETS,
 	type PathView,
 	recordDirectoryOk,
 	socketExcluded,
@@ -62,6 +63,18 @@ describe("IP0: the audit's socket rows, through injected path observations", () 
 		const v = view({ [LIBVIRT]: stat({ mode: 0o666 }) }, denied("EACCES"));
 		expect(socketRows(v)[LIBVIRT]).toEqual({ observed: "writable", ok: false });
 		expect(audit(false, account, v).h0).toBe(false);
+	});
+	it("refuses a writable modular libvirt driver socket as well (virtqemud, virtnetworkd, virtstoraged, ...)", () => {
+		const q = "/run/libvirt/virtqemud-sock";
+		expect(DAEMON_SOCKETS).toEqual(
+			expect.arrayContaining([q, "/run/libvirt/virtnetworkd-sock", "/run/libvirt/virtstoraged-sock"]),
+		);
+		const v = view({ [q]: stat({ mode: 0o666 }) }, denied("EACCES"));
+		expect(socketRows(v)[q]).toEqual({ observed: "writable", ok: false });
+		expect(socketRows(view({ [q]: stat({ gid: 954, mode: 0o660 }) }, denied("EACCES")))[q]).toEqual({
+			observed: "not-writable",
+			ok: true,
+		});
 	});
 });
 

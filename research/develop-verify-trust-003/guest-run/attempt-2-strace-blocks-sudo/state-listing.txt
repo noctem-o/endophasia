@@ -1,0 +1,5 @@
+ls: cannot access '/var/lib/endo-verify-002/records': No such file or directory
+ls: cannot access '/var/lib/endo-verify-002/journal': No such file or directory
+/var/lib/endo-verify-002:
+total 0
+ls: cannot access '/var/lib/endo-verify-002/work': No such file or directory

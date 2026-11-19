@@ -1,0 +1,8 @@
+Nov 19 10:41:31 endo11-guest systemd[1]: Starting User Manager for UID 968...
+Nov 19 10:41:31 endo11-guest (systemd)[582]: pam_unix(systemd-user:account): account endo-verify-002 has expired (account expired)
+Nov 19 10:41:31 endo11-guest (systemd)[582]: PAM PAM failed: User account has expired
+Nov 19 10:41:31 endo11-guest (systemd)[582]: user@968.service: Failed to set up PAM session: Operation not permitted
+Nov 19 10:41:31 endo11-guest (systemd)[582]: user@968.service: Failed at step PAM spawning /usr/lib/systemd/systemd: Operation not permitted
+Nov 19 10:41:31 endo11-guest systemd[1]: user@968.service: Main process exited, code=exited, status=224/PAM
+Nov 19 10:41:31 endo11-guest systemd[1]: user@968.service: Failed with result 'exit-code'.
+Nov 19 10:41:31 endo11-guest systemd[1]: Failed to start User Manager for UID 968.

@@ -1,0 +1,30 @@
+== principal
+endo-verify-002:x:968:968:DEVELOP-VERIFY-TRUST-002 research verifier:/var/lib/endo-verify-002-home:/usr/bin/nologin
+uid=968(endo-verify-002) gid=968(endo-verify-002) groups=968(endo-verify-002)
+== linger
+State=lingering
+Linger=yes
+== processes
+    PID USER         ELAPSED   RSS CMD
+  31892 endo-ve+       00:55 12828 /usr/lib/systemd/systemd --user
+  31894 endo-ve+       00:55  3964 (sd-pam)
+== ownership
+drwxr-xr-x root:root /usr/local/lib/endo-verify-002
+-rw-r--r-- root:root /usr/local/lib/endo-verify-002/installation.json
+drwxr-x--- root:endo-verify-002 /usr/local/lib/endo-verify-002/oracle
+drwxr-xr-x endo-verify-002:endo-verify-002 /var/lib/endo-verify-002
+drwxr-xr-x endo-verify-002:endo-verify-002 /var/lib/endo-verify-002/records
+drwx------ endo-verify-002:endo-verify-002 /var/lib/endo-verify-002/work
+drwxr-xr-x root:root /var/lib/endo-verify-002-home
+drwxr-x--- endo-verify-002:endoagent /run/endo-verify-002
+srw-rw-rw- endo-verify-002:endo-verify-002 /run/endo-verify-002/verify.sock
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002.socket
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002@.service
+-rw-r--r-- root:root /etc/sysusers.d/endo-verify-002.conf
+-rw-r--r-- root:root /etc/tmpfiles.d/endo-verify-002.conf
+-rw-r--r-- root:root /var/lib/systemd/linger/endo-verify-002
+== installation identity
+7802fb0ef678696f37627c83418398806a1f516ed1d3d74369204d00ca61a222  /usr/local/lib/endo-verify-002/installation.json
+== records
+64
+== full audit: node research/develop-verify-trust-002/audit.ts --installed (from the frozen checkout)

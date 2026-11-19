@@ -1,0 +1,2310 @@
+GNU GRUB  version 2:2.16-1
+
++----------------------------------------------------------------------------+||||||||||||||||||||||||+----------------------------------------------------------------------------+     Use the ^ and v keys to select which entry is highlighted.          
+      Press enter to boot the selected OS, `e' to edit the commands       
+      before booting or `c' for a command-line.                            *Arch Linux                                                                  Advanced options for Arch Linux                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        The highlighted entry will be executed automatically in 1s.                    The highlighted entry will be executed automatically in 0s.                   Booting `Arch Linux'
+
+Loading Linux linux ...
+Loading initial ramdisk ...
+[    0.555569] virt/tdx: TDX not supported by the host platform
+78Booting initrd of Arch Linux.
+         Expecting device /dev/disk/by-uuid…5d0a-df51-46ea-bfe7-e9e6d52fe390...
+[  OK  ] Reached target Path Units.
+[  OK  ] Reached target Slice Units.
+[  OK  ] Reached target Swaps.
+[  OK  ] Reached target Timer Units.
+[  OK  ] Listening on Journal Socket (/dev/log).
+[  OK  ] Listening on Journal Sockets.
+[  OK  ] Listening on udev Kernel Socket.
+[  OK  ] Listening on udev Varlink Socket.
+[  OK  ] Reached target Socket Units.
+         Starting Create List of Static Device Nodes...
+         Starting Journal Service...
+         Starting Load Kernel Modules...
+         Starting Create Static Device Nodes in /dev...
+         Starting Coldplug All udev Devices...
+[  OK  ] Finished Create List of Static Device Nodes.
+[  OK  ] Finished Load Kernel Modules.
+[  OK  ] Finished Create Static Device Nodes in /dev.
+[  OK  ] Reached target Preparation for Local File Systems.
+[  OK  ] Reached target Local File Systems.
+         Starting Rule-based Manager for Device Events and Files...
+[  OK  ] Started Journal Service.
+         Starting Create System Files and Directories...
+[  OK  ] Finished Create System Files and Directories.
+[  OK  ] Started Rule-based Manager for Device Events and Files.
+[  OK  ] Finished Coldplug All udev Devices.
+[  OK  ] Reached target System Initialization.
+[  OK  ] Reached target Basic System.
+[  OK  ] Found device /dev/disk/by-uuid/28605d0a-df51-46ea-bfe7-e9e6d52fe390.
+[  OK  ] Reached target Initrd Root Device.
+         Starting File System Check on /dev…5d0a-df51-46ea-bfe7-e9e6d52fe390...
+         Starting Virtual Console Setup...
+[  OK  ] Finished File System Check on /dev…605d0a-df51-46ea-bfe7-e9e6d52fe390.
+[  OK  ] Finished Virtual Console Setup.
+         Mounting /sysroot...
+[  OK  ] Mounted /sysroot.
+[  OK  ] Reached target Initrd Root File System.
+         Starting Mountpoints Configured in the Real Root...
+[  OK  ] Finished Mountpoints Configured in the Real Root.
+[  OK  ] Reached target Initrd File Systems.
+[  OK  ] Reached target Initrd Default Target.
+         Starting Cleaning Up and Shutting Down Daemons...
+[  OK  ] Stopped target Initrd Default Target.
+[  OK  ] Stopped target Basic System.
+[  OK  ] Stopped target Initrd Root Device.
+[  OK  ] Stopped target Path Units.
+[  OK  ] Stopped target Slice Units.
+[  OK  ] Stopped target Socket Units.
+[  OK  ] Stopped target System Initialization.
+[  OK  ] Stopped target Swaps.
+[  OK  ] Stopped target Timer Units.
+[  OK  ] Stopped Create List of Static Device Nodes.
+[  OK  ] Stopped Load Kernel Modules.
+[  OK  ] Stopped Create System Files and Directories.
+[  OK  ] Stopped target Local File Systems.
+[  OK  ] Stopped target Preparation for Local File Systems.
+[  OK  ] Stopped Coldplug All udev Devices.
+         Stopping Rule-based Manager for Device Events and Files...
+[  OK  ] Stopped Virtual Console Setup.
+[  OK  ] Finished Cleaning Up and Shutting Down Daemons.
+[  OK  ] Stopped Rule-based Manager for Device Events and Files.
+[  OK  ] Closed udev Varlink Socket.
+         Starting Cleanup udev Database...
+[  OK  ] Stopped Create Static Device Nodes in /dev.
+[  OK  ] Finished Cleanup udev Database.
+[  OK  ] Reached target Switch Root.
+         Starting Switch Root...
+78
+Welcome to Arch Linux!
+
+[  OK  ] Stopped Switch Root.
+[  OK  ] Created slice Slice /system/dirmngr.
+[  OK  ] Created slice Slice /system/getty.
+[  OK  ] Created slice Slice /system/gpg-agent.
+[  OK  ] Created slice Slice /system/gpg-agent-browser.
+[  OK  ] Created slice Slice /system/gpg-agent-extra.
+[  OK  ] Created slice Slice /system/gpg-agent-ssh.
+[  OK  ] Created slice Slice /system/keyboxd.
+[  OK  ] Created slice Slice /system/modprobe.
+[  OK  ] Created slice Slice /system/serial-getty.
+[  OK  ] Created slice User and Session Slice.
+[  OK  ] Started Dispatch Password Requests to Console Directory Watch.
+[  OK  ] Started Forward Password Requests to Wall Directory Watch.
+[  OK  ] Set up automount Arbitrary Executa…ormats File System Automount Point.
+         Expecting device /dev/ttyS0...
+[  OK  ] Reached target Local dm-clone Devices.
+[  OK  ] Reached target Image Downloads.
+[  OK  ] Stopped target Switch Root.
+[  OK  ] Stopped target Initrd File Systems.
+[  OK  ] Stopped target Initrd Root File System.
+[  OK  ] Reached target Local Integrity Protected Volumes.
+[  OK  ] Reached target Path Units.
+[  OK  ] Reached target Remote Encrypted Volumes.
+[  OK  ] Reached target Remote File Systems.
+[  OK  ] Reached target Remote Integrity Protected Volumes.
+[  OK  ] Reached target Remote Verity Protected Volumes.
+[  OK  ] Reached target Slice Units.
+[  OK  ] Reached target Local Verity Protected Volumes.
+[  OK  ] Listening on Device-mapper event daemon FIFOs.
+[  OK  ] Listening on Query the User Interactively for a Password.
+[  OK  ] Listening on Process Core Dump Socket.
+[  OK  ] Listening on Credential Encryption/Decryption.
+[  OK  ] Listening on Disk Encryption Enrollment Service Socket.
+[  OK  ] Listening on Factory Reset Management.
+[  OK  ] Listening on Hostname Service Socket.
+[  OK  ] Listening on Journal Audit Socket.
+[  OK  ] Listening on DDI File System Mounter Socket.
+[  OK  ] Listening on Console Output Muting Service Socket.
+[  OK  ] Listening on Network Management Metrics Varlink Socket.
+[  OK  ] Listening on Network Management Varlink Socket.
+[  OK  ] Listening on Network Management Netlink Socket.
+[  OK  ] Listening on Namespace Resource Manager Socket.
+[  OK  ] Listening on Disk Repartitioning Service Socket.
+[  OK  ] Listening on Report System Basic Metrics Socket.
+[  OK  ] Listening on CGroup Report Varlink Socket.
+[  OK  ] Listening on Report Files Metrics Socket.
+[  OK  ] Listening on Report Signing Socket (Local Software Key).
+[  OK  ] Listening on System Report Socket.
+[  OK  ] Listening on Resolve Monitor Varlink Socket.
+[  OK  ] Listening on Resolve Service Varlink Socket.
+[  OK  ] Listening on Simple Block Device Backed Storage Provider.
+[  OK  ] Listening on Simple File System Backed Storage Provider.
+[  OK  ] Listening on System Install Tool.
+[  OK  ] Listening on System Updates.
+[  OK  ] Listening on udev Varlink Socket.
+[  OK  ] Listening on User Database Manager Socket.
+         Mounting Huge Pages File System...
+         Mounting POSIX Message Queue File System...
+         Mounting Kernel Debug File System...
+         Mounting Kernel Trace File System...
+         Starting Create List of Static Device Nodes...
+         Mounting Kernel Configuration File System...
+         Mounting FUSE Control File System...
+[  OK  ] Stopped File System Check on Root Device.
+         Starting Journal Service...
+         Starting Generate Network Units from Kernel Command Line...
+         Starting Remount Root and Kernel File Systems...
+         Starting Apply Kernel Variables...
+         Starting Wait Until Kernel Time Synchronized...
+[  OK  ] Reached target Local Encrypted Volumes.
+         Starting Load udev Rules from Credentials...
+         Starting Coldplug All udev Devices...
+[  OK  ] Mounted Huge Pages File System.
+[  OK  ] Mounted POSIX Message Queue File System.
+[  OK  ] Mounted Kernel Debug File System.
+[  OK  ] Mounted Kernel Trace File System.
+[  OK  ] Finished Create List of Static Device Nodes.
+[  OK  ] Started Journal Service.
+[  OK  ] Mounted Kernel Configuration File System.
+[  OK  ] Mounted FUSE Control File System.
+[  OK  ] Finished Generate Network Units from Kernel Command Line.
+[  OK  ] Finished Remount Root and Kernel File Systems.
+[  OK  ] Finished Apply Kernel Variables.
+[  OK  ] Finished Load udev Rules from Credentials.
+         Activating swap /swap/swapfile...
+         Starting Flush Journal to Persistent Storage...
+         Starting Load/Save OS Random Seed...
+         Starting Create Static Device Nodes in /dev gracefully...
+[  OK  ] Activated swap /swap/swapfile.
+[  OK  ] Reached target Swaps.
+[  OK  ] Finished Load/Save OS Random Seed.
+         Starting User Database Manager...
+[  OK  ] Finished Flush Journal to Persistent Storage.
+[  OK  ] Started User Database Manager.
+         Starting Load Kernel Module overlay...
+         Starting Load Kernel Module tun...
+[  OK  ] Finished Load Kernel Module tun.
+[  OK  ] Finished Load Kernel Module overlay.
+         Starting Namespace Resource Manager...
+[  OK  ] Finished Coldplug All udev Devices.
+         Mounting Temporary Directory /tmp...
+[  OK  ] Mounted Temporary Directory /tmp.
+[  OK  ] Started Namespace Resource Manager.
+[  OK  ] Finished Create Static Device Nodes in /dev gracefully.
+         Starting Create System Users...
+[  OK  ] Finished Create System Users.
+         Starting Journal Metrics Report Socket...
+         Starting Journal Log Access Socket...
+         Starting Network Name Resolution...
+         Starting Create Static Device Nodes in /dev...
+[  OK  ] Listening on Journal Log Access Socket.
+[  OK  ] Listening on Journal Metrics Report Socket.
+[  OK  ] Finished Create Static Device Nodes in /dev.
+[  OK  ] Reached target Preparation for Local File Systems.
+[  OK  ] Set up automount EFI System Partition Automount.
+         Starting Rule-based Manager for Device Events and Files...
+[  OK  ] Started Network Name Resolution.
+[  OK  ] Reached target Host and Network Name Lookups.
+         Starting Network Time Synchronization...
+[  OK  ] Started Rule-based Manager for Device Events and Files.
+[  OK  ] Started Network Time Synchronization.
+[  OK  ] Reached target System Time Set.
+         Starting Virtual Console Setup...
+[  OK  ] Finished Virtual Console Setup.
+[  OK  ] Reached target Local File Systems.
+[  OK  ] Reached target Virtual Machines and Containers.
+[  OK  ] Listening on Boot Loader Control Service Socket.
+[  OK  ] Listening on Disk Image Download Service Socket.
+[  OK  ] Listening on System Extension Image Management.
+[  OK  ] Listening on System Extension and …Refresh on Completed System Update.
+         Starting Create System Files and Directories...
+         Starting Load JSON user/group Records from Credentials...
+         Starting Listen Kernel Core Dump Socket...
+[  OK  ] Finished Load JSON user/group Records from Credentials.
+[  OK  ] Finished Create System Files and Directories.
+         Starting Rebuild Dynamic Linker Cache...
+         Starting Initial Setup...
+         Starting Rebuild Journal Catalog...
+78         Starting Record System Boot/Shutdown in UTMP...
+[  OK  ] Started Listen Kernel Core Dump Socket.
+         Starting Kernel Core Pattern Register...
+[  OK  ] Finished Record System Boot/Shutdown in UTMP.
+[  OK  ] Finished Rebuild Journal Catalog.
+[  OK  ] Finished Kernel Core Pattern Register.
+78[  OK  ] Finished Rebuild Dynamic Linker Cache.
+         Starting Update is Completed...
+[  OK  ] Finished Update is Completed.
+[  OK  ] Finished Initial Setup.
+[  OK  ] Reached target First Boot Complete.
+[  OK  ] Reached target System Initialization.
+[  OK  ] Started Daily Cleanup of Temporary Directories.
+[  OK  ] Listening on D-Bus System Message Bus Socket.
+[  OK  ] Listening on OpenSSH Server Socket…temd-ssh-generator, AF_UNIX Local).
+[  OK  ] Listening on User Login Management Varlink Socket.
+[  OK  ] Listening on Virtual Machine and C…tainer Registration Service Socket.
+[  OK  ] Reached target Socket Units.
+         Starting D-Bus System Message Bus...
+         Starting Save Transient machine-id to Disk...
+[  OK  ] Created slice Slice /system/systemd-fsck.
+         Starting File System Check on /dev/disk/by-diskseq/1-part2...
+[  OK  ] Finished File System Check on /dev/disk/by-diskseq/1-part2.
+[  OK  ] Finished Save Transient machine-id to Disk.
+         Mounting EFI System Partition Automount...
+[  OK  ] Mounted EFI System Partition Automount.
+[  OK  ] Started D-Bus System Message Bus.
+[  OK  ] Reached target Basic System.
+         Starting Cloud-init: Single Process...
+         Starting SSH Key Generation...
+         Starting Home Area Manager...
+         Starting User Login Management...
+[  OK  ] Started Home Area Manager.
+[  OK  ] Finished Home Area Activation.
+[  OK  ] Started User Login Management.
+[  OK  ] Finished SSH Key Generation.
+[  OK  ] Started Cloud-init: Single Process.
+         Starting Cloud-init: Local Stage (pre-network)...
+[   10.097396] cloud-init[388]: Cloud-init v. 26.2 running 'init-local' at Thu, 19 Nov 2026 10:22:32 +0000. Up 10.08 seconds.
+         Starting Hostname Service...
+[  OK  ] Started Hostname Service.
+[  OK  ] Finished Cloud-init: Local Stage (pre-network).
+[  OK  ] Reached target Preparation for Network.
+[  OK  ] Listening on Network Management Resolve Hook Socket.
+         Starting Network Management...
+[  OK  ] Listening on Load/Save RF Kill Switch Status /dev/rfkill Watch.
+[  OK  ] Started Network Management.
+[  OK  ] Reached target Network.
+         Starting Enable Persistent Storage in systemd-networkd...
+         Starting Wait for Network to be Online...
+[  OK  ] Finished Enable Persistent Storage in systemd-networkd.
+[  OK  ] Finished Wait for Network to be Online.
+         Starting Cloud-init: Network Stage...
+[   12.263077] cloud-init[388]: Cloud-init v. 26.2 running 'init' at Thu, 19 Nov 2026 10:22:34 +0000. Up 12.25 seconds.
+[   12.270808] cloud-init[388]: ci-info: ++++++++++++++++++++++++++++++++++++++Net device info++++++++++++++++++++++++++++++++++++++
+[   12.273116] cloud-init[388]: ci-info: +--------+------+----------------------------+---------------+--------+-------------------+
+[   12.275365] cloud-init[388]: ci-info: | Device |  Up  |          Address           |      Mask     | Scope  |     Hw-Address    |
+[   12.277216] cloud-init[388]: ci-info: +--------+------+----------------------------+---------------+--------+-------------------+
+[   12.279074] cloud-init[388]: ci-info: |  eth0  | True |         10.0.2.15          | 255.255.255.0 | global | 52:54:00:12:34:56 |
+[   12.280908] cloud-init[388]: ci-info: |  eth0  | True | fe80::5054:ff:fe12:3456/64 |       .       |  link  | 52:54:00:12:34:56 |
+[   12.282746] cloud-init[388]: ci-info: |   lo   | True |         127.0.0.1          |   255.0.0.0   |  host  |         .         |
+[   12.284552] cloud-init[388]: ci-info: |   lo   | True |          ::1/128           |       .       |  host  |         .         |
+[   12.286384] cloud-init[388]: ci-info: +--------+------+----------------------------+---------------+--------+-------------------+
+[   12.288177] cloud-init[388]: ci-info: ++++++++++++++++++++++++++++Route IPv4 info+++++++++++++++++++++++++++++
+[   12.289731] cloud-init[388]: ci-info: +-------+-------------+----------+-----------------+-----------+-------+
+[   12.291328] cloud-init[388]: ci-info: | Route | Destination | Gateway  |     Genmask     | Interface | Flags |
+[   12.292884] cloud-init[388]: ci-info: +-------+-------------+----------+-----------------+-----------+-------+
+[   12.294512] cloud-init[388]: ci-info: |   0   |   0.0.0.0   | 10.0.2.2 |     0.0.0.0     |    eth0   |   UG  |
+[   12.296061] cloud-init[388]: ci-info: |   1   |   10.0.2.0  | 0.0.0.0  |  255.255.255.0  |    eth0   |   U   |
+[   12.297584] cloud-init[388]: ci-info: |   2   |   10.0.2.2  | 0.0.0.0  | 255.255.255.255 |    eth0   |   UH  |
+[   12.299182] cloud-init[388]: ci-info: |   3   |   10.0.2.3  | 0.0.0.0  | 255.255.255.255 |    eth0   |   UH  |
+[   12.301064] cloud-init[388]: ci-info: +-------+-------------+----------+-----------------+-----------+-------+
+[   12.302942] cloud-init[388]: ci-info: +++++++++++++++++++Route IPv6 info+++++++++++++++++++
+[   12.304468] cloud-init[388]: ci-info: +-------+-------------+---------+-----------+-------+
+[   12.305760] cloud-init[388]: ci-info: | Route | Destination | Gateway | Interface | Flags |
+[   12.307096] cloud-init[388]: ci-info: +-------+-------------+---------+-----------+-------+
+[   12.308366] cloud-init[388]: ci-info: |   0   |  fe80::/64  |    ::   |    eth0   |   U   |
+[   12.309650] cloud-init[388]: ci-info: |   2   |    local    |    ::   |    eth0   |   U   |
+[   12.310930] cloud-init[388]: ci-info: |   3   |  multicast  |    ::   |    eth0   |   U   |
+[   12.312213] cloud-init[388]: ci-info: +-------+-------------+---------+-----------+-------+
+[  OK  ] Finished Cloud-init: Network Stage.
+[  OK  ] Reached target Cloud-config availability.
+[  OK  ] Reached target Network is Online.
+         Starting Cloud-init: Config Stage...
+         Starting Permit User Sessions...
+[  OK  ] Finished Permit User Sessions.
+[  OK  ] Started Getty on tty1.
+[  OK  ] Started Serial Getty on ttyS0.
+[  OK  ] Reached target Login Prompts.
+[   13.008787] cloud-init[388]: Cloud-init v. 26.2 running 'modules:config' at Thu, 19 Nov 2026 10:22:35 +0000. Up 12.99 seconds.
+[   13.017406] cloud-init[388]: Generating locales...
+[   14.273216] cloud-init[388]:   en_US.UTF-8... done
+[   14.274262] cloud-init[388]: Generation complete.
+         Starting Locale Service...
+[  OK  ] Started Locale Service.
+[  OK  ] Finished Cloud-init: Config Stage.
+7878
+Arch Linux 7.2.11-arch1-1 (ttyS0)
+
+endo11-guest login: [   47.931762] cloud-init[388]: Cloud-init v. 26.2 running 'modules:final' at Thu, 19 Nov 2026 10:23:11 +0000. Up 47.92 seconds.
+[   47.960664] cloud-init[388]: Removed '/etc/systemd/system/multi-user.target.wants/sshd.service'.
+[   48.143315] cloud-init[388]: Failed to enqueue jobs: Unit sshd.socket not loaded.
+         Stopping Serial Getty on ttyS0...
+[  OK  ] Stopped Serial Getty on ttyS0.
+78[  OK  ] Started Serial Getty on ttyS0.
+<14>Nov 19 10:23:12 cloud-init: #############################################################
+<14>Nov 19 10:23:12 cloud-init: -----BEGIN SSH HOST KEY FINGERPRINTS-----
+<14>Nov 19 10:23:12 cloud-init: 256 SHA256:HJ3dGzYkIGr8x4HOlVfl8JAPPIBNJBASHTViS1y01P8 root@endo11-guest (ECDSA)
+<14>Nov 19 10:23:12 cloud-init: 256 SHA256:9gjyWoRCQ4GBZrCNgsPg02CC36JyS05KIb+eXIqBcZM root@endo11-guest (ED25519)
+<14>Nov 19 10:23:12 cloud-init: 3072 SHA256:+gN2eN3pDj5tM22vVrPT5zFYOKJMGmCxLuzrxKqIXqg root@endo11-guest (RSA)
+<14>Nov 19 10:23:12 cloud-init: -----END SSH HOST KEY FINGERPRINTS-----
+<14>Nov 19 10:23:12 cloud-init: #############################################################
+-----BEGIN SSH HOST KEY KEYS-----
+ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBMruguyMOW2jlr3uUmkBIJEEYDOZZB14b1YOJX+mx1IL4Wld86VxOFMILf3djgsFIeL6h3SI6U4LNC6pKwfhMYY= root@endo11-guest
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPLuJOFop9/NXS/ZSfZXF5ZtqZ3aDPZJ8GEBREb9mvdL root@endo11-guest
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCfRvfwgtWU3NnPK5aiPSthEFDcuBIha8U2ja12LQg2XKj2ARnrs+F14nrgBDuYhWz+18hca2Ws+0wdCtlV7r/CF6kmghFkE+DczSnVMRUpMVN0i1Mc76VjuS7VelI5YkW8M3/gbYQxJl9RqFp5n6SdIdbMSOzENLJf6AaDFwoZwpaDcoie8lraQICFhh0R11ufPfJjspgvYg7Aer9IYd9vDyKKPrDUOCCHVaRHGlA0sDJ1SyYUtx1g7q20wclhm2+15R+XJWg3O6gHA4SydaHfWJKXzDun3sPFiFDYT0mX120Fk3ZwznsxHjxjsqp6vm9kaVOxYTNuoK+lD3tXDNjUy4lX9turzm7OniCyCuBYAFuGR6cJnIIL1PaPoC17njSpCgwIB/BL5W1+CaWZERgAwJFJX2yYeUVLpI8eRRTi1exzbl3/HiVsYS6ARLYm52rXVp3oWUlKavrOl1LhPPCypaTtNNKvkG/YMBsEyooAAoK7Cl44sEa7ZVdB5OaQV2s= root@endo11-guest
+-----END SSH HOST KEY KEYS-----
+[   48.707655] cloud-init[388]: Cloud-init v. 26.2 finished at Thu, 19 Nov 2026 10:23:12 +0000. Datasource DataSourceNoCloud [seed=/dev/vdb].  Up 48.70 seconds
+[   48.711339] cloud-init[388]: Generating public/private rsa key pair.
+[   48.712459] cloud-init[388]: Your identification has been saved in /etc/ssh/ssh_host_rsa_key
+[   48.713814] cloud-init[388]: Your public key has been saved in /etc/ssh/ssh_host_rsa_key.pub
+[   48.715172] cloud-init[388]: The key fingerprint is:
+[  OK  ] Finished Cloud-init: Final Stage.
+[   48.715241] cloud-init[388]: SHA256:+gN2eN3pDj5tM22vVrPT5zFYOKJMGmCxLuzrxKqIXqg root@endo11-guest
+[  OK  ] Reached target Cloud-init target.
+[   48.718901] cloud-init[388]: The key's randomart image is:
+[   48.720230] cloud-init[388]: +---[RSA 3072]----+
+78[   48.720643] cloud-init[388]: |     .           |
+[   48.720835] cloud-init[388]: |      o          |
+[   48.721245] cloud-init[388]: |     +           |
+[   48.721438] cloud-init[388]: |  . o .       .  |
+[   48.721641] cloud-init[388]: |   o . oSo o + . |
+[   48.721838] cloud-init[388]: |  + . +.B o + +..|
+[   48.722246] cloud-init[388]: | . = ..= o.o o ++|
+[   48.722447] cloud-init[388]: |+ + .  .....* +o=|
+[   48.722664] cloud-init[388]: |Eo.o    ...+.=.+=|
+[   48.722855] cloud-init[388]: +----[SHA256]-----+
+[   48.723253] cloud-init[388]: Generating public/private ecdsa key pair.
+[   48.723454] cloud-init[388]: Your identification has been saved in /etc/ssh/ssh_host_ecdsa_key
+[   48.723662] cloud-init[388]: Your public key has been saved in /etc/ssh/ssh_host_ecdsa_key.pub
+[   48.723859] cloud-init[388]: The key fingerprint is:
+[   48.724266] cloud-init[388]: SHA256:HJ3dGzYkIGr8x4HOlVfl8JAPPIBNJBASHTViS1y01P8 root@endo11-guest
+[   48.724467] cloud-init[388]: The key's randomart image is:
+[   48.724675] cloud-init[388]: +---[ECDSA 256]---+
+[   48.724873] cloud-init[388]: |      o+OBOB=o=o.|
+[   48.725279] cloud-init[388]: |     . =oB.Bo=== |
+[   48.725480] cloud-init[388]: |      + + B o.=+o|
+[   48.725687] cloud-init[388]: |     . = + o ..+.|
+[   48.725886] cloud-init[388]: |        S o   .. |
+[   48.726299] cloud-init[388]: |         .      E|
+[   48.726488] cloud-init[388]: |                 |
+[   48.726695] cloud-init[388]: |                 |
+[   48.726893] cloud-init[388]: |                 |
+[   48.727300] cloud-init[388]: +----[SHA256]-----+
+[   48.727501] cloud-init[388]: Generating public/private ed25519 key pair.
+[   48.727716] cloud-init[388]: Your identification has been saved in /etc/ssh/ssh_host_ed25519_key
+[   48.727907] cloud-init[388]: Your public key has been saved in /etc/ssh/ssh_host_ed25519_key.pub
+[   48.728297] cloud-init[388]: The key fingerprint is:
+[   48.728489] cloud-init[388]: SHA256:9gjyWoRCQ4GBZrCNgsPg02CC36JyS05KIb+eXIqBcZM root@endo11-guest
+[   48.728696] cloud-init[388]: The key's randomart image is:
+[   48.728894] cloud-init[388]: +--[ED25519 256]--+
+[   48.729312] cloud-init[388]: |O=o.             |
+[   48.729508] cloud-init[388]: |@Bo              |
+[   48.729715] cloud-init[388]: |O=+o             |
+[   48.729913] cloud-init[388]: |o++o..           |
+[   48.730321] cloud-init[388]: |ooE.o o S        |
+[   48.730522] cloud-init[388]: |++=o + o o       |
+[   48.730946] cloud-init[388]: |=* o. o . .      |
+[   48.731341] cloud-init[388]: |.+++ o           |
+[   48.731572] cloud-init[388]: |..= .            |
+[   48.731750] cloud-init[388]: +----[SHA256]-----+
+78
+Arch Linux 7.2.11-arch1-1 (ttyS0)
+
+endo11-guest login: root (automatic login)
+
+[root@endo11-guest ~]# <on | head -1; pacman -Q sudo cloud-init python 2>&1
+uid=0(root) gid=0(root) groups=0(root)
+Linux endo11-guest 7.2.11-arch1-1 #1 SMP PREEMPT_DYNAMIC Fri, 16 Oct 2026 00:28:58 +0000 x86_64 GNU/Linux
+NAME="Arch Linux"
+PRETTY_NAME="Arch Linux"
+ID=arch
+running
+BOOT_IMAGE=/boot/vmlinuz-linux root=UUID=28605d0a-df51-46ea-bfe7-e9e6d52fe390 rw net.ifnames=0 rootflags=compress=zstd:1 console=tty0 console=ttyS0,115200
+4
+               total        used        free      shared  buff/cache   available
+Mem:            5916         461        5442           0         318        5454
+/dev/vda3        20G  1.2G   19G   6% /
+Sudo version 1.9.17p2
+sudo 1.9.17.p2-6
+cloud-init 26.2-1
+python 3.14.9-1
+# 
+__DONE_2f0f4a54__ rc=0
+# (14/19) Rebuilding certificate stores...
+(15/19) Updating module dependencies...
+(16/19) Restart a running sshd.service
+(17/19) Updating linux initcpios...
+==> Building image from preset: /etc/mkinitcpio.d/linux.preset: 'default'
+==> Using default configuration file: '/etc/mkinitcpio.conf'
+  -> -k /boot/vmlinuz-linux -g /boot/initramfs-linux.img
+==> Starting build: '7.3.4-arch1-2'
+  -> Running build hook: [base]
+  -> Running build hook: [systemd]
+  -> Running build hook: [autodetect]
+  -> Running build hook: [microcode]
+  -> Running build hook: [modconf]
+  -> Running build hook: [kms]
+  -> Running build hook: [keyboard]
+  -> Running build hook: [sd-vconsole]
+  -> Running build hook: [block]
+  -> Running build hook: [filesystems]
+  -> Running build hook: [fsck]
+==> Generating module dependencies
+==> Creating zstd-compressed initcpio image: '/boot/initramfs-linux.img'
+  -> Early uncompressed CPIO image generation successful
+==> Initcpio image generation successful
+(18/19) Reloading system bus configuration...
+(19/19) Checking for old perl modules...
+# > linux 7.3.4.arch1-2
+nodejs 26.13.1-1
+bubblewrap 0.13.1-1
+gcc 16.2.1+r23+gd564253eb6c8-1
+git 2.56.1-1
+jq 1.8.2-1
+strace 7.3-1
+sudo 1.9.17.p2-7
+systemd 262.2-1
+python 3.14.10-1
+acl 2.4.0-1
+bash 5.3.20-1
+util-linux 2.42.4-1
+v26.13.1
+-rwxr-xr-x 1 root root    84464 Oct 14 22:06 /usr/bin/bwrap
+-rwxr-xr-x 1 root root 65790944 Nov 11 18:25 /usr/bin/node
+-rwsr-xr-x 1 root root   261304 Oct 24 14:00 /usr/bin/sudo
+kernel.unprivileged_userns_clone = 1
+user.max_user_namespaces = 23420
+kernel.yama.ptrace_scope = 1
+cgroup2fs
+
+__DONE_c3a1bb38__ rc=0
+# > nobody:x:65534:65534:Kernel Overflow User:/:/usr/bin/nologin
+Defaults!/usr/bin/visudo env_keep += "SUDO_EDITOR EDITOR VISUAL"
+Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/bin"
+root ALL=(ALL:ALL) ALL
+@includedir /etc/sudoers.d
+ls: cannot access '/etc/polkit-1/rules.d': No such file or directory
+/usr/share/polkit-1/rules.d:
+10-systemd-logind-root-ignore-inhibitors.rules.example	empower.rules  systemd-networkd.rules
+ls: cannot access '/run/docker.sock': No such file or directory
+ls: cannot access '/run/libvirt': No such file or directory
+ls: cannot access '/run/podman': No such file or directory
+
+__DONE_e3609995__ rc=0
+# > 
+__DONE_895863cf__ rc=0
+#          Stopping Session 1 of User root...
+[  OK  ] Removed slice Slice /system/dirmngr.
+[  OK  ] Removed slice Sl[  OK  ] Stopped target Host and Network Name Lookups.
+[  OK  ] Stopped target Remote Encrypted Volumes.
+[  OK  ] Stopped target Remote Integrity Protected Volumes.
+[  OK  ] Stopped target Remote Verity Protected Volumes.
+[  OK  ] Stopped target SSH Access Available.
+[  OK  ] Stopped target Timer Units.
+[  OK  ] Stopped Refresh existing PGP keys of archlinux-keyring regularly.
+[  OK  ] Stopped Daily verification of password and group files.
+[  OK  ] Stopped Daily Cleanup of Temporary Directories.
+[  OK  ] Closed Load/Save RF Kill Switch Status /dev/rfkill Watch.
+[  OK  ] Stopped Cloud-init: Final Stage.
+[  OK  ] Stopped target Multi-User System.
+[  OK  ] Stopped target Login Prompts.
+[  OK  ] Stopped target Virtual Machines and Containers.
+[  OK  ] Stopped Cloud-init: Config Stage.
+[  OK  ] Stopped target Cloud-config availability.
+[  OK  ] Stopped target Network is Online.
+         Stopping Getty on tty1...
+         Starting Generate shutdown-ramfs...
+         Stopping Serial Getty on ttyS0...
+         Stopping OpenSSH Daemon...
+[  OK  ] Stopped File System Check on /dev/disk/by-diskseq/1-part2.
+[  OK  ] Removed slice Slice /system/systemd-fsck.
+[  OK  ] Stopped Save Transient machine-id to Disk.
+[  OK  ] Stopped target First Boot Complete.
+         Stopping Enable Persistent Storage in systemd-networkd...
+[  OK  ] Stopped Wait for Network to be Online.
+         Stopping Load/Save OS Random Seed...
+[  OK  ] Stopped Load udev Rules from Credentials.
+[  OK  ] Stopped Getty on tty1.
+[  OK  ] Stopped Serial Getty on ttyS0.
+78[  OK  ] Stopped OpenSSH Daemon.
+[  OK  ] Finished Generate shutdown-ramfs.
+[  OK  ] Stopped Load/Save OS Random Seed.
+[  OK  ] Stopped Session 1 of User root.
+[  OK  ] Removed slice Slice /system/getty.
+[  OK  ] Removed slice Slice /system/serial-getty.
+         Stopping Initializes Pacman keyring...
+         Stopping Permit User Sessions...
+         Stopping User Manager for UID 0...
+[  OK  ] Stopped Initializes Pacman keyring.
+[  OK  ] Stopped Enable Persistent Storage in systemd-networkd.
+[  OK  ] Stopped target System Time Synchronized.
+[  OK  ] Stopped target System Time Set.
+[  OK  ] Stopped Wait Until Kernel Time Synchronized.
+[  OK  ] Stopped Permit User Sessions.
+[  OK  ] Stopped target Network.
+[  OK  ] Stopped target Remote File Systems.
+         Stopping Home Area Activation...
+         Stopping Network Management...
+[  OK  ] Stopped Load JSON user/group Records from Credentials.
+[  OK  ] Stopped User Manager for UID 0.
+[  OK  ] Stopped Network Management.
+[  OK  ] Stopped Home Area Activation.
+[  OK  ] Closed Network Management Resolve Hook Socket.
+[  OK  ] Stopped target Preparation for Network.
+[  OK  ] Stopped Cloud-init: Local Stage (pre-network).
+         Stopping Home Area Manager...
+[  OK  ] Stopped Generate Network Units from Kernel Command Line.
+         Stopping User Runtime Directory /run/user/0...
+[  OK  ] Stopped Home Area Manager.
+[  OK  ] Unmounted /run/user/0.
+[  OK  ] Stopped User Runtime Directory /run/user/0.
+[  OK  ] Removed slice User Slice of UID 0.
+         Stopping User Login Management...
+[  OK  ] Stopped User Login Management.
+[  OK  ] Stopped target Basic System.
+[  OK  ] Stopped target Path Units.
+[  OK  ] Stopped target Slice Units.
+[  OK  ] Removed slice User and Session Slice.
+[  OK  ] Stopped target Socket Units.
+[  OK  ] Closed OpenSSH Server Socket (systemd-ssh-generator, AF_UNIX Local).
+[  OK  ] Closed Disk Image Download Service Socket.
+[  OK  ] Closed User Login Management Varlink Socket.
+[  OK  ] Closed Virtual Machine and Container Registration Service Socket.
+[  OK  ] Closed DDI File System Mounter Socket.
+[  OK  ] Closed Network Management Metrics Varlink Socket.
+[  OK  ] Closed Network Management Varlink Socket.
+[  OK  ] Closed Network Management Netlink Socket.
+[  OK  ] Closed Disk Repartitioning Service Socket.
+[  OK  ] Closed CGroup Report Varlink Socket.
+[  OK  ] Closed Report Files Metrics Socket.
+[  OK  ] Closed Report Signing Socket (Local Software Key).
+[  OK  ] Closed System Install Tool.
+         Stopping D-Bus System Message Bus...
+[  OK  ] Stopped D-Bus System Message Bus.
+[  OK  ] Closed D-Bus System Message Bus Socket.
+[  OK  ] Stopped target System Initialization.
+[  OK  ] Unset automount Arbitrary Executab…ormats File System Automount Point.
+[  OK  ] Stopped target Local dm-clone Devices.
+[  OK  ] Stopped target Local Encrypted Volumes.
+[  OK  ] Stopped Dispatch Password Requests to Console Directory Watch.
+[  OK  ] Stopped Forward Password Requests to Wall Directory Watch.
+[  OK  ] Stopped target Image Downloads.
+[  OK  ] Stopped target Local Integrity Protected Volumes.
+[  OK  ] Stopped target Local Verity Protected Volumes.
+         Stopping Kernel Core Pattern Register...
+[  OK  ] Stopped Initial Setup.
+78[  OK  ] Closed Hostname Service Socket.
+[  OK  ] Closed Console Output Muting Service Socket.
+         Stopping Namespace Resource Manager...
+         Stopping Network Time Synchronization...
+[  OK  ] Stopped Update is Completed.
+[  OK  ] Stopped Rebuild Dynamic Linker Cache.
+[  OK  ] Stopped Rebuild Journal Catalog.
+         Stopping Record System Boot/Shutdown in UTMP...
+[  OK  ] Stopped Namespace Resource Manager.
+[  OK  ] Stopped Network Time Synchronization.
+[  OK  ] Stopped Kernel Core Pattern Register.
+[  OK  ] Stopped Record System Boot/Shutdown in UTMP.
+[  OK  ] Closed Namespace Resource Manager Socket.
+         Stopping Network Name Resolution...
+[  OK  ] Stopped Create System Files and Directories.
+         Stopping Listen Kernel Core Dump Socket...
+[  OK  ] Stopped Listen Kernel Core Dump Socket.
+[  OK  ] Stopped Network Name Resolution.
+[  OK  ] Stopped target Local File Systems.
+[  OK  ] Unset automount EFI System Partition Automount.
+[  OK  ] Stopped target Preparation for Local File Systems.
+[  OK  ] Closed Resolve Monitor Varlink Socket.
+[  OK  ] Closed Resolve Service Varlink Socket.
+         Unmounting Temporary Directory /tmp...
+[  OK  ] Stopped Apply Kernel Variables.
+[  OK  ] Closed Process Core Dump Socket.
+[  OK  ] Stopped Create Static Device Nodes in /dev.
+[  OK  ] Stopped Create System Users.
+[  OK  ] Stopped Create Static Device Nodes in /dev gracefully.
+[  OK  ] Unmounted Temporary Directory /tmp.
+[  OK  ] Stopped target Swaps.
+         Deactivating swap /swap/swapfile...
+[  OK  ] Deactivated swap /swap/swapfile.
+[  OK  ] Reached target Unmount All Filesystems.
+[  OK  ] Stopped Remount Root and Kernel File Systems.
+[  OK  ] Reached target System Shutdown.
+[  OK  ] Reached target Late Shutdown Services.
+[  OK  ] Finished System Power Off.
+[  OK  ] Reached target System Power Off.
+78[  692.941315] reboot: Power down
+=== offline boot ===
+GNU GRUB  version 2:2.16-1
+
++----------------------------------------------------------------------------+||||||||||||||||||||||||+----------------------------------------------------------------------------+     Use the ^ and v keys to select which entry is highlighted.          
+      Press enter to boot the selected OS, `e' to edit the commands       
+      before booting or `c' for a command-line.                            *Arch Linux                                                                  Advanced options for Arch Linux                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        The highlighted entry will be executed automatically in 1s.                    The highlighted entry will be executed automatically in 0s.                   Booting `Arch Linux'
+
+Loading Linux linux ...
+Loading initial ramdisk ...
+[    0.710242] virt/tdx: TDX not supported by the host platform
+78Booting initrd of Arch Linux.
+         Expecting device /dev/disk/by-uuid…5d0a-df51-46ea-bfe7-e9e6d52fe390...
+[  OK  ] Reached target Path Units.
+[  OK  ] Reached target Slice Units.
+[  OK  ] Reached target Swaps.
+[  OK  ] Reached target Timer Units.
+[  OK  ] Listening on Journal Socket (/dev/log).
+[  OK  ] Listening on Journal Sockets.
+[  OK  ] Listening on udev Kernel Socket.
+[  OK  ] Listening on udev Varlink Socket.
+[  OK  ] Reached target Socket Units.
+         Starting Journal Service...
+         Starting Load Kernel Modules...
+         Starting Create Static Device Nodes in /dev...
+         Starting Coldplug All udev Devices...
+[  OK  ] Finished Load Kernel Modules.
+[  OK  ] Finished Create Static Device Nodes in /dev.
+[  OK  ] Reached target Preparation for Local File Systems.
+[  OK  ] Reached target Local File Systems.
+         Starting Rule-based Manager for Device Events and Files...
+[  OK  ] Started Journal Service.
+         Starting Create System Files and Directories...
+[  OK  ] Started Rule-based Manager for Device Events and Files.
+[  OK  ] Finished Create System Files and Directories.
+[  OK  ] Finished Coldplug All udev Devices.
+[  OK  ] Reached target System Initialization.
+[  OK  ] Reached target Basic System.
+[  OK  ] Found device /dev/disk/by-uuid/28605d0a-df51-46ea-bfe7-e9e6d52fe390.
+[  OK  ] Reached target Initrd Root Device.
+         Starting File System Check on /dev…5d0a-df51-46ea-bfe7-e9e6d52fe390...
+[  OK  ] Finished File System Check on /dev…605d0a-df51-46ea-bfe7-e9e6d52fe390.
+         Starting Virtual Console Setup...
+[  OK  ] Finished Virtual Console Setup.
+         Mounting /sysroot...
+[  OK  ] Mounted /sysroot.
+[  OK  ] Reached target Initrd Root File System.
+         Starting Mountpoints Configured in the Real Root...
+[  OK  ] Finished Mountpoints Configured in the Real Root.
+[  OK  ] Reached target Initrd File Systems.
+[  OK  ] Reached target Initrd Default Target.
+         Starting Cleaning Up and Shutting Down Daemons...
+[  OK  ] Stopped target Initrd Default Target.
+[  OK  ] Stopped target Basic System.
+[  OK  ] Stopped target Initrd Root Device.
+[  OK  ] Stopped target Path Units.
+[  OK  ] Stopped target Slice Units.
+[  OK  ] Stopped target Socket Units.
+[  OK  ] Stopped target System Initialization.
+[  OK  ] Stopped target Swaps.
+[  OK  ] Stopped target Timer Units.
+[  OK  ] Stopped Load Kernel Modules.
+[  OK  ] Stopped Create System Files and Directories.
+[  OK  ] Stopped target Local File Systems.
+[  OK  ] Stopped target Preparation for Local File Systems.
+[  OK  ] Stopped Coldplug All udev Devices.
+         Stopping Rule-based Manager for Device Events and Files...
+[  OK  ] Stopped Virtual Console Setup.
+[  OK  ] Finished Cleaning Up and Shutting Down Daemons.
+[  OK  ] Stopped Rule-based Manager for Device Events and Files.
+[  OK  ] Closed udev Varlink Socket.
+         Starting Cleanup udev Database...
+[  OK  ] Stopped Create Static Device Nodes in /dev.
+[  OK  ] Finished Cleanup udev Database.
+[  OK  ] Reached target Switch Root.
+         Starting Switch Root...
+78
+Welcome to Arch Linux!
+
+[  OK  ] Stopped Switch Root.
+[  OK  ] Created slice Slice /system/dirmngr.
+[  OK  ] Created slice Slice /system/getty.
+[  OK  ] Created slice Slice /system/gpg-agent.
+[  OK  ] Created slice Slice /system/gpg-agent-browser.
+[  OK  ] Created slice Slice /system/gpg-agent-extra.
+[  OK  ] Created slice Slice /system/gpg-agent-ssh.
+[  OK  ] Created slice Slice /system/keyboxd.
+[  OK  ] Created slice Slice /system/modprobe.
+[  OK  ] Created slice Slice /system/serial-getty.
+[  OK  ] Created slice User and Session Slice.
+[  OK  ] Started Dispatch Password Requests to Console Directory Watch.
+[  OK  ] Started Forward Password Requests to Wall Directory Watch.
+[  OK  ] Set up automount Arbitrary Executa…ormats File System Automount Point.
+         Expecting device /dev/ttyS0...
+[  OK  ] Reached target Local dm-clone Devices.
+[  OK  ] Reached target Image Downloads.
+[  OK  ] Stopped target Switch Root.
+[  OK  ] Stopped target Initrd File Systems.
+[  OK  ] Stopped target Initrd Root File System.
+[  OK  ] Reached target Local Integrity Protected Volumes.
+[  OK  ] Reached target Path Units.
+[  OK  ] Reached target Remote Encrypted Volumes.
+[  OK  ] Reached target Remote File Systems.
+[  OK  ] Reached target Remote Integrity Protected Volumes.
+[  OK  ] Reached target Remote Verity Protected Volumes.
+[  OK  ] Reached target Slice Units.
+[  OK  ] Reached target Local Verity Protected Volumes.
+[  OK  ] Listening on Device-mapper event daemon FIFOs.
+[  OK  ] Listening on Query the User Interactively for a Password.
+[  OK  ] Listening on Process Core Dump Socket.
+[  OK  ] Listening on Credential Encryption/Decryption.
+[  OK  ] Listening on Disk Encryption Enrollment Service Socket.
+[  OK  ] Listening on Factory Reset Management.
+[  OK  ] Listening on Hostname Service Socket.
+[  OK  ] Listening on Journal Audit Socket.
+[  OK  ] Listening on DDI File System Mounter Socket.
+[  OK  ] Listening on Console Output Muting Service Socket.
+[  OK  ] Listening on Network Management Metrics Varlink Socket.
+[  OK  ] Listening on Network Management Varlink Socket.
+[  OK  ] Listening on Network Management Netlink Socket.
+[  OK  ] Listening on Namespace Resource Manager Socket.
+[  OK  ] Listening on Disk Repartitioning Service Socket.
+[  OK  ] Listening on Report System Basic Metrics Socket.
+[  OK  ] Listening on CGroup Report Varlink Socket.
+[  OK  ] Listening on Report Files Metrics Socket.
+[  OK  ] Listening on Report Signing Socket (Local Software Key).
+[  OK  ] Listening on System Report Socket.
+[  OK  ] Listening on Resolve Monitor Varlink Socket.
+[  OK  ] Listening on Resolve Service Varlink Socket.
+[  OK  ] Listening on Simple Block Device Backed Storage Provider.
+[  OK  ] Listening on Simple File System Backed Storage Provider.
+[  OK  ] Listening on System Install Tool.
+[  OK  ] Listening on System Updates.
+[  OK  ] Listening on udev Varlink Socket.
+[  OK  ] Listening on User Database Manager Socket.
+         Mounting Huge Pages File System...
+         Mounting POSIX Message Queue File System...
+         Mounting Kernel Debug File System...
+         Mounting Kernel Trace File System...
+         Starting Create List of Static Device Nodes...
+         Mounting Kernel Configuration File System...
+         Mounting FUSE Control File System...
+[  OK  ] Stopped File System Check on Root Device.
+         Starting Journal Service...
+         Starting Generate Network Units from Kernel Command Line...
+         Starting Remount Root and Kernel File Systems...
+         Starting Apply Kernel Variables...
+         Starting Wait Until Kernel Time Synchronized...
+[  OK  ] Reached target Local Encrypted Volumes.
+         Starting Load udev Rules from Credentials...
+         Starting Coldplug All udev Devices...
+[  OK  ] Mounted Huge Pages File System.
+[  OK  ] Mounted POSIX Message Queue File System.
+[  OK  ] Mounted Kernel Debug File System.
+[  OK  ] Mounted Kernel Trace File System.
+[  OK  ] Finished Create List of Static Device Nodes.
+[  OK  ] Mounted Kernel Configuration File System.
+[  OK  ] Mounted FUSE Control File System.
+[  OK  ] Started Journal Service.
+[  OK  ] Finished Generate Network Units from Kernel Command Line.
+[  OK  ] Finished Remount Root and Kernel File Systems.
+[  OK  ] Finished Apply Kernel Variables.
+[  OK  ] Finished Load udev Rules from Credentials.
+[  OK  ] Reached target Preparation for Network.
+[  OK  ] Listening on Network Management Resolve Hook Socket.
+         Activating swap /swap/swapfile...
+         Starting Flush Journal to Persistent Storage...
+         Starting Load/Save OS Random Seed...
+         Starting Create Static Device Nodes in /dev gracefully...
+[  OK  ] Activated swap /swap/swapfile.
+[  OK  ] Reached target Swaps.
+         Starting User Database Manager...
+[  OK  ] Finished Load/Save OS Random Seed.
+[  OK  ] Finished Flush Journal to Persistent Storage.
+[  OK  ] Started User Database Manager.
+         Starting Load Kernel Module overlay...
+         Starting Load Kernel Module tun...
+[  OK  ] Finished Load Kernel Module overlay.
+[  OK  ] Finished Load Kernel Module tun.
+[  OK  ] Finished Coldplug All udev Devices.
+         Starting Namespace Resource Manager...
+         Mounting Temporary Directory /tmp...
+[  OK  ] Mounted Temporary Directory /tmp.
+[*     ] (1 of 4) A start job is running for… Time Synchronized (3s / no limit)
+M[  OK  ] Started Namespace Resource Manager.
+[  OK  ] Finished Create Static Device Nodes in /dev gracefully.
+         Starting Create System Users...
+[  OK  ] Finished Create System Users.
+         Starting Journal Metrics Report Socket...
+         Starting Journal Log Access Socket...
+         Starting Network Name Resolution...
+         Starting Create Static Device Nodes in /dev...
+[  OK  ] Listening on Journal Log Access Socket.
+[  OK  ] Listening on Journal Metrics Report Socket.
+[  OK  ] Finished Create Static Device Nodes in /dev.
+[  OK  ] Reached target Preparation for Local File Systems.
+[  OK  ] Set up automount EFI System Partition Automount.
+         Starting Rule-based Manager for Device Events and Files...
+[  OK  ] Started Network Name Resolution.
+[  OK  ] Reached target Host and Network Name Lookups.
+         Starting Network Time Synchronization...
+[  OK  ] Started Rule-based Manager for Device Events and Files.
+         Starting Network Management...
+[  OK  ] Started Network Time Synchronization.
+[  OK  ] Reached target System Time Set.
+         Starting Virtual Console Setup...
+[  OK  ] Started Network Management.
+[  OK  ] Reached target Network.
+[  OK  ] Listening on Load/Save RF Kill Switch Status /dev/rfkill Watch.
+         Starting Enable Persistent Storage in systemd-networkd...
+[  OK  ] Finished Enable Persistent Storage in systemd-networkd.
+[  OK  ] Finished Virtual Console Setup.
+[  OK  ] Reached target Local File Systems.
+[  OK  ] Reached target Virtual Machines and Containers.
+[  OK  ] Listening on Boot Loader Control Service Socket.
+[  OK  ] Listening on Disk Image Download Service Socket.
+[  OK  ] Listening on System Extension Image Management.
+[  OK  ] Listening on System Extension and …Refresh on Completed System Update.
+         Starting Create System Files and Directories...
+         Starting Load JSON user/group Records from Credentials...
+         Starting Listen Kernel Core Dump Socket...
+[  OK  ] Finished Load JSON user/group Records from Credentials.
+[  OK  ] Finished Create System Files and Directories.
+         Starting Rebuild Dynamic Linker Cache...
+         Starting Rebuild Journal Catalog...
+         Starting Record System Boot/Shutdown in UTMP...
+[  OK  ] Started Listen Kernel Core Dump Socket.
+         Starting Kernel Core Pattern Register...
+[  OK  ] Finished Record System Boot/Shutdown in UTMP.
+[  OK  ] Finished Rebuild Journal Catalog.
+[  OK  ] Finished Kernel Core Pattern Register.
+[  OK  ] Finished Rebuild Dynamic Linker Cache.
+         Starting Update is Completed...
+[  OK  ] Finished Update is Completed.
+[  OK  ] Reached target System Initialization.
+[  OK  ] Started Daily Cleanup of Temporary Directories.
+[  OK  ] Listening on D-Bus System Message Bus Socket.
+[  OK  ] Listening on GnuPG network certifi…ent daemon for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a… browsers) for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a…estricted) for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a…emulation) for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a…rase cache for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG public key mana…nt service for /etc/pacman.d/gnupg.
+[  OK  ] Listening on OpenSSH Server Socket…temd-ssh-generator, AF_UNIX Local).
+[  OK  ] Listening on User Login Management Varlink Socket.
+[  OK  ] Listening on Virtual Machine and C…tainer Registration Service Socket.
+[  OK  ] Reached target Socket Units.
+         Starting D-Bus System Message Bus...
+[  OK  ] Created slice Slice /system/systemd-fsck.
+         Starting File System Check on /dev/disk/by-diskseq/1-part2...
+[  OK  ] Finished File System Check on /dev/disk/by-diskseq/1-part2.
+         Mounting EFI System Partition Automount...
+[  OK  ] Mounted EFI System Partition Automount.
+[  OK  ] Started D-Bus System Message Bus.
+[  OK  ] Reached target Basic System.
+         Starting Home Area Manager...
+         Starting User Login Management...
+[  OK  ] Started Home Area Manager.
+[  OK  ] Finished Home Area Activation.
+         Starting Permit User Sessions...
+[  OK  ] Started User Login Management.
+[  OK  ] Finished Permit User Sessions.
+[  OK  ] Started Getty on tty1.
+[  OK  ] Started Serial Getty on ttyS0.
+[  OK  ] Reached target Login Prompts.
+7878
+Arch Linux 7.3.4-arch1-2 (ttyS0)
+
+endo11-guest login: root (automatic login)
+
+[root@endo11-guest ~]# < lsblk -o NAME,SIZE,RO; systemctl is-system-running
+> } </dev/null; printf '\n__%s_%s__ rc=%s\n' DONE 324d5d53 "$?"
+stty: 'standard input': Inappropriate ioctl for device
+7.3.4-arch1-2
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+NAME    SIZE RO
+vda      20G  0
+├─vda1    1M  0
+├─vda2  300M  0
+└─vda3 19.7G  0
+vdb      96M  1
+vdc       2G  0
+starting
+
+__DONE_324d5d53__ rc=1
+# <rust003; chmod 0755 /opt/trust003 /opt/trust003/src
+-bash: syntax error near unexpected token `do'
+# } </dev/null; printf '\n__%s_%s__ rc=%s\n' DONE d42af98b "$?"
+-bash: syntax error near unexpected token `}'
+# 
+
+# { stty -echo -F /dev/ttyS0; echo ok
+> } </dev/null; printf '\n__%s_%s__ rc=%s\n' DONE 15da60fb "$?"
+ok
+
+__DONE_15da60fb__ rc=0
+# > 
+__DONE_6bc37088__ rc=0
+# > 
+__DONE_db8a7aec__ rc=0
+# > 7975d13431e1e0b3149fa95f2c73765a90161d9a4a7f1238ae76f8e9c2a22657  /root/stage.sh
+
+__DONE_698ddddb__ rc=0
+# > exit=1
+cat: /root/stage/commit: No such file or directory
+
+__DONE_57593630__ rc=0
+# > 4ded8cee0e476c073cc0f4ffcdafae5baed14aa2e590058578cfdf36a147add3  /dev/vdb
+a69e75c898eb0fbea7bfa3379048ec3479579407
+exit=0
+== collision check
+no collisions
+== root-owned checkout of a69e75c898eb0fbea7bfa3379048ec3479579407
+Note: switching to 'a69e75c898eb0fbea7bfa3379048ec3479579407'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+research/develop-verify-trust-003/evidence/guest-checkout.sha256: OK
+research/develop-verify-trust-003/evidence/guest-package-content.sha256: OK
+checkout pins: all 37 files match
+== package
+{"package":"/root/trust003/trust003-guest.tar","sha256":"b66557c7c17082b2a1e9c60e6be4606facd6077f19f81c818591d877bd58d919"}
+guest-package-content.sha256: OK
+install.sh: OK
+uninstall.sh: OK
+inspect.sh: OK
+package content: file list, 16 digests and normalized manifest match
+sourceCommit a69e75c898eb0fbea7bfa3379048ec3479579407
+package sha256 b66557c7c17082b2a1e9c60e6be4606facd6077f19f81c818591d877bd58d919
+== agent identity
+uid=1500(endoagent) gid=1500(endoagent) groups=1500(endoagent)
+endoagent:x:1500:
+endoagent L 2026-11-19 -1 -1 -1 -1
+== install
+install.sh: the socket will be reachable by root and by group endoagent: endoagent:x:1500:
+Creating group 'endo-verify-002' with GID 968.
+Creating user 'endo-verify-002' (DEVELOP-VERIFY-TRUST-002 research verifier) with UID 968 and GID 968.
+Created symlink '/etc/systemd/user/sockets.target.wants/endo-verify-002.socket' -> '/etc/systemd/user/endo-verify-002.socket'.
+install.sh: installed. Inspect with: sh inspect.sh
+== principal
+endo-verify-002:x:968:968:DEVELOP-VERIFY-TRUST-002 research verifier:/var/lib/endo-verify-002-home:/usr/bin/nologin
+uid=968(endo-verify-002) gid=968(endo-verify-002) groups=968(endo-verify-002)
+== linger
+State=lingering
+Linger=yes
+== processes
+    PID USER         ELAPSED   RSS CMD
+none
+== ownership
+drwxr-xr-x root:root /usr/local/lib/endo-verify-002
+-rw-r--r-- root:root /usr/local/lib/endo-verify-002/installation.json
+drwxr-x--- root:endo-verify-002 /usr/local/lib/endo-verify-002/oracle
+drwxr-xr-x endo-verify-002:endo-verify-002 /var/lib/endo-verify-002
+absent /var/lib/endo-verify-002/records
+absent /var/lib/endo-verify-002/work
+drwxr-xr-x root:root /var/lib/endo-verify-002-home
+drwxr-x--- endo-verify-002:endoagent /run/endo-verify-002
+absent /run/endo-verify-002/verify.sock
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002.socket
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002@.service
+-rw-r--r-- root:root /etc/sysusers.d/endo-verify-002.conf
+-rw-r--r-- root:root /etc/tmpfiles.d/endo-verify-002.conf
+-rw-r--r-- root:root /var/lib/systemd/linger/endo-verify-002
+== installation identity
+a39adc88cbc7ee5844b2a66b6ed64eccee393e6861126b878c9eb2d8edec71dc  /usr/local/lib/endo-verify-002/installation.json
+== records
+0
+== full audit: node research/develop-verify-trust-002/audit.ts --installed (from the frozen checkout)
+
+__DONE_90b4bd49__ rc=0
+# > × user@968.service - User Manager for UID 968
+     Loaded: loaded (/usr/lib/systemd/system/user@.service; static)
+    Drop-In: /usr/lib/systemd/system/user@.service.d
+             └─10-login-barrier.conf
+     Active: failed (Result: exit-code) since Thu 2026-11-19 10:41:31 UTC; 13s ago
+ Invocation: 8cd24aa007fd44ff8d2493e580b6bf26
+       Docs: man:user@.service(5)
+    Process: 582 ExecStart=/usr/lib/systemd/systemd --user (code=exited, status=224/PAM)
+   Main PID: 582 (code=exited, status=224/PAM)
+   Mem peak: 2.2M
+        CPU: 9ms
+
+    PID USER     CMD
+total 0
+drwxr-x---  2 endo-verify-002 endoagent  40 Nov 19 10:41 .
+drwxr-xr-x 23 root            root      540 Nov 19 10:41 ..
+Failed to get properties: Transport endpoint is not connected
+# DEVELOP-VERIFY-TRUST-002 research verifier: one instance per connection. Research only.
+[Unit]
+Description=DEVELOP-VERIFY-TRUST-002 research verifier socket
+ConditionUser=endo-verify-002
+
+[Socket]
+ListenStream=/run/endo-verify-002/verify.sock
+SocketMode=0666
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target
+# DEVELOP-VERIFY-TRUST-002 research verifier: one request on standard input, one response on standard output. Research only.
+[Unit]
+Description=DEVELOP-VERIFY-TRUST-002 research verifier (one request)
+ConditionUser=endo-verify-002
+CollectMode=inactive-or-failed
+
+[Service]
+Type=exec
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+ExecStart=/usr/bin/node /usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts serve --install /usr/local/lib/endo-verify-002 --state /var/lib/endo-verify-002 --peer %i
+WorkingDirectory=/var/lib/endo-verify-002
+Environment=PATH=/usr/bin LANG=C.UTF-8
+UnsetEnvironment=NODE_OPTIONS NODE_PATH LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT
+UMask=0022
+NoNewPrivileges=yes
+RuntimeMaxSec=900
+TasksMax=1024
+
+__DONE_f99221e0__ rc=0
+# > Nov 19 10:41:31 endo11-guest systemd[1]: Starting User Manager for UID 968...
+Nov 19 10:41:31 endo11-guest (systemd)[582]: pam_unix(systemd-user:account): account endo-verify-002 has expired (account expired)
+Nov 19 10:41:31 endo11-guest (systemd)[582]: PAM PAM failed: User account has expired
+Nov 19 10:41:31 endo11-guest (systemd)[582]: user@968.service: Failed to set up PAM session: Operation not permitted
+Nov 19 10:41:31 endo11-guest (systemd)[582]: user@968.service: Failed at step PAM spawning /usr/lib/systemd/systemd: Operation not permitted
+Nov 19 10:41:31 endo11-guest systemd[1]: user@968.service: Main process exited, code=exited, status=224/PAM
+Nov 19 10:41:31 endo11-guest systemd[1]: user@968.service: Failed with result 'exit-code'.
+Nov 19 10:41:31 endo11-guest systemd[1]: Failed to start User Manager for UID 968.
+Nov 19 10:41:31 endo11-guest systemd[1]: Finished User Runtime Directory /run/user/968.
+Nov 19 10:41:31 endo11-guest systemd[1]: Starting User Manager for UID 968...
+Nov 19 10:41:31 endo11-guest (systemd)[582]: pam_unix(systemd-user:account): account endo-verify-002 has expired (account expired)
+Nov 19 10:41:31 endo11-guest (systemd)[582]: PAM PAM failed: User account has expired
+Nov 19 10:41:31 endo11-guest (systemd)[582]: user@968.service: Failed to set up PAM session: Operation not permitted
+Nov 19 10:41:31 endo11-guest (systemd)[582]: user@968.service: Failed at step PAM spawning /usr/lib/systemd/systemd: Operation not permitted
+Nov 19 10:41:31 endo11-guest systemd[1]: user@968.service: Main process exited, code=exited, status=224/PAM
+Nov 19 10:41:31 endo11-guest systemd[1]: user@968.service: Failed with result 'exit-code'.
+Nov 19 10:41:31 endo11-guest systemd[1]: Failed to start User Manager for UID 968.
+Nov 19 10:41:45 endo11-guest systemd[1]: run-p615-i8331.service: Main process exited, code=exited, status=224/PAM
+endo-verify-002:!*:20776:::::1:
+cat: /etc/pam.d/systemd-user: No such file or directory
+
+auth       required   pam_shells.so
+auth       requisite  pam_nologin.so
+auth       include    system-auth
+
+account    required   pam_access.so
+account    required   pam_nologin.so
+account    include    system-auth
+
+password   include    system-auth
+
+session    optional   pam_loginuid.so
+session    optional   pam_keyinit.so       force revoke
+session    include    system-auth
+session    optional   pam_lastlog2.so      silent
+session    optional   pam_motd.so
+session    optional   pam_mail.so          dir=/var/spool/mail standard quiet
+session    optional   pam_umask.so
+-session   optional   pam_systemd.so
+session    required   pam_env.so
+
+__DONE_4e4e0c74__ rc=1
+# > auth            sufficient      pam_rootok.so
+auth            required        pam_unix.so
+account         required        pam_unix.so
+session         required        pam_unix.so
+session         required        pam_limits.so
+password        include         system-auth
+rc=0
+uid=1500(endoagent) gid=1500(endoagent) groups=1500(endoagent)
+XDG=
+{
+  "schemaVersion": "endo.research.dvt002.audit.v0",
+  "h0": true,
+  "closure": true,
+  "scope": "known routes only: a necessary check, not a proof of separation",
+  "limits": [
+    "sudo rules: /etc/sudoers and /etc/sudoers.d are not readable to the account; NOPASSWD and global timestamps are not inspected (the installed gate adds `sudo -n true`, which must fail)",
+    "polkit: rules are matched by text, not evaluated; unreadable rule directories are not inspected",
+    "other local daemons and their sockets (beyond docker, libvirt and podman), and ACLs on objects other than those sockets",
+    "setuid and file-capability programs and their own policies",
+    "credentials the account holds for root or for the verifier elsewhere (ssh keys, cached tokens), and scheduled jobs run by root from files the account can write",
+    "kernel and service vulnerabilities"
+  ],
+  "checks": [
+    {
+      "id": "h0-group-docker",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-group-libvirt",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-group-empower",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-group-lxd",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-group-disk",
+      "observed": "not a member",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/docker.sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/podman/podman.sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/libvirt-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtqemud-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtnetworkd-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtstoraged-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtnodedevd-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtinterfaced-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtnwfilterd-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtsecretd-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtlxcd-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtchd-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/virtvboxd-sock",
+      "observed": "absent",
+      "ok": true
+    },
+    {
+
+__DONE_3473545c__ rc=0
+# > unmounted
+
+__DONE_2696b717__ rc=0
+# > 
+__DONE_c8797241__ rc=0
+#          Stopping Session 1 of User root...
+[  OK  ] Removed slice Slice /system/modprobe.
+[  OK  ] Stopped target Login Prompts.
+[  OK  ] Stopped target Virtual Machines and Containers.
+[  OK  ] Stopped target Host and Network Name Lookups.
+[  OK  ] Stopped target Remote Encrypted Volumes.
+[  OK  ] Stopped target Remote Integrity Protected Volumes.
+[  OK  ] Stopped target Remote Verity Protected Volumes.
+[  OK  ] Stopped Daily Cleanup of Temporary Directories.
+[  OK  ] Closed Load/Save RF Kill Switch Status /dev/rfkill Watch.
+         Stopping Getty on tty1...
+         Starting Generate shutdown-ramfs...
+[  OK  ] Stopped target System Time Set.
+         Stopping Serial Getty on ttyS0...
+[  OK  ] Stopped File System Check on /dev/disk/by-diskseq/1-part2.
+[  OK  ] Removed slice Slice /system/systemd-fsck.
+         Stopping Enable Persistent Storage in systemd-networkd...
+         Stopping Load/Save OS Random Seed...
+[  OK  ] Stopped Load udev Rules from Credentials.
+         Stopping User Runtime Directory /run/user/968...
+[  OK  ] Stopped Wait Until Kernel Time Synchronized.
+[  OK  ] Stopped Getty on tty1.
+[  OK  ] Stopped Load/Save OS Random Seed.
+[  OK  ] Unmounted /run/user/968.
+[  OK  ] Stopped User Runtime Directory /run/user/968.
+[  OK  ] Removed slice Slice /system/getty.
+[  OK  ] Removed slice User Slice of UID 968.
+[  OK  ] Stopped Serial Getty on ttyS0.
+78[  OK  ] Finished Generate shutdown-ramfs.
+[  OK  ] Stopped Enable Persistent Storage in systemd-networkd.
+[  OK  ] Stopped Session 1 of User root.
+[  OK  ] Removed slice Slice /system/serial-getty.
+         Stopping Permit User Sessions...
+         Stopping User Manager for UID 0...
+[  OK  ] Stopped Permit User Sessions.
+[  OK  ] Stopped target Network.
+[  OK  ] Stopped target Remote File Systems.
+         Stopping Home Area Activation...
+         Stopping Network Management...
+[  OK  ] Stopped Load JSON user/group Records from Credentials.
+[  OK  ] Stopped User Manager for UID 0.
+[  OK  ] Stopped Network Management.
+[  OK  ] Closed Network Management Resolve Hook Socket.
+[  OK  ] Stopped target Preparation for Network.
+[  OK  ] Stopped Generate Network Units from Kernel Command Line.
+         Stopping User Runtime Directory /run/user/0...
+[  OK  ] Stopped Home Area Activation.
+         Stopping Home Area Manager...
+[  OK  ] Stopped User Runtime Directory /run/user/0.
+[  OK  ] Removed slice User Slice of UID 0.
+         Stopping User Login Management...
+[  OK  ] Stopped Home Area Manager.
+[  OK  ] Stopped User Login Management.
+[  OK  ] Stopped target Basic System.
+[  OK  ] Stopped target Path Units.
+[  OK  ] Stopped target Slice Units.
+[  OK  ] Removed slice User and Session Slice.
+[  OK  ] Stopped target Socket Units.
+[  OK  ] Closed GnuPG network certificate m…ent daemon for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/dirmngr.
+[  OK  ] Closed GnuPG cryptographic agent a… browsers) for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent-browser.
+[  OK  ] Closed GnuPG cryptographic agent a…estricted) for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent-extra.
+[  OK  ] Closed GnuPG cryptographic agent (…emulation) for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent-ssh.
+[  OK  ] Closed GnuPG cryptographic agent a…rase cache for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent.
+[  OK  ] Closed GnuPG public key management service for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/keyboxd.
+[  OK  ] Closed OpenSSH Server Socket (systemd-ssh-generator, AF_UNIX Local).
+[  OK  ] Closed Hostname Service Socket.
+[  OK  ] Closed Disk Image Download Service Socket.
+[  OK  ] Closed User Login Management Varlink Socket.
+[  OK  ] Closed Virtual Machine and Container Registration Service Socket.
+[  OK  ] Closed DDI File System Mounter Socket.
+[  OK  ] Closed Console Output Muting Service Socket.
+[  OK  ] Closed Network Management Metrics Varlink Socket.
+[  OK  ] Closed Network Management Varlink Socket.
+[  OK  ] Closed Network Management Netlink Socket.
+[  OK  ] Closed Disk Repartitioning Service Socket.
+[  OK  ] Closed CGroup Report Varlink Socket.
+[  OK  ] Closed Report Files Metrics Socket.
+[  OK  ] Closed Report Signing Socket (Local Software Key).
+[  OK  ] Closed System Install Tool.
+         Stopping D-Bus System Message Bus...
+[  OK  ] Unmounted /run/user/0.
+[  OK  ] Stopped D-Bus System Message Bus.
+[  OK  ] Closed D-Bus System Message Bus Socket.
+[  OK  ] Stopped target System Initialization.
+[  OK  ] Unset automount Arbitrary Executab…ormats File System Automount Point.
+[  OK  ] Stopped target Local dm-clone Devices.
+[  OK  ] Stopped target Local Encrypted Volumes.
+[  OK  ] Stopped Dispatch Password Requests to Console Directory Watch.
+[  OK  ] Stopped Forward Password Requests to Wall Directory Watch.
+[  OK  ] Stopped target Image Downloads.
+[  OK  ] Stopped target Local Integrity Protected Volumes.
+[  OK  ] Stopped target Local Verity Protected Volumes.
+         Stopping Kernel Core Pattern Register...
+         Stopping Namespace Resource Manager...
+         Stopping Network Time Synchronization...
+[  OK  ] Stopped Update is Completed.
+[  OK  ] Stopped Rebuild Dynamic Linker Cache.
+[  OK  ] Stopped Rebuild Journal Catalog.
+         Stopping Record System Boot/Shutdown in UTMP...
+[  OK  ] Stopped Namespace Resource Manager.
+[  OK  ] Stopped Network Time Synchronization.
+[  OK  ] Stopped Kernel Core Pattern Register.
+[  OK  ] Stopped Record System Boot/Shutdown in UTMP.
+[  OK  ] Closed Namespace Resource Manager Socket.
+         Stopping Network Name Resolution...
+[  OK  ] Stopped Create System Files and Directories.
+         Stopping Listen Kernel Core Dump Socket...
+[  OK  ] Stopped Listen Kernel Core Dump Socket.
+[  OK  ] Stopped Network Name Resolution.
+[  OK  ] Stopped target Local File Systems.
+[  OK  ] Unset automount EFI System Partition Automount.
+[  OK  ] Stopped target Preparation for Local File Systems.
+[  OK  ] Closed Resolve Monitor Varlink Socket.
+[  OK  ] Closed Resolve Service Varlink Socket.
+         Unmounting Temporary Directory /tmp...
+[  OK  ] Stopped Apply Kernel Variables.
+[  OK  ] Closed Process Core Dump Socket.
+[  OK  ] Stopped Create Static Device Nodes in /dev.
+[  OK  ] Stopped Create System Users.
+[  OK  ] Stopped Create Static Device Nodes in /dev gracefully.
+[  OK  ] Unmounted Temporary Directory /tmp.
+[  OK  ] Stopped target Swaps.
+         Deactivating swap /swap/swapfile...
+[  OK  ] Deactivated swap /swap/swapfile.
+[  OK  ] Reached target Unmount All Filesystems.
+[  OK  ] Stopped Remount Root and Kernel File Systems.
+[  OK  ] Reached target System Shutdown.
+[  OK  ] Reached target Late Shutdown Services.
+[  OK  ] Finished System Power Off.
+[  OK  ] Reached target System Power Off.
+78[  457.375354] reboot: Power down
+=== offline boot 2 (clean snapshot) ===
+GNU GRUB  version 2:2.16-1
+
++----------------------------------------------------------------------------+||||||||||||||||||||||||+----------------------------------------------------------------------------+     Use the ^ and v keys to select which entry is highlighted.          
+      Press enter to boot the selected OS, `e' to edit the commands       
+      before booting or `c' for a command-line.                            *Arch Linux                                                                  Advanced options for Arch Linux                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        The highlighted entry will be executed automatically in 1s.                    The highlighted entry will be executed automatically in 0s.                   Booting `Arch Linux'
+
+Loading Linux linux ...
+Loading initial ramdisk ...
+[    0.600647] virt/tdx: TDX not supported by the host platform
+78Booting initrd of Arch Linux.
+         Expecting device /dev/disk/by-uuid…5d0a-df51-46ea-bfe7-e9e6d52fe390...
+[  OK  ] Reached target Path Units.
+[  OK  ] Reached target Slice Units.
+[  OK  ] Reached target Swaps.
+[  OK  ] Reached target Timer Units.
+[  OK  ] Listening on Journal Socket (/dev/log).
+[  OK  ] Listening on Journal Sockets.
+[  OK  ] Listening on udev Kernel Socket.
+[  OK  ] Listening on udev Varlink Socket.
+[  OK  ] Reached target Socket Units.
+         Starting Journal Service...
+         Starting Load Kernel Modules...
+         Starting Create Static Device Nodes in /dev...
+         Starting Coldplug All udev Devices...
+[  OK  ] Finished Load Kernel Modules.
+[  OK  ] Finished Create Static Device Nodes in /dev.
+[  OK  ] Reached target Preparation for Local File Systems.
+[  OK  ] Reached target Local File Systems.
+         Starting Rule-based Manager for Device Events and Files...
+[  OK  ] Started Journal Service.
+         Starting Create System Files and Directories...
+[  OK  ] Finished Create System Files and Directories.
+[  OK  ] Started Rule-based Manager for Device Events and Files.
+[  OK  ] Finished Coldplug All udev Devices.
+[  OK  ] Reached target System Initialization.
+[  OK  ] Reached target Basic System.
+[  OK  ] Found device /dev/disk/by-uuid/28605d0a-df51-46ea-bfe7-e9e6d52fe390.
+[  OK  ] Reached target Initrd Root Device.
+         Starting File System Check on /dev…5d0a-df51-46ea-bfe7-e9e6d52fe390...
+         Starting Virtual Console Setup...
+[  OK  ] Finished File System Check on /dev…605d0a-df51-46ea-bfe7-e9e6d52fe390.
+[  OK  ] Finished Virtual Console Setup.
+         Mounting /sysroot...
+[  OK  ] Mounted /sysroot.
+[  OK  ] Reached target Initrd Root File System.
+         Starting Mountpoints Configured in the Real Root...
+[  OK  ] Finished Mountpoints Configured in the Real Root.
+[  OK  ] Reached target Initrd File Systems.
+[  OK  ] Reached target Initrd Default Target.
+         Starting Cleaning Up and Shutting Down Daemons...
+[  OK  ] Stopped target Initrd Default Target.
+[  OK  ] Stopped target Basic System.
+[  OK  ] Stopped target Initrd Root Device.
+[  OK  ] Stopped target Path Units.
+[  OK  ] Stopped target Slice Units.
+[  OK  ] Stopped target Socket Units.
+[  OK  ] Stopped target System Initialization.
+[  OK  ] Stopped target Swaps.
+[  OK  ] Stopped target Timer Units.
+[  OK  ] Stopped Load Kernel Modules.
+[  OK  ] Stopped Create System Files and Directories.
+[  OK  ] Stopped target Local File Systems.
+[  OK  ] Stopped target Preparation for Local File Systems.
+[  OK  ] Stopped Coldplug All udev Devices.
+         Stopping Rule-based Manager for Device Events and Files...
+[  OK  ] Stopped Virtual Console Setup.
+[  OK  ] Finished Cleaning Up and Shutting Down Daemons.
+[  OK  ] Stopped Rule-based Manager for Device Events and Files.
+[  OK  ] Closed udev Varlink Socket.
+         Starting Cleanup udev Database...
+[  OK  ] Stopped Create Static Device Nodes in /dev.
+[  OK  ] Finished Cleanup udev Database.
+[  OK  ] Reached target Switch Root.
+         Starting Switch Root...
+78
+Welcome to Arch Linux!
+
+[  OK  ] Stopped Switch Root.
+[  OK  ] Created slice Slice /system/dirmngr.
+[  OK  ] Created slice Slice /system/getty.
+[  OK  ] Created slice Slice /system/gpg-agent.
+[  OK  ] Created slice Slice /system/gpg-agent-browser.
+[  OK  ] Created slice Slice /system/gpg-agent-extra.
+[  OK  ] Created slice Slice /system/gpg-agent-ssh.
+[  OK  ] Created slice Slice /system/keyboxd.
+[  OK  ] Created slice Slice /system/modprobe.
+[  OK  ] Created slice Slice /system/serial-getty.
+[  OK  ] Created slice User and Session Slice.
+[  OK  ] Started Dispatch Password Requests to Console Directory Watch.
+[  OK  ] Started Forward Password Requests to Wall Directory Watch.
+[  OK  ] Set up automount Arbitrary Executa…ormats File System Automount Point.
+         Expecting device /dev/ttyS0...
+[  OK  ] Reached target Local dm-clone Devices.
+[  OK  ] Reached target Image Downloads.
+[  OK  ] Stopped target Switch Root.
+[  OK  ] Stopped target Initrd File Systems.
+[  OK  ] Stopped target Initrd Root File System.
+[  OK  ] Reached target Local Integrity Protected Volumes.
+[  OK  ] Reached target Path Units.
+[  OK  ] Reached target Remote Encrypted Volumes.
+[  OK  ] Reached target Remote File Systems.
+[  OK  ] Reached target Remote Integrity Protected Volumes.
+[  OK  ] Reached target Remote Verity Protected Volumes.
+[  OK  ] Reached target Slice Units.
+[  OK  ] Reached target Local Verity Protected Volumes.
+[  OK  ] Listening on Device-mapper event daemon FIFOs.
+[  OK  ] Listening on Query the User Interactively for a Password.
+[  OK  ] Listening on Process Core Dump Socket.
+[  OK  ] Listening on Credential Encryption/Decryption.
+[  OK  ] Listening on Disk Encryption Enrollment Service Socket.
+[  OK  ] Listening on Factory Reset Management.
+[  OK  ] Listening on Hostname Service Socket.
+[  OK  ] Listening on Journal Audit Socket.
+[  OK  ] Listening on DDI File System Mounter Socket.
+[  OK  ] Listening on Console Output Muting Service Socket.
+[  OK  ] Listening on Network Management Metrics Varlink Socket.
+[  OK  ] Listening on Network Management Varlink Socket.
+[  OK  ] Listening on Network Management Netlink Socket.
+[  OK  ] Listening on Namespace Resource Manager Socket.
+[  OK  ] Listening on Disk Repartitioning Service Socket.
+[  OK  ] Listening on Report System Basic Metrics Socket.
+[  OK  ] Listening on CGroup Report Varlink Socket.
+[  OK  ] Listening on Report Files Metrics Socket.
+[  OK  ] Listening on Report Signing Socket (Local Software Key).
+[  OK  ] Listening on System Report Socket.
+[  OK  ] Listening on Resolve Monitor Varlink Socket.
+[  OK  ] Listening on Resolve Service Varlink Socket.
+[  OK  ] Listening on Simple Block Device Backed Storage Provider.
+[  OK  ] Listening on Simple File System Backed Storage Provider.
+[  OK  ] Listening on System Install Tool.
+[  OK  ] Listening on System Updates.
+[  OK  ] Listening on udev Varlink Socket.
+[  OK  ] Listening on User Database Manager Socket.
+         Mounting Huge Pages File System...
+         Mounting POSIX Message Queue File System...
+         Mounting Kernel Debug File System...
+         Mounting Kernel Trace File System...
+         Starting Create List of Static Device Nodes...
+         Mounting Kernel Configuration File System...
+         Mounting FUSE Control File System...
+[  OK  ] Stopped File System Check on Root Device.
+         Starting Journal Service...
+         Starting Generate Network Units from Kernel Command Line...
+         Starting Remount Root and Kernel File Systems...
+         Starting Apply Kernel Variables...
+         Starting Wait Until Kernel Time Synchronized...
+[  OK  ] Reached target Local Encrypted Volumes.
+         Starting Load udev Rules from Credentials...
+         Starting Coldplug All udev Devices...
+[  OK  ] Mounted Huge Pages File System.
+[  OK  ] Mounted POSIX Message Queue File System.
+[  OK  ] Mounted Kernel Debug File System.
+[  OK  ] Mounted Kernel Trace File System.
+[  OK  ] Finished Create List of Static Device Nodes.
+[  OK  ] Mounted Kernel Configuration File System.
+[  OK  ] Started Journal Service.
+[  OK  ] Mounted FUSE Control File System.
+[  OK  ] Finished Generate Network Units from Kernel Command Line.
+[  OK  ] Finished Remount Root and Kernel File Systems.
+[  OK  ] Finished Apply Kernel Variables.
+[  OK  ] Finished Load udev Rules from Credentials.
+[  OK  ] Reached target Preparation for Network.
+[  OK  ] Listening on Network Management Resolve Hook Socket.
+         Activating swap /swap/swapfile...
+         Starting Flush Journal to Persistent Storage...
+         Starting Load/Save OS Random Seed...
+         Starting Create Static Device Nodes in /dev gracefully...
+[  OK  ] Activated swap /swap/swapfile.
+[  OK  ] Reached target Swaps.
+[  OK  ] Finished Coldplug All udev Devices.
+         Starting User Database Manager...
+[  OK  ] Finished Load/Save OS Random Seed.
+[  OK  ] Started User Database Manager.
+         Starting Load Kernel Module overlay...
+         Starting Load Kernel Module tun...
+[  OK  ] Finished Flush Journal to Persistent Storage.
+[  OK  ] Finished Load Kernel Module overlay.
+[  OK  ] Finished Load Kernel Module tun.
+         Starting Namespace Resource Manager...
+         Mounting Temporary Directory /tmp...
+[  OK  ] Mounted Temporary Directory /tmp.
+[*     ] (1 of 4) A start job is running for /dev/ttyS0 (3s / 1min 30s)
+M[  OK  ] Started Namespace Resource Manager.
+[  OK  ] Finished Create Static Device Nodes in /dev gracefully.
+         Starting Create System Users...
+[  OK  ] Finished Create System Users.
+         Starting Journal Metrics Report Socket...
+         Starting Journal Log Access Socket...
+         Starting Network Name Resolution...
+         Starting Create Static Device Nodes in /dev...
+[  OK  ] Listening on Journal Metrics Report Socket.
+[  OK  ] Listening on Journal Log Access Socket.
+[  OK  ] Finished Create Static Device Nodes in /dev.
+[  OK  ] Reached target Preparation for Local File Systems.
+[  OK  ] Set up automount EFI System Partition Automount.
+         Starting Rule-based Manager for Device Events and Files...
+[  OK  ] Started Network Name Resolution.
+[  OK  ] Reached target Host and Network Name Lookups.
+         Starting Network Time Synchronization...
+[  OK  ] Started Rule-based Manager for Device Events and Files.
+         Starting Network Management...
+[  OK  ] Started Network Time Synchronization.
+[  OK  ] Reached target System Time Set.
+[  OK  ] Listening on Load/Save RF Kill Switch Status /dev/rfkill Watch.
+         Starting Virtual Console Setup...
+[  OK  ] Started Network Management.
+[  OK  ] Reached target Network.
+         Starting Enable Persistent Storage in systemd-networkd...
+[  OK  ] Finished Enable Persistent Storage in systemd-networkd.
+[  OK  ] Finished Virtual Console Setup.
+[  OK  ] Reached target Local File Systems.
+[  OK  ] Reached target Virtual Machines and Containers.
+[  OK  ] Listening on Boot Loader Control Service Socket.
+[  OK  ] Listening on Disk Image Download Service Socket.
+[  OK  ] Listening on System Extension Image Management.
+[  OK  ] Listening on System Extension and …Refresh on Completed System Update.
+         Starting Create System Files and Directories...
+         Starting Load JSON user/group Records from Credentials...
+         Starting Listen Kernel Core Dump Socket...
+[  OK  ] Finished Load JSON user/group Records from Credentials.
+[  OK  ] Finished Create System Files and Directories.
+         Starting Rebuild Dynamic Linker Cache...
+         Starting Rebuild Journal Catalog...
+         Starting Record System Boot/Shutdown in UTMP...
+[  OK  ] Started Listen Kernel Core Dump Socket.
+         Starting Kernel Core Pattern Register...
+[  OK  ] Finished Record System Boot/Shutdown in UTMP.
+[  OK  ] Finished Rebuild Journal Catalog.
+[  OK  ] Finished Kernel Core Pattern Register.
+[  OK  ] Finished Rebuild Dynamic Linker Cache.
+         Starting Update is Completed...
+[  OK  ] Finished Update is Completed.
+[  OK  ] Reached target System Initialization.
+[  OK  ] Started Daily Cleanup of Temporary Directories.
+[  OK  ] Listening on D-Bus System Message Bus Socket.
+[  OK  ] Listening on GnuPG network certifi…ent daemon for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a… browsers) for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a…estricted) for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a…emulation) for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG cryptographic a…rase cache for /etc/pacman.d/gnupg.
+[  OK  ] Listening on GnuPG public key mana…nt service for /etc/pacman.d/gnupg.
+[  OK  ] Listening on OpenSSH Server Socket…temd-ssh-generator, AF_UNIX Local).
+[  OK  ] Listening on User Login Management Varlink Socket.
+[  OK  ] Listening on Virtual Machine and C…tainer Registration Service Socket.
+[  OK  ] Reached target Socket Units.
+         Starting D-Bus System Message Bus...
+[  OK  ] Created slice Slice /system/systemd-fsck.
+         Starting File System Check on /dev/disk/by-diskseq/1-part2...
+[  OK  ] Finished File System Check on /dev/disk/by-diskseq/1-part2.
+         Mounting EFI System Partition Automount...
+[  OK  ] Mounted EFI System Partition Automount.
+[  OK  ] Started D-Bus System Message Bus.
+[  OK  ] Reached target Basic System.
+         Starting Home Area Manager...
+         Starting User Login Management...
+[  OK  ] Started Home Area Manager.
+[  OK  ] Finished Home Area Activation.
+         Starting Permit User Sessions...
+[  OK  ] Finished Permit User Sessions.
+[  OK  ] Started User Login Management.
+[  OK  ] Started Getty on tty1.
+[  OK  ] Started Serial Getty on ttyS0.
+[  OK  ] Reached target Login Prompts.
+7878
+Arch Linux 7.3.4-arch1-2 (ttyS0)
+
+endo11-guest login: root (automatic login)
+
+[root@endo11-guest ~]# <ge/commit && mount /dev/vdc /mnt/out && ls /mnt/out
+> } </dev/null; printf '\n__%s_%s__ rc=%s\n' DONE 47b1bf80 "$?"
+7.3.4-arch1-2
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+id: ‘endoagent’: no such user
+46e3b6bee5cb8e45dcdfea56575e5b31d02138df3ebb7fc3b5b3569ce0d103ad  /dev/vdb
+c3718f1d20a0777742cb72d6a9dfd7a44ce938fa
+attempt-1  lost+found
+
+__DONE_47b1bf80__ rc=0
+[root@endo11-guest ~]# > Note: switching to 'c3718f1d20a0777742cb72d6a9dfd7a44ce938fa'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+666bebbc0ce928f567c79bb9ad2622460177b9b087fa6b4db261a49e1273ac2d  /root/stage.sh
+a39a11d6c09909cb53d4c6a0ca5c52ab9e18ecab67b76bee7642dc074b1a91ee  /root/matrix.sh
+exit=0
+== collision check
+no collisions
+== root-owned checkout of c3718f1d20a0777742cb72d6a9dfd7a44ce938fa
+research/develop-verify-trust-003/evidence/guest-checkout.sha256: OK
+research/develop-verify-trust-003/evidence/guest-package-content.sha256: OK
+checkout pins: all 37 files match
+== package
+{"package":"/root/trust003/trust003-guest.tar","sha256":"7b6dec22fbfa145533d73bb66bde7c746483c9b525f863445a7afb58625914b5"}
+guest-package-content.sha256: OK
+install.sh: OK
+uninstall.sh: OK
+inspect.sh: OK
+package content: file list, 16 digests and normalized manifest match
+sourceCommit c3718f1d20a0777742cb72d6a9dfd7a44ce938fa
+package sha256 7b6dec22fbfa145533d73bb66bde7c746483c9b525f863445a7afb58625914b5
+== agent identity
+uid=1500(endoagent) gid=1500(endoagent) groups=1500(endoagent)
+endoagent:x:1500:
+endoagent L 2026-11-19 -1 -1 -1 -1
+== install
+install.sh: the socket will be reachable by root and by group endoagent: endoagent:x:1500:
+Creating group 'endo-verify-002' with GID 968.
+Creating user 'endo-verify-002' (DEVELOP-VERIFY-TRUST-002 research verifier) with UID 968 and GID 968.
+Created symlink '/etc/systemd/user/sockets.target.wants/endo-verify-002.socket' -> '/etc/systemd/user/endo-verify-002.socket'.
+install.sh: installed. Inspect with: sh inspect.sh
+== principal
+endo-verify-002:x:968:968:DEVELOP-VERIFY-TRUST-002 research verifier:/var/lib/endo-verify-002-home:/usr/bin/nologin
+uid=968(endo-verify-002) gid=968(endo-verify-002) groups=968(endo-verify-002)
+== linger
+State=lingering
+Linger=yes
+== processes
+    PID USER         ELAPSED   RSS CMD
+    578 endo-ve+       00:02 12540 /usr/lib/systemd/systemd --user
+    580 endo-ve+       00:02  3944 (sd-pam)
+== ownership
+drwxr-xr-x root:root /usr/local/lib/endo-verify-002
+-rw-r--r-- root:root /usr/local/lib/endo-verify-002/installation.json
+drwxr-x--- root:endo-verify-002 /usr/local/lib/endo-verify-002/oracle
+drwxr-xr-x endo-verify-002:endo-verify-002 /var/lib/endo-verify-002
+absent /var/lib/endo-verify-002/records
+absent /var/lib/endo-verify-002/work
+drwxr-xr-x root:root /var/lib/endo-verify-002-home
+drwxr-x--- endo-verify-002:endoagent /run/endo-verify-002
+srw-rw-rw- endo-verify-002:endo-verify-002 /run/endo-verify-002/verify.sock
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002.socket
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002@.service
+-rw-r--r-- root:root /etc/sysusers.d/endo-verify-002.conf
+-rw-r--r-- root:root /etc/tmpfiles.d/endo-verify-002.conf
+-rw-r--r-- root:root /var/lib/systemd/linger/endo-verify-002
+== installation identity
+7802fb0ef678696f37627c83418398806a1f516ed1d3d74369204d00ca61a222  /usr/local/lib/endo-verify-002/installation.json
+== records
+0
+== full audit: node research/develop-verify-trust-002/audit.ts --installed (from the frozen checkout)
+endo-verify-002:20776::::::
+active
+total 0
+srw-rw-rw- 1 endo-verify-002 endo-verify-002 0 Nov 19 10:45 verify.sock
+
+__DONE_9b89e73f__ rc=0
+[root@endo11-guest ~]# > [1] 618
+started
+
+__DONE_486c9925__ rc=0
+[root@endo11-guest ~]# [1]+  Done                       setsid bash /root/matrix.sh > /mnt/out/matrix.log 2>&1 < /dev/null
+> == verifier principal before testing
+== principal
+endo-verify-002:x:968:968:DEVELOP-VERIFY-TRUST-002 research verifier:/var/lib/endo-verify-002-home:/usr/bin/nologin
+uid=968(endo-verify-002) gid=968(endo-verify-002) groups=968(endo-verify-002)
+== linger
+State=lingering
+Linger=yes
+== processes
+    PID USER         ELAPSED   RSS CMD
+    578 endo-ve+       00:15 12540 /usr/lib/systemd/systemd --user
+    580 endo-ve+       00:15  3944 (sd-pam)
+== ownership
+drwxr-xr-x root:root /usr/local/lib/endo-verify-002
+-rw-r--r-- root:root /usr/local/lib/endo-verify-002/installation.json
+drwxr-x--- root:endo-verify-002 /usr/local/lib/endo-verify-002/oracle
+drwxr-xr-x endo-verify-002:endo-verify-002 /var/lib/endo-verify-002
+absent /var/lib/endo-verify-002/records
+absent /var/lib/endo-verify-002/work
+drwxr-xr-x root:root /var/lib/endo-verify-002-home
+drwxr-x--- endo-verify-002:endoagent /run/endo-verify-002
+srw-rw-rw- endo-verify-002:endo-verify-002 /run/endo-verify-002/verify.sock
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002.socket
+-rw-r--r-- root:root /etc/systemd/user/endo-verify-002@.service
+-rw-r--r-- root:root /etc/sysusers.d/endo-verify-002.conf
+-rw-r--r-- root:root /etc/tmpfiles.d/endo-verify-002.conf
+-rw-r--r-- root:root /var/lib/systemd/linger/endo-verify-002
+== first stop (as endoagent)
+identity exit=0
+uid=1500(endoagent) gid=1500(endoagent) groups=1500(endoagent)
+Uid:	1500	1500	1500	1500
+Gid:	1500	1500	1500	1500
+Groups:	1500 
+CapEff:	0000000000000000
+NoNewPrivs:	0
+Name=endoagent
+Remote=no
+Type=unspecified
+Class=background
+XDG_SESSION_ID=
+gate exit=0
+{"h0":true,"closure":true,"failing":[]}
+sudo-n exit=0
+sudo stdout: status=1
+sudo stderr: sudo: a password is required
+== operator policy review (root view)
+== probe while idle (verifier manager only)
+
+__DONE_3f672264__ rc=0
+[root@endo11-guest ~]# > == probe while idle (verifier manager only)
+tail: cannot open '/mnt/out/run/run-1.out' for reading: No such file or directory
+
+__DONE_97d55150__ rc=1
+[root@endo11-guest ~]# >      21       2 root     S    kprobe_optimizer_thr     437 [kprobe-optimizer]
+    578       1 endo-ve+ Ss   do_epoll_wait            391 /usr/lib/systemd/systemd --user
+    580     578 endo-ve+ S    do_sigtimedwait.isra     391 (sd-pam)
+    651       1 endoage+ Ss   do_epoll_wait            376 /usr/lib/systemd/systemd --user
+    653     651 endoage+ S    do_sigtimedwait.isra     376 (sd-pam)
+    721     619 root     S    do_epoll_wait            374 systemd-run --quiet --wait --collect --unit=endoagent-probe-idle --uid=endoagent --gid=endoagent -p PAMName=login -p StandardOutput=file:/mnt/out/run/probe-idle.out -p StandardError=file:/mnt/out/run/probe-idle.err -p WorkingDirectory=/home/endoagent /usr/bin/env -i PATH=/usr/bin HOME=/home/endoagent LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/1500 /usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py idle
+    722       1 endoage+ Ss   do_wait                  374 /usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py idle
+    724     722 endoage+ S    do_sigtimedwait.isra     374 (sd-pam)
+726   openat(AT_FDCWD, "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.kill", O_WRONLY|O_CLOEXEC) = -1 EACCES (Permission denied)
+726   openat(AT_FDCWD, "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/memory.max", O_WRONLY|O_CLOEXEC) = -1 EACCES (Permission denied)
+726   connect(3, {sa_family=AF_UNIX, sun_path="/run/user/968/bus"}, 20) = -1 EACCES (Permission denied)
+726   connect(3, {sa_family=AF_UNIX, sun_path="/run/user/968/systemd/private"}, 32) = -1 EACCES (Permission denied)
+726   openat(AT_FDCWD, "/run/user/968", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = -1 EACCES (Permission denied)
+● endoagent-probe-idle.service - [systemd-run] /usr/bin/env -i PATH=/usr/bin HOME=/home/endoagent LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/1500 /usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py idle
+     Loaded: loaded (/run/systemd/transient/endoagent-probe-idle.service; transient)
+  Transient: yes
+     Active: active (running) since Thu 2026-11-19 10:46:15 UTC; 6min ago
+ Invocation: 8acd0691f289418997d0e8bdf3066dda
+   Main PID: 722 (strace)
+      Tasks: 0 (limit: 7073)
+     Memory: 1.7M (peak: 2.5M)
+        CPU: 10ms
+     CGroup: /system.slice/endoagent-probe-idle.service
+             ‣ 722 /usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py idle
+
+
+__DONE_1f20d9d5__ rc=0
+[root@endo11-guest ~]# > {"held":false,"pids":[578,580],"n":96,"broken":[{"invariant":"2-evaluator","op":"opendir","target":"/var/lib/endo-verify-002/work","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"2-evaluator","op":"open(O_CREAT)","target":"/var/lib/endo-verify-002/work/evil","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"2-evaluator","op":"rename","target":"/var/lib/endo-verify-002/work","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"2-evaluator","op":"symlink","target":"/var/lib/endo-verify-002/work/x","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"3-records","op":"open(O_CREAT)","target":"/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"3-records","op":"open(O_CREAT)","target":"/var/lib/endo-verify-002/journal/0000000000000000000000000000dead.json","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"3-records","op":"symlink","target":"/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"3-records","op":"rename","target":"/var/lib/endo-verify-002/records","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"4-process","op":"process_vm_readv","target":"pid 578 (systemd) uid 968","result":"EINVAL","expected":["EPERM"],"held":false},{"invariant":"4-process","op":"process_vm_readv","target":"pid 580 ((sd-pam)) uid 968","result":"EINVAL","expected":["EPERM"],"held":false}]}
+    721 root     systemd-run --quiet --wait --collect --unit=endoagent-probe-idle --uid=endoagent --gid=endoagent -p PAMName=login -p StandardOutput=file:/mnt/out/run/probe-idle.out -p StandardError=file:/mnt/out/run/probe-idle.err -p WorkingDirectory=/home/endoagent /usr/bin/env -i PATH=/usr/bin HOME=/home/endoagent LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/1500 /usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py idle
+    722 endoage+ /usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py idle
+stopped
+
+__DONE_f01ab0c3__ rc=0
+[root@endo11-guest ~]# > 0
+1-verifier	open(O_WRONLY)	/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/records.ts	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/local/lib/endo-verify-002/adapters/sandbox/bubblewrap.ts	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/local/lib/endo-verify-002/runtime/contracts/canonical-json.ts	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/local/lib/endo-verify-002/package.json	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/local/lib/endo-verify-002/installation.json	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/bin/node	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/bin/bwrap	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/bin/systemd-run	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/bin/python3.14	EACCES	true
+1-verifier	open(O_WRONLY)	/usr/lib/libc.so.6	EACCES	true
+1-verifier	open(O_WRONLY)	/etc/systemd/user/endo-verify-002.socket	EACCES	true
+1-verifier	open(O_WRONLY)	/etc/systemd/user/endo-verify-002@.service	EACCES	true
+1-verifier	open(O_WRONLY)	/etc/sysusers.d/endo-verify-002.conf	EACCES	true
+1-verifier	open(O_WRONLY)	/etc/tmpfiles.d/endo-verify-002.conf	EACCES	true
+1-verifier	rename	/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts	EACCES	true
+1-verifier	unlink	/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts	EACCES	true
+1-verifier	chmod	/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts	EPERM	true
+1-verifier	utime	/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts	EPERM	true
+1-verifier	open(O_CREAT)	/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/evil.ts	EACCES	true
+1-verifier	mkdir	/etc/systemd/user/endo-verify-002@.service.d	EACCES	true
+1-verifier	open(O_CREAT)	/var/lib/endo-verify-002-home/.config/systemd/user/evil.service	EACCES	true
+1-verifier	unlink	/var/lib/systemd/linger/endo-verify-002	EACCES	true
+1-verifier	mkdir	/run/user/968/systemd/user.control/endo-verify-002@.service.d	EACCES	true
+2-evaluator	open(O_RDONLY)	/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/manifest.json	EACCES	true
+2-evaluator	open(O_WRONLY)	/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/manifest.json	EACCES	true
+2-evaluator	open(O_RDONLY)	/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/reference/roman.mjs	EACCES	true
+2-evaluator	open(O_WRONLY)	/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/reference/roman.mjs	EACCES	true
+2-evaluator	open(O_RDONLY)	/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/negative/roman.mjs	EACCES	true
+2-evaluator	open(O_WRONLY)	/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/negative/roman.mjs	EACCES	true
+2-evaluator	open(O_CREAT)	/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/manifest2.json	EACCES	true
+2-evaluator	rename	/usr/local/lib/endo-verify-002/oracle	EACCES	true
+2-evaluator	opendir	/var/lib/endo-verify-002/work	ENOENT	false
+2-evaluator	open(O_CREAT)	/var/lib/endo-verify-002/work/evil	ENOENT	false
+2-evaluator	rename	/var/lib/endo-verify-002/work	ENOENT	false
+2-evaluator	symlink	/var/lib/endo-verify-002/work/x	ENOENT	false
+3-records	open(O_CREAT)	/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json	ENOENT	false
+3-records	open(O_CREAT)	/var/lib/endo-verify-002/journal/0000000000000000000000000000dead.json	ENOENT	false
+3-records	symlink	/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json	ENOENT	false
+3-records	rename	/var/lib/endo-verify-002/records	ENOENT	false
+3-records	open(O_CREAT)	/var/lib/endo-verify-002/evil	EACCES	true
+3-records	unlink	/run/endo-verify-002/verify.sock	EACCES	true
+3-records	open(O_CREAT)	/run/endo-verify-002/evil.sock	EACCES	true
+4-process	open(/proc/pid/environ)	pid 578 (systemd) uid 968	EACCES	true
+4-process	open(/proc/pid/mem)	pid 578 (systemd) uid 968	EACCES	true
+4-process	open(/proc/pid/maps)	pid 578 (systemd) uid 968	EACCES	true
+4-process	open(/proc/pid/auxv)	pid 578 (systemd) uid 968	EACCES	true
+4-process	open(/proc/pid/stack)	pid 578 (systemd) uid 968	EACCES	true
+4-process	open(/proc/pid/syscall)	pid 578 (systemd) uid 968	EACCES	true
+4-process	opendir(/proc/pid/fd)	pid 578 (systemd) uid 968	EACCES	true
+4-process	readlink(/proc/pid/cwd)	pid 578 (systemd) uid 968	EACCES	true
+4-process	write(/proc/pid/oom_score_adj)	pid 578 (systemd) uid 968	EACCES	true
+4-process	process_vm_readv	pid 578 (systemd) uid 968	EINVAL	false
+4-process	ptrace(PTRACE_ATTACH)	pid 578 (systemd) uid 968	EPERM	true
+4-process	ptrace(PTRACE_SEIZE)	pid 578 (systemd) uid 968	EPERM	true
+4-process	kill(0)	pid 578 (systemd) uid 968	EPERM	true
+4-process	kill(SIGSTOP)	pid 578 (systemd) uid 968	EPERM	true
+4-process	kill(SIGTERM)	pid 578 (systemd) uid 968	EPERM	true
+4-process	kill(SIGKILL)	pid 578 (systemd) uid 968	EPERM	true
+4-process	pidfd_send_signal(SIGKILL)	pid 578 (systemd) uid 968	EPERM	true
+4-process	setpriority(19)	pid 578 (systemd) uid 968	EPERM	true
+4-process	sched_setaffinity	pid 578 (systemd) uid 968	EPERM	true
+4-process	prlimit(RLIMIT_CPU)	pid 578 (systemd) uid 968	EPERM	true
+4-process	ioprio_set	pid 578 (systemd) uid 968	EPERM	true
+4-process	write(cgroup.procs)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.procs	EACCES	true
+4-process	write(cgroup.freeze)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.freeze	EACCES	true
+4-process	write(cgroup.kill)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.kill	EACCES	true
+4-process	write(memory.max)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/memory.max	EACCES	true
+4-process	open(/proc/pid/environ)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	open(/proc/pid/mem)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	open(/proc/pid/maps)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	open(/proc/pid/auxv)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	open(/proc/pid/stack)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	open(/proc/pid/syscall)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	opendir(/proc/pid/fd)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	readlink(/proc/pid/cwd)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	write(/proc/pid/oom_score_adj)	pid 580 ((sd-pam)) uid 968	EACCES	true
+4-process	process_vm_readv	pid 580 ((sd-pam)) uid 968	EINVAL	false
+4-process	ptrace(PTRACE_ATTACH)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	ptrace(PTRACE_SEIZE)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	kill(0)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	kill(SIGSTOP)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	kill(SIGTERM)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	kill(SIGKILL)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	pidfd_send_signal(SIGKILL)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	setpriority(19)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	sched_setaffinity	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	prlimit(RLIMIT_CPU)	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	ioprio_set	pid 580 ((sd-pam)) uid 968	EPERM	true
+4-process	write(cgroup.procs)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.procs	EACCES	true
+4-process	write(cgroup.freeze)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.freeze	EACCES	true
+4-process	write(cgroup.kill)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.kill	EACCES	true
+4-process	write(memory.max)	/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/memory.max	EACCES	true
+4-process	connect	/run/user/968/bus	EACCES	true
+4-process	connect	/run/user/968/systemd/private	EACCES	true
+4-process	opendir	/run/user/968	EACCES	true
+
+__DONE_45ab73d4__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_1915ad2c__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_a55472c6__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_a1edc4da__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_dbb0a25e__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_e0bbf47c__ rc=0
+[root@endo11-guest ~]# > ac605c8dc91407957863f0749bfda9843b31296d1c9126990d4d70d509bc4a00  /root/probe.py
+
+__DONE_c13b07ca__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_3b626622__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_32475b97__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_52860763__ rc=0
+[root@endo11-guest ~]# > 93e71ad99a2159eb8e96dc8ac129a71c8b9e08347984c99a35470c68e672da6f  /root/matrix.sh
+
+__DONE_f16eb810__ rc=0
+[root@endo11-guest ~]# > ac605c8dc91407957863f0749bfda9843b31296d1c9126990d4d70d509bc4a00  /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py
+93e71ad99a2159eb8e96dc8ac129a71c8b9e08347984c99a35470c68e672da6f  /root/matrix.sh
+
+__DONE_1f55d76e__ rc=0
+[root@endo11-guest ~]# > [1] 794
+started
+
+__DONE_3c569bda__ rc=0
+[root@endo11-guest ~]# [1]+  Done                       setsid bash /root/matrix.sh > /mnt/out/matrix.log 2>&1 < /dev/null
+> == probe while idle (verifier manager only)
+probe-idle exit=0
+{"held":false,"pids":[578,580],"broken":[{"invariant":"2-evaluator","op":"opendir","target":"/var/lib/endo-verify-002/work","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":false},{"invariant":"2-evaluator","op":"open(O_CREAT)","target":"/var/lib/endo-verify-002/work/evil","result":"ENOENT","expected":["EACCES","EPERM","EROFS"],"held":null,"note":"not applicable: path absent"},{"inva
+== installed run 1
+IP0: no recognized sudo policy refusal; a missing tool, execution error or success cannot qualify this session.
+== installed run 2
+IP0: no recognized sudo policy refusal; a missing tool, execution error or success cannot qualify this session.
+== trusted read (root, installed reader)
+reader exit=1
+== done
+IP0: no recognized sudo policy refusal; a missing tool, execution error or success cannot qualify this session.
+
+__DONE_fa16ffc1__ rc=0
+[root@endo11-guest ~]# > {"status":1,"refused":false}
+{"h0":true,"closure":true}
+
+__DONE_5e9f0f13__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_5f54597c__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_425d75fc__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_dab7d964__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_c8913416__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_6d3a242e__ rc=0
+[root@endo11-guest ~]# > 333965813e1f31d92b69053f5ab3a7b9db62939ff783519d4aa21a8b98916a40  /root/probe.py
+
+__DONE_0c110b0d__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_d7cd9397__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_4c917b0a__ rc=0
+[root@endo11-guest ~]# > 
+__DONE_647041e9__ rc=0
+[root@endo11-guest ~]# > 707ac74aa393149e2ff1f832ce63fa036239ec8e6b3415af5fc622f2bd8e0da1  /root/matrix.sh.new
+
+__DONE_4d1a7be0__ rc=0
+[root@endo11-guest ~]# > 333965813e1f31d92b69053f5ab3a7b9db62939ff783519d4aa21a8b98916a40  /opt/trust003/src/research/develop-verify-trust-003/guest/probe.py
+707ac74aa393149e2ff1f832ce63fa036239ec8e6b3415af5fc622f2bd8e0da1  /root/matrix.sh
+sudo: effective uid is not 0, is /usr/bin/sudo on a file system with the 'nosuid' option set or an NFS file system without root privileges?
+status=1
+
+__DONE_ecc6b4ae__ rc=0
+[root@endo11-guest ~]# > /home/endoagent:
+
+/var/lib/endo-verify-002:
+[1] 1062
+started
+
+__DONE_fae9d56c__ rc=0
+[1]+  Done                       setsid bash /root/matrix.sh > /mnt/out/matrix.log 2>&1 < /dev/null
+[root@endo11-guest ~]# > held   T7: code write EACCES; drop-in etc EACCES; operator's own written; FAIL/FAIL (null); authoritative yes   (expected writes fail; FAIL, auth yes)
+held   T8: (a) write EACCES, read UNKNOWN auth no (no-record: ENOENT); (b) auth no (not-root's: <W>/attacker); (c) link EACCES, read UNKNOWN (no-record: ENOENT)   (expected (a) EACCES; (b) refused; (c) EACCES)
+held   T9: UNKNOWN candidate-mismatch; consumer B FAIL; consumer A PASS   (expected candidate-mismatch; consumer verdict for B not PASS; for A PASS)
+T10: interrupt the instance now with the approved operator command; waiting up to 120 s
+held   T10: kill EPERM; first response none; interrupted INCOMPLETE (journal-without-record); retry PASS new id true; orphan work removed true; hang-up record PASS   (expected kill EPERM; interrupted INCOMPLETE; retry PASS under a new id; hang-up record PASS)
+held   T11: {"a":"service-unavailable: ENOENT"}   (expected BLOCKED each, never PASS)
+held   T12: P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]   (expected P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND])
+held   E1: BLOCKED unsupported-120000; BLOCKED unsupported-160000; BLOCKED unsupported-name   (expected BLOCKED unsupported-120000, unsupported-160000, unsupported-name)
+held   E2: A PASS, B FAIL, distinct true   (expected PASS and FAIL, distinct invocations)
+E3: restart the verifier's manager now with the approved operator command; waiting up to 120 s
+held   E3: stop not-applicable; INCOMPLETE (journal-without-record); next PASS; orphan collected by next true   (expected INCOMPLETE; the next instance removes the orphan)
+held   E4: D FAIL, E FAIL, S FAIL   (expected FAIL each)
+held   E5: {"big":"request-too-large","env":"request-invalid","argv":"request-invalid","expect":"request-invalid","unreferenced":"object-unreferenced","task":"task-unknown","junk":"request-invalid"}   (expected BLOCKED each, with its reason)
+held   E6: EACCES, EACCES, EPERM; run PASS   (expected EACCES, EACCES, EPERM)
+acceptance: {"IA1":true,"IA2":true,"IA3":true,"IA4":true}
+records: {"total":64,"forgedByAttacker":0,"authoritative":64,"authoritativeFalsePasses":[],"overwritten":[]}; wall 98385 ms
+== trusted read (root, installed reader)
+reader exit=0
+{"records":64,"authoritative":64,"authoritativePass":16,"falsePasses":[]}
+== done
+held   T10: kill EPERM; first response none; interrupted INCOMPLETE (journal-without-record); retry PASS new id true; orphan work removed true; hang-up record PASS   (expected kill EPERM; interrupted INCOMPLETE; retry PASS under a new id; hang-up record PASS)
+held   T11: {"a":"service-unavailable: ENOENT"}   (expected BLOCKED each, never PASS)
+held   T12: P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND]   (expected P PASS; X FAIL [EROFS]; M FAIL [ERR_MODULE_NOT_FOUND])
+held   E1: BLOCKED unsupported-120000; BLOCKED unsupported-160000; BLOCKED unsupported-name   (expected BLOCKED unsupported-120000, unsupported-160000, unsupported-name)
+held   E2: A PASS, B FAIL, distinct true   (expected PASS and FAIL, distinct invocations)
+E3: restart the verifier's manager now with the approved operator command; waiting up to 120 s
+held   E3: stop not-applicable; INCOMPLETE (journal-without-record); next PASS; orphan collected by next true   (expected INCOMPLETE; the next instance removes the orphan)
+held   E4: D FAIL, E FAIL, S FAIL   (expected FAIL each)
+held   E5: {"big":"request-too-large","env":"request-invalid","argv":"request-invalid","expect":"request-invalid","unreferenced":"object-unreferenced","task":"task-unknown","junk":"request-invalid"}   (expected BLOCKED each, with its reason)
+held   E6: EACCES, EACCES, EPERM; run PASS   (expected EACCES, EACCES, EPERM)
+acceptance: {"IA1":true,"IA2":true,"IA3":true,"IA4":true}
+records: {"total":32,"forgedByAttacker":0,"authoritative":32,"authoritativeFalsePasses":[],"overwritten":[]}; wall 99311 ms
+identity exit=0
+gate exit=0
+sudo-n exit=0
+probe-idle exit=0
+strace attached to 1161
+probe-live-1 exit=0
+Result=success
+ExecMainStatus=0
+run-1 t10=yes e3=yes
+strace attached to 18427
+probe-live-2 exit=0
+Result=success
+ExecMainStatus=0
+run-2 t10=yes e3=yes
+
+__DONE_0c217fba__ rc=0
+[root@endo11-guest ~]# > {"label":"idle","held":true,"applicable":88,"pids":[578,580],"broken":[]}
+{"label":"live-1","held":true,"applicable":201,"pids":[578,580,8273,8780,8781,8782],"broken":[]}
+{"label":"live-2","held":true,"applicable":201,"pids":[14632,14634,25534,26037,26038,26039],"broken":[]}
+# T10 prompt at 2026-11-19T10:58:19Z; verifier processes:
+    PID    PPID   UID USER     ELAPSED CMD
+    578       1   968 endo-ve+     741 /usr/lib/systemd/systemd --user
+    580     578   968 endo-ve+     741 (sd-pam)
+   8273     578   968 endo-ve+       3 /usr/bin/node /usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts serve --install /usr/local/lib/endo-verify-002 --state /var/lib/endo-verify-002 --peer 10-4140-1161_363-1500
+   8780    8273   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+   8781    8780   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+   8782    8781   968 endo-ve+       0 /usr/bin/node roman.mjs 1994
+# dedicated guest verifier instance(s) confirmed: 8273 ; acting: pkill -KILL -u endo-verify-002 -f 'verifier.ts serve'
+pkill exit=0
+# E3 prompt at 2026-11-19T11:00:26Z; verifier processes:
+    PID    PPID   UID USER     ELAPSED CMD
+  14632       1   968 endo-ve+      98 /usr/lib/systemd/systemd --user
+  14634   14632   968 endo-ve+      98 (sd-pam)
+  31369   14632   968 endo-ve+       3 /usr/bin/node /usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts serve --install /usr/local/lib/endo-verify-002 --state /var/lib/endo-verify-002 --peer 33-12352-18427_28813-1500
+  31873   31369   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+  31874   31873   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+  31875   31874   968 endo-ve+       0 /usr/bin/node roman.mjs 1994
+# acting: systemctl restart user@968.service
+restart exit=0
+     21 pid 578 (systemd) uid 968
+     21 pid 580 ((sd-pam)) uid 968
+     21 pid 8273 (node-MainThread) uid 968
+     21 pid 8780 (bwrap) uid 968
+     21 pid 8781 (bwrap) uid 968
+     21 pid 8782 (node-MainThread) uid 968
+      1 /run/user/968
+      1 /run/user/968/bus
+      1 /run/user/968/systemd/private
+      1 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\x2dverify\x2d002.slice/endo-verify-002@10-4140-1161_363-1500.service/cgroup.freeze
+      1 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\x2dverify\x2d002.slice/endo-verify-002@10-4140-1161_363-1500.service/cgroup.kill
+      1 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\x2dverify\x2d002.slice/endo-verify-002@10-4140-1161_363-1500.service/cgroup.procs
+      1 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\x2dverify\x2d002.slice/endo-verify-002@10-4140-1161_363-1500.service/memory.max
+      3 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-e1c9c839d0a79c07085f5c89.scope/cgroup.freeze
+      3 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-e1c9c839d0a79c07085f5c89.scope/cgroup.kill
+      3 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-e1c9c839d0a79c07085f5c89.scope/cgroup.procs
+      3 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-e1c9c839d0a79c07085f5c89.scope/memory.max
+      2 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.freeze
+      2 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.kill
+      2 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.procs
+      2 /sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/memory.max
+{"name":"248761cb31c166cf26ed0b3f44f159e4.json","commit":"dc5296b28c","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"34579559470fd9d7b8a25bda591b1328.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"35198c463112d1754110fa7fe3dda396.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"5c9cf7f590fb2db28b31d9b88289c252.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"64b5fb2be9675b5daec2a286de81493c.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"6aa3c6b4ca66909926025a947f91d39e.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"7308273cb12f33b9dd602b94a7007369.json","commit":"dc5296b28c","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"74088fab088b31495fa57d2b28ee614f.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"78243ccb68a56c4a816950cd1f5c5150.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"879e383d01a8e1aec68213665dc08cc6.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"9cd45eb8845e765c9d885bfd9d1a662a.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"a30cc6c91c50a9e9706343cdca662a9e.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"b5e7a5ccf1247f50551b0d18d83b5388.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"c2dd49bfaba4e100accba986e3c722fb.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"d3bc20d751c271b81b254ee175c3dfcf.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+{"name":"f14e264e4c39128a56dad2efbde78ae1.json","commit":"8c2519c74f","bound":"UNKNOWN","bauth":false,"g":true}
+     24 BLOCKED
+     24 FAIL
+     16 PASS
+-rw-r--r-- 1 root root   17135 Nov 19 11:01 probe-idle.strace
+-rw-r--r-- 1 root root   29024 Nov 19 11:01 probe-live-1.strace
+-rw-r--r-- 1 root root   29140 Nov 19 11:01 probe-live-2.strace
+-rw-r--r-- 1 root root 1476247 Nov 19 10:59 run-1.strace
+-rw-r--r-- 1 root root 1467621 Nov 19 11:00 run-2.strace
+    146 probe-idle.strace
+    250 probe-live-1.strace
+    250 probe-live-2.strace
+  13161 run-1.strace
+  13081 run-2.strace
+  26888 total
+
+__DONE_e7e9cf48__ rc=0
+[root@endo11-guest run]# > ["export-mismatch"]
+{"commit":"dc5296b28c930fa3b17525f7543834e1f468b3c6","export":null}
+{"commit":"8c2519c74f5409c821d6fdf73679f5dcf54bd2fd","export":null}
+{"objectFormat":"sha1","commit":"dc5296b28c930fa3b17525f7543834e1f468b3c6","tree":"1c1df7eb4edf383c8e2bf511e2cd14607e28f8b8","exportSha256":"6591fcad1cdf95993648791ed9361ed6b279a6da01042d0324e1078ddc5045f1","files":[{"path":"roman.mjs","mode":"100644","bytes":1340,"sha256":"916d1e58600a027c2bdb96ed0316e8e066cf8f73a7f540ae4ef7a75b56a6e3a4"},{"path":"table.json","mode":"100644","bytes":152,"sha256":
+
+__DONE_4f8936ac__ rc=0
+[root@endo11-guest run]# > 
+__DONE_1d298e96__ rc=0
+[root@endo11-guest run]# > 
+__DONE_e7fcbf5d__ rc=0
+[root@endo11-guest run]# > 
+__DONE_6b45ef8f__ rc=0
+[root@endo11-guest run]# > ba6e7aea9caf08edce702f67495e75f2488a140a847c9c4b77c4befcb6449ac8  /root/read-records.ts
+
+__DONE_fef9f873__ rc=0
+[root@endo11-guest run]# > exit=0
+{"records":64,"authoritative":64,"authoritativePass":16,"falsePasses":[]}
+[{"k":["PASS",true,true,""],"n":16}]
+[null,{"correct":false,"failing":["max-3999"]},{"correct":false,"failing":["subtractive-1994","rejects-zero","runs-14","one","four","nine","forty","ninety","four-hundred","year-2026","rejects-4000","rejects-word","rejects-negative","rejects-fraction","max-3999"]},{"correct":false,"failing":["subtractive-1994","runs-14","four","nine","forty","ninety","four-hundred","max-3999"]},{"correct":false,"failing":["year-2026"]},{"correct":true,"failing":[]}]
+
+__DONE_5b7f871c__ rc=0
+[root@endo11-guest run]# > uninstall=0
+uninstall.sh: records and journals saved to /root/trust003/verifier-records.tar.gz
+uninstall.sh: removed completely
+== principal
+absent
+== linger
+no manager
+== processes
+none
+== ownership
+absent /usr/local/lib/endo-verify-002
+absent /usr/local/lib/endo-verify-002/installation.json
+absent /usr/local/lib/endo-verify-002/oracle
+absent /var/lib/endo-verify-002
+absent /var/lib/endo-verify-002/records
+absent /var/lib/endo-verify-002/work
+absent /var/lib/endo-verify-002-home
+absent /run/endo-verify-002
+absent /run/endo-verify-002/verify.sock
+absent /etc/systemd/user/endo-verify-002.socket
+absent /etc/systemd/user/endo-verify-002@.service
+absent /etc/sysusers.d/endo-verify-002.conf
+absent /etc/tmpfiles.d/endo-verify-002.conf
+absent /var/lib/systemd/linger/endo-verify-002
+== installation identity
+== records
+0
+== full audit: node research/develop-verify-trust-002/audit.ts --installed (from the frozen checkout)
+134
+17e03b7bc3323775f6242d945b991df05f922da381e6a33681c820a53d4a1768  verifier-records.tar.gz
+
+__DONE_8120718b__ rc=0
+[root@endo11-guest run]# > -rw-r--r-- 1 root root 4597760 Nov 19 11:03 /root/out.tar
+62bdae32ed80c2a24bf599f3048f383123b6988dd1ce557c4212009aa7cddadf  /root/out.tar
+DD-OK
+
+__DONE_c68f4443__ rc=0
+[root@endo11-guest mnt]# > 
+__DONE_b1ef5db3__ rc=0
+[root@endo11-guest mnt]#          Stopping Session 1 of User roo[  OK  ] Removed slice Slice /system/modprobe.
+[  OK  ] Stopped target Login Prompts.
+[  OK  ] Stopped target Virtual Machines and Containers.
+[  OK  ] Stopped target Host and Network Name Lookups.
+[  OK  ] Stopped target Remote Encrypted Volumes.
+[  OK  ] Stopped target Remote Integrity Protected Volumes.
+[  OK  ] Stopped target Remote Verity Protected Volumes.
+[  OK  ] Stopped Daily Cleanup of Temporary Directories.
+[  OK  ] Closed Load/Save RF Kill Switch Status /dev/rfkill Watch.
+         Stopping Getty on tty1...
+         Starting Generate shutdown-ramfs...
+[  OK  ] Stopped target System Time Set.
+         Stopping Serial Getty on ttyS0...
+[  OK  ] Stopped File System Check on /dev/disk/by-diskseq/1-part2.
+[  OK  ] Removed slice Slice /system/systemd-fsck.
+         Stopping Enable Persistent Storage in systemd-networkd...
+         Stopping Load/Save OS Random Seed...
+[  OK  ] Stopped Load udev Rules from Credentials.
+[  OK  ] Stopped Wait Until Kernel Time Synchronized.
+[  OK  ] Stopped Getty on tty1.
+[  OK  ] Stopped Serial Getty on ttyS0.
+78]3008;end=3f3d5a28a93f49afb9f13[  OK  ] Finished Generate shutdown-ramfs.
+[  OK  ] Stopped Load/Save OS Random Seed.
+[  OK  ] Stopped Session 1 of User root.
+[  OK  ] Removed slice Slice /system/getty.
+[  OK  ] Removed slice Slice /system/serial-getty.
+         Stopping Permit User Sessions...
+         Stopping User Manager for UID 0...
+[  OK  ] Stopped Enable Persistent Storage in systemd-networkd.
+[  OK  ] Stopped Permit User Sessions.
+[  OK  ] Stopped target Network.
+[  OK  ] Stopped target Remote File Systems.
+         Stopping Home Area Activation...
+         Stopping Network Management...
+[  OK  ] Stopped Load JSON user/group Records from Credentials.
+[  OK  ] Stopped User Manager for UID 0.
+[  OK  ] Stopped Network Management.
+[  OK  ] Stopped Home Area Activation.
+[  OK  ] Closed Network Management Resolve Hook Socket.
+[  OK  ] Stopped target Preparation for Network.
+         Stopping Home Area Manager...
+[  OK  ] Stopped Generate Network Units from Kernel Command Line.
+         Stopping User Runtime Directory /run/user/0...
+[  OK  ] Stopped Home Area Manager.
+[  OK  ] Unmounted /run/user/0.
+[  OK  ] Stopped User Runtime Directory /run/user/0.
+[  OK  ] Removed slice User Slice of UID 0.
+         Stopping User Login Management...
+[  OK  ] Stopped User Login Management.
+[  OK  ] Stopped target Basic System.
+[  OK  ] Stopped target Path Units.
+[  OK  ] Stopped target Slice Units.
+[  OK  ] Removed slice User and Session Slice.
+[  OK  ] Stopped target Socket Units.
+[  OK  ] Closed GnuPG network certificate m…ent daemon for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/dirmngr.
+[  OK  ] Closed GnuPG cryptographic agent a… browsers) for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent-browser.
+[  OK  ] Closed GnuPG cryptographic agent a…estricted) for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent-extra.
+[  OK  ] Closed GnuPG cryptographic agent (…emulation) for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent-ssh.
+[  OK  ] Closed GnuPG cryptographic agent a…rase cache for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/gpg-agent.
+[  OK  ] Closed GnuPG public key management service for /etc/pacman.d/gnupg.
+[  OK  ] Removed slice Slice /system/keyboxd.
+[  OK  ] Closed OpenSSH Server Socket (systemd-ssh-generator, AF_UNIX Local).
+[  OK  ] Closed Hostname Service Socket.
+[  OK  ] Closed Disk Image Download Service Socket.
+[  OK  ] Closed User Login Management Varlink Socket.
+[  OK  ] Closed Virtual Machine and Container Registration Service Socket.
+[  OK  ] Closed DDI File System Mounter Socket.
+[  OK  ] Closed Console Output Muting Service Socket.
+[  OK  ] Closed Network Management Metrics Varlink Socket.
+[  OK  ] Closed Network Management Varlink Socket.
+[  OK  ] Closed Network Management Netlink Socket.
+[  OK  ] Closed Disk Repartitioning Service Socket.
+[  OK  ] Closed CGroup Report Varlink Socket.
+[  OK  ] Closed Report Files Metrics Socket.
+[  OK  ] Closed Report Signing Socket (Local Software Key).
+[  OK  ] Closed System Install Tool.
+         Stopping D-Bus System Message Bus...
+[  OK  ] Stopped D-Bus System Message Bus.
+[  OK  ] Closed D-Bus System Message Bus Socket.
+[  OK  ] Stopped target System Initialization.
+[  OK  ] Unset automount Arbitrary Executab…ormats File System Automount Point.
+[  OK  ] Stopped target Local dm-clone Devices.
+[  OK  ] Stopped target Local Encrypted Volumes.
+[  OK  ] Stopped Dispatch Password Requests to Console Directory Watch.
+[  OK  ] Stopped Forward Password Requests to Wall Directory Watch.
+[  OK  ] Stopped target Image Downloads.
+[  OK  ] Stopped target Local Integrity Protected Volumes.
+[  OK  ] Stopped target Local Verity Protected Volumes.
+         Stopping Kernel Core Pattern Register...
+         Stopping Namespace Resource Manager...
+         Stopping Network Time Synchronization...
+[  OK  ] Stopped Update is Completed.
+[  OK  ] Stopped Rebuild Dynamic Linker Cache.
+[  OK  ] Stopped Rebuild Journal Catalog.
+         Stopping Record System Boot/Shutdown in UTMP...
+[  OK  ] Stopped Namespace Resource Manager.
+[  OK  ] Stopped Network Time Synchronization.
+[  OK  ] Stopped Kernel Core Pattern Register.
+[  OK  ] Stopped Record System Boot/Shutdown in UTMP.
+[  OK  ] Closed Namespace Resource Manager Socket.
+         Stopping Network Name Resolution...
+[  OK  ] Stopped Create System Files and Directories.
+         Stopping Listen Kernel Core Dump Socket...
+[  OK  ] Stopped Listen Kernel Core Dump Socket.
+[  OK  ] Stopped target Local File Systems.
+[  OK  ] Unset automount EFI System Partition Automount.
+[  OK  ] Stopped target Preparation for Local File Systems.
+         Unmounting Temporary Directory /tmp...
+[  OK  ] Stopped Create Static Device Nodes in /dev.
+[  OK  ] Stopped Network Name Resolution.
+[  OK  ] Closed Resolve Monitor Varlink Socket.
+[  OK  ] Closed Resolve Service Varlink Socket.
+[  OK  ] Stopped Apply Kernel Variables.
+[  OK  ] Closed Process Core Dump Socket.
+[  OK  ] Stopped Create System Users.
+[  OK  ] Stopped Create Static Device Nodes in /dev gracefully.
+[  OK  ] Unmounted Temporary Directory /tmp.
+[  OK  ] Stopped target Swaps.
+         Deactivating swap /swap/swapfile...
+[  OK  ] Deactivated swap /swap/swapfile.
+[  OK  ] Reached target Unmount All Filesystems.
+[  OK  ] Stopped Remount Root and Kernel File Systems.
+[  OK  ] Reached target System Shutdown.
+[  OK  ] Reached target Late Shutdown Services.
+[  OK  ] Finished System Power Off.
+[  OK  ] Reached target System Power Off.
+78[ 1075.268332] reboot: Power down

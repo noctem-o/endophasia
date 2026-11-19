@@ -1,0 +1,2338 @@
+{
+ "label": "live-2",
+ "principal": {
+  "uid": 1500,
+  "euid": 1500,
+  "gid": 1500,
+  "groups": [
+   1500
+  ]
+ },
+ "verifierUid": 968,
+ "pids": [
+  14632,
+  14634,
+  25534,
+  26037,
+  26038,
+  26039
+ ],
+ "attempts": [
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/records.ts",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/adapters/sandbox/bubblewrap.ts",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/runtime/contracts/canonical-json.ts",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/package.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/installation.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/bin/node",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/bin/bwrap",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/bin/systemd-run",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/bin/python3.14",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/lib/libc.so.6",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/etc/systemd/user/endo-verify-002.socket",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/etc/systemd/user/endo-verify-002@.service",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/etc/sysusers.d/endo-verify-002.conf",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_WRONLY)",
+   "target": "/etc/tmpfiles.d/endo-verify-002.conf",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ETXTBSY"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "rename",
+   "target": "/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "unlink",
+   "target": "/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "chmod",
+   "target": "/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts",
+   "result": "EPERM",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "utime",
+   "target": "/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts",
+   "result": "EPERM",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_CREAT)",
+   "target": "/usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/evil.ts",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "mkdir",
+   "target": "/etc/systemd/user/endo-verify-002@.service.d",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "EEXIST"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "open(O_CREAT)",
+   "target": "/var/lib/endo-verify-002-home/.config/systemd/user/evil.service",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "unlink",
+   "target": "/var/lib/systemd/linger/endo-verify-002",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "1-verifier",
+   "op": "mkdir",
+   "target": "/run/user/968/systemd/user.control/endo-verify-002@.service.d",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_RDONLY)",
+   "target": "/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/manifest.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/manifest.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_RDONLY)",
+   "target": "/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/reference/roman.mjs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/reference/roman.mjs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_RDONLY)",
+   "target": "/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/negative/roman.mjs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_WRONLY)",
+   "target": "/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/negative/roman.mjs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_CREAT)",
+   "target": "/usr/local/lib/endo-verify-002/oracle/roman-numerals-cli/manifest2.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "rename",
+   "target": "/usr/local/lib/endo-verify-002/oracle",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "opendir",
+   "target": "/var/lib/endo-verify-002/work",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "open(O_CREAT)",
+   "target": "/var/lib/endo-verify-002/work/evil",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "rename",
+   "target": "/var/lib/endo-verify-002/work",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "2-evaluator",
+   "op": "symlink",
+   "target": "/var/lib/endo-verify-002/work/x",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "open(O_CREAT)",
+   "target": "/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "open(O_CREAT)",
+   "target": "/var/lib/endo-verify-002/journal/0000000000000000000000000000dead.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "symlink",
+   "target": "/var/lib/endo-verify-002/records/0000000000000000000000000000dead.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "rename",
+   "target": "/var/lib/endo-verify-002/records",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "open(O_CREAT)",
+   "target": "/var/lib/endo-verify-002/evil",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "open(O_WRONLY)",
+   "target": "/var/lib/endo-verify-002/records/0147d38474a9a55a00cccad03d2c8c67.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "unlink",
+   "target": "/var/lib/endo-verify-002/records/0147d38474a9a55a00cccad03d2c8c67.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "rename",
+   "target": "/var/lib/endo-verify-002/records/0147d38474a9a55a00cccad03d2c8c67.json",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "chmod",
+   "target": "/var/lib/endo-verify-002/records/0147d38474a9a55a00cccad03d2c8c67.json",
+   "result": "EPERM",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "link",
+   "target": "/var/lib/endo-verify-002/records/0147d38474a9a55a00cccad03d2c8c67.json",
+   "result": "EPERM",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "unlink",
+   "target": "/run/endo-verify-002/verify.sock",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "3-records",
+   "op": "open(O_CREAT)",
+   "target": "/run/endo-verify-002/evil.sock",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/environ)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/mem)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/maps)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/auxv)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/stack)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/syscall)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "opendir(/proc/pid/fd)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "readlink(/proc/pid/cwd)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(/proc/pid/oom_score_adj)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "process_vm_readv",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_ATTACH)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_SEIZE)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(0)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGSTOP)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGTERM)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGKILL)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "pidfd_send_signal(SIGKILL)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "setpriority(19)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM",
+    "EACCES"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "sched_setaffinity",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "prlimit(RLIMIT_CPU)",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ioprio_set",
+   "target": "pid 14632 (systemd) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.procs)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.procs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.freeze)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.freeze",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.kill)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.kill",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(memory.max)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/memory.max",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/environ)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/mem)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/maps)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/auxv)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/stack)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/syscall)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "opendir(/proc/pid/fd)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "readlink(/proc/pid/cwd)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(/proc/pid/oom_score_adj)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "process_vm_readv",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_ATTACH)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_SEIZE)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(0)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGSTOP)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGTERM)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGKILL)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "pidfd_send_signal(SIGKILL)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "setpriority(19)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM",
+    "EACCES"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "sched_setaffinity",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "prlimit(RLIMIT_CPU)",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ioprio_set",
+   "target": "pid 14634 ((sd-pam)) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.procs)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.procs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.freeze)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.freeze",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.kill)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/cgroup.kill",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(memory.max)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/init.scope/memory.max",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/environ)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/mem)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/maps)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/auxv)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/stack)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/syscall)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "opendir(/proc/pid/fd)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "readlink(/proc/pid/cwd)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(/proc/pid/oom_score_adj)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "process_vm_readv",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_ATTACH)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_SEIZE)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(0)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGSTOP)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGTERM)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGKILL)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "pidfd_send_signal(SIGKILL)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "setpriority(19)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM",
+    "EACCES"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "sched_setaffinity",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "prlimit(RLIMIT_CPU)",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ioprio_set",
+   "target": "pid 25534 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.procs)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\\x2dverify\\x2d002.slice/endo-verify-002@22-58-18427_28813-1500.service/cgroup.procs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.freeze)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\\x2dverify\\x2d002.slice/endo-verify-002@22-58-18427_28813-1500.service/cgroup.freeze",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.kill)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\\x2dverify\\x2d002.slice/endo-verify-002@22-58-18427_28813-1500.service/cgroup.kill",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(memory.max)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/app-endo\\x2dverify\\x2d002.slice/endo-verify-002@22-58-18427_28813-1500.service/memory.max",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/environ)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/mem)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/maps)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/auxv)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/stack)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/syscall)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "opendir(/proc/pid/fd)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "readlink(/proc/pid/cwd)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(/proc/pid/oom_score_adj)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "process_vm_readv",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_ATTACH)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_SEIZE)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(0)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGSTOP)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGTERM)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGKILL)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "pidfd_send_signal(SIGKILL)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "setpriority(19)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM",
+    "EACCES"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "sched_setaffinity",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "prlimit(RLIMIT_CPU)",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ioprio_set",
+   "target": "pid 26037 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.procs)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.procs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.freeze)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.freeze",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.kill)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.kill",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(memory.max)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/memory.max",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/environ)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/mem)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/maps)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/auxv)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/stack)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/syscall)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "opendir(/proc/pid/fd)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "readlink(/proc/pid/cwd)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(/proc/pid/oom_score_adj)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "process_vm_readv",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_ATTACH)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_SEIZE)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(0)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGSTOP)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGTERM)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGKILL)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "pidfd_send_signal(SIGKILL)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "setpriority(19)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM",
+    "EACCES"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "sched_setaffinity",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "prlimit(RLIMIT_CPU)",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ioprio_set",
+   "target": "pid 26038 (bwrap) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.procs)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.procs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.freeze)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.freeze",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.kill)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.kill",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(memory.max)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/memory.max",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/environ)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/mem)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/maps)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/auxv)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/stack)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "open(/proc/pid/syscall)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "opendir(/proc/pid/fd)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "readlink(/proc/pid/cwd)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(/proc/pid/oom_score_adj)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "process_vm_readv",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_ATTACH)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ptrace(PTRACE_SEIZE)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(0)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGSTOP)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGTERM)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "kill(SIGKILL)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "pidfd_send_signal(SIGKILL)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "setpriority(19)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM",
+    "EACCES"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "sched_setaffinity",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "prlimit(RLIMIT_CPU)",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "ioprio_set",
+   "target": "pid 26039 (node-MainThread) uid 968",
+   "result": "EPERM",
+   "expected": [
+    "EPERM"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.procs)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.procs",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.freeze)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.freeze",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(cgroup.kill)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/cgroup.kill",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "write(memory.max)",
+   "target": "/sys/fs/cgroup/user.slice/user-968.slice/user@968.service/app.slice/endo-sandbox-23b67311bbf4de15269847a9.scope/memory.max",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS",
+    "ENOENT"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "connect",
+   "target": "/run/user/968/bus",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "connect",
+   "target": "/run/user/968/systemd/private",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  },
+  {
+   "invariant": "4-process",
+   "op": "opendir",
+   "target": "/run/user/968",
+   "result": "EACCES",
+   "expected": [
+    "EACCES",
+    "EPERM",
+    "EROFS"
+   ],
+   "held": true
+  }
+ ],
+ "held": true,
+ "applicable": 201
+}

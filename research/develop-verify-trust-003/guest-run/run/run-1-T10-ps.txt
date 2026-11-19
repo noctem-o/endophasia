@@ -1,0 +1,10 @@
+# T10 prompt at 2026-11-19T10:58:19Z; verifier processes:
+    PID    PPID   UID USER     ELAPSED CMD
+    578       1   968 endo-ve+     741 /usr/lib/systemd/systemd --user
+    580     578   968 endo-ve+     741 (sd-pam)
+   8273     578   968 endo-ve+       3 /usr/bin/node /usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts serve --install /usr/local/lib/endo-verify-002 --state /var/lib/endo-verify-002 --peer 10-4140-1161_363-1500
+   8780    8273   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+   8781    8780   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+   8782    8781   968 endo-ve+       0 /usr/bin/node roman.mjs 1994
+# dedicated guest verifier instance(s) confirmed: 8273 ; acting: pkill -KILL -u endo-verify-002 -f 'verifier.ts serve'
+pkill exit=0

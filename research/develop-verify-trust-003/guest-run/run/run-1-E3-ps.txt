@@ -1,0 +1,10 @@
+# E3 prompt at 2026-11-19T10:58:47Z; verifier processes:
+    PID    PPID   UID USER     ELAPSED CMD
+    578       1   968 endo-ve+     768 /usr/lib/systemd/systemd --user
+    580     578   968 endo-ve+     768 (sd-pam)
+  14108     578   968 endo-ve+       3 /usr/bin/node /usr/local/lib/endo-verify-002/research/develop-verify-trust-002/service/verifier.ts serve --install /usr/local/lib/endo-verify-002 --state /var/lib/endo-verify-002 --peer 21-4146-1161_363-1500
+  14613   14108   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+  14614   14613   968 endo-ve+       0 /usr/bin/bwrap --args 4 -- /usr/bin/node roman.mjs 1994
+  14615   14614   968 endo-ve+       0 /usr/bin/node roman.mjs 1994
+# acting: systemctl restart user@968.service
+restart exit=0

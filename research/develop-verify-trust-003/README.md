@@ -2,6 +2,10 @@
 
 The protected agent did useful work without access to the operator's daemon sockets. The incorrect program printed PASS and exited zero; the evaluator rejected it. **Neither program received an authoritative decision.** The host operator remains in `docker` and `libvirt`; there is no installed verifier here. Keep the developer's groups.
 
+## Guest run (ENDO-11)
+
+**BOUNDARY DEMONSTRATED, in a disposable guest only.** In a qemu guest with no network, Docker or libvirt, the restricted agent (uid 1500) ran two installed IA1–IA4 runs against the separate verifier principal (uid 968). Every row held. 16 authentic PASS records went to correct candidates and none to an incorrect one. Each attack was refused with a kernel-level EACCES or EPERM, recorded by strace. Running the package exposed an installation defect: `u!` expired the verifier account and stopped its manager. It was fixed with a test and the pins re-derived ([PROTOCOL.md A5](PROTOCOL.md)). The run says nothing about this workstation's H0, the libvirt socket restriction or polkit, so the workstation verdict below is unchanged. Full rows, refusals and cleanup: [guest-run/RESULTS.md](guest-run/RESULTS.md).
+
 ## What changed since 002
 
 Base `a04659326efe70a0969cad6dc4a3e322412a4970` was HEAD and fetched origin/main before the experiment. The frozen experiment is `89b6100b3b17779925da45cc170f5a657a307b0d`; all edits are research or tests. [Preregistration](PROTOCOL.md) and the runtime and fixture digest lists preceded execution. Linux 7.3.4-arch1-2, Node 26.13.1, bwrap 0.13.1, systemd 262. [Host inventory](evidence/host.txt) and [audit](evidence/host-audit.json). The Pi and Codex executables are under /usr; Claude Code resolves into the operator's home. Presence is not protected-harness support. Only stock Pi 1.5.2 ran; no live harness configuration was read or changed.

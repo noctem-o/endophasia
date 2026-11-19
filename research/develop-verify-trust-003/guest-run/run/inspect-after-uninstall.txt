@@ -1,0 +1,25 @@
+== principal
+absent
+== linger
+no manager
+== processes
+none
+== ownership
+absent /usr/local/lib/endo-verify-002
+absent /usr/local/lib/endo-verify-002/installation.json
+absent /usr/local/lib/endo-verify-002/oracle
+absent /var/lib/endo-verify-002
+absent /var/lib/endo-verify-002/records
+absent /var/lib/endo-verify-002/work
+absent /var/lib/endo-verify-002-home
+absent /run/endo-verify-002
+absent /run/endo-verify-002/verify.sock
+absent /etc/systemd/user/endo-verify-002.socket
+absent /etc/systemd/user/endo-verify-002@.service
+absent /etc/sysusers.d/endo-verify-002.conf
+absent /etc/tmpfiles.d/endo-verify-002.conf
+absent /var/lib/systemd/linger/endo-verify-002
+== installation identity
+== records
+0
+== full audit: node research/develop-verify-trust-002/audit.ts --installed (from the frozen checkout)

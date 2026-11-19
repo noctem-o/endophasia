@@ -21,7 +21,7 @@ const repos = workspaces.flatMap((w) => readdirSync(join(w, "repos")).map((r) =>
 const gitSafe = ["-c", "safe.directory=*", "-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"];
 const git = (repo: string, args: string[]) =>
 	spawnSync("/usr/bin/git", [...gitSafe, "-C", repo, ...args], {
-		env: { PATH: "/usr/bin", GIT_CONFIG_NOSYSTEM: "1", HOME: "/nonexistent" },
+		env: { PATH: "/usr/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_NO_REPLACE_OBJECTS: "1", HOME: "/nonexistent" },
 		maxBuffer: 64 << 20,
 	});
 

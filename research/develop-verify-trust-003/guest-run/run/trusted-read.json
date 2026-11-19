@@ -1,0 +1,1127 @@
+{
+ "verifierUid": 968,
+ "records": 64,
+ "authoritative": 64,
+ "authoritativePass": 16,
+ "falsePasses": [],
+ "rows": [
+  {
+   "name": "0147d38474a9a55a00cccad03d2c8c67.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "08545a1b7fa566fe10e619291e431121.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "0b530949ae77611b79f4bf9917ef230c.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "unsupported-name",
+   "commit": "96c14a9feefd1674cbf2b45d222ac3d7d0c9bc8d",
+   "bound": "commit-not-found"
+  },
+  {
+   "name": "0d7a42a8b3f31e5d42cd12023c7c5de7.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "unsupported-120000",
+   "commit": "cfe4359f34efcf3c08356827e675bdee70ea7f36",
+   "exportError": "unsupported-120000",
+   "export": null,
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "0f3273a54822e2e5dbffb1843c40fd9d.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-too-large",
+   "commit": null
+  },
+  {
+   "name": "0fcf1fea814a0f3f41363055fe8ab9f8.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "1591f519590a2652b4a29209e489c024.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "16f49cf007694efa01df61aa126ea321.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "1e645e13c4ed96503ef62a5c6e62051d.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "248761cb31c166cf26ed0b3f44f159e4.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "dc5296b28c930fa3b17525f7543834e1f468b3c6",
+   "export": "6591fcad1cdf95993648791ed9361ed6b279a6da01042d0324e1078ddc5045f1",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "2865f44c0032f3cfefe893d4622c364c.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "object-missing",
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "34579559470fd9d7b8a25bda591b1328.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "345f4137fcd6ebd5b4c1c37ff8d7d63d.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "38e9e7196f6ba0cbc228acad2cabfcec8a422c00",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "35198c463112d1754110fa7fe3dda396.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "3b4f523d89c80067971eea6dfd95cec3.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "92062701886b437a4b5deaf5980f3c9b7b7ea2f6",
+   "export": "e6f30a8147943207b658c90a39068cee38f83b9eb2a1e4b9dcca7d35b497ddfc",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "411c1fb8e6c35e65b1c7427f15ad9f65.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "unsupported-160000",
+   "commit": "d4736aa0cdc634ad6d47e753fb2cd09a24727943",
+   "bound": "commit-not-found"
+  },
+  {
+   "name": "4a2fb6145663a86ada82d92a970d0719.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "665e0a3183e252fe02774e093d4fbf07ae04135f",
+   "export": "6c307013a1d3a6535bac684573e0b7d695fe0500a924cb2dc6d7bd9a9836dad8",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "5070074b41adc8fe3dda1797085de053.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "object-unreferenced",
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "51e8fed3a8553233f8d31f2dfb17fece.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "b066f36b8309c76ff06640b2247f2e47eabe7122",
+   "export": "ecb50bcfda84b43419434852ae2379086983af536f6aabe6d4e9fa80d6d718ff",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "rejects-zero",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "rejects-4000",
+     "rejects-word",
+     "rejects-negative",
+     "rejects-fraction",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "56860dd3227aa1190ae3b413ee21e7b5.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "38e9e7196f6ba0cbc228acad2cabfcec8a422c00",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "5acb1ec975755b944e6b66942f697d6a.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "object-missing",
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "5c9cf7f590fb2db28b31d9b88289c252.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "5e0a209855d11142c332fc13689117eb.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "unsupported-name",
+   "commit": "96c14a9feefd1674cbf2b45d222ac3d7d0c9bc8d",
+   "bound": "commit-not-found"
+  },
+  {
+   "name": "6285e5808fc8bfa3da21927778b6d577.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "62b05fb8c556f29bd9e4ae2efb0a1959.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "64b5fb2be9675b5daec2a286de81493c.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "69733f07839ece11f59f16d96fbbcff4.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "6aa3c6b4ca66909926025a947f91d39e.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "70061d5d1e09a2313539ee3baebb071d.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "task-unknown",
+   "commit": null
+  },
+  {
+   "name": "71b543885871ecf3b86ec61e0aef7eb0.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "7308273cb12f33b9dd602b94a7007369.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "dc5296b28c930fa3b17525f7543834e1f468b3c6",
+   "export": "6591fcad1cdf95993648791ed9361ed6b279a6da01042d0324e1078ddc5045f1",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "74088fab088b31495fa57d2b28ee614f.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "78243ccb68a56c4a816950cd1f5c5150.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "7e98e1554301f7d010aa9a73431ae13f.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-too-large",
+   "commit": null
+  },
+  {
+   "name": "7f8d61e065450ee08e27eb40b8e8d387.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "8588689166c0dd6c2223e490408a0cb2.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "879e383d01a8e1aec68213665dc08cc6.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "8f8aee74c2774fce1d9bd3bcf07bb259.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "971a961341dfa8dbddec0eb40d928191.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "9cd45eb8845e765c9d885bfd9d1a662a.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "9fc837cd7ce3a98b1f5aa565df664023.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "object-missing",
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "a30cc6c91c50a9e9706343cdca662a9e.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "a4c62553825a7e782e02fbc5c7fe9d4d.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "b066f36b8309c76ff06640b2247f2e47eabe7122",
+   "export": "ecb50bcfda84b43419434852ae2379086983af536f6aabe6d4e9fa80d6d718ff",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "rejects-zero",
+     "runs-14",
+     "one",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "year-2026",
+     "rejects-4000",
+     "rejects-word",
+     "rejects-negative",
+     "rejects-fraction",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "a6617d48c3637c511952831e4b880262.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "c3192ab5b134018cfdfb7794ddd3aaf10a256910",
+   "export": "fa43294fb4a1a651d9380b7c63237dbaa44773f91966d646110565a294b8585b",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "year-2026"
+    ]
+   }
+  },
+  {
+   "name": "ac7780aa4cf235ab8354629bb5dacbf0.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "aebe49b26f96179703fd28658291f78a.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "object-unreferenced",
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "afeea072e41931a525a2ae4af38fede8.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "92062701886b437a4b5deaf5980f3c9b7b7ea2f6",
+   "export": "e6f30a8147943207b658c90a39068cee38f83b9eb2a1e4b9dcca7d35b497ddfc",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "b5e7a5ccf1247f50551b0d18d83b5388.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "bb2c7e7342723982336323436f9724e1.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "object-missing",
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "c2dd49bfaba4e100accba986e3c722fb.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "cfad255a3b66b8dc31a69a90d02748b1.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "task-unknown",
+   "commit": null
+  },
+  {
+   "name": "d23e31f92797eb5d2162c511402f3fc6.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "d3bc20d751c271b81b254ee175c3dfcf.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "ded8376295f934d2aeac7ffe7716629e.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "c3192ab5b134018cfdfb7794ddd3aaf10a256910",
+   "export": "fa43294fb4a1a651d9380b7c63237dbaa44773f91966d646110565a294b8585b",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "year-2026"
+    ]
+   }
+  },
+  {
+   "name": "ded9f90022863ad3b3fdbb9ab10e5154.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "unsupported-120000",
+   "commit": "cfe4359f34efcf3c08356827e675bdee70ea7f36",
+   "exportError": "unsupported-120000",
+   "export": null,
+   "bound": {
+    "class": "UNKNOWN",
+    "authoritative": false,
+    "reason": "export-mismatch"
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "e119b9bfd4b35fe335c4741714596c37.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "4865936ded5e1274968ae3ba785020caeb44bf1d",
+   "export": "c8d4dbdb507e495402097367c645862619f76159a18e6039ab27c1b53a56be71",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "e36b6cf9c63725f355e592070f38b250.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "e5e245ae79b6b127120f8d455cbc5f0c.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "4865936ded5e1274968ae3ba785020caeb44bf1d",
+   "export": "c8d4dbdb507e495402097367c645862619f76159a18e6039ab27c1b53a56be71",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "f052c755da1ef1ee50afcbb32c9eb374.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "f9222192f6e94a9cd8ff539341c3a50ccf7e5dad",
+   "export": "86a7e41e968d0851c007b04f66a94e9a4dee7946238ad460da982c0d886ce393",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "subtractive-1994",
+     "runs-14",
+     "four",
+     "nine",
+     "forty",
+     "ninety",
+     "four-hundred",
+     "max-3999"
+    ]
+   }
+  },
+  {
+   "name": "f0d9337c04d71d6b6b165cffe98c1e5b.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "unsupported-160000",
+   "commit": "d4736aa0cdc634ad6d47e753fb2cd09a24727943",
+   "bound": "commit-not-found"
+  },
+  {
+   "name": "f14e264e4c39128a56dad2efbde78ae1.json",
+   "class": "PASS",
+   "authoritative": true,
+   "reason": null,
+   "commit": "8c2519c74f5409c821d6fdf73679f5dcf54bd2fd",
+   "export": "42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b",
+   "bound": {
+    "class": "PASS",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": true,
+    "failing": []
+   }
+  },
+  {
+   "name": "f378b4de2b6bdc848db16d0774eba6d1.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "f5fef1389a31eb6b69897ab4640785fe.json",
+   "class": "BLOCKED",
+   "authoritative": true,
+   "reason": "request-invalid",
+   "commit": null
+  },
+  {
+   "name": "f78a73333e8609e6b32aeedb66e4c688.json",
+   "class": "FAIL",
+   "authoritative": true,
+   "reason": null,
+   "commit": "665e0a3183e252fe02774e093d4fbf07ae04135f",
+   "export": "6c307013a1d3a6535bac684573e0b7d695fe0500a924cb2dc6d7bd9a9836dad8",
+   "bound": {
+    "class": "FAIL",
+    "authoritative": true,
+    "reason": null
+   },
+   "independentGrade": {
+    "correct": false,
+    "failing": [
+     "max-3999"
+    ]
+   }
+  }
+ ]
+}

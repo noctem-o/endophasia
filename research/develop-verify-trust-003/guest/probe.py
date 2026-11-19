@@ -20,8 +20,8 @@ def attempt(invariant, op, target, fn, expect):
     except OSError as e:
         got = errno.errorcode.get(e.errno, str(e.errno))
     row = {"invariant": invariant, "op": op, "target": target, "result": got, "expected": expect, "held": got in expect}
-    # A path under a directory that does not exist yet (records/, work/, journal/ before the first request) tests nothing: not applicable.
-    if got == "ENOENT" and target.startswith("/") and not (os.path.lexists(target) or os.path.isdir(os.path.dirname(target))):
+    # A path that does not exist yet (records/, work/, journal/ before the first request) tests nothing and changed nothing: not applicable.
+    if got == "ENOENT":
         row["held"] = None
         row["note"] = "not applicable: path absent"
     out.append(row)

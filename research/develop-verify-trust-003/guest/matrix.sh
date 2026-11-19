@@ -37,10 +37,16 @@ for k in 1 2; do
   systemd-run --quiet --collect --unit="endoagent-run-$k" --uid=endoagent --gid=endoagent -p PAMName=login \
     -p StandardOutput=file:"$log" -p StandardError=file:"$OUT/run-$k.err" -p WorkingDirectory=/home/endoagent \
     /usr/bin/env -i PATH=/usr/bin HOME=/home/endoagent LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/1500 \
-    /usr/bin/bash -c "/usr/bin/strace -f -qq -Z -o /home/endoagent/run-$k.strace /usr/bin/node $SRC/research/develop-verify-trust-002/rehearsal.ts run /home/endoagent/dvt/installed-$k --commit $c --target installed; exit \$?"
-  t10=no; e3=no
+    /usr/bin/node "$SRC/research/develop-verify-trust-002/rehearsal.ts" run "/home/endoagent/dvt/installed-$k" --commit "$c" --target installed
+  t10=no; e3=no; traced=no
   for i in $(seq 1 1800); do
     sleep 1
+    # Syscall evidence: root attaches strace only after IP0 and the sudo check passed (a traced setuid sudo cannot refuse by policy).
+    if [ $traced = no ] && grep -q 'installed run; installation' "$log" 2>/dev/null; then
+      traced=yes; main=$(systemctl show -p MainPID --value "endoagent-run-$k.service")
+      systemd-run --quiet --collect --unit="operator-strace-$k" /usr/bin/strace -f -qq -Z -o "$OUT/run-$k.strace" -p "$main"
+      echo "strace attached to $main" >> "$OUT/exits.txt"
+    fi
     if [ $t10 = no ] && grep -q '^T10: interrupt' "$log" 2>/dev/null; then
       t10=yes
       { echo "# T10 prompt at $(date -u +%FT%TZ); verifier processes:"; ps -o pid,ppid,uid,user,etimes,cmd -u endo-verify-002; } > "$OUT/run-$k-T10-ps.txt"
@@ -67,6 +73,6 @@ echo "reader exit=$?"; jq -c '{records, authoritative, authoritativePass, falseP
 ls -ln /var/lib/endo-verify-002 /var/lib/endo-verify-002/records /var/lib/endo-verify-002/journal > "$OUT/state-listing.txt" 2>&1
 ls /var/lib/endo-verify-002/work >> "$OUT/state-listing.txt" 2>&1
 for k in 1 2; do mkdir -p "$OUT/installed-$k"; cp -a /home/endoagent/dvt/installed-$k/results.json /home/endoagent/dvt/installed-$k/rehearsal.log /home/endoagent/dvt/installed-$k/audit.json /home/endoagent/dvt/installed-$k/sudo-n.json "$OUT/installed-$k/" 2>/dev/null; done
-cp /home/endoagent/*.strace "$OUT/"
+cp /home/endoagent/probe-*.strace "$OUT/"
 sh /root/trust003/inspect.sh > "$OUT/inspect-after.txt" 2>&1
 echo "== done"

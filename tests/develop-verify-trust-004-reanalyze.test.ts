@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
-import { readPackedRefs, verifyCapture } from "../research/develop-verify-trust-004/reanalyze.ts";
+import { declaredObjectFormat, readPackedRefs, verifyCapture } from "../research/develop-verify-trust-004/reanalyze.ts";
 
 const files = [
 	"principals.txt",
@@ -105,4 +105,54 @@ it("rejects a nonregular packed-refs descriptor without waiting for a writer", (
 	expect(result.error).toBeUndefined();
 	expect(result.status).toBe(1);
 	expect(result.stderr).toContain(`not a regular file: ${path}`);
+});
+
+it.each([
+	["no extension", "[core]\n\trepositoryformatversion = 0\n\tbare = false\n", "sha1"],
+	["sha1 extension", "[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = sha1\n", "sha1"],
+	[
+		"sha256 extension",
+		"[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectFormat = sha256 # comment\n",
+		"sha256",
+	],
+	["key on the section line", "[core] repositoryformatversion = 1\n[extensions] objectformat = sha256\n", "sha256"],
+	[
+		"subsection keys ignored",
+		'[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = sha256\n[extensions "x"]\n\tobjectformat = sha1\n',
+		"sha256",
+	],
+])("reads the declared object format: %s", (_, config, format) => {
+	expect(declaredObjectFormat(config)).toBe(format);
+});
+
+it.each([
+	["missing version", "[extensions]\n\tobjectformat = sha256\n", "version missing"],
+	[
+		"repeated version",
+		"[core]\n\trepositoryformatversion = 1\n\trepositoryformatversion = 1\n",
+		"version missing, repeated",
+	],
+	["unknown version", "[core]\n\trepositoryformatversion = 2\n", "unknown"],
+	[
+		"extension in version 0",
+		"[core]\n\trepositoryformatversion = 0\n[extensions]\n\tobjectformat = sha256\n",
+		"version 0",
+	],
+	[
+		"repeated format",
+		"[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = sha256\n\tobjectformat = sha256\n",
+		"repeated",
+	],
+	[
+		"unknown format",
+		"[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = md5\n",
+		"unknown object format",
+	],
+	["quoted value", '[core]\n\trepositoryformatversion = 1\n[extensions]\n\tobjectformat = "sha256"\n', "malformed"],
+	["include", "[core]\n\trepositoryformatversion = 1\n[include]\n\tpath = /elsewhere\n", "include"],
+	["includeIf", '[core]\n\trepositoryformatversion = 1\n[includeIf "gitdir:/"]\n\tpath = x\n', "include"],
+	["continuation", "[core]\n\trepositoryformatversion = 1\n\tx = a \\\n[extensions]\n", "continuation"],
+	["unparsable section", "[core\n\trepositoryformatversion = 1\n", "malformed config section"],
+])("refuses malformed format metadata: %s", (_, config, message) => {
+	expect(() => declaredObjectFormat(config)).toThrow(message);
 });

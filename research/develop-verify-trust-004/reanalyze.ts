@@ -8,7 +8,10 @@
 //                 installation (whose manifest digest is the installation id every record names);
 //   binding       the record's commit resolved from the archived Git object databases only. Agent-written repository configuration is
 //                 never used: each repository's objects/ are copied into a fresh bare repository made here (alternates refused), so
-//                 no repository setting can run anything or redirect a read. Then objects.ts verifies every id and recomputes the export;
+//                 no repository setting can run anything or redirect a read. Its object format is the one the archived configuration
+//                 declares, read as text and accepted only if every archived object and pack checksum agrees. A repository with a
+//                 symbolic link or special file anywhere on the way to or under its objects, refs or configuration is refused, so no
+//                 byte outside the capture can be read. Then objects.ts verifies every id and recomputes the export;
 //   correctness   those verified bytes, graded by the unchanged bounded grader (TRUST-003 reader.ts) as the caller, never root.
 // The result is compared with the live read by invocation id and export digest; any disagreement is reported, never resolved here.
 //   node reanalyze.ts <evidence dir> <live trusted-read.json> <out.json>
@@ -18,8 +21,8 @@ import {
 	closeSync,
 	constants,
 	cpSync,
-	existsSync,
 	fstatSync,
+	lstatSync,
 	mkdirSync,
 	mkdtempSync,
 	openSync,
@@ -31,6 +34,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { inflateSync } from "node:zlib";
 import { contentProblem } from "../develop-verify-trust-002/service/records.ts";
 import type { Installation } from "../develop-verify-trust-002/service/verifier.ts";
 import {
@@ -71,6 +75,141 @@ export function readPackedRefs(path: string) {
 		if ((err as NodeJS.ErrnoException).code === "ENOENT") return "";
 		throw err;
 	}
+}
+
+type ObjectFormat = "sha1" | "sha256";
+export type RepositoryNote =
+	| { objectFormat: ObjectFormat; alternates: boolean; replaceRefs: string[]; packedReplaceRefs: boolean }
+	| { refused: string };
+
+/** The object format a repository's own configuration declares, read as untrusted text. Includes are never followed; a
+ * continuation, a repeated or unknown value, or the extension in a version 0 repository is refused rather than guessed. */
+export function declaredObjectFormat(config: string): ObjectFormat {
+	let section = "";
+	const version: string[] = [];
+	const format: string[] = [];
+	for (const raw of config.split("\n")) {
+		let line = raw.replace(/\r$/, "").trim();
+		if (line === "" || line.startsWith("#") || line.startsWith(";")) continue;
+		if (line.endsWith("\\")) throw new Error("config line continuation");
+		if (line.startsWith("[")) {
+			const h = /^\[\s*([A-Za-z0-9.-]+)(\s+"(?:[^"\\]|\\.)*")?\s*\]\s*(.*)$/.exec(line);
+			if (h === null) throw new Error("malformed config section");
+			const name = (h[1] as string).toLowerCase();
+			if (name === "include" || name === "includeif") throw new Error("config include not followed");
+			section = h[2] === undefined ? name : `${name} "subsection"`;
+			line = h[3] as string;
+			if (line === "" || line.startsWith("#") || line.startsWith(";")) continue;
+		}
+		const kv = /^([A-Za-z][A-Za-z0-9-]*)\s*(?:=\s*(.*))?$/.exec(line);
+		if (kv === null) throw new Error("malformed config line");
+		const key = `${section}.${(kv[1] as string).toLowerCase()}`;
+		if (key !== "core.repositoryformatversion" && key !== "extensions.objectformat") continue;
+		const value = (kv[2] ?? "").replace(/\s+[#;].*$/, "").trim();
+		if (!/^[a-z0-9]+$/.test(value)) throw new Error(`malformed ${key}`);
+		(key === "extensions.objectformat" ? format : version).push(value);
+	}
+	if (version.length !== 1 || (version[0] !== "0" && version[0] !== "1"))
+		throw new Error("repository format version missing, repeated or unknown");
+	if (format.length > 1) throw new Error("object format repeated");
+	if (format.length === 0) return "sha1";
+	if (version[0] !== "1") throw new Error("object format extension in a version 0 repository");
+	if (format[0] !== "sha1" && format[0] !== "sha256") throw new Error(`unknown object format ${format[0]}`);
+	return format[0];
+}
+
+/** Why the object database contradicts the declared format, or null. Every loose object must hash to its own name, and every pack
+ * and index must carry its own trailing checksum, under the format its name length implies; that format must be the declared one. */
+export function objectFormatProblem(objects: string, declared: ObjectFormat): string | null {
+	const formatOf = (hex: string): ObjectFormat => (hex.length === 40 ? "sha1" : "sha256");
+	const observed: [string, ObjectFormat][] = [];
+	for (const fan of readdirSync(objects).sort()) {
+		if (!/^[0-9a-f]{2}$/.test(fan)) continue;
+		for (const rest of readdirSync(join(objects, fan)).sort()) {
+			if (!/^(?:[0-9a-f]{38}|[0-9a-f]{62})$/.test(rest)) continue;
+			const f = formatOf(fan + rest);
+			let body: Buffer;
+			try {
+				body = inflateSync(readRegular(join(objects, fan, rest)), { maxOutputLength: 256 << 20 });
+			} catch {
+				return `objects/${fan}/${rest} is unreadable`;
+			}
+			if (createHash(f).update(body).digest("hex") !== fan + rest)
+				return `objects/${fan}/${rest} does not hash to its name`;
+			observed.push([`objects/${fan}/${rest}`, f]);
+		}
+	}
+	const packs = join(objects, "pack");
+	if (lstatSync(packs, { throwIfNoEntry: false })?.isDirectory())
+		for (const n of readdirSync(packs).sort()) {
+			const m = /^pack-([0-9a-f]{40}|[0-9a-f]{64})\.(pack|idx)$/.exec(n);
+			if (m === null) continue;
+			const f = formatOf(m[1] as string);
+			const len = (m[1] as string).length / 2;
+			const b = readRegular(join(packs, n));
+			const own = b.subarray(b.length - len);
+			const name = m[2] === "pack" ? own : b.subarray(b.length - 2 * len, b.length - len);
+			if (
+				b.length < 2 * len ||
+				!createHash(f)
+					.update(b.subarray(0, b.length - len))
+					.digest()
+					.equals(own) ||
+				name.toString("hex") !== m[1]
+			)
+				return `objects/pack/${n} does not carry its own ${f} checksum`;
+			observed.push([`objects/pack/${n}`, f]);
+		}
+	const other = observed.find(([, f]) => f !== declared);
+	return other === undefined ? null : `${other[0]} is ${other[1]}, configuration declares ${declared}`;
+}
+
+/** The first symbolic link or special file at or under `rel`, or null. Nothing is followed. */
+function linkProblem(root: string, rel: string): string | null {
+	const s = lstatSync(join(root, rel), { throwIfNoEntry: false });
+	if (s === undefined || s.isFile()) return null;
+	if (!s.isDirectory())
+		return `${rel} is ${s.isSymbolicLink() ? "a symbolic link" : "not a regular file or directory"}`;
+	for (const n of readdirSync(join(root, rel)).sort()) {
+		const p = linkProblem(root, join(rel, n));
+		if (p !== null) return p;
+	}
+	return null;
+}
+
+/** One archived repository into a fresh bare repository at `dest`, made here with its validated object format. Only `objects/` is
+ * copied, and only when no path on the way to it, nor anything under it, refs or the configuration, is a link or special file. */
+export function prepareRepository(worktree: string, dest: string): RepositoryNote {
+	if (!lstatSync(worktree, { throwIfNoEntry: false })?.isDirectory())
+		return { refused: "repository root is not a directory" };
+	const dotgit = lstatSync(join(worktree, ".git"), { throwIfNoEntry: false });
+	if (dotgit !== undefined && !dotgit.isDirectory())
+		return { refused: `.git is ${dotgit.isSymbolicLink() ? "a symbolic link" : "not a directory"}` };
+	const src = dotgit === undefined ? worktree : join(worktree, ".git");
+	for (const rel of ["config", "packed-refs", "objects", "refs"]) {
+		const p = linkProblem(src, rel);
+		if (p !== null) return { refused: p };
+	}
+	let objectFormat: ObjectFormat;
+	try {
+		objectFormat = declaredObjectFormat(readRegular(join(src, "config")).toString("utf8"));
+	} catch (err) {
+		return { refused: `object format: ${(err as Error).message}` };
+	}
+	const objects = lstatSync(join(src, "objects"), { throwIfNoEntry: false })?.isDirectory() === true;
+	const problem = objects ? objectFormatProblem(join(src, "objects"), objectFormat) : null;
+	if (problem !== null) return { refused: `object format: ${problem}` };
+	const alternates = lstatSync(join(src, "objects/info/alternates"), { throwIfNoEntry: false }) !== undefined;
+	const replace = join(src, "refs/replace");
+	const replaceRefs = lstatSync(replace, { throwIfNoEntry: false })?.isDirectory() ? readdirSync(replace) : [];
+	const packed = readPackedRefs(join(src, "packed-refs"));
+	run("/usr/bin/git", ["init", "-q", "--bare", `--object-format=${objectFormat}`, dest]);
+	if (objects && !alternates)
+		cpSync(join(src, "objects"), join(dest, "objects"), {
+			recursive: true,
+			filter: (p) => !p.endsWith("/info/alternates"),
+		});
+	return { objectFormat, alternates, replaceRefs, packedReplaceRefs: packed.includes("refs/replace/") };
 }
 
 export function verifyCapture(source: string, pre: string) {
@@ -207,27 +346,15 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				into,
 			]);
 			run("/usr/bin/chmod", ["-R", "u+rwX", into]);
+			if (!lstatSync(join(into, "repos"), { throwIfNoEntry: false })?.isDirectory()) {
+				repoNotes.push({ repo: `${t.slice(6, -4)}/`, refused: "repos is not a directory" });
+				continue;
+			}
 			for (const name of readdirSync(join(into, "repos")).sort()) {
-				const src = existsSync(join(into, "repos", name, ".git"))
-					? join(into, "repos", name, ".git")
-					: join(into, "repos", name);
-				const alternates = existsSync(join(src, "objects/info/alternates"));
-				const replaceRefs = existsSync(join(src, "refs/replace")) ? readdirSync(join(src, "refs/replace")) : [];
-				const packed = readPackedRefs(join(src, "packed-refs"));
 				const dest = join(scratch, "clean", `${t.slice(6, -4)}-${name}`);
-				run("/usr/bin/git", ["init", "-q", "--bare", dest]);
-				if (existsSync(join(src, "objects")) && !alternates)
-					cpSync(join(src, "objects"), join(dest, "objects"), {
-						recursive: true,
-						filter: (p) => !p.endsWith("/info/alternates"),
-					});
-				repoNotes.push({
-					repo: `${t.slice(6, -4)}/${name}`,
-					alternates,
-					replaceRefs,
-					packedReplaceRefs: packed.includes("refs/replace/"),
-				});
-				clean.push(dest);
+				const note = prepareRepository(join(into, "repos", name), dest);
+				repoNotes.push({ repo: `${t.slice(6, -4)}/${name}`, ...note });
+				if (!("refused" in note)) clean.push(dest);
 			}
 		}
 
@@ -403,6 +530,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				commitsReferenced: commits.length,
 				commitsWithoutObjects: commitsMissing,
 				authenticPassCommitsBound: authentic.every((r) => r.binding.status === "valid"),
+				repositoriesRefused: repoNotes.filter((n) => "refused" in n).length,
 				disagreementsWithLive: disagreements.length,
 			},
 			disagreements,

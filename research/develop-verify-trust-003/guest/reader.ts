@@ -119,12 +119,35 @@ export function runBounded(
 		});
 		child.stdin?.on("error", () => {});
 		child.stdin?.end(options.input ?? Buffer.alloc(0));
-		child.on("close", (code, signal) => {
+		child.on("close", async (code, signal) => {
+			if (settled) return;
+			clearTimeout(deadline);
+			const pid = child.pid;
+			const groupGone = () => {
+				if (pid === undefined) return false;
+				try {
+					process.kill(-pid, 0);
+					return false;
+				} catch (error) {
+					return (error as NodeJS.ErrnoException).code === "ESRCH";
+				}
+			};
+			let confirmed = groupGone();
+			if (!confirmed && pid !== undefined) {
+				try {
+					process.kill(-pid, "SIGKILL");
+				} catch {}
+				const until = Math.min(start + options.deadlineMs + grace, Date.now() + grace);
+				while (!settled && !confirmed && Date.now() < until) {
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					confirmed = groupGone();
+				}
+			}
 			finish({
 				outcome: reason ?? (signal !== null ? "signaled" : "exited"),
 				exitCode: code,
 				signal,
-				terminationConfirmed: true,
+				terminationConfirmed: confirmed,
 			});
 		});
 	});
@@ -185,12 +208,24 @@ export async function acquireObjects(
 		runBounded(gitArgv(repo, args, agent), { env: { ...GIT_ENV }, input, deadlineMs: 30_000, maxOutput: 64 << 20 });
 	const format = await run(["rev-parse", "--show-object-format"]);
 	const f = format.stdout.toString().trim();
-	if (format.outcome !== "exited" || format.exitCode !== 0 || (f !== "sha1" && f !== "sha256"))
+	if (
+		!format.terminationConfirmed ||
+		format.outcome !== "exited" ||
+		format.exitCode !== 0 ||
+		(f !== "sha1" && f !== "sha256")
+	)
 		return { ok: false, reason: "repository-unreadable" };
 	if (!/^[0-9a-f]+$/.test(commit)) return { ok: false, reason: "commit-invalid" };
 	const list = await run(["ls-tree", "-r", "-t", "-z", "--full-tree", "--end-of-options", commit]);
 	const tree = await run(["rev-parse", "--verify", "--end-of-options", `${commit}^{tree}`]);
-	if (list.outcome !== "exited" || tree.outcome !== "exited" || list.exitCode !== 0 || tree.exitCode !== 0)
+	if (
+		!list.terminationConfirmed ||
+		!tree.terminationConfirmed ||
+		list.outcome !== "exited" ||
+		tree.outcome !== "exited" ||
+		list.exitCode !== 0 ||
+		tree.exitCode !== 0
+	)
 		return { ok: false, reason: "commit-unreadable" };
 	const ids = new Set<string>([commit, tree.stdout.toString().trim()]);
 	for (const entry of list.stdout.toString("utf8").split("\0")) {
@@ -198,7 +233,8 @@ export async function acquireObjects(
 		if (m !== null) ids.add(m[1] as string);
 	}
 	const batch = await run(["cat-file", "--batch"], Buffer.from(`${[...ids].join("\n")}\n`));
-	if (batch.outcome !== "exited" || batch.exitCode !== 0) return { ok: false, reason: "object-unreadable" };
+	if (!batch.terminationConfirmed || batch.outcome !== "exited" || batch.exitCode !== 0)
+		return { ok: false, reason: "object-unreadable" };
 	const out = batch.stdout;
 	const objects: { type: ObjectType; data: Buffer }[] = [];
 	let i = 0;
@@ -294,6 +330,7 @@ export function stageFiles(files: readonly StagedFile[]): string {
 		const target = join(dir, ...parts);
 		mkdirSync(dirname(target), { recursive: true, mode: 0o755 });
 		writeFileSync(target, f.content, { flag: "wx", mode: 0o644 });
+		chmodSync(target, f.mode === "100755" ? 0o555 : 0o444);
 	}
 	chmodSync(dir, 0o755);
 	return dir;

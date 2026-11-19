@@ -3,7 +3,7 @@
 // own files as root and a verifier uid). Cases that need a real bubblewrap sandbox are skipped, and say so, where it cannot start one.
 import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, type Stats, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, type Stats, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -363,11 +363,24 @@ describe("trusted reader: acquisition from an agent-controlled repository", () =
 		expect(readFileSync(join(dir, "a/b.mjs"), "utf8")).toBe("x");
 		rmSync(dir, { recursive: true, force: true });
 	});
+	it("preserves executable and non-executable file modes when staging", () => {
+		const file = { path: "helper", bytes: 1, sha256: "", content: Buffer.from("x") };
+		const dir = stageFiles([
+			{ ...file, mode: "100755" },
+			{ ...file, path: "data", mode: "100644" },
+		]);
+		try {
+			expect(statSync(join(dir, "helper")).mode & 0o777).toBe(0o555);
+			expect(statSync(join(dir, "data")).mode & 0o777).toBe(0o444);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
 	it("enforces the deadline even if a finite job would exit normally later", async () => {
-		const got = await runBounded(["/usr/bin/node", "-e", "setTimeout(() => {}, 1700)"], {
+		const got = await runBounded([process.execPath, "-e", "setTimeout(() => {}, 1700)"], {
 			env: {},
 			deadlineMs: 500,
 			maxOutput: 64,
@@ -377,11 +390,19 @@ describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
 	});
 	const token = () => `dvt003-${randomBytes(6).toString("hex")}`;
 	const survivors = (t: string) => (spawnSync("/usr/bin/pgrep", ["-f", t], { encoding: "utf8" }).stdout ?? "").trim();
+	it("checks the group after the parent closes stdio and exits normally", async () => {
+		const t = token();
+		const script =
+			"require('node:child_process').spawn(process.execPath,['-e','setTimeout(()=>{},4000)',process.argv[1]],{stdio:'ignore'}).unref()";
+		const r = await runBounded([process.execPath, "-e", script, t], { env: {}, deadlineMs: 3000, maxOutput: 64 });
+		expect(r.terminationConfirmed).toBe(true);
+		expect(survivors(t)).toBe("");
+	});
 	it("kills a process group that ignores SIGTERM, with its descendant, at the deadline", async () => {
 		const t = token();
 		const script = `process.on("SIGTERM",()=>{});require("node:child_process").spawn("/usr/bin/sleep",["300"],{stdio:"ignore"});setInterval(()=>{},1000);// ${t}`;
 		const started = Date.now();
-		const r = await runBounded(["/usr/bin/node", "-e", script, t], { env: {}, deadlineMs: 800, maxOutput: 1024 });
+		const r = await runBounded([process.execPath, "-e", script, t], { env: {}, deadlineMs: 800, maxOutput: 1024 });
 		expect(r.outcome).toBe("timeout");
 		expect(r.terminationConfirmed).toBe(true);
 		expect(Date.now() - started).toBeLessThan(5000);
@@ -389,7 +410,7 @@ describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
 		expect(survivors(t)).toBe("");
 	});
 	it("stops reading at the output limit", async () => {
-		const r = await runBounded(["/usr/bin/node", "-e", "for(;;)process.stdout.write('x'.repeat(65536))"], {
+		const r = await runBounded([process.execPath, "-e", "for(;;)process.stdout.write('x'.repeat(65536))"], {
 			env: {},
 			deadlineMs: 10_000,
 			maxOutput: 100_000,
@@ -398,7 +419,7 @@ describe("trusted reader: a hard grading deadline (review 4627583987)", () => {
 		expect(r.stdout.length).toBeLessThanOrEqual(100_000);
 	});
 	it("counts stderr and stdout together even when neither stream alone exceeds the bound", async () => {
-		const r = await runBounded(["/usr/bin/node", "-e", "process.stdout.write('abc');process.stderr.write('def')"], {
+		const r = await runBounded([process.execPath, "-e", "process.stdout.write('abc');process.stderr.write('def')"], {
 			env: {},
 			deadlineMs: 2000,
 			maxOutput: 5,

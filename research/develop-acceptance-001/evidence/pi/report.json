@@ -1,0 +1,119 @@
+{
+  "evidenceClass": "model-connected observation",
+  "decision": "operator only",
+  "authority": "experimental, non-authoritative",
+  "recommendation": "review candidate",
+  "run": {
+    "id": "endo.experiment.acceptance-f4c808e8-559c-4364-ad61-f00ae751d3dd",
+    "specSha256": "48de9faa2770c4e5cc9482a4baa85bf865303c959242567f75d9afda8c5be71e",
+    "seed": 20261109
+  },
+  "trial": {
+    "position": 0,
+    "task": "strict-positive",
+    "condition": "pi",
+    "trial": 0,
+    "attempt": 1,
+    "retryOf": null
+  },
+  "recordSha256": "75e0040777c268e4775ade563ed3e41bbcf54093c146c99c040e02f7f705fdc4",
+  "task": "strict-positive",
+  "objective": "Read count.mjs. Fix countPositive(values) to count only strictly positive numbers, excluding zero. Use edit, then stop.",
+  "startingWorkspaceSha256": "421b2c4caf3de50ec8dc5ac97cbe6f4aae9d98704ab0b8795650e22e389d7d40",
+  "condition": [
+    "/usr/bin/node",
+    "/agent/launch.mjs",
+    "--read-edit-pilot"
+  ],
+  "profileSha256": "59f8a8d6165b310325aae14f3834e49d5917e8637ee1f1d0cdd237466a7559ea",
+  "preflight": "established",
+  "hostAgent": {
+    "status": "completed",
+    "exitCode": 0,
+    "signal": null,
+    "durationMs": 4326,
+    "termination": "confirmed",
+    "outputSha256": "e714af3ee10e34d45958558ba55e9f5fbad0d00d12c83c4be1ba063263eb5694",
+    "scope": {
+      "unit": "endo-sandbox-96c0bcc633a86b822fc78f7d",
+      "established": true,
+      "ended": "confirmed",
+      "result": null
+    }
+  },
+  "providerReports": "Not used for grading or tool attribution",
+  "model": {
+    "upstream": "http://127.0.0.1:8090",
+    "model": "Ornith-1.5-9B-Q8_0",
+    "policySha256": "a4a9bfc677b98a702289c95c80442fc86d4820d13df2c54e3bf8815e49f1ee38",
+    "minExchanges": 1
+  },
+  "recording": {
+    "status": "complete",
+    "keyId": "endo.digest-key.73f85cb62807c96273898080d6e183a4",
+    "required": 1,
+    "exchanges": [
+      {
+        "exchange": 1,
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "requestSha256": "35790c630a4d2c01dc2b9badd6bf81f3bd8a15e763876fac20fdea754517c595",
+        "status": 200,
+        "class": "answered",
+        "verified": true
+      },
+      {
+        "exchange": 2,
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "requestSha256": "41596933df4736152a2395efda54383f4f4405fd3377490c4474dfb29bdbd4f0",
+        "status": 200,
+        "class": "answered",
+        "verified": true
+      },
+      {
+        "exchange": 3,
+        "method": "POST",
+        "path": "/v1/chat/completions",
+        "requestSha256": "a4c35c41b97c197de4e417864451faf3afaa378658942c6630e5895df3ada108",
+        "status": 200,
+        "class": "answered",
+        "verified": true
+      }
+    ]
+  },
+  "submission": {
+    "status": "collected",
+    "files": [
+      {
+        "path": "count.mjs",
+        "bytes": 83,
+        "sha256": "a2a864a015b61092129d59e92c32cedca5f2f0f34e315af606575fca9d0f7d60"
+      }
+    ],
+    "sha256": "956accd4ddde96bff16a056a343175562f7cbdfb96a8a54ece18a45e6b84fda2",
+    "refusals": []
+  },
+  "evaluatedCandidateSha256": "956accd4ddde96bff16a056a343175562f7cbdfb96a8a54ece18a45e6b84fda2",
+  "evaluation": {
+    "status": "passed",
+    "definitionSha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa",
+    "driverSha256": "05996836f46b0e0449d0f11e810b3146c329b3282298f21de318dd3be0f6e3f2",
+    "cases": {
+      "total": 5,
+      "passed": 5
+    },
+    "reason": null,
+    "outputSha256": "e9cdc905e8685bbe0524046084bb31741ae08d0f9b19e59afa133d6d1c33cb1e"
+  },
+  "qualification": [
+    {
+      "task": "strict-positive",
+      "definitionSha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa",
+      "driverSha256": "05996836f46b0e0449d0f11e810b3146c329b3282298f21de318dd3be0f6e3f2",
+      "reference": "passed",
+      "negative": "failed"
+    }
+  ],
+  "invalidating": []
+}

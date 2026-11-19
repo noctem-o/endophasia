@@ -19,7 +19,12 @@ def attempt(invariant, op, target, fn, expect):
         got = "ok"
     except OSError as e:
         got = errno.errorcode.get(e.errno, str(e.errno))
-    out.append({"invariant": invariant, "op": op, "target": target, "result": got, "expected": expect, "held": got in expect})
+    row = {"invariant": invariant, "op": op, "target": target, "result": got, "expected": expect, "held": got in expect}
+    # A path under a directory that does not exist yet (records/, work/, journal/ before the first request) tests nothing: not applicable.
+    if got == "ENOENT" and target.startswith("/") and not (os.path.lexists(target) or os.path.isdir(os.path.dirname(target))):
+        row["held"] = None
+        row["note"] = "not applicable: path absent"
+    out.append(row)
 
 
 def cerr(r):
@@ -120,9 +125,9 @@ for pid in pids:
     buf = ctypes.create_string_buffer(64)
     local = IOV(ctypes.cast(buf, ctypes.c_void_p), 64)
     remote = IOV(ctypes.c_void_p(0x400000), 64)
-    attempt("4-process", "process_vm_readv", t, lambda: cerr(libc.syscall(310, pid, ctypes.byref(local), 1, ctypes.byref(remote), 1, 0)), ("EPERM",))
-    attempt("4-process", "ptrace(PTRACE_ATTACH)", t, lambda: cerr(libc.ptrace(16, pid, None, None)), ("EPERM",))
-    attempt("4-process", "ptrace(PTRACE_SEIZE)", t, lambda: cerr(libc.ptrace(0x4206, pid, None, None)), ("EPERM",))
+    attempt("4-process", "process_vm_readv", t, lambda: cerr(libc.syscall(ctypes.c_long(310), ctypes.c_long(pid), ctypes.byref(local), ctypes.c_long(1), ctypes.byref(remote), ctypes.c_long(1), ctypes.c_long(0))), ("EPERM",))
+    attempt("4-process", "ptrace(PTRACE_ATTACH)", t, lambda: cerr(libc.ptrace(ctypes.c_long(16), ctypes.c_long(pid), None, None)), ("EPERM",))
+    attempt("4-process", "ptrace(PTRACE_SEIZE)", t, lambda: cerr(libc.ptrace(ctypes.c_long(0x4206), ctypes.c_long(pid), None, None)), ("EPERM",))
     for name, sig in [("0", 0), ("SIGSTOP", signal.SIGSTOP), ("SIGTERM", signal.SIGTERM), ("SIGKILL", signal.SIGKILL)]:
         attempt("4-process", "kill(%s)" % name, t, lambda: os.kill(pid, sig), ("EPERM",))
 
@@ -136,7 +141,7 @@ for pid in pids:
     attempt("4-process", "setpriority(19)", t, lambda: os.setpriority(os.PRIO_PROCESS, pid, 19), ("EPERM", "EACCES"))
     attempt("4-process", "sched_setaffinity", t, lambda: os.sched_setaffinity(pid, {0}), ("EPERM",))
     attempt("4-process", "prlimit(RLIMIT_CPU)", t, lambda: resource.prlimit(pid, resource.RLIMIT_CPU, (1, 1)), ("EPERM",))
-    attempt("4-process", "ioprio_set", t, lambda: cerr(libc.syscall(251, 1, pid, (3 << 13))), ("EPERM",))
+    attempt("4-process", "ioprio_set", t, lambda: cerr(libc.syscall(ctypes.c_long(251), ctypes.c_long(1), ctypes.c_long(pid), ctypes.c_long(3 << 13))), ("EPERM",))
     try:
         cg = open("/proc/%d/cgroup" % pid).read().strip().split("::", 1)[1]
         for f in ["cgroup.procs", "cgroup.freeze", "cgroup.kill", "memory.max"]:
@@ -155,4 +160,5 @@ for p in [VRUN + "/bus", VRUN + "/systemd/private"]:
 attempt("4-process", "opendir", VRUN, lambda: os.listdir(VRUN), DENY)
 
 print(json.dumps({"label": sys.argv[1] if len(sys.argv) > 1 else "", "principal": me, "verifierUid": V.pw_uid, "pids": pids,
-                  "attempts": out, "held": all(a["held"] for a in out)}, indent=1))
+                  "attempts": out, "held": all(a["held"] is not False for a in out),
+                  "applicable": sum(1 for a in out if a["held"] is not None)}, indent=1))

@@ -29,7 +29,7 @@ echo "== operator policy review (root view)"
   echo "# members of endoagent group / primary gid 1500"; getent group endoagent; awk -F: '$4==1500' /etc/passwd; echo "# ACLs on install"; getfacl -R -s /usr/local/lib/endo-verify-002 /var/lib/endo-verify-002 /run/endo-verify-002 2>/dev/null
   echo "# listening sockets"; ss -lxnp 2>/dev/null | grep -v '^u_dgr' | head -40; ss -ltnup; } > "$OUT/policy-review.txt" 2>&1
 echo "== probe while idle (verifier manager only)"
-agent probe-idle /usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I "$SRC/research/develop-verify-trust-003/guest/probe.py" idle
+agent probe-idle /usr/bin/bash -c "/usr/bin/strace -f -qq -Z -o /home/endoagent/probe-idle.strace /usr/bin/python3 -I $SRC/research/develop-verify-trust-003/guest/probe.py idle; exit \$?"
 jq -c '{held, pids, broken: [.attempts[] | select(.held|not)]}' "$OUT/probe-idle.out"
 for k in 1 2; do
   echo "== installed run $k"
@@ -37,8 +37,7 @@ for k in 1 2; do
   systemd-run --quiet --collect --unit="endoagent-run-$k" --uid=endoagent --gid=endoagent -p PAMName=login \
     -p StandardOutput=file:"$log" -p StandardError=file:"$OUT/run-$k.err" -p WorkingDirectory=/home/endoagent \
     /usr/bin/env -i PATH=/usr/bin HOME=/home/endoagent LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/1500 \
-    /usr/bin/strace -f -qq -Z -o "/home/endoagent/run-$k.strace" \
-    /usr/bin/node "$SRC/research/develop-verify-trust-002/rehearsal.ts" run "/home/endoagent/dvt/installed-$k" --commit "$c" --target installed
+    /usr/bin/bash -c "/usr/bin/strace -f -qq -Z -o /home/endoagent/run-$k.strace /usr/bin/node $SRC/research/develop-verify-trust-002/rehearsal.ts run /home/endoagent/dvt/installed-$k --commit $c --target installed; exit \$?"
   t10=no; e3=no
   for i in $(seq 1 1800); do
     sleep 1
@@ -46,7 +45,7 @@ for k in 1 2; do
       t10=yes
       { echo "# T10 prompt at $(date -u +%FT%TZ); verifier processes:"; ps -o pid,ppid,uid,user,etimes,cmd -u endo-verify-002; } > "$OUT/run-$k-T10-ps.txt"
       pids=$(pgrep -u endo-verify-002 | tr '\n' ' ')
-      agent "probe-live-$k" /usr/bin/strace -f -qq -Z -o "/home/endoagent/probe-live-$k.strace" /usr/bin/python3 -I "$SRC/research/develop-verify-trust-003/guest/probe.py" "live-$k" $pids
+      agent "probe-live-$k" /usr/bin/bash -c "/usr/bin/strace -f -qq -Z -o /home/endoagent/probe-live-$k.strace /usr/bin/python3 -I $SRC/research/develop-verify-trust-003/guest/probe.py live-$k $pids; exit \$?"
       inst=$(pgrep -u endo-verify-002 -f 'verifier.ts serve' | tr '\n' ' ')
       echo "# dedicated guest verifier instance(s) confirmed: $inst; acting: pkill -KILL -u endo-verify-002 -f 'verifier.ts serve'" >> "$OUT/run-$k-T10-ps.txt"
       pkill -KILL -u endo-verify-002 -f 'verifier.ts serve'; echo "pkill exit=$?" >> "$OUT/run-$k-T10-ps.txt"

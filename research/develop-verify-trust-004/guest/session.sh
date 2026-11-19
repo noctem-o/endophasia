@@ -110,10 +110,10 @@ plan() {
     git clone -q --no-checkout "$STAGE/repo.bundle" "$PLAN_SRC" 2>/dev/null &&
       git -C "$PLAN_SRC" -c advice.detachedHead=false checkout -q "$(cat "$STAGE/commit")" || { say "refused: cannot check out the staged commit"; return 10; }
   fi
-  install -d -m 0700 "$SESSION"
-  plan_body > "$SESSION/plan.tmp" && mv "$SESSION/plan.tmp" "$SESSION/plan.txt"
-  local d; d=$(sha256sum < "$SESSION/plan.txt" | cut -c1-64)
-  cp "$SESSION/plan.txt" "$SESSION/plan-$d.txt"
+  local d
+  install -d -m 0700 "$SESSION" && rm -f "$SESSION/plan.txt" && plan_body > "$SESSION/plan.tmp" && mv "$SESSION/plan.tmp" "$SESSION/plan.txt" &&
+    d=$(sha256sum < "$SESSION/plan.txt" | cut -c1-64) && [[ $d =~ ^[0-9a-f]{64}$ ]] && cp "$SESSION/plan.txt" "$SESSION/plan-$d.txt" ||
+    { say "refused: the plan could not be written and hashed; no plan is current"; rm -f "$SESSION/plan.txt"; return 10; }
   cat "$SESSION/plan.txt"
   echo "plan-digest $d"
   if grep -qx 'verdict AUTHORISABLE' "$SESSION/plan.txt"; then
@@ -126,21 +126,30 @@ plan() {
 refuse() { say "authorisation refused: $*"; return 1; }
 
 authorise() { # authorise <digest>: every check must pass; nothing has been changed when it refuses
-  local want=$1 have age answer
+  local want=$1 have age answer t0
   [ "$(id -u)" = 0 ] || { refuse "not guest root"; return; }
   on_console || { refuse "confirmation is read only from a terminal on $CONSOLE"; return; }
   [[ $want =~ ^[0-9a-f]{64}$ ]] || { refuse "malformed digest"; return; }
   [ -f "$SESSION/plan.txt" ] || { refuse "no plan; run: session.sh plan"; return; }
   have=$(sha256sum < "$SESSION/plan.txt" | cut -c1-64)
   [ "$have" = "$want" ] || { refuse "$want is not the current plan's digest ($have)"; return; }
-  age=$(( $(date +%s) - $(stat -c %Y "$SESSION/plan.txt") ))
+  t0=$(stat -c %Y "$SESSION/plan.txt") || { refuse "cannot read the plan's time"; return; }
+  age=$(( $(date +%s) - t0 ))
   [ "$age" -ge 0 ] && [ "$age" -le "$PLAN_MAX_AGE" ] || { refuse "the plan is ${age}s old (limit ${PLAN_MAX_AGE}s); plan again"; return; }
   grep -qx 'verdict AUTHORISABLE' "$SESSION/plan.txt" || { refuse "the plan itself was refused"; return; }
-  plan_body > "$SESSION/recheck.txt"
+  plan_body > "$SESSION/recheck.txt" || { refuse "cannot write the recheck"; return; }
   cmp -s "$SESSION/plan.txt" "$SESSION/recheck.txt" || { diff "$SESSION/plan.txt" "$SESSION/recheck.txt"; refuse "the guest changed since the plan"; return; }
   echo "Type exactly: AUTHORISE ${want:0:16}"
   read -r -t "$CONFIRM_SECONDS" answer || { refuse "no confirmation within ${CONFIRM_SECONDS}s"; return; }
   [ "$answer" = "AUTHORISE ${want:0:16}" ] || { refuse "confirmation did not match"; return; }
+  # the confirmation authorises the plan as it stands now: snapshot it, then every check again on the snapshot
+  cp "$SESSION/plan.txt" "$SESSION/authorised.txt" || { refuse "cannot snapshot the confirmed plan"; return; }
+  have=$(sha256sum < "$SESSION/authorised.txt" | cut -c1-64)
+  [ "$have" = "$want" ] || { refuse "the plan changed during confirmation ($have)"; return; }
+  age=$(( $(date +%s) - t0 ))
+  [ "$age" -ge 0 ] && [ "$age" -le "$PLAN_MAX_AGE" ] || { refuse "the plan expired during confirmation (${age}s old, limit ${PLAN_MAX_AGE}s)"; return; }
+  plan_body > "$SESSION/recheck.txt" || { refuse "cannot write the recheck"; return; }
+  cmp -s "$SESSION/authorised.txt" "$SESSION/recheck.txt" || { diff "$SESSION/authorised.txt" "$SESSION/recheck.txt"; refuse "the guest changed during confirmation"; return; }
 }
 
 stopped() { case $(systemctl show -p ActiveState --value "$1" 2>/dev/null) in inactive|failed) return 0 ;; *) return 1 ;; esac; }
@@ -235,10 +244,11 @@ run() {
   local d=${1:-} finished=1 line
   authorise "$d" || return 10
   mkdir -m 0700 "$OUT" 2>/dev/null || { say "refused: $OUT exists; this guest already ran an attempt"; return 10; }
-  mkdir -m 0700 "$OUT/session"
-  cp "$SESSION/plan.txt" "$OUT/session/plan.txt"
-  { echo "plan-digest $d"; echo "authorised-at $(date -u +%FT%T.%NZ)"; echo "console $(tty)"
-    echo "boot-id $(cat /proc/sys/kernel/random/boot_id)"; } > "$OUT/session/authorisation.txt"
+  mkdir -m 0700 "$OUT/session" && cp "$SESSION/authorised.txt" "$OUT/session/plan.txt" &&
+    [ "$(sha256sum < "$OUT/session/plan.txt" | cut -c1-64)" = "$d" ] &&
+    { echo "plan-digest $d"; echo "authorised-at $(date -u +%FT%T.%NZ)"; echo "console $(tty)"
+      echo "boot-id $(cat /proc/sys/kernel/random/boot_id)"; } > "$OUT/session/authorisation.txt" ||
+    { say "refused: the authorised plan and authorisation record could not be written; nothing was started"; return 10; }
   trap 'interrupted=1' INT TERM HUP
   note "authorised plan $d; Ctrl-C stops the current step and is recorded as an interruption"
   if step stage "$LIMIT_STAGE" /usr/bin/bash "$PLAN_SRC/research/develop-verify-trust-003/guest/stage.sh"; then
@@ -259,6 +269,10 @@ run() {
   interrupted=0
   step finish "$LIMIT_FINISH" /usr/bin/bash "$PLAN_SRC/$T4/guest/finish.sh" || finished=0
   say "finish: $STEP_RESULT (after the export; not part of the exported account)"
+  if [ "$UNCERTAIN" = 1 ]; then
+    say "TERMINATION UNCERTAIN after finish: the export is not confirmed safe to collect. Do not power off or tear down; keep the guest disk as evidence."
+    return 75
+  fi
   line=$(grep -a '^export size=' "$OUT/session/finish.log" 2>/dev/null | tail -n 1)
   if [[ $line =~ ^export\ size=([0-9]+)\ sha256=([0-9a-f]{64})\ device-prefix-sha256=([0-9a-f]{64})$ ]] &&
     [ "${BASH_REMATCH[2]}" = "${BASH_REMATCH[3]}" ]; then

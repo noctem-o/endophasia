@@ -390,18 +390,39 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				continue;
 			}
 			const path = `${S}/records/${inv}.json`;
-			const rec = JSON.parse(readFileSync(join(state, "endo-verify-002/records", `${inv}.json`), "utf8")) as Record<
-				string,
-				any
-			>;
 			const a = listed.get(path);
 			const b = tarred.get(path);
+			const unread = (reason: string) =>
+				rows.push({
+					invocation: inv,
+					authenticity: { class: "UNKNOWN", authoritative: false, reason },
+					binding: { status: "not-applicable" },
+					grade: { status: "not-applicable" },
+					confirmedPass: false,
+					falsePass: false,
+					unconfirmedPass: false,
+				});
+			if (a?.type !== "f" || b?.type !== "-") {
+				unread("file-not-the-verifier's: record is not a regular file in the capture; not opened");
+				continue;
+			}
+			let rec: Record<string, any>;
+			try {
+				rec = JSON.parse(readRegular(join(state, "endo-verify-002/records", `${inv}.json`)).toString("utf8"));
+			} catch (err) {
+				unread(`malformed-record: ${(err as Error).message}`);
+				continue;
+			}
+			if (typeof rec !== "object" || rec === null || Array.isArray(rec)) {
+				unread("malformed-record: not a JSON object");
+				continue;
+			}
 			const fileProblem =
-				a?.type !== "f" ||
-				b?.type !== "-" ||
 				a.uid !== verifierUid ||
 				b.uid !== verifierUid ||
 				(a.mode & 0o022) !== 0 ||
+				(b.mode & 0o022) !== 0 ||
+				(a.mode & 0o777) !== b.mode ||
 				a.links !== 1
 					? "file-not-the-verifier's"
 					: null;

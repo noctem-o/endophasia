@@ -94,6 +94,40 @@ CONFIRM_SECONDS=2
         self.assertIn("rc=10", r.stdout)
         self.assertNotIn("step:", r.stderr)
 
+    def test_checks_again_after_the_confirmation(self):
+        digest = hashlib.sha256(PLAN.encode()).hexdigest()
+        later = 'date() { if [ "$1" = +%s ]; then echo $(( $(command date +%s) + ${NOW_OFFSET:-0} )); else command date "$@"; fi; }\n'
+        cases = [
+            ("expired while the prompt waited", later + 'read() { builtin read "$@"; NOW_OFFSET=1801; }\n',
+             "the plan expired during confirmation"),
+            ("plan replaced while the prompt waited", 'read() { builtin read "$@"; echo extra >> "$SESSION/plan.txt"; }\n',
+             "the plan changed during confirmation"),
+            ("guest changed while the prompt waited",
+             'read() { builtin read "$@"; CHANGED=1; }\nplan_body() { cat "$SESSION/plan.txt"; [ -z "${CHANGED:-}" ] || echo extra; }\n',
+             "the guest changed during confirmation"),
+        ]
+        for name, extra, reason in cases:
+            with self.subTest(name):
+                self.plan(PLAN)
+                r, rc = self.attempt(digest, f"AUTHORISE {digest[:16]}\n", extra)
+                self.assertRefused(r, rc, reason)
+
+    def test_a_failed_authorisation_record_starts_nothing(self):
+        digest = hashlib.sha256(PLAN.encode()).hexdigest()
+        cases = [
+            ("plan copy fails", 'authorise() { command cp "$SESSION/plan.txt" "$SESSION/authorised.txt"; }\ncp() { return 1; }\n'),
+            ("archived plan is not the confirmed one", 'authorise() { echo other > "$SESSION/authorised.txt"; }\n'),
+            ("authorisation.txt cannot be written",
+             'mkdir() { command mkdir "$@" || return; [ "$3" = "$OUT/session" ] && command mkdir "$OUT/session/authorisation.txt"; :; }\n'),
+        ]
+        for name, extra in cases:
+            with self.subTest(name):
+                subprocess.run(["rm", "-rf", str(self.tmp / "out")], check=True)
+                r, rc = self.attempt(digest, f"AUTHORISE {digest[:16]}\n", extra)
+                self.assertEqual(rc, "rc=10", r.stdout + r.stderr)
+                self.assertIn("could not be written; nothing was started", r.stdout)
+                self.assertNotIn("step:", r.stderr)
+
     def test_authorised_plan_is_recorded_before_staging(self):
         digest = hashlib.sha256(PLAN.encode()).hexdigest()
         r, rc = self.attempt(digest, f"AUTHORISE {digest[:16]}\n")
@@ -166,12 +200,13 @@ settle; echo "uncertain=$UNCERTAIN"
 class Flow(Session):
     # STAGE_RC, RUN_RC_MOCK, FINISH_RC: each step's status; UNCERTAIN_AFTER: settle's outcome; EXPORT: finish's export line
     MOCKS = """
-authorise() { return 0; }
+authorise() { cp "$SESSION/plan.txt" "$SESSION/authorised.txt"; }  # what a successful authorise leaves
 settle() { [ "${UNCERTAIN_AFTER:-0}" = 1 ] && UNCERTAIN=1; :; }
 account() { echo account >&2; }
 step() {
   local rc
-  case $1 in stage) rc=${STAGE_RC:-0} ;; run) rc=${RUN_RC_MOCK:-0} ;; finish) rc=${FINISH_RC:-0}; echo "${EXPORT-}" > "$OUT/session/finish.log" ;; esac
+  case $1 in stage) rc=${STAGE_RC:-0} ;; run) rc=${RUN_RC_MOCK:-0} ;;
+  finish) rc=${FINISH_RC:-0}; echo "${EXPORT-}" > "$OUT/session/finish.log"; [ "${FINISH_UNCERTAIN:-0}" = 1 ] && UNCERTAIN=1 ;; esac
   echo "step:$1" >&2; STEP_RESULT="$1 exit=$rc"; return "$rc"
 }
 """
@@ -179,7 +214,7 @@ step() {
 
     def flow(self, env):
         subprocess.run(["rm", "-rf", str(self.tmp / "out")], check=True)
-        r = self.bash(self.MOCKS + env + '\nrun ' + "0" * 64 + '; echo "rc=$?"')
+        r = self.bash(self.MOCKS + env + '\nrun ' + hashlib.sha256(PLAN.encode()).hexdigest() + '; echo "rc=$?"')
         return r, r.stdout.strip().splitlines()[-1], [line[5:] for line in r.stderr.splitlines() if line.startswith("step:")]
 
     def test_flow(self):
@@ -192,6 +227,7 @@ step() {
             ("export digests disagree", f"EXPORT='export size=10 sha256={self.SHA} device-prefix-sha256={'b' * 64}'", "rc=1",
              ["stage", "run", "finish"]),
             ("no export line", "EXPORT=", "rc=1", ["stage", "run", "finish"]),
+            ("finish not confirmed stopped: export not announced", good + " FINISH_UNCERTAIN=1", "rc=75", ["stage", "run", "finish"]),
         ]
         for name, env, rc, steps in cases:
             with self.subTest(name):
@@ -200,6 +236,10 @@ step() {
                 self.assertEqual(ran, steps)
         r, _, _ = self.flow(good)
         self.assertIn(f'host.sh collect "$DEST" 10 {self.SHA}', r.stdout)
+        r, _, _ = self.flow(good + " FINISH_UNCERTAIN=1")
+        self.assertIn("TERMINATION UNCERTAIN after finish", r.stdout)
+        self.assertNotIn("host.sh collect", r.stdout)
+        self.assertNotIn("export size=", r.stdout)
 
     def test_meaning_uses_the_timeline(self):
         (self.tmp / "out/run").mkdir(parents=True)
@@ -217,7 +257,7 @@ step() {
 class Interlocks(Steps):
     # run() with the real step(): authorisation, settle and account stubbed; LAUNCH_HOOK runs inside systemd-run for the named unit
     FLOW = """
-authorise() { return 0; }
+authorise() { cp "$SESSION/plan.txt" "$SESSION/authorised.txt"; }  # what a successful authorise leaves
 settle() { :; }
 account() { :; }
 systemd-run() { echo "systemd-run $*" >&2; [[ " $* " == *" --unit=${HOOK_UNIT:-none} "* ]] && interrupted=1; :; }
@@ -225,7 +265,7 @@ SUB=exited RESULT=success CODE=1 STATUS=0
 """
 
     def run_session(self, env):
-        r = self.bash(self.MOCKS.replace('mkdir -p "$OUT/session"\n', "") + self.FLOW + env + '\nrun ' + "0" * 64 + '; rc=$?; printf "steps %s\\n" "${STEPS[@]}"; echo "rc=$rc"')
+        r = self.bash(self.MOCKS.replace('mkdir -p "$OUT/session"\n', "") + self.FLOW + env + '\nrun ' + hashlib.sha256(PLAN.encode()).hexdigest() + '; rc=$?; printf "steps %s\\n" "${STEPS[@]}"; echo "rc=$rc"')
         launched = [line.split("--unit=")[1].split()[0] for line in r.stderr.splitlines() if line.startswith("systemd-run")]
         return r, r.stdout.strip().splitlines()[-1], launched
 
@@ -314,6 +354,23 @@ run "$d"; echo "rc=$?"
         self.assertEqual(r.stdout.strip().splitlines()[-1], "rc=10")
         self.assertNotIn("step:", r.stderr)
         self.assertFalse((self.tmp / "out").exists())
+
+
+class PlanWrites(PlanDigests):
+    def test_a_failed_plan_write_leaves_no_current_plan(self):
+        (self.tmp / "session/plan.txt").write_text(PLAN)
+        (self.tmp / "session/plan.tmp").mkdir()
+        r = self.bash(self.MOCKS + 'plan; echo "rc=$?"')
+        self.assertEqual(r.stdout.strip().splitlines()[-1], "rc=10", r.stdout + r.stderr)
+        self.assertIn("the plan could not be written and hashed", r.stdout)
+        self.assertNotIn("plan-digest", r.stdout)
+        self.assertFalse((self.tmp / "session/plan.txt").exists())
+
+    def test_a_plan_is_written_and_reported(self):
+        r = self.bash(self.MOCKS + 'plan; echo "rc=$?"')
+        self.assertEqual(r.stdout.strip().splitlines()[-1], "rc=0", r.stdout + r.stderr)
+        digest = hashlib.sha256((self.tmp / "session/plan.txt").read_bytes()).hexdigest()
+        self.assertIn(f"plan-digest {digest}", r.stdout)
 
 
 class Plan(Session):

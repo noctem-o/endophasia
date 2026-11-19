@@ -154,7 +154,9 @@ reason: stop, preserve the console log and do not work around it.
 To authorise, within 30 minutes of the plan, run `bash /root/session.sh run <plan-digest>`. Then type exactly the line it asks for:
 `AUTHORISE` followed by the digest's first 16 hex digits. It refuses, and changes nothing, unless all of these hold: guest root, a
 terminal on `/dev/ttyS0`, the current plan's digest, a plan under 1800 s old that was authorisable, a recomputed plan identical
-byte for byte, the exact confirmation within 300 s, and no `/root/out`.
+byte for byte, the exact confirmation within 300 s, and no `/root/out`. After the confirmation it checks the digest, the age and
+the recomputed plan again, and archives exactly the plan bytes it confirmed; a failure there, or a failed write of the plan or the
+authorisation record, is a refusal and starts nothing.
 
 **Effects once authorised**, in order, each in its own transient unit with output under `/root/out/session/`:
 
@@ -178,7 +180,9 @@ failed and the trusted read did not run. A failure after the trusted read is rep
 memory pressure, evidence of network access, or the audit changing. The current unit is stopped and recorded as interrupted. Then
 finish.sh exports what exists. A second Ctrl-C during finish.sh stops it too, and then nothing is exported. Session exit 0 means
 every step returned 0, 1 means a step failed or the export was not confirmed, 10 means authorisation was refused (nothing changed),
-and 75 means termination is uncertain. On 75 or an unconfirmed export, **do not power off or tear down**: keep `$W` and report.
+and 75 means termination is uncertain, including a finish unit that was not confirmed stopped; then no export line is printed
+and nothing should be collected. Status 10 also covers a plan or authorisation record that could not be written, and a plan that
+expired or changed while the confirmation prompt waited: nothing is started. On 75 or an unconfirmed export, **do not power off or tear down**: keep `$W` and report.
 
 When the session has printed the export line, power off at the console: `systemctl poweroff`. Terminal 1 returns, and attach.py
 reports that the guest console closed.
@@ -215,8 +219,11 @@ echo "custody exit=$?"
 `collect` refuses a digest mismatch. Exit 0 with `custody sealed` is the only success. Exit 2 means collect failed or `$E` already
 existed, 3 means the pre-read capture is missing or fails its checksums, 4 means a post-read capture is present but fails its
 checksums, and any other nonzero exit means copying or sealing failed. On any of them, keep `$W` and stop. A **missing** post-read
-capture is not a checksum failure: an incomplete run (run.sh status 8, or a failure before the post-read capture) has none, so it
-is reported and sealed, and listed as missing evidence. An absent file is never a pass. Only `$E` itself is left writable, so that
+capture is not a checksum failure: a run that stopped after a verified pre-read capture but before the post-read capture has none,
+so that is reported and sealed, and the post-read capture is listed as missing evidence. A run with no verified pre-read capture,
+which includes every run.sh status 8 (the pre-read capture failed and the trusted read was prohibited), **stops at exit 3 and is
+not sealed**: `$E` holds the collected export unsealed and writable, nothing in it is custody evidence, and there is nothing for
+section 5 to reanalyse. Keep `$W` and `$E` as they are and report the run as INCOMPLETE. An absent file is never a pass. Only `$E` itself is left writable, so that
 section 5 can collect into `$E/analysis`; every evidence file stays read-only. Keep every failed attempt's directory.
 
 ## 5. Independent reanalysis in a second fresh guest [host, guest root, analyst]
@@ -264,13 +271,16 @@ runuser -u analyst -- bash -c 'cd && mkdir a && tar -xf export.tar -C a && git c
   { node src/research/develop-verify-trust-004/reanalyze.ts a/out/evidence a/out/run/trusted-read.json reanalysis.json; echo "reanalyze exit=$?"; }'
 ```
 
-Back as **[guest root]**, write the result to the copied evidence disk and power off:
+Back as **[guest root]**, write the result to the copied evidence disk. The guest powers off only when the write succeeded and
+the device prefix reads back with the archive's digest; otherwise it prints `ANALYSIS NOT WRITTEN` and stays up, so do not power
+it off: keep `$W2` and report.
 
 ```sh
 tar -C /home/analyst -cf /root/analysis.tar reanalysis.json && s=$(stat -c %s /root/analysis.tar) &&
   dd if=/root/analysis.tar of=/dev/vdc conv=fsync status=none &&
-  echo "analysis size=$s sha256=$(sha256sum < /root/analysis.tar | cut -c1-64) device-prefix-sha256=$(head -c "$s" /dev/vdc | sha256sum | cut -c1-64)"
-systemctl poweroff
+  h=$(sha256sum < /root/analysis.tar | cut -c1-64) && d=$(head -c "$s" /dev/vdc | sha256sum | cut -c1-64) &&
+  test "$h" = "$d" && echo "analysis size=$s sha256=$h device-prefix-sha256=$d" &&
+  systemctl poweroff || echo "ANALYSIS NOT WRITTEN: guest left running"
 ```
 
 On the **[host]**: `bash "$W/src/$T/qemu/host.sh" collect "$E/analysis" <size> <sha256>` with `ENDO13_WORK=$W2`, then

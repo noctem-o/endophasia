@@ -1,6 +1,16 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	cpSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -61,7 +71,13 @@ async function candidateOf(repo: string, commit: string) {
 	};
 }
 
-async function analyse(candidate: Record<string, unknown>, place: (repos: string) => void) {
+interface Shape {
+	record?: (recFile: string) => void;
+	listedMode?: string;
+	journals?: string[];
+}
+
+async function analyse(candidate: Record<string, unknown>, place: (repos: string) => void, shape: Shape = {}) {
 	const pre = join(root, "evidence/pre");
 	mkdirSync(pre, { recursive: true });
 	const inst = join(root, "inst/endo-verify-002");
@@ -97,6 +113,8 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 	mkdirSync(join(st, "journal"));
 	const recFile = join(st, "records", `${INV}.json`);
 	writeFileSync(recFile, JSON.stringify(rec));
+	shape.record?.(recFile);
+	for (const id of shape.journals ?? []) writeFileSync(join(st, "journal", `${id}.jsonl`), "{}\n");
 	sh("tar", [
 		"--numeric-owner",
 		"--owner=968",
@@ -114,7 +132,7 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 		[
 			`d ${mode(st)} 968 968 4 0 0 0 1 ${S}`,
 			`d ${mode(join(st, "records"))} 968 968 2 0 0 0 2 ${S}/records`,
-			`f ${mode(recFile)} 968 968 1 0 0 0 3 ${S}/records/${INV}.json`,
+			`f ${shape.listedMode ?? mode(recFile)} 968 968 1 0 0 0 3 ${S}/records/${INV}.json`,
 		].join("\n"),
 	);
 	writeFileSync(
@@ -139,6 +157,7 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 		row: result.rows.find((r) => r.invocation === INV) as Record<string, any>,
 		repo: (result.repositories as Record<string, any>[]).find((n) => n.repo === "installed-1/A"),
 		repositories: result.repositories as Record<string, any>[],
+		rows: result.rows as Record<string, any>[],
 		summary: result.summary,
 	};
 }
@@ -207,6 +226,57 @@ describe("TRUST-004 offline binding from archived repositories", () => {
 			"object format: objects/ab is not a directory",
 		);
 	}, 60_000);
+
+	describe("record metadata and content", () => {
+		const passing = async (shape: Shape) => {
+			const repo = join(root, "candidate");
+			const commit = makeRepo(repo, "sha1", false);
+			const candidate = await candidateOf(repo, commit);
+			return analyse(candidate, (repos) => cpSync(repo, join(repos, "A"), { recursive: true }), shape);
+		};
+
+		it.each([
+			["the archive is group- and other-writable while the listing says 644", "644", 0o666],
+			["the listing says 666 while the archive is 644", "666", 0o644],
+			["the listing and the archive disagree on a safe mode", "600", 0o644],
+		])(
+			"never trusts a record when %s",
+			async (_, listedMode, archived) => {
+				const { row } = await passing({ listedMode, record: (f) => chmodSync(f, archived) });
+				expect(row.authenticity).toMatchObject({ authoritative: false, reason: "file-not-the-verifier's" });
+				expect(row.confirmedPass).toBe(false);
+			},
+			60_000,
+		);
+
+		it("trusts a record whose listing and archive agree on a safe mode", async () => {
+			const { row } = await passing({ listedMode: "640", record: (f) => chmodSync(f, 0o640) });
+			expect(row.authenticity).toMatchObject({ class: "PASS", authoritative: true });
+		}, 60_000);
+
+		it("refuses a symbolically linked record without opening it", async () => {
+			const outside = join(root, "outside-record.json");
+			const { row } = await passing({
+				record: (f) => {
+					cpSync(f, outside);
+					rmSync(f);
+					symlinkSync(outside, f);
+				},
+			});
+			expect(row.authenticity.class).toBe("UNKNOWN");
+			expect(row.authenticity.authoritative).toBe(false);
+			expect(row.authenticity.reason).toMatch(/not a regular file in the capture; not opened/);
+			expect(row.confirmedPass).toBe(false);
+		}, 60_000);
+
+		it("refuses a malformed record and still reports the other invocations", async () => {
+			const other = "fedcba9876543210fedcba9876543210";
+			const result = await passing({ record: (f) => writeFileSync(f, "{"), journals: [other] });
+			expect(result.row.authenticity).toMatchObject({ class: "UNKNOWN", authoritative: false });
+			expect(result.row.authenticity.reason).toMatch(/^malformed-record: /);
+			expect(result.rows.find((r) => r.invocation === other)?.authenticity.reason).toBe("journal-without-record");
+		}, 60_000);
+	});
 
 	// Each layout leaves every retained object path empty: the commit is reachable only through a link out of the capture.
 	const outside: [string, (repos: string, external: string) => void][] = [

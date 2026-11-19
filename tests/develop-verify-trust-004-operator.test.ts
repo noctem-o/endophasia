@@ -146,3 +146,54 @@ describe("TRUST-004 OPERATOR.md analysis guest isolation audit", () => {
 		expect(a.stdout).not.toContain("first guest argv");
 	});
 });
+
+describe("TRUST-004 OPERATOR.md analysis result write-back", () => {
+	const block = () => {
+		const b = blocks("5. Independent reanalysis").find((s) => s.includes("analysis.tar"));
+		expect(b).toBeDefined();
+		return (b as string)
+			.replaceAll("/root/", "$G/root/")
+			.replaceAll("/dev/vdc", "$G/vdc")
+			.replaceAll("/home/analyst", "$G/home/analyst");
+	};
+	const write = (dd: string) => {
+		const G = join(root, "guest");
+		mkdirSync(join(G, "root"), { recursive: true });
+		mkdirSync(join(G, "home/analyst"), { recursive: true });
+		writeFileSync(join(G, "home/analyst/reanalysis.json"), "{}\n");
+		writeFileSync(join(G, "vdc"), Buffer.alloc(1 << 16));
+		const stubs = `systemctl() { echo "POWEROFF $*"; }\ndd() { ${dd}; }\n`;
+		return spawnSync("/usr/bin/bash", ["-c", stubs + block()], {
+			env: { PATH: "/usr/bin:/bin", G },
+			encoding: "utf8",
+		});
+	};
+
+	it("powers off only after the result is on the disk with a matching digest", () => {
+		const r = write('command dd "$@"');
+		expect(r.stdout, r.stderr).toMatch(/analysis size=\d+ sha256=([0-9a-f]{64}) device-prefix-sha256=\1/);
+		expect(r.stdout).toContain("POWEROFF poweroff");
+	});
+
+	it.each([
+		["the write fails", "return 1"],
+		[
+			"the device prefix does not read back",
+			'command dd "$@" && printf X | command dd of="$G/vdc" conv=notrunc status=none',
+		],
+	])("stays up when %s", (_, dd) => {
+		const r = write(dd);
+		expect(r.stdout, r.stderr).toContain("ANALYSIS NOT WRITTEN");
+		expect(r.stdout).not.toContain("POWEROFF");
+		expect(r.stdout).not.toContain("analysis size=");
+	});
+});
+
+describe("TRUST-004 OPERATOR.md status-8 custody text", () => {
+	it("says a run without a verified pre-read capture stops at exit 3 unsealed", () => {
+		const text = doc.slice(doc.indexOf("\n## 4."), doc.indexOf("\n## 5.")).replace(/\s+/g, " ");
+		expect(text).toContain("which includes every run.sh status 8");
+		expect(text).toContain("stops at exit 3 and is not sealed");
+		expect(text).not.toMatch(/status 8[^.]*is reported and sealed/);
+	});
+});

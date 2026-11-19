@@ -1,0 +1,91 @@
+{
+	"createdAt": "2026-11-19T08:02:40.212Z",
+	"evaluators": [
+		{
+			"definitionSha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa",
+			"driverSha256": "05996836f46b0e0449d0f11e810b3146c329b3282298f21de318dd3be0f6e3f2",
+			"negative": "failed",
+			"reference": "passed",
+			"task": "strict-positive"
+		}
+	],
+	"isolation": {
+		"containment": {
+			"mechanism": "systemd-user-scope",
+			"systemdRunSha256": "aef6c1677ae93f9d44d32dbbd12bb5958854013806b207599843bbc520010865",
+			"tasksMax": 512,
+			"version": "262"
+		},
+		"executableSha256": "33516b9cd1fa6432307ad71f23765fa30604b0a8d769dac0d2ba054e85aeec83",
+		"mechanism": "bubblewrap",
+		"version": "0.13.1"
+	},
+	"ordering": "blocked randomization: for each trial index k (0..N-1), every (task, condition) cell once, in an order shuffled by Fisher-Yates over mulberry32(seed) (one generator for the whole plan, blocks drawn in order)",
+	"plan": [
+		{
+			"condition": "unchanged",
+			"position": 0,
+			"task": "strict-positive",
+			"trial": 0
+		}
+	],
+	"profiles": [
+		{
+			"condition": "unchanged",
+			"sha256": "34c1a9fad470eb849cbc7372c053f6f4be7054747004196037adb093e63d5d72"
+		}
+	],
+	"runner": "endo-protected-runner.2",
+	"schemaVersion": "endo.protected-run.v0",
+	"seed": 20261109,
+	"seedSource": "spec",
+	"spec": {
+		"conditions": [
+			{
+				"agent": {
+					"argv": [
+						"/usr/bin/node",
+						"/agent/fixture.mjs"
+					],
+					"directory": "/home/noctem/.capy/work/endo9/trials.rpeXDE/unchanged/agent"
+				},
+				"description": "Deterministic offline process control",
+				"id": "unchanged"
+			}
+		],
+		"description": "Read count.mjs. Fix countPositive(values) to count only strictly positive numbers, excluding zero. Use edit, then stop.",
+		"id": "endo.experiment.acceptance-0e1e7f45-c6a2-4628-925a-2ef0ba107e5f",
+		"limits": {
+			"agentTimeoutMs": 120000,
+			"evaluationTimeoutMs": 30000,
+			"maxFileBytes": 65536,
+			"maxTotalBytes": 262144,
+			"outputBytes": 4194304,
+			"tmpfsBytes": 67108864
+		},
+		"runtime": {
+			"executables": [
+				"/usr/bin/node"
+			]
+		},
+		"schemaVersion": "endo.protected-experiment-spec.v0",
+		"seed": 20261109,
+		"tasks": [
+			{
+				"evaluator": {
+					"file": "/home/noctem/.capy/worktrees/jam_01M7SCW41AEABYGE6XGTP7QYA4/endophasia/research/develop-acceptance-001/checks/evaluator.json",
+					"sha256": "61d1d426d1d8e2d3c20c8848546b0572b926049d5dd64de672dbf81a9590f4aa"
+				},
+				"id": "strict-positive",
+				"submission": [
+					"count.mjs"
+				],
+				"workspace": {
+					"count.mjs": "export function countPositive(values) { return values.filter(x => x >= 0).length; }\n"
+				}
+			}
+		],
+		"trials": 1
+	},
+	"specSha256": "bfc314a206686ce99a8f14aec76b10958e80d92aa12e5cee52914c58e74fd4e1"
+}

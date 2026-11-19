@@ -1,0 +1,12 @@
+uid=1000(noctem) gid=1000(noctem) groups=1000(noctem),954(libvirt),962(docker),998(wheel)
+Linux 7.3.4-arch1-2 x86_64 GNU/Linux
+v26.13.1
+bubblewrap 0.13.1
+systemd 262 (262.2-1-arch)
+/run/docker.sock socket 660 0:962
+/run/libvirt/libvirt-sock socket 666 0:0
+verifier-identity-absent
+pi /usr/bin/pi -> /usr/lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js
+codex /usr/bin/codex -> /usr/lib/openai-codex/bin/codex
+claude /home/noctem/.local/bin/claude -> /home/noctem/.local/share/claude/versions/2.1.328
+["Ornith-1.5-9B-Q8_0","Qwen/Qwen3-0.6B-GGUF:Q8_0","Qwen/Qwen3-1.7B-GGUF:Q8_0"]

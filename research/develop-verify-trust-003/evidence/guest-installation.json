@@ -1,0 +1,71 @@
+{
+	"files": [
+		{
+			"path": "adapters/sandbox/bubblewrap.ts",
+			"sha256": "c991ae5e0f3bdfcee48c889fcd77d17a1de5c3e076f07a28eb66e0300f77df57"
+		},
+		{
+			"path": "adapters/sandbox/containment.ts",
+			"sha256": "042e86dae3c2e5bc7f47d247230763542f52a9f15085be8718ac8ff494852172"
+		},
+		{
+			"path": "adapters/sandbox/preflight.ts",
+			"sha256": "be8f93c4def359416663d740a01483a90911fdd2b2e560ba1b01dfe789cd751d"
+		},
+		{
+			"path": "oracle/roman-numerals-cli/manifest.json",
+			"sha256": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31"
+		},
+		{
+			"path": "oracle/roman-numerals-cli/negative/roman.mjs",
+			"sha256": "325acc0c59672b7e31f66df74710d0c0410ecd566d334dd31edc5d4f3b7099ad"
+		},
+		{
+			"path": "oracle/roman-numerals-cli/reference/roman.mjs",
+			"sha256": "31d17c480665262bbb34c03e4ff2f1bd00271a20e6b56de456ac1dfc1c726780"
+		},
+		{
+			"path": "package.json",
+			"sha256": "f69ed17eea98f49ee075f676bae79df9cb779e54d5887b94d94313d34511170c"
+		},
+		{
+			"path": "research/develop-verify-trust-002/service/objects.ts",
+			"sha256": "60f096be361abe33a0c8cdf729405c4b364dc6e14e1c02013beaaa85338157a3"
+		},
+		{
+			"path": "research/develop-verify-trust-002/service/records.ts",
+			"sha256": "bc1dc41d3e15bb74e783895021d7d0871e239518fa75306da1526e53e17a1809"
+		},
+		{
+			"path": "research/develop-verify-trust-002/service/request.ts",
+			"sha256": "d6f86cf2331dae093c4629572d6915d1bac1cb7dc72911dec9fe1cf6fbe9863e"
+		},
+		{
+			"path": "research/develop-verify-trust-002/service/verifier.ts",
+			"sha256": "0cabd5ee1ad5139a3e870591072240b7e715ad9edb8b9e1ef0f6abd96d4a305c"
+		},
+		{
+			"path": "runtime/contracts/canonical-json.ts",
+			"sha256": "281dca45e510dcc3b2db2a98993059c905be71369e6bdc46262309e89cd18fb5"
+		}
+	],
+	"mode": "installed",
+	"operatorHome": "/home/endoagent",
+	"operatorUid": 1500,
+	"schemaVersion": "endo.research.dvt002.installation.v0",
+	"sourceCommit": "89b6100b3b17779925da45cc170f5a657a307b0d",
+	"tasks": {
+		"roman-numerals-cli": {
+			"dir": "oracle/roman-numerals-cli",
+			"manifestSha256": "3dc2d86db7e8cb1b24a422ee1cebfd49eed61592bd6ff3442b05a28e23081d31",
+			"negativeSha256": "325acc0c59672b7e31f66df74710d0c0410ecd566d334dd31edc5d4f3b7099ad",
+			"referenceSha256": "31d17c480665262bbb34c03e4ff2f1bd00271a20e6b56de456ac1dfc1c726780"
+		}
+	},
+	"tools": {
+		"bwrap": "/usr/bin/bwrap",
+		"node": "/usr/bin/node",
+		"systemdRun": "/usr/bin/systemd-run"
+	}
+}
+

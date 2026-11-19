@@ -1,0 +1,24 @@
+{
+  "evidence": "synthetic account over live path metadata; not that uid or its effective access",
+  "h0": false,
+  "checks": [
+    {
+      "id": "h0-socket",
+      "path": "/run/docker.sock",
+      "observed": "not-writable",
+      "ok": true
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/libvirt/libvirt-sock",
+      "observed": "writable",
+      "ok": false
+    },
+    {
+      "id": "h0-socket",
+      "path": "/run/podman/podman.sock",
+      "observed": "absent",
+      "ok": true
+    }
+  ]
+}

@@ -31,7 +31,7 @@ import {
 import { homedir, release } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
-import { audit } from "./audit.ts";
+import { audit, sudoRefused } from "./audit.ts";
 import { collectObjects, encodeRequest, GIT_ENV, send } from "./client/client.ts";
 import { build, INSTALLED, renderUnits, TASK } from "./install/layout.ts";
 import { type ObjectType, objectId, resolveCandidate } from "./service/objects.ts";
@@ -166,9 +166,7 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 		// The audit cannot read sudo's rules. Here, in the installed phase only, sudo is asked never to prompt: it must refuse. A cached
 		// timestamp or a NOPASSWD rule would let it succeed, and either is a route the agent could use.
 		const sudo = exec("/usr/bin/sudo", ["-n", "true"], { env: { PATH: "/usr/bin" } });
-		const refused =
-			sudo.status === 1 &&
-			/a password is required|not allowed to execute|not in the sudoers/.test(sudo.stderr ?? "");
+		const refused = sudoRefused(sudo.status, sudo.stderr ?? "");
 		writeFileSync(join(W, "sudo-n.json"), `${JSON.stringify({ status: sudo.status, refused })}\n`);
 		if (!refused) {
 			log(

@@ -5,7 +5,7 @@
 // It reads file metadata, group membership and readable policy files. It runs no privileged command, contacts no daemon and exercises no
 // route. With --installed it also audits the installation's own paths (which must exist then).
 
-import { accessSync, constants, lstatSync, readdirSync, readFileSync, type Stats } from "node:fs";
+import { accessSync, constants, lstatSync, readdirSync, readFileSync, realpathSync, type Stats } from "node:fs";
 
 /** lstat that reports an unreadable path by its error code instead of throwing (a socket in a directory this account cannot search). */
 export function look(path: string): Stats | "absent" | string {
@@ -86,8 +86,15 @@ export function accountGroups(a: AccountSource): { gid: number; name: string; he
  * Writable by this account: by mode bits for every group the account has or could regain, and, for this process's own account, by
  * access(2), which also counts ACLs (operator review: mode bits alone miss an ACL grant).
  */
-function writable(path: string, account: AccountSource): string {
-	const s = look(path);
+export interface PathView {
+	look: (path: string) => Stats | "absent" | string;
+	/** access(2) for W_OK: returns when writable, throws an errno error otherwise. */
+	access: (path: string) => void;
+}
+const hostPaths: PathView = { look, access: (p) => accessSync(p, constants.W_OK) };
+
+export function writable(path: string, account: AccountSource, view: PathView = hostPaths): string {
+	const s = view.look(path);
 	if (typeof s === "string") return s;
 	const gids = new Set(accountGroups(account).map((g) => g.gid));
 	const uid = account.uid;
@@ -95,7 +102,7 @@ function writable(path: string, account: AccountSource): string {
 	if (w !== 0) return "writable";
 	if (account.effective === true) {
 		try {
-			accessSync(path, constants.W_OK);
+			view.access(path);
 			return "writable (access)";
 		} catch (e) {
 			const code = (e as NodeJS.ErrnoException).code;
@@ -176,6 +183,7 @@ export const H0_LIMITS = [
 export function audit(
 	installed: boolean,
 	account: AccountSource = hostAccount(),
+	view: PathView = hostPaths,
 ): { h0: boolean; closure: boolean; scope: string; limits: string[]; checks: Check[] } {
 	const checks: Check[] = [];
 	// H0: no unauthenticated route to root or another uid for this account, held now or configured.
@@ -193,7 +201,7 @@ export function audit(
 			ok: !g.includes(name),
 		});
 	for (const p of ["/run/docker.sock", "/run/libvirt/libvirt-sock", "/run/podman/podman.sock"]) {
-		const observed = writable(p, account);
+		const observed = writable(p, account, view);
 		checks.push({
 			id: "h0-socket",
 			path: p,
@@ -250,6 +258,7 @@ export function audit(
 		"/usr/bin/bwrap",
 		"/usr/bin/systemd-run",
 		"/usr/bin/systemctl",
+		python3(),
 		"/etc/ld.so.cache",
 	])
 		checks.push({ id: "closure-tool", path: p, observed: owned(p), ok: owned(p) === "ok" });
@@ -285,13 +294,7 @@ export function audit(
 			path: recordsPath,
 			observed:
 				typeof records === "string" ? records : `owner ${records.uid} mode ${(records.mode & 0o7777).toString(8)}`,
-			ok:
-				state === "ok" &&
-				(records === "absent" ||
-					(typeof records !== "string" &&
-						records.isDirectory() &&
-						records.uid === uid &&
-						(records.mode & 0o022) === 0)),
+			ok: recordDirectoryOk(state === "ok", records, uid),
 		});
 		// The socket's gate: its directory is the verifier's, mode 0750, group the operator's primary group, which has no other member.
 		const dir = look(dirname(INSTALLED.socket));
@@ -331,6 +334,28 @@ export function audit(
 		limits: H0_LIMITS,
 		checks,
 	};
+}
+
+/** The sandbox's descriptor sanitizer (bubblewrap.ts) runs /usr/bin/python3; its real file is part of the closure. */
+function python3(): string {
+	try {
+		return realpathSync("/usr/bin/python3");
+	} catch {
+		return "/usr/bin/python3";
+	}
+}
+
+/** The records directory: absent before the first request, otherwise the verifier's directory, not writable by others, under a verified state root. */
+export function recordDirectoryOk(stateOk: boolean, records: Stats | "absent" | string, verifierUid: number): boolean {
+	if (!stateOk) return false;
+	if (records === "absent") return true;
+	if (typeof records === "string") return false;
+	return records.isDirectory() && records.uid === verifierUid && (records.mode & 0o022) === 0;
+}
+
+/** `sudo -n true` refused by sudo's own policy, not a missing binary, an execution error or a success. Matches classic sudo's messages only. */
+export function sudoRefused(status: number | null, stderr: string): boolean {
+	return status === 1 && /a password is required|not allowed to execute|not in the sudoers/.test(stderr);
 }
 
 export function socketExcluded(observed: string): boolean {

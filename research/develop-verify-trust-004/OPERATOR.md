@@ -37,7 +37,7 @@ directories (`trust004-amendment9-run1*`), which hold **attempt 2's**. Both stay
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=refs/tags/trust004-amendment-11
+F=57e401c293311e6e7d8f384bae89fbb9a5d292fc
 FREEZE_REF=refs/tags/trust004-amendment-11
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
 W=$HOME/.capy/work/trust004-amendment11-run1

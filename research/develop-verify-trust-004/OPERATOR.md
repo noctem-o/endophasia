@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `refs/tags/trust004-amendment-10` (Amendment 10; exact file list in
+**Selected source commit:** `3cd5de20d0da5fea046f4c29e3666efe3342e61b` (Amendment 10; exact file list in
 [FROZEN.sha256](FROZEN.sha256); this commit's own copy of this page already quotes that manifest's digests). Stage exactly this commit, not the branch tip. Later commits on the branch only change
 documentation and tests outside the manifest; `tests/develop-verify-trust-004-freeze.test.ts` checks in CI that this page and the
 manifest agree, here and at this commit.
@@ -37,7 +37,7 @@ directories (`trust004-amendment9-run1*`), which hold **attempt 2's**. Both stay
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=refs/tags/trust004-amendment-10
+F=3cd5de20d0da5fea046f4c29e3666efe3342e61b
 FREEZE_REF=refs/tags/trust004-amendment-10
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
 W=$HOME/.capy/work/trust004-amendment10-run1

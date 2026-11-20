@@ -82,7 +82,7 @@ git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-00
 test -z "$(git -C "$W/src" status --porcelain)" && echo clean
 (cd "$W/src" && sha256sum --quiet --strict -c "$T/FROZEN.sha256") || { echo "frozen files do not match" >&2; exit 1; }
 wc -l < "$W/src/$T/FROZEN.sha256"                                # the guest plan's frozen-check must report this count
-grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 09b190c649dee7bef2839a59bd660c1912a7baf6003843d08fdc4303ca9e36f7
+grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 74cb36802508dd4262d6abb840e0e9891b00712204f65e589c9fec96059db758
 ```
 
 **Image and signature.** The protocol image is `Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2`, SHA-256
@@ -165,7 +165,7 @@ bash /root/session.sh plan
 ```
 
 Expected: only `lo`; disks `vda`, `vdb` (read-only) and `vdc`; the commit is `$F`; session.sh is
-`09b190c649dee7bef2839a59bd660c1912a7baf6003843d08fdc4303ca9e36f7`. The plan should end with `verdict AUTHORISABLE` and a
+`74cb36802508dd4262d6abb840e0e9891b00712204f65e589c9fec96059db758`. The plan should end with `verdict AUTHORISABLE` and a
 `plan-digest`. Read every line before authorising: handoff commit and record ID match the independent handoff, the staged
 commit matches that commit, stage-disk and bundle digests (the bundle is inside the stage
 disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all N entries match` with N equal to the count `wc -l` printed in section 1, `session-script is the staged commit's`, `network-interfaces lo`,

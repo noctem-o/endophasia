@@ -277,9 +277,9 @@ run() {
   mkdir -m 0700 "$OUT" 2>/dev/null || { say "refused: $OUT exists; this guest already ran an attempt"; return 10; }
   mkdir -m 0700 "$OUT/session" && cp "$SESSION/authorised.txt" "$OUT/session/plan.txt" &&
     [ "$(sha256sum < "$OUT/session/plan.txt" | cut -c1-64)" = "$d" ] &&
-    printf 'plan-digest %s\nauthorised-at %s\nconsole %s\nboot-id %s\nhandoff-commit %s\nhandoff-source %s\n' \
-      "$d" "$(date -u +%FT%T.%NZ)" "$(tty)" "$(cat /proc/sys/kernel/random/boot_id)" \
-      "${EXPECTED_FREEZE_COMMIT:-}" "${FREEZE_HANDOFF_SOURCE:-}" > "$OUT/session/authorisation.txt" ||
+    { echo "plan-digest $d" && echo "authorised-at $(date -u +%FT%T.%NZ)" && echo "console $(tty)" &&
+      echo "boot-id $(cat /proc/sys/kernel/random/boot_id)" && echo "handoff-commit ${EXPECTED_FREEZE_COMMIT:-}" &&
+      echo "handoff-source ${FREEZE_HANDOFF_SOURCE:-}"; } > "$OUT/session/authorisation.txt" ||
     { say "refused: the authorised plan and authorisation record could not be written; nothing was started"; return 10; }
   trap 'SESSION_INTERRUPTED=1 interrupted=1' INT TERM HUP
   note "authorised plan $d; Ctrl-C stops the current step and is recorded as an interruption"

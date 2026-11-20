@@ -213,6 +213,7 @@ describe("TRUST-004 analysis guest executes only the trusted checkout", () => {
 		["nested input refusal", 0, 4, 0, false, 4],
 		["failed analysis", 0, 0, 3, true, 3],
 		["successful analysis", 0, 0, 0, true, 0],
+		["successful analysis without a post-read capture", 0, 0, 0, true, 1],
 		["bad pre checksum", 0, 0, 0, false, 1],
 		["bad post checksum", 0, 0, 0, false, 1],
 		["missing pre capture", 0, 0, 0, false, 1],
@@ -228,6 +229,12 @@ describe("TRUST-004 analysis guest executes only the trusted checkout", () => {
 		writeFileSync(join(cap, "../pre.SHA256SUMS"), manifest);
 		if (scenario === "bad pre checksum") writeFileSync(join(cap, "sample"), "wrong");
 		if (scenario === "missing pre capture") rmSync(cap, { recursive: true });
+		if (scenario === "successful analysis") {
+			mkdirSync(join(cap, "../post"));
+			writeFileSync(join(cap, "../post/sample"), "sample");
+			writeFileSync(join(cap, "../post/SHA256SUMS"), manifest);
+			writeFileSync(join(cap, "../post.SHA256SUMS"), manifest);
+		}
 		if (scenario === "bad post checksum") {
 			mkdirSync(join(cap, "../post"));
 			writeFileSync(join(cap, "../post/sample"), "wrong");
@@ -256,8 +263,8 @@ describe("TRUST-004 analysis guest executes only the trusted checkout", () => {
 		expect(r.stdout.includes("PREFLIGHT")).toBe(extract === 0);
 		expect(r.stdout.includes("ANALYZING")).toBe(runsAnalyzer);
 		if (runsAnalyzer) {
-			expect(r.stdout).toContain(`reanalyze exit=${rc}`);
-			expect(r.stdout).toContain("post-read capture MISSING");
+			expect(r.stdout).toContain(`reanalyze exit=${analysis}`);
+			expect(r.stdout.includes("post-read capture MISSING")).toBe(scenario !== "successful analysis");
 		}
 		if (scenario === "bad pre checksum" || scenario === "bad post checksum")
 			expect(r.stdout).toContain("sample: FAILED");

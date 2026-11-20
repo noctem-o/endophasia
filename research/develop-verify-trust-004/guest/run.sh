@@ -22,6 +22,33 @@ start_run() { # start_run <k>: the agent's installed run, in the background
   invocation=$(systemctl show --property=InvocationID --value "endoagent-run-$1.service")
   [[ $invocation =~ ^[0-9a-f]{32}$ ]] || { stop_unit "endoagent-run-$1.service"; return 1; }
 }
+# Amendment 11: matrix.sh's collect, except that files under the agent's home are copied by agentfile.py: agent-owned regular files
+# only, never through a link at any component, never blocking on a FIFO. A refusal is recorded and fails collect; an absent file is
+# skipped, as before.
+AGENT_HOME=/home/endoagent
+agent_copy() { # agent_copy <path relative to AGENT_HOME> <destination>
+  local s=0
+  python3 -I "$T4/agentfile.py" "$AGENT_HOME" "$1" "$(id -u endoagent)" > "$2" 2>> "$OUT/collect-refusals.txt" || s=$?
+  [ "$s" = 0 ] && return 0
+  rm -f -- "$2"
+  [ "$s" = 3 ]
+}
+collect() {
+  ls -ln /var/lib/endo-verify-002 /var/lib/endo-verify-002/records /var/lib/endo-verify-002/journal > "$OUT/state-listing.txt" 2>&1
+  ls /var/lib/endo-verify-002/work >> "$OUT/state-listing.txt" 2>&1
+  local k f rel rc=0
+  for k in 1 2; do
+    mkdir -p "$OUT/installed-$k"
+    for f in results.json rehearsal.log audit.json sudo-n.json; do agent_copy "dvt/installed-$k/$f" "$OUT/installed-$k/$f" || rc=1; done
+  done
+  for f in "$AGENT_HOME"/probe-*.strace; do
+    rel=${f#"$AGENT_HOME"/}
+    [[ $rel =~ ^probe-[A-Za-z0-9_.-]+\.strace$ ]] || continue
+    agent_copy "$rel" "$OUT/$rel" || rc=1
+  done
+  inspect inspect-after.txt || rc=1
+  return "$rc"
+}
 WS="/home/endoagent/dvt/installed-1 /home/endoagent/dvt/installed-2 /home/endoagent/dvt/availability"
 stamp() { echo "$(date -u +%FT%T.%NZ) $*" | tee -a "$OUT/timeline.txt"; }
 

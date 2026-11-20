@@ -76,6 +76,32 @@ class GuestIntakeTests(unittest.TestCase):
             self.assertIn(reason, result.stderr)
         self.assertEqual(list(self.dest.iterdir()), [])
 
+    def test_repository_link_is_omitted_and_its_path_stays_reserved(self):
+        link = ("repos/L/link.mjs", tarfile.SYMTYPE)
+        regular = ("repos/L/roman.mjs", tarfile.REGTYPE)
+        self.archive([link, regular])
+        self.assertEqual(self.invoke("--repositories", "--check", self.source).returncode, 0)
+        extracted = self.invoke("--repositories", self.source, self.dest)
+        self.assertEqual(extracted.returncode, 0, extracted.stderr)
+        self.assertEqual([p.name for p in (self.dest / "repos/L").iterdir()], ["roman.mjs"])
+        for name in (link[0], link[0] + "/child"):
+            self.archive([link, (name, tarfile.REGTYPE)])
+            result = self.invoke("--repositories", "--check", self.source)
+            self.assertEqual(result.returncode, 65, result.stderr)
+            self.assertRegex(result.stderr, "duplicate|conflicting")
+
+    def test_repository_mode_still_refuses_links_on_protected_paths(self):
+        for path in ("repos", "repos/L", "repos/L/.git", "repos/L/.git/config",
+                     "repos/L/.git/objects/ab/object", "repos/L/.git/refs/heads/main",
+                     "repos/L/.git/packed-refs", "repos/L/objects/info/alternates"):
+            with self.subTest(path=path):
+                self.archive([(path, tarfile.SYMTYPE)])
+                for args in [("--check", self.source), (self.source, self.dest)]:
+                    result = self.invoke("--repositories", *args)
+                    self.assertEqual(result.returncode, 65, result.stderr)
+                    self.assertIn("symbolic link", result.stderr)
+                    self.assertFalse(self.dest.exists())
+
     def test_ustar_directory_validates_the_prefix_name_boundary(self):
         member = tarfile.TarInfo("/")
         member.type = tarfile.DIRTYPE

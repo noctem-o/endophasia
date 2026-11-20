@@ -6,6 +6,7 @@ import {
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
+	readFileSync,
 	rmSync,
 	statSync,
 	symlinkSync,
@@ -22,6 +23,7 @@ import { reanalyze } from "../research/develop-verify-trust-004/reanalyze.ts";
 // End to end through reanalyze() on a synthetic pre-read capture: one authentic-shaped PASS record whose candidate is a real commit,
 // and installed-1/repos/A arranged per case. Only binding and the repository note are asserted; grading depends on the host.
 const INV = "0123456789abcdef0123456789abcdef";
+const GUEST = "research/develop-verify-trust-004/guest";
 const digest = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
 const GIT_ENV = {
 	...process.env,
@@ -72,6 +74,7 @@ async function candidateOf(repo: string, commit: string) {
 }
 
 interface Shape {
+	captureRepos?: boolean;
 	ancestors?: readonly string[];
 	record?: (recFile: string) => void;
 	listedMode?: string;
@@ -159,7 +162,24 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 		const base = join(root, `ws-${a}`);
 		mkdirSync(join(base, "repos"), { recursive: true });
 		if (a === "installed-1") place(join(base, "repos"));
-		sh("tar", ["-cf", join(pre, `repos-${a}.tar`), "-C", base, "repos"]);
+		if (shape.captureRepos) {
+			const capture = readFileSync(join(GUEST, "capture.sh"), "utf8");
+			const functions = capture.slice(capture.indexOf("safe_root()"), capture.indexOf("listing()"));
+			sh("bash", [
+				"-euc",
+				`D=$1; shift
+log() { :; }
+${functions}
+archive "$@"`,
+				"capture-fixture",
+				pre,
+				`repos-${a}`,
+				base,
+				"repos",
+			]);
+		} else {
+			sh("tar", ["-cf", join(pre, `repos-${a}.tar`), "-C", base, "repos"]);
+		}
 	}
 	const names = readdirSync(pre).sort();
 	writeFileSync(
@@ -167,6 +187,7 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 		names.map((n) => `${digest(spawnSync("cat", [join(pre, n)]).stdout)}  ${n}\n`).join(""),
 	);
 	writeFileSync(join(root, "live.json"), '{"rows":[]}');
+	if (shape.captureRepos) sh("python3", ["-I", join(GUEST, "check-input.py"), pre]);
 	const result = await reanalyze(join(root, "evidence"), join(root, "live.json"));
 	return {
 		row: result.rows.find((r) => r.invocation === INV) as Record<string, any>,
@@ -178,6 +199,27 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 }
 
 describe("TRUST-004 offline binding from archived repositories", () => {
+	it("preflights and reanalyses capture.sh repository archives with the E1 fixture link", async () => {
+		const fixture = join(root, "fixture");
+		const commit = makeRepo(fixture, "sha1", false);
+		const candidate = await candidateOf(fixture, commit);
+		const { row, repositories, summary } = await analyse(
+			candidate,
+			(repos) => {
+				cpSync(fixture, join(repos, "A"), { recursive: true });
+				makeRepo(join(repos, "L"), "sha1", false);
+				symlinkSync("roman.mjs", join(repos, "L/link.mjs"));
+				sh("git", ["-C", join(repos, "L"), "add", "link.mjs"]);
+				sh("git", ["-C", join(repos, "L"), "commit", "-qm", "E1"]);
+			},
+			{ captureRepos: true },
+		);
+		expect(summary.refusedRepositoryArchives).toEqual([]);
+		expect(repositories).toHaveLength(2);
+		expect(summary.repositoriesRefused).toBe(0);
+		expect(row.authenticity).toMatchObject({ class: "PASS", authoritative: true });
+		expect(row.binding).toMatchObject({ status: "valid", exportSha256: candidate.exportSha256 });
+	}, 60_000);
 	describe("protected ancestor metadata", () => {
 		const inspect = async (ancestors: readonly string[]) =>
 			(await analyse({}, () => {}, { ancestors })).row.authenticity;

@@ -646,3 +646,31 @@ Changed or added pins, in addition to this protocol:
 - `research/develop-verify-trust-004/OPERATOR.md`: `5bbf6589523f266e2b294cad8be8a2c7ed545ed9f091d95e2ba8fc36b458cffb`
 - `research/develop-verify-trust-004/guest/controls.ts`: `a35200589a00de20e03441b86d8832b42897bc405be5c2ed62f1b2e07a678fb0`
 - `tests/develop-verify-trust-004-controls.test.ts`: `bfa4324229dc3604a5a95bcfccefafdd5dba970309866eaf7dadfd84d8990653`
+
+## Amendment 14 — do not refuse the archived E1 working-tree fixture link
+
+Independent offline confirmation of the PASSes has not been established for any session to date, including
+attempt 3. The reported 17/17 confirmations in attempt 3 came from the live trusted read, not section 5.
+Attempt 4 completed the live session with all controls held, but section 5 stopped in its preflight:
+capture.sh retains the working tree, including the E1 fixture `repos/L/link.mjs`, and the generic
+extractor rejected the entire repository archive. A labelled attempt 4 deviation that invoked the
+unmodified reanalyzer past that gate refused all 24 installed repositories and confirmed only 1 of 17
+PASSes. The 16 unconfirmed PASSes and 46 disagreements in that deviation do not establish a boundary
+failure or a successful independent confirmation. Prior captures, live observations and conclusions remain
+unchanged.
+
+Only repository archive intake changes. Preflight and reanalysis use the same extraction mode: links
+outside the repository paths needed to resolve Git objects are omitted from the extracted copy, never
+followed or materialized. Their names still count for duplicate and path-conflict checks. Links on the way
+to or under Git objects, refs, config or packed refs still refuse the archive, including links at the
+repository or .git root and the corresponding protected paths in bare repositories. All other archives
+continue to refuse links, and hard links and special files remain refused. The original archive still
+contains the fixture and is not altered. Neither the capture script nor the live protocol changes.
+
+The regression “preflights and reanalyses capture.sh repository archives with the E1 fixture link” uses
+the actual archive function from capture.sh with disposable Git fixtures and invokes real preflight and
+reanalysis. It failed on Amendment 13 at extract.py (exit 65, “symbolic link in archive”) and passes with
+the scoped intake, retaining a valid binding of the fixture PASS. This is an offline regression, not
+a new attempt or an offline confirmation of the retained live evidence. Separate extraction tests check
+that the working-tree link is not materialized, that its name remains reserved, and that protected paths
+still refuse links in both preflight and extraction.

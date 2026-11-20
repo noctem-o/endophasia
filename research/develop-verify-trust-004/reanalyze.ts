@@ -46,8 +46,14 @@ import {
 } from "../develop-verify-trust-003/guest/reader.ts";
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
-const extract = (input: string, dest: string) =>
-	run("/usr/bin/python3", ["-I", fileURLToPath(new URL("./guest/extract.py", import.meta.url)), input, dest]);
+const extract = (input: string, dest: string, mode: "--repositories" | undefined = undefined) =>
+	run("/usr/bin/python3", [
+		"-I",
+		fileURLToPath(new URL("./guest/extract.py", import.meta.url)),
+		...(mode === undefined ? [] : [mode]),
+		input,
+		dest,
+	]);
 const run = (cmd: string, args: string[]) => {
 	const r = spawnSync(cmd, args, { encoding: "utf8", maxBuffer: 256 << 20 });
 	if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")}: ${r.stderr}`);
@@ -377,7 +383,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 		for (const t of repoArchives) {
 			const into = join(scratch, t.slice(0, -4));
 			try {
-				extract(join(pre, t), into);
+				extract(join(pre, t), into, "--repositories");
 			} catch (err) {
 				refusedRepositoryArchives.push(t);
 				const listing = spawnSync("/usr/bin/tar", ["-tf", join(pre, t)], { encoding: "utf8" });

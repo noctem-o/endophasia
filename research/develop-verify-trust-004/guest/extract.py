@@ -35,7 +35,7 @@ def pax_path(data):
     return path
 
 
-def intake(src, dest):
+def intake(src, dest, repositories=False):
     paths = {}
     explicit = set()
     extended = False
@@ -60,11 +60,10 @@ def intake(src, dest):
             extended = True
         else:
             directory = member.type == tarfile.DIRTYPE
-            if member.type == tarfile.SYMTYPE:
-                raise ValueError("symbolic link in archive")
+            symbolic = member.type == tarfile.SYMTYPE
             if member.type == tarfile.LNKTYPE:
                 raise ValueError("hard link in archive")
-            if member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE) or member.linkname:
+            if not symbolic and (member.type not in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE) or member.linkname):
                 raise ValueError("only regular files and directories are accepted")
             if directory and size:
                 raise ValueError("directory has data")
@@ -80,6 +79,14 @@ def intake(src, dest):
             if len(name) > 4095 or len(parts) > 64 or any(
                     p in (".", "..") or not re.fullmatch(r"[a-zA-Z0-9._@+,=-]{1,255}", p) for p in parts):
                 raise ValueError("unsafe member name")
+            if symbolic:
+                metadata = ("objects", "refs", "config", "packed-refs")
+                if (not repositories or parts[0] != "repos" or len(parts) < 3
+                        or parts[2] in metadata
+                        or (parts[2] == ".git" and (len(parts) == 3 or parts[3] in metadata))):
+                    raise ValueError(f"symbolic link in archive: {name}")
+                if size:
+                    raise ValueError("symbolic link has data")
             if name in explicit:
                 raise ValueError("duplicate archive member")
             explicit.add(name)
@@ -95,7 +102,7 @@ def intake(src, dest):
                     paths[prefix] = is_dir
                     if dest is not None and is_dir:
                         (dest / prefix).mkdir(mode=0o700)
-            if not directory and dest is not None:
+            if not directory and not symbolic and dest is not None:
                 with (dest / name).open("xb") as out:
                     remaining = size
                     while remaining:
@@ -113,7 +120,7 @@ def intake(src, dest):
             raise ValueError("invalid member padding")
 
 
-def run(source, dest):
+def run(source, dest, repositories=False):
     if source.resolve().is_relative_to(CHECKOUT) or (dest and dest.resolve().is_relative_to(CHECKOUT)):
         raise ValueError("data must stay outside the trusted checkout")
     with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as src:
@@ -123,7 +130,7 @@ def run(source, dest):
         if dest is not None:
             dest.mkdir(mode=0o700)
         try:
-            intake(src, dest)
+            intake(src, dest, repositories)
         except BaseException:
             if dest is not None:
                 shutil.rmtree(dest)
@@ -131,14 +138,18 @@ def run(source, dest):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        sys.exit("usage: extract.py INPUT NEW_DIR | --check INPUT")
+    args = sys.argv[1:]
+    repositories = args[:1] == ["--repositories"]
+    if repositories:
+        args = args[1:]
+    if len(args) != 2:
+        sys.exit("usage: extract.py [--repositories] INPUT NEW_DIR | [--repositories] --check INPUT")
     os.umask(0o077)
     try:
-        if sys.argv[1] == "--check":
-            run(Path(sys.argv[2]), None)
+        if args[0] == "--check":
+            run(Path(args[1]), None, repositories)
         else:
-            run(Path(sys.argv[1]), Path(sys.argv[2]))
+            run(Path(args[0]), Path(args[1]), repositories)
     except (ValueError, OSError, tarfile.TarError) as exc:
         print(f"archive refused: {exc}", file=sys.stderr)
         sys.exit(65)

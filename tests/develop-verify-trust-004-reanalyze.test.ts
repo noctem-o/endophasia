@@ -34,6 +34,31 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
+it("writes an INCOMPLETE diagnostic if the verified pre-read input is unusable", () => {
+	const evidence = join(root, "evidence");
+	mkdirSync(evidence);
+	const out = join(root, "report.json");
+	const r = spawnSync(
+		process.execPath,
+		[
+			"research/develop-verify-trust-004/reanalyze.ts",
+			evidence,
+			join(root, "live.json"),
+			out,
+			"post-read capture MISSING",
+		],
+		{ encoding: "utf8" },
+	);
+	expect(r.status, r.stderr).toBe(1);
+	const report = JSON.parse(readFileSync(out, "utf8"));
+	expect(report).toMatchObject({
+		status: "INCOMPLETE",
+		evidenceIssues: ["post-read capture MISSING", "pre-read reanalysis could not complete"],
+		reason: expect.stringContaining("SHA256SUMS"),
+	});
+	expect(report).not.toHaveProperty("rows");
+});
+
 it("uses only verified copies for analysis and reports the digest of the manifest checked", () => {
 	expect(verifyCapture(source, verified)).toEqual({
 		repoArchives: ["repos-availability.tar", "repos-installed-1.tar", "repos-installed-2.tar"],

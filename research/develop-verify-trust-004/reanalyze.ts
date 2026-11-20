@@ -298,7 +298,7 @@ export function verifyCapture(source: string, pre: string) {
 	return { repoArchives, preManifestSha256: sha256(manifest) };
 }
 
-export async function reanalyze(evidence: string, liveRead: string) {
+export async function reanalyze(evidence: string, liveRead: string, captureIssues: readonly string[] = []) {
 	const scratch = mkdtempSync(join(tmpdir(), "trust004-reanalysis-"));
 	try {
 		const pre = join(scratch, "pre");
@@ -565,8 +565,36 @@ export async function reanalyze(evidence: string, liveRead: string) {
 		}
 
 		// 7. Agreement with the live read, by invocation id and export digest.
-		const live = JSON.parse(readFileSync(liveRead, "utf8")) as { rows: Record<string, any>[] };
-		const liveBy = new Map(live.rows.map((r) => [r.invocation as string, r]));
+		const evidenceIssues = [...captureIssues];
+		let liveBy: Map<string, Record<string, any>> | null = null;
+		try {
+			const live = JSON.parse(readRegular(liveRead).toString("utf8")) as { rows: Record<string, any>[] };
+			const compared = new Map<string, Record<string, any>>();
+			if (!Array.isArray(live?.rows)) throw new Error("missing rows");
+			for (const r of live.rows) {
+				if (
+					typeof r?.invocation !== "string" ||
+					!/^[0-9a-f]{32}$/.test(r.invocation) ||
+					compared.has(r.invocation) ||
+					typeof r.authenticity?.class !== "string" ||
+					typeof r.authenticity?.authoritative !== "boolean" ||
+					typeof r.binding?.status !== "string" ||
+					typeof r.grade?.status !== "string" ||
+					typeof r.confirmedPass !== "boolean" ||
+					typeof r.falsePass !== "boolean" ||
+					typeof r.unconfirmedPass !== "boolean"
+				)
+					throw new Error("invalid or duplicate comparison row");
+				compared.set(r.invocation, r);
+			}
+			liveBy = compared;
+		} catch (err) {
+			evidenceIssues.push(
+				(err as NodeJS.ErrnoException).code === "ENOENT"
+					? "live trusted read MISSING"
+					: "live trusted read INVALID",
+			);
+		}
 		const view = (r: Record<string, any> | undefined) =>
 			r === undefined
 				? null
@@ -581,14 +609,18 @@ export async function reanalyze(evidence: string, liveRead: string) {
 						falsePass: r.falsePass,
 						unconfirmedPass: r.unconfirmedPass,
 					};
-		const disagreements = [...new Set([...liveBy.keys(), ...rows.map((r) => r.invocation as string)])]
-			.sort()
-			.map((inv) => ({
-				invocation: inv,
-				live: view(liveBy.get(inv)),
-				offline: view(rows.find((r) => r.invocation === inv)),
-			}))
-			.filter((d) => JSON.stringify(d.live) !== JSON.stringify(d.offline));
+		const compared = liveBy;
+		const disagreements =
+			compared === null
+				? null
+				: [...new Set([...compared.keys(), ...rows.map((r) => r.invocation as string)])]
+						.sort()
+						.map((inv) => ({
+							invocation: inv,
+							live: view(compared.get(inv)),
+							offline: view(rows.find((r) => r.invocation === inv)),
+						}))
+						.filter((d) => JSON.stringify(d.live) !== JSON.stringify(d.offline));
 		const commits = [...new Set(rows.map((r) => r.commit).filter((c): c is string => typeof c === "string"))].sort();
 		const commitsMissing = commits.filter((c) =>
 			rows.filter((r) => r.commit === c).every((r) => r.binding.reason === "commit-not-found"),
@@ -596,6 +628,8 @@ export async function reanalyze(evidence: string, liveRead: string) {
 		const authentic = rows.filter((r) => r.authenticity.authoritative && r.authenticity.class === "PASS");
 		return {
 			schemaVersion: "endo.research.dvt004.reanalysis.v0",
+			...(evidenceIssues.length > 0 ? { evidenceStatus: "INCOMPLETE" } : {}),
+			evidenceIssues,
 			source: {
 				preManifestSha256,
 				installationId,
@@ -635,7 +669,7 @@ export async function reanalyze(evidence: string, liveRead: string) {
 				repositoriesRefused: repoNotes.filter((n) => "refused" in n).length,
 				stateArchiveRefusal: stateRefusal,
 				refusedRepositoryArchives,
-				disagreementsWithLive: disagreements.length,
+				disagreementsWithLive: disagreements?.length ?? null,
 			},
 			disagreements,
 			rows,
@@ -647,13 +681,30 @@ export async function reanalyze(evidence: string, liveRead: string) {
 }
 
 if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.argv[1]) {
-	const [evidence, liveRead, out] = process.argv.slice(2);
+	const [evidence, liveRead, out, ...captureIssues] = process.argv.slice(2);
 	if (evidence === undefined || liveRead === undefined || out === undefined)
 		throw new Error("usage: reanalyze.ts <evidence dir> <live trusted-read.json> <out.json>");
-	const result = await reanalyze(evidence, liveRead);
-	writeFileSync(out, `${JSON.stringify(result, null, 1)}\n`);
-	console.log(JSON.stringify(result.summary, null, 1));
+	let result: Awaited<ReturnType<typeof reanalyze>> | undefined;
+	try {
+		result = await reanalyze(evidence, liveRead, captureIssues);
+	} catch (err) {
+		const reason = String(err).slice(0, 1000);
+		console.error(reason);
+		const diagnostic = {
+			schemaVersion: "endo.research.dvt004.analysis-status.v0",
+			status: "INCOMPLETE",
+			evidenceIssues: [...captureIssues, "pre-read reanalysis could not complete"],
+			reason,
+		};
+		writeFileSync(out, `${JSON.stringify(diagnostic, null, 1)}\n`);
+	}
+	if (result !== undefined) {
+		writeFileSync(out, `${JSON.stringify(result, null, 1)}\n`);
+		console.log(JSON.stringify({ ...result.summary, evidenceIssues: result.evidenceIssues }, null, 1));
+	}
 	process.exitCode =
+		result !== undefined &&
+		result.evidenceIssues.length === 0 &&
 		result.summary.stateArchiveRefusal === null &&
 		result.summary.refusedRepositoryArchives.length === 0 &&
 		result.summary.disagreementsWithLive === 0 &&

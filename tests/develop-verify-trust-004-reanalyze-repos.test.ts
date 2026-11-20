@@ -199,6 +199,44 @@ archive "$@"`,
 }
 
 describe("TRUST-004 offline binding from archived repositories", () => {
+	it.each([
+		["missing", null, "live trusted read MISSING"],
+		["truncated", '{"rows":[', "live trusted read INVALID"],
+		["partial row", '{"rows":[{"invocation":"0123456789abcdef0123456789abcdef"}]}', "live trusted read INVALID"],
+	])("retains independent binding when the live trusted read is %s", async (_, content, issue) => {
+		const fixture = join(root, "fixture");
+		const candidate = await candidateOf(fixture, makeRepo(fixture, "sha1", false));
+		await analyse(candidate, (repos) => cpSync(fixture, join(repos, "A"), { recursive: true }));
+		const live = join(root, "live.json");
+		if (content === null) rmSync(live);
+		else writeFileSync(live, content);
+		const out = join(root, "report.json");
+		const result = spawnSync(
+			process.execPath,
+			[
+				"research/develop-verify-trust-004/reanalyze.ts",
+				join(root, "evidence"),
+				live,
+				out,
+				"post-read capture INVALID",
+			],
+			{ encoding: "utf8", timeout: 30_000 },
+		);
+		expect(result.status, result.stderr).toBe(1);
+		const report = JSON.parse(readFileSync(out, "utf8"));
+		expect(report).toMatchObject({
+			evidenceStatus: "INCOMPLETE",
+			evidenceIssues: ["post-read capture INVALID", issue],
+			disagreements: null,
+			summary: { disagreementsWithLive: null },
+			rows: [
+				expect.objectContaining({
+					binding: expect.objectContaining({ status: "valid", exportSha256: candidate.exportSha256 }),
+				}),
+			],
+		});
+	});
+
 	it("preflights and reanalyses capture.sh repository archives with the E1 fixture link", async () => {
 		const fixture = join(root, "fixture");
 		const commit = makeRepo(fixture, "sha1", false);

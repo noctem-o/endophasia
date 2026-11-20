@@ -297,18 +297,35 @@ describe("TRUST-004 analysis guest intake", () => {
 
 describe("TRUST-004 analysis guest executes only the trusted checkout", () => {
 	it.each([
-		["extraction refusal", 2, 0, 0, false, 2],
-		["nested input refusal", 0, 4, 0, false, 4],
-		["failed analysis", 0, 0, 3, true, 3],
-		["successful analysis", 0, 0, 0, true, 0],
-		["successful analysis without a post-read capture", 0, 0, 0, true, 1],
-		["bad pre checksum", 0, 0, 0, false, 1],
-		["bad post checksum", 0, 0, 0, false, 1],
-		["missing pre capture", 0, 0, 0, false, 1],
-	])("%s", (scenario, extract, preflight, analysis, runsAnalyzer, rc) => {
+		["unverified export", 0, 0, 0, false, 1, ["verified outer export MISSING"]],
+		["extraction refusal", 2, 0, 0, false, 2, ["outer export INVALID"]],
+		["nested input refusal", 0, 4, 0, false, 4, ["post-read capture MISSING", "pre-read archive intake INVALID"]],
+		["failed analysis", 0, 0, 3, true, 3, ["post-read capture MISSING"]],
+		[
+			"analyzer produces no report",
+			0,
+			0,
+			3,
+			true,
+			3,
+			["post-read capture MISSING", "reanalyzer did not write a report"],
+		],
+		["successful analysis", 0, 0, 0, true, 0, []],
+		["successful analysis without a post-read capture", 0, 0, 0, true, 1, ["post-read capture MISSING"]],
+		["bad pre checksum", 0, 0, 0, false, 1, ["post-read capture MISSING", "pre-read capture INVALID"]],
+		["bad post checksum", 0, 0, 0, true, 1, ["post-read capture INVALID"]],
+		["partial post capture", 0, 0, 0, true, 1, ["post-read capture INVALID"]],
+		["missing post manifest copy", 0, 0, 0, true, 1, ["post-read capture INVALID"]],
+		["mismatching post manifest copy", 0, 0, 0, true, 1, ["post-read capture INVALID"]],
+		["missing pre capture", 0, 0, 0, false, 1, ["post-read capture MISSING", "pre-read capture MISSING"]],
+		["partial pre capture", 0, 0, 0, false, 1, ["post-read capture MISSING", "pre-read capture INVALID"]],
+	] as const)("%s", (scenario, extract, preflight, analysis, runsAnalyzer, rc, issues) => {
 		const source = join(root, "opt/trust004-source");
 		const input = join(root, "analyst/input");
 		mkdirSync(source, { recursive: true });
+		mkdirSync(join(root, "opt/trust004-result"));
+		const report = join(root, "opt/trust004-result/analysis.json");
+		if (scenario !== "unverified export") writeFileSync(join(root, "opt/trust004-export.tar"), "dummy");
 		const cap = join(input, "out/evidence/pre");
 		mkdirSync(cap, { recursive: true });
 		const manifest = `${sha("sample")}  sample\n`;
@@ -316,22 +333,28 @@ describe("TRUST-004 analysis guest executes only the trusted checkout", () => {
 		writeFileSync(join(cap, "SHA256SUMS"), manifest);
 		writeFileSync(join(cap, "../pre.SHA256SUMS"), manifest);
 		if (scenario === "bad pre checksum") writeFileSync(join(cap, "sample"), "wrong");
-		if (scenario === "missing pre capture") rmSync(cap, { recursive: true });
-		if (scenario === "successful analysis") {
-			mkdirSync(join(cap, "../post"));
-			writeFileSync(join(cap, "../post/sample"), "sample");
-			writeFileSync(join(cap, "../post/SHA256SUMS"), manifest);
-			writeFileSync(join(cap, "../post.SHA256SUMS"), manifest);
+		if (scenario === "missing pre capture") {
+			rmSync(cap, { recursive: true });
+			rmSync(join(cap, "../pre.SHA256SUMS"));
 		}
-		if (scenario === "bad post checksum") {
+		if (scenario === "partial pre capture") rmSync(join(cap, "SHA256SUMS"));
+		if (scenario === "partial post capture") mkdirSync(join(cap, "../post"));
+		if (
+			scenario === "successful analysis" ||
+			scenario === "bad post checksum" ||
+			scenario === "missing post manifest copy" ||
+			scenario === "mismatching post manifest copy"
+		) {
 			mkdirSync(join(cap, "../post"));
-			writeFileSync(join(cap, "../post/sample"), "wrong");
+			writeFileSync(join(cap, "../post/sample"), scenario === "bad post checksum" ? "wrong" : "sample");
 			writeFileSync(join(cap, "../post/SHA256SUMS"), manifest);
-			writeFileSync(join(cap, "../post.SHA256SUMS"), manifest);
+			if (scenario !== "missing post manifest copy")
+				writeFileSync(
+					join(cap, "../post.SHA256SUMS"),
+					scenario === "mismatching post manifest copy" ? "different" : manifest,
+				);
 		}
 		const execution = guestBlock("runuser -u analyst");
-		const analysisScript = execution.split("bash -euc '")[1]?.split("'\necho")[0];
-		expect(analysisScript).toBeDefined();
 		const stubs = `python3() {
 		  test "$PWD" = "${source}" && test "$1" = -I || return 90
 		  case "$2" in
@@ -343,20 +366,31 @@ describe("TRUST-004 analysis guest executes only the trusted checkout", () => {
 		node() {
 		  test "$PWD" = "${source}" && test "$1" = "${source}/${T}/reanalyze.ts" && test "$2" = "${input}/out/evidence" &&
 		  test "$3" = "${input}/out/run/trusted-read.json" && test "$4" = "${root}/opt/trust004-result/analysis.json" || return 94
-		  echo ANALYZING; return ${analysis}
+		  echo ANALYZING
+		  test "$#" = ${4 + issues.length - (scenario === "analyzer produces no report" ? 1 : 0)} || return 95
+		  ${issues
+				.slice(0, scenario === "analyzer produces no report" ? -1 : undefined)
+				.map((issue, index) => `test "$${5 + index}" = "${issue}" || return 96`)
+				.join("\n")}
+		  ${scenario === "analyzer produces no report" ? "" : `printf '%s\\n' '${JSON.stringify({ evidenceIssues: issues, analysisRetained: true })}' > "$4"`}
+		  return ${analysis}
 		}
 		`;
-		const r = shell(`set -eu\n${stubs}\n${analysisScript}`);
-		expect(r.status, r.stderr).toBe(rc);
-		expect(r.stdout.includes("PREFLIGHT")).toBe(extract === 0);
+		const r = shell(`${stubs}
+export -f python3 node
+runuser() { /usr/bin/bash -euc "${"$"}{10}"; }
+${execution}`);
+		expect(r.status, r.stdout + r.stderr).toBe(rc);
+		expect(r.stdout).toContain(`analyst command exit=${rc}`);
+		expect(r.stdout.includes("PREFLIGHT")).toBe(runsAnalyzer || scenario === "nested input refusal");
 		expect(r.stdout.includes("ANALYZING")).toBe(runsAnalyzer);
-		if (runsAnalyzer) {
-			expect(r.stdout).toContain(`reanalyze exit=${analysis}`);
-			expect(r.stdout.includes("post-read capture MISSING")).toBe(scenario !== "successful analysis");
-		}
+		if (runsAnalyzer) expect(r.stdout).toContain(`reanalyze exit=${analysis}`);
+		const retained = JSON.parse(readFileSync(report, "utf8"));
+		expect(retained.evidenceIssues).toEqual(issues);
+		if (!runsAnalyzer || scenario === "analyzer produces no report") expect(retained.status).toBe("INCOMPLETE");
+		else expect(retained.analysisRetained).toBe(true);
 		if (scenario === "bad pre checksum" || scenario === "bad post checksum")
 			expect(r.stdout).toContain("sample: FAILED");
-		if (scenario === "missing pre capture") expect(r.stderr).toContain("No such file or directory");
 	});
 });
 

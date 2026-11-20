@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Freeze tag:** `refs/tags/trust004-amendment-15` (Amendment 15; exact file list in
+**Freeze tag:** `refs/tags/trust004-amendment-16` (Amendment 16; exact file list in
 [FROZEN.sha256](FROZEN.sha256)). Stage only the full commit ID in the independently verified handoff, never the branch tip
 or a commit obtained solely from the tag. This page is itself one of the
 frozen files, so the copy inside that commit is this page: read it from the checkout you stage. `tests/develop-verify-trust-004-freeze.test.ts`
@@ -32,18 +32,18 @@ a read-only disk holding a git bundle of the commit and a blank evidence disk.
 
 Set `ENDO13_WORK` explicitly in every terminal: `host.sh` refuses an empty setting. Never point it at
 `~/.capy/work/endo13`, which holds **attempt 1's retained evidence**, or at the Amendment 9 and Amendment 12 work and
-evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`), which hold **attempts 2 and 3**. Also retain **attempt 4** (`trust004-amendment13-run1*`) and any Amendment 14 work. All stay read only.
+evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`), which hold **attempts 2 and 3**. Also retain **attempt 4** (`trust004-amendment13-run1*`) and any Amendment 14 or 15 work. All stay read only.
 
 ## 1. Preconditions and inputs [host]
 
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-FREEZE_REF=refs/tags/trust004-amendment-15
+FREEZE_REF=refs/tags/trust004-amendment-16
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment15-run1
-W2=$HOME/.capy/work/trust004-amendment15-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment15-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment16-run1
+W2=$HOME/.capy/work/trust004-amendment16-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment16-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -270,7 +270,7 @@ tail -n1 "$W2/vm/qemu-argv.log"
 
 On the second console, **[guest root]**, check that only loopback is present. Use the read-only **host-staged** disk
 (`/dev/vdb`), not the evidence disk, for the source. Set `F` to the selected commit from section 1 in this guest shell.
-Run each block in order; stop on any nonzero status. The source and its ancestors belong to root. Neither the analyst nor
+Run each block in order; stop if trusted guest setup fails. The source and its ancestors belong to root. Neither the analyst nor
 the extraction can replace the checkout, the report pathname, or a parent of either.
 
 ```sh
@@ -293,6 +293,8 @@ the extraction can replace the checkout, the report pathname, or a parent of eit
 
 Set `SIZE` and `DIGEST` to exactly the section 4 values in this shell. A short read can return success from head;
 check the actual byte count independently of the digest. Never interpolate free-form console text as a command.
+Use a fresh analysis guest with no existing `/opt/trust004-export.tar`. If verification fails, do not install or parse the
+unverified bytes; proceed to the analyst block to record the missing verified export, then retain the resulting report.
 
 ```sh
 (
@@ -308,41 +310,86 @@ check the actual byte count independently of the digest. Never interpolate free-
 **[analyst]**, through runuser from the root console. Start in the trusted checkout, not the evidence tree.
 Only the trusted extractor parses the outer archive, as the analyst, into a previously nonexistent input directory.
 Do not source, import or run anything from that directory. The analyst checks capture manifests in the disposable
-guest; a missing post-read capture is missing evidence, never a pass: the report is still produced, and the block exits nonzero. Candidate grading belongs only in the frozen grader.
+guest. Missing or invalid evidence produces a report and a nonzero status. An invalid pre-read capture is never graded; if only
+post-read evidence or the live comparison is unavailable, retain the independently supported analysis and mark the gap in its
+report. Candidate grading belongs only in the frozen grader.
 
 ```sh
+analysis_status=0
 runuser -u analyst -- env -i HOME=/home/analyst PATH=/usr/bin bash -euc '
   cd /opt/trust004-source
   input=/home/analyst/input
-  python3 -I /opt/trust004-source/research/develop-verify-trust-004/guest/extract.py /opt/trust004-export.tar "$input"
+  report=/opt/trust004-result/analysis.json
+  : > "$report"
+  issues=()
+  issue() { echo "$1"; issues+=("$1"); }
+  incomplete() {
+    local separator= item
+    {
+      printf "{\"schemaVersion\":\"endo.research.dvt004.analysis-status.v0\",\"status\":\"INCOMPLETE\",\"evidenceIssues\":["
+      for item in "${issues[@]}"; do printf "%s\"%s\"" "$separator" "$item"; separator=,; done
+      printf "]}\n"
+    } > "$report" || exit 1
+    exit "$1"
+  }
+  if test ! -f /opt/trust004-export.tar; then
+    issue "verified outer export MISSING"
+    incomplete 1
+  fi
+  if python3 -I /opt/trust004-source/research/develop-verify-trust-004/guest/extract.py /opt/trust004-export.tar "$input"; then
+    :
+  else
+    rc=$?
+    issue "outer export INVALID"
+    incomplete "$rc"
+  fi
   cap=$input/out/evidence
-  python3 -I /opt/trust004-source/research/develop-verify-trust-004/guest/check-input.py "$cap/pre"
   verify_capture() (
-    cd "$cap/$1"
-    cmp SHA256SUMS "$cap/$1.SHA256SUMS"
+    cd "$cap/$1" || return 1
+    cmp SHA256SUMS "$cap/$1.SHA256SUMS" || return 1
+    test -s SHA256SUMS || return 1
     pattern="^[a-f0-9]{64}  [A-Za-z0-9][A-Za-z0-9_.-]*$"
     while IFS= read -r row || test -n "$row"; do
       [[ $row =~ $pattern ]] || exit 1
     done < SHA256SUMS
     sha256sum --quiet --strict -c SHA256SUMS
   )
-  verify_capture pre
-  missing_post=0
   if test -e "$cap/post" || test -e "$cap/post.SHA256SUMS"; then
-    verify_capture post
+    verify_capture post || issue "post-read capture INVALID"
   else
-    echo "post-read capture MISSING"
-    missing_post=1
+    issue "post-read capture MISSING"
+  fi
+  if test ! -e "$cap/pre" && test ! -e "$cap/pre.SHA256SUMS"; then
+    issue "pre-read capture MISSING"
+    incomplete 1
+  fi
+  if ! verify_capture pre; then
+    issue "pre-read capture INVALID"
+    incomplete 1
+  fi
+  if python3 -I /opt/trust004-source/research/develop-verify-trust-004/guest/check-input.py "$cap/pre"; then
+    :
+  else
+    rc=$?
+    issue "pre-read archive intake INVALID"
+    incomplete "$rc"
   fi
   rc=0
-  node /opt/trust004-source/research/develop-verify-trust-004/reanalyze.ts "$cap" "$input/out/run/trusted-read.json" /opt/trust004-result/analysis.json || rc=$?
+  node /opt/trust004-source/research/develop-verify-trust-004/reanalyze.ts "$cap" "$input/out/run/trusted-read.json" "$report" "${issues[@]}" || rc=$?
   echo "reanalyze exit=$rc"
-  if test "$missing_post" = 1 && test "$rc" = 0; then rc=1; fi
-  exit "$rc"'
-echo "analyst command exit=$?"
+  if test ! -s "$report"; then
+    issue "reanalyzer did not write a report"
+    test "$rc" != 0 || rc=1
+    incomplete "$rc"
+  fi
+  if test "${#issues[@]}" != 0 && test "$rc" = 0; then rc=1; fi
+  exit "$rc"' || analysis_status=$?
+echo "analyst command exit=$analysis_status"
+(exit "$analysis_status")
 ```
 
-Record the exit status. A refusal or missing report is INCOMPLETE: retain both guests' work, do not fabricate a report.
+Record the exit status. An evidence refusal is INCOMPLETE; retain both guests' work and export the diagnostic report below.
+If the trusted source, isolation, or report destination cannot be established, stop and preserve the guest disks instead.
 Inspect a produced report in this guest: check disagreements, false or unconfirmed PASS, refused repositories and commits
 without objects against PROTOCOL.md §9. A completed report may explain a failed result; preserve it even if reanalysis returned nonzero.
 

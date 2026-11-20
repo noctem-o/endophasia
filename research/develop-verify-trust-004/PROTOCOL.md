@@ -694,3 +694,30 @@ pointing to a different commit with an internally consistent manifest, and missi
 On Amendment 14 the three negative cases continued to staging; on Amendment 15 only the matching case
 does. Session tests cover refusal and authorisation records. No live run was made. Amendment 14's archive
 handling, capture, TRUST-003 and the G expectations are unchanged.
+
+## Amendment 16 — retain an independent report when evidence is incomplete
+
+Partial post-read captures used to abort the analyst's shell before reanalysis, including a directory
+without its manifest or mismatched capture bytes. The operator block now records a missing or invalid
+post-read capture in the report, runs independent reanalysis of verified pre-read evidence, and
+returns nonzero. The post-read capture is not substituted for or used to verify pre-read evidence.
+
+The same sweep covers a missing verified outer export, an archive the extractor refuses, a missing or
+invalid pre-read capture, and pre-read archives preflight refuses. These produce an INCOMPLETE diagnostic
+report without analysing unverified bytes. An unusable pre-read input discovered by the reanalyzer also
+gets a diagnostic report, and the shell retains a diagnostic if the reanalyzer produces no report.
+A missing, truncated or invalid live trusted-read comparison does not erase independently derived rows:
+the report keeps those rows, records the comparison as unavailable (null, not zero disagreements), and
+returns nonzero. Evidence issue markers describe missing observations; they do not override a measured
+failure or the unchanged verdict criteria in §9.
+
+The report is retained at the normal analyst report path, including when the analyst command returns
+nonzero. Trusted source, guest isolation, and a writable trusted report destination are prerequisites;
+failure to establish those still means stop and retain the guest disks. Live collection still does not
+export uncertain or unsealed evidence. The live session, capture, oracle and TRUST-003 are unchanged.
+
+The partial-post operator regression was red on Amendment 15: the missing manifest made cmp exit 2
+before reanalysis. The updated operator tests verify diagnostics or retained analysis for partial and
+invalid captures, outer and nested archive refusal, and a reanalyzer that produces no report. Real CLI
+tests verify fatal pre-read diagnostics and preservation of offline binding when the live comparison is
+absent or invalid. The successful-analysis case still exits zero.

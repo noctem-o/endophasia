@@ -748,3 +748,26 @@ Offline regressions failed on Amendment 16 for same-commit offered coverage and 
 Amendment 17 tests both valid E1 refusal shapes, rejection of unbound or altered offered requests, retention of
 distinct repository and offered coverage, the CLI object-evidence gate, and receipt/export preservation on failed
 uninstall or a lingering verifier process. No later change upgrades attempt 5; a new authorised run is needed.
+
+## Amendment 18 — fail closed on incomplete or unverifiable captures
+
+The comparison previously trusted checksum lines without checking the files. The same manifest could
+therefore yield a passing comparison after a covered archive changed. Both manifests must now enumerate
+their capture files safely and completely, and strict checksums must verify before any file is reported
+as the same. The receipt distinguishes **VERIFIED IDENTICAL** (0), **VERIFIED DIFFERENT** (1), and
+**UNVERIFIABLE** (2). Acquisition log and root-location inventory bytes are verified but, as before,
+are not equality observations. Offered-only custody is included in the equality observations as in
+Amendment 17.
+
+The ACL listing also used to accept partial output and suppress the diagnostic. Capture now stops on
+producer failure, preserves stderr in the step log, and records the failed command in its acquisition
+log before sealing. The check covers the recursive metadata listing, file discovery and hashing,
+ancestor stats, archive creation, runtime digests, principal census, and tool identification. The
+manifest is built and checked under a pending name and cannot become the capture manifest after a
+partial write. The receipt copy is published only after the capture directory and its contents are
+made immutable. The existing pre/post gates refuse a failed capture and retain whatever evidence exists.
+
+The synthetic corrupted-post and partial-ACL regressions failed on Amendment 17 and pass on this freeze.
+Additional fixtures cover verified differences; missing, unlisted, duplicate and unsafe entries; partial
+producer output and a failed manifest write; and sealing a complete capture. The live measurements,
+the offered-only rules, and §9 are unchanged. No later amendment upgrades attempt 5 from INCOMPLETE.

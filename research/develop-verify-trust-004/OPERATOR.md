@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Freeze tag:** `refs/tags/trust004-amendment-17` (Amendment 17; exact file list in
+**Freeze tag:** `refs/tags/trust004-amendment-18` (Amendment 18; exact file list in
 [FROZEN.sha256](FROZEN.sha256)). Stage only the full commit ID in the independently verified handoff, never the branch tip
 or a commit obtained solely from the tag. This page is itself one of the
 frozen files, so the copy inside that commit is this page: read it from the checkout you stage. `tests/develop-verify-trust-004-freeze.test.ts`
@@ -39,11 +39,11 @@ evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`)
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-FREEZE_REF=refs/tags/trust004-amendment-17
+FREEZE_REF=refs/tags/trust004-amendment-18
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment17-run1
-W2=$HOME/.capy/work/trust004-amendment17-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment17-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment18-run1
+W2=$HOME/.capy/work/trust004-amendment18-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment18-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -198,6 +198,7 @@ authorisation record, is a refusal and starts nothing.
 account and `export size=… sha256=… device-prefix-sha256=…`, plus the host `collect` command with those values. The account is
 the harness's own report and is **not a verdict**. Run.sh status 3 is BLOCKED, 4 to 7 is INCOMPLETE, and 8 means the pre-read capture
 failed and the trusted read did not run. A failure after the trusted read is reported with its status.
+Check both acquisition logs and the comparison receipt. Only `VERIFIED IDENTICAL` with status 0 passes the comparison. A `VERIFIED DIFFERENT` receipt lists verified differences; `UNVERIFIABLE` means the captures could not be compared. Retain either failure and do not count it as agreement.
 An export on its own is not a clean finish. Inside the analysis guest, verify `uninstall exit=0` in `uninstall.txt` and
 `cleanup exit=0` in `cleanup-guest.txt` together with the named pre-uninstall and numeric post-uninstall censuses.
 

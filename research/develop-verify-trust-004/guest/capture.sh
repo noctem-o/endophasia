@@ -5,7 +5,7 @@
 # Nothing follows a symbolic link: every acquisition root and each of its ancestors is checked with lstat first, tar archives links as
 # links (no --dereference), find runs with -P. Archives keep numeric owners, modes, ACLs and xattrs; atime is dropped so that reading
 # a file does not change its archive, ctime is kept so that any metadata change does.
-set -euo pipefail
+set -Eeuo pipefail
 umask 077
 export PATH=/usr/bin LC_ALL=C TZ=UTC
 EVID=/var/lib/trust004-evidence
@@ -14,8 +14,28 @@ D=$EVID/$L
 install -d -m 0700 -o root -g root "$EVID"
 mkdir -m 0700 "$D"
 log() { printf '%s %s\n' "$(date -u +%FT%T.%NZ)" "$*" >> "$D/acquisition.log"; }
-log "start label=$L pid=$$ uid=$(id -u) $(tr '\0' ' ' < /proc/$$/cmdline)"
-log "tools: $(tar --version | head -n1); $(sha256sum --version | head -n1); $(find --version | head -n1); $(getfacl --version 2>&1 | head -n1); kernel $(uname -r)"
+capture_failure() {
+  local status=$1 command=$2
+  trap - ERR
+  printf 'capture FAILED [%s] exit=%s: %s\n' "$L" "$status" "$command" >&2
+  if [ ! -e "$D/SHA256SUMS" ]; then log "FAILED exit=$status: $command" || :; fi
+  exit "$status"
+}
+trap 'capture_failure "$?" "$BASH_COMMAND"' ERR
+version() {
+  local output rc
+  output=$("$1" --version 2>&1) || { rc=$?; printf '%s\n' "$output" >&2; return "$rc"; }
+  printf '%s' "${output%%$'\n'*}"
+}
+uid=$(id -u)
+cmdline=$(tr '\0' ' ' < /proc/$$/cmdline)
+log "start label=$L pid=$$ uid=$uid $cmdline"
+tar_version=$(version tar)
+sha_version=$(version sha256sum)
+find_version=$(version find)
+acl_version=$(version getfacl)
+kernel=$(uname -r)
+log "tools: $tar_version; $sha_version; $find_version; $acl_version; kernel $kernel"
 
 safe_root() { # every component of $1 must exist and be a real directory, not a symbolic link
   local p=/ part
@@ -37,12 +57,15 @@ listing() { # listing <dir>: metadata (no atime) and content digests of everythi
   safe_root "$1"
   find -P "$1" -printf '%y %m %U %G %n %s %T@ %C@ %i %p\n' | sort -k10 >> "$D/listing.txt"
   find -P "$1" -type f -print0 | sort -z | xargs -0 -r sha256sum >> "$D/files.sha256"
-  getfacl -R -P -n --absolute-names "$1" 2>/dev/null | grep -v '^$' >> "$D/acl.txt" || true
+  getfacl -R -P -n --absolute-names "$1" | awk 'length' > "$D/.acl.pending"
+  test -s "$D/.acl.pending"
+  cat "$D/.acl.pending" >> "$D/acl.txt"
+  rm "$D/.acl.pending"
 }
 
 for a in / /var /var/lib /var/lib/endo-verify-002 /var/lib/endo-verify-002/records /var/lib/endo-verify-002/journal /usr /usr/local \
   /usr/local/lib /usr/local/lib/endo-verify-002 /usr/local/lib/endo-verify-002/installation.json; do
-  stat -c '%F %u %g %a %h %n' "$a" >> "$D/ancestors.txt" 2>&1 || echo "absent $a" >> "$D/ancestors.txt"
+  stat -c '%F %u %g %a %h %n' "$a" >> "$D/ancestors.txt"
 done
 archive state /var/lib endo-verify-002
 listing /var/lib/endo-verify-002
@@ -61,11 +84,22 @@ for w in "$@"; do
 done
 sha256sum /etc/passwd /etc/group /usr/bin/node /usr/bin/git /usr/bin/bwrap /usr/bin/setpriv >> "$D/runtime.sha256"
 getent passwd endoagent endo-verify-002 nobody > "$D/principals.txt"
+awk -F: '
+  $1 !~ /^(endoagent|endo-verify-002|nobody)$/ || $3 !~ /^[0-9]+$/ || $4 !~ /^[0-9]+$/ || seen[$1]++ { bad=1 }
+  END { exit (bad || NR != 3) }
+' "$D/principals.txt"
 log "end"
-(cd "$D" && sha256sum -- *.tar listing.txt files.sha256 acl.txt ancestors.txt roots.txt runtime.sha256 principals.txt acquisition.log > SHA256SUMS)
-cp "$D/SHA256SUMS" "$EVID/$L.SHA256SUMS"
-chmod 0400 "$D"/* "$EVID/$L.SHA256SUMS"
-chattr +i "$D"/* "$EVID/$L.SHA256SUMS"
+(
+  cd "$D"
+  sha256sum -- *.tar listing.txt files.sha256 acl.txt ancestors.txt roots.txt runtime.sha256 principals.txt acquisition.log > .manifest.pending
+  sha256sum --quiet --strict -c .manifest.pending
+  mv -- .manifest.pending SHA256SUMS
+)
+chmod 0400 "$D"/*
+chattr +i "$D"/*
 chmod 0500 "$D"
 chattr +i "$D"
+cp "$D/SHA256SUMS" "$EVID/$L.SHA256SUMS"
+chmod 0400 "$EVID/$L.SHA256SUMS"
+chattr +i "$EVID/$L.SHA256SUMS"
 cat "$D/SHA256SUMS"

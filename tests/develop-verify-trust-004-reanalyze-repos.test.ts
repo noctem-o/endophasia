@@ -277,10 +277,11 @@ describe("TRUST-004 offline binding from archived repositories", () => {
 			"files.sha256",
 			"acl.txt",
 			"ancestors.txt",
+			"roots.txt",
 			"runtime.sha256",
 			"principals.txt",
-			"repos-installed-1.tar",
-			"harness-installed-1.tar",
+			"acquisition.log",
+			...["availability", "installed-1", "installed-2"].flatMap((w) => [`repos-${w}.tar`, `harness-${w}.tar`]),
 		];
 		const name = "offered-installed-1.tar";
 		const compare = (postBytes: string) => {

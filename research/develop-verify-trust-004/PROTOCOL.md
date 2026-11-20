@@ -538,3 +538,32 @@ Changed or added pins, in addition to this protocol:
 - `research/develop-verify-trust-004/guest/run.sh`: `298aa0734450cb298ebc9aad353e2f886536705d3d7c0e4a97f841a546ccf3a3`
 - `research/develop-verify-trust-004/guest/test_run.py`: `b10b38c3e4c0636f9889080a44efdf1c9d4b2ffb28a1bc623b234b7daa9bb501`
 - `tests/develop-verify-trust-004-passes.test.ts`: `1287829906c2690704104dfffce0d8178dba08ed25ddd7d500004baf7db5c063`
+
+## Amendment 11 — review of Amendment 10, before operator handoff
+
+The Amendment 10 tag remains unchanged. Its IA3 rule, the roles, the authority requirements and the acceptance criteria are kept.
+Review of the pushed head found two corrections:
+
+- **4636855623 (collect).** TRUST-003 `matrix.sh`'s `collect`, which run.sh reuses, runs as guest root. It copies
+  `/home/endoagent/probe-*.strace` with plain `cp`, which follows a symbolic link. The agent owns that directory, so it can
+  plant a link that puts a root-only guest file into the evidence `finish.sh` exports, or a FIFO that blocks root. run.sh now
+  redefines `collect` after sourcing matrix.sh. The listings and the inspection are unchanged. Every file under the agent's home
+  (the harness reports of both runs and the probe traces) is copied by the new `guest/agentfile.py`. It opens each path component
+  relative to the previous one with `O_NOFOLLOW`, and opens the file non-blocking. It accepts only a regular file owned by the agent
+  uid of at most 256 MiB. A refusal is written to `collect-refusals.txt` and fails `collect`, which run.sh records as a nonzero
+  status. An absent file is skipped as before. The absent status is 3, which the interpreter does not use itself, so a missing
+  reader fails closed. TRUST-003 is unchanged.
+- **4636854497 (analysis block, OPERATOR.md only).** If the post-read capture was missing but reanalysis succeeded, the analyst
+  block exited 0. The report is still produced and retained, but the block now exits 1 in that case. A nonzero reanalysis status
+  is reported unchanged.
+
+Offline regressions (`guest/test_run.py`): agent files are copied and an absent one is skipped. A final link, a link to a
+directory, a FIFO and a file owned by another uid are each refused, with the secret absent from the output and `collect`
+failing. `collect` also fails closed without its reader. These tests fail against Amendment 10's run.sh, where `collect` is not
+defined. The operator test *successful analysis without a post-read capture* expects status 1 and fails against the previous
+block. *successful analysis* now supplies a valid post-read capture. No live guest result is asserted.
+
+Changed or added pins, in addition to this protocol:
+- `research/develop-verify-trust-004/guest/agentfile.py`: `4881b21c8f0dd15516609aa64f781f9cd4f528d5452d284b3d9db3aaf177b442`
+- `research/develop-verify-trust-004/guest/run.sh`: `752855bc661fbbdbf6cacb3e2134ac0f323c40fbf4c3e757ef4c724d472bb144`
+- `research/develop-verify-trust-004/guest/test_run.py`: `9001144705c6eba48a66ca314f7d16b6ea8772009b9d20a67da390d003dd6a4b`

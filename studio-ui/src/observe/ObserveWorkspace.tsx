@@ -8,10 +8,12 @@ import { Panel, PanelBoundary } from "../ui/Panel.tsx";
 import { ConditionTag, Note } from "../ui/text.tsx";
 import { useNarrow } from "../ui/use-narrow.ts";
 import type { Observe } from "../use-observe.ts";
+import type { RepresentationsApi } from "../use-representations.ts";
 import { Attention } from "./Attention.tsx";
 import { EventTable, revealRow } from "./EventTable.tsx";
 import { InspectorBody } from "./Inspector.tsx";
 import { Overview } from "./Overview.tsx";
+import { RepresentationExplorer } from "./RepresentationExplorer.tsx";
 import { CapabilitiesPanel, RuntimePanel, RuntimeTools, SourcesPanel } from "./Side.tsx";
 
 function InspectorDialog({
@@ -88,7 +90,17 @@ function InspectorDialog({
 	);
 }
 
-export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElement {
+export function ObserveWorkspace({
+	observe,
+	view,
+	onViewChange,
+	representations,
+}: {
+	observe: Observe;
+	view: "timeline" | "representations";
+	onViewChange(view: "timeline" | "representations"): void;
+	representations: RepresentationsApi;
+}): ReactElement {
 	const { state, dispatch, locked, goTo, setPageSize } = observe;
 	const [hovered, setHovered] = useState<number | null>(null);
 	// Stable, so a hover (which changes only `hovered`) redraws the two rows it touches and not every row of the table.
@@ -120,9 +132,46 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 	const opener = useRef<NonNullable<typeof state.selection> | null>(null);
 	if (state.selection !== null) opener.current = state.selection;
 
+	const modeBar = (
+		<div className="observe-mode-bar" role="tablist" aria-label="Observe surfaces" data-testid="observe-mode-bar">
+			<button
+				type="button"
+				role="tab"
+				aria-selected={view === "timeline"}
+				className={`observe-mode-tab${view === "timeline" ? " active" : ""}`}
+				data-testid="observe-tab-timeline"
+				onClick={() => onViewChange("timeline")}
+			>
+				Timeline
+			</button>
+			<button
+				type="button"
+				role="tab"
+				aria-selected={view === "representations"}
+				className={`observe-mode-tab${view === "representations" ? " active" : ""}`}
+				data-testid="observe-tab-representations"
+				onClick={() => onViewChange("representations")}
+			>
+				Representation Explorer
+			</button>
+		</div>
+	);
+
+	if (view === "representations") {
+		return (
+			<div className="observe" data-testid="observe">
+				{modeBar}
+				<PanelBoundary resetKey="representation-explorer">
+					<RepresentationExplorer api={representations} />
+				</PanelBoundary>
+			</div>
+		);
+	}
+
 	if (loaded === null || model === null) {
 		return (
 			<div className="observe observe-empty" data-testid="observe-unread">
+				{modeBar}
 				{state.busy ? (
 					<output className="loading">
 						<span className="spinner" aria-hidden="true" /> Reading the stores…
@@ -188,6 +237,7 @@ export function ObserveWorkspace({ observe }: { observe: Observe }): ReactElemen
 
 	return (
 		<div className="observe" data-testid="observe">
+			{modeBar}
 			<PanelBoundary resetKey={model}>
 				<Overview
 					model={model.timeline.overview}

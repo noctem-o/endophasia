@@ -21,6 +21,12 @@ export {
 	registryWatermarkV0,
 	requireAdmittedKeyV0,
 } from "./projections/common.ts";
+export {
+	computePca2dV0,
+	type Pca2dResultV0,
+	type ProjectRepresentationSceneInputV0,
+	projectEndoObserveRepresentationSceneV0,
+} from "./projections/representation-scene.ts";
 export { projectEndoCockpitRuntimeIdentityV0 } from "./projections/runtime-identity.ts";
 export type {
 	EndoCockpitStoredEventV0,

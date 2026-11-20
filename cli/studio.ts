@@ -24,7 +24,7 @@ import { endoStudioHelpV0 } from "./help.ts";
 import { takeEndoRootV0 } from "./root-args.ts";
 
 export const ENDO_STUDIO_USAGE_V0 =
-	"usage: endo studio [<root>] [--root dir] [--port n] [--key-file path] [--omp-sessions dir]";
+	"usage: endo studio [<root>] [--root dir] [--port n] [--key-file path] [--omp-sessions dir] [--representations dir]";
 
 export interface EndoStudioArgsV0 {
 	readonly root: string;
@@ -35,6 +35,8 @@ export interface EndoStudioArgsV0 {
 	readonly keyFile: string | null;
 	/** The Oh My Pi sessions directory named with `--omp-sessions`, or null: OMP is observed only when the operator names one. */
 	readonly ompSessions: string | null;
+	/** Optional directory of recorded representation captures named with `--representations`, or null. */
+	readonly representations: string | null;
 }
 
 /** A port as written without leading zeros, 0 to 65535: the range the server accepts, enforced before a key is created. */
@@ -53,10 +55,11 @@ export function parseEndoStudioArgsV0(
 	// (which takes `./-x`): reading it as the root would start Studio, and create its key, on the wrong thing.
 	const leading = argv[0];
 	if (leading?.startsWith("-") && !leading.startsWith("--")) throw new TypeError(`unknown option: ${leading}`);
-	const taken = takeEndoRootV0(argv, 0, new Set(["--port", "--key-file", "--omp-sessions"]), env);
+	const taken = takeEndoRootV0(argv, 0, new Set(["--port", "--key-file", "--omp-sessions", "--representations"]), env);
 	let port: number | undefined;
 	let keyFile: string | undefined;
 	let ompSessions: string | undefined;
+	let representations: string | undefined;
 	const value = (rest: readonly string[], index: number, flag: string): string => {
 		const given = rest[index + 1];
 		if (given === undefined || given.startsWith("--")) throw new TypeError(`the flag ${flag} needs a value`);
@@ -81,6 +84,11 @@ export function parseEndoStudioArgsV0(
 			ompSessions = value(taken.rest, index, "--omp-sessions");
 			if (ompSessions.length === 0) throw new TypeError("the OMP sessions directory is empty");
 			index += 1;
+		} else if (arg === "--representations") {
+			if (representations !== undefined) throw new TypeError("--representations was given more than once");
+			representations = value(taken.rest, index, "--representations");
+			if (representations.length === 0) throw new TypeError("the representations directory is empty");
+			index += 1;
 		} else if (arg.startsWith("-")) throw new TypeError(`unknown option: ${arg}`);
 		else throw new TypeError(`unexpected argument: ${arg} (a store is named first, or with --root)`);
 	}
@@ -90,6 +98,7 @@ export function parseEndoStudioArgsV0(
 		port: port ?? 0,
 		keyFile: keyFile ?? null,
 		ompSessions: ompSessions ?? null,
+		representations: representations ?? null,
 	};
 }
 
@@ -151,6 +160,26 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 		}
 		omp = { root, open: (key) => new OmpSavedSessionObserverV0({ root, key }) };
 	}
+	// Representation captures: explicit `--representations <dir>`, else `<store>/representations` only when it already exists.
+	let representations: Parameters<typeof launchEndoCockpitV0>[0]["representations"];
+	if (args.representations !== null || existsSync(join(args.root, "representations"))) {
+		const { findStoreRepresentationsRootV0, ObserveRepresentationObserverV0, resolveObserveRepresentationsRootV0 } =
+			await import("../adapters/observe-representation/observer.ts");
+		if (args.representations !== null) {
+			let root: string;
+			try {
+				root = resolveObserveRepresentationsRootV0(args.representations);
+			} catch (error) {
+				throw new Error(startupFailure(error, args.port));
+			}
+			representations = { root, open: (key) => new ObserveRepresentationObserverV0({ root, key }) };
+		} else {
+			const found = findStoreRepresentationsRootV0(args.root);
+			if (found !== null) {
+				representations = { root: found, open: (key) => new ObserveRepresentationObserverV0({ root: found, key }) };
+			}
+		}
+	}
 	let launched: Awaited<ReturnType<typeof launchEndoCockpitV0>>;
 	try {
 		launched = await launchEndoCockpitV0({
@@ -158,6 +187,7 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 			port: args.port,
 			...(args.keyFile === null ? {} : { keyFile: args.keyFile }),
 			...(omp === undefined ? {} : { omp }),
+			...(representations === undefined ? {} : { representations }),
 			uiDirectory,
 			onKey: (key) => {
 				if (key.created) process.stderr.write(`studio: created Studio's own digest key ${key.path}\n`);

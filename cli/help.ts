@@ -161,7 +161,7 @@ Requires Node >= 22.19.0.
 export function endoStudioHelpV0(): string {
 	return `endo studio — Endophasia Studio: a read-only browser interface over a recorded store.
 
-Usage: endo studio [<root>] [--root dir] [--port n] [--key-file path] [--omp-sessions dir]
+Usage: endo studio [<root>] [--root dir] [--port n] [--key-file path] [--omp-sessions dir] [--representations dir]
        endo studio --help | -h
 
 Starts a server on 127.0.0.1 only and prints one private access address for this launch; open it in a browser on this machine.
@@ -182,6 +182,9 @@ Arguments:
                          profile or --session-dir moves it). Read-only and metadata only: counts, states, OMP's tool names, model names,
                          never a message, a title or a path. It is a snapshot of OMP's files each time the page asks, not a
                          connection: it cannot control OMP or tell whether OMP is running. Nothing is written there.
+  --representations dir  read recorded representation capture artifacts (*.json, endo.observe-representation-capture.v0) from
+                         this directory for Observe's Representation Explorer. Read-only; if omitted, Studio checks
+                         <root>/representations when it already exists and creates nothing.
 
 Side effects: Studio is read-only with respect to the observed store. The first launch creates its dedicated key file if it
 does not exist (32 random bytes, mode 0600, in a 0700 directory) and says so on stderr; that is the only thing it writes. Help,

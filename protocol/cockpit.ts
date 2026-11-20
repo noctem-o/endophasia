@@ -128,6 +128,13 @@ import {
 } from "./harness.ts";
 import type { EndoIdentifierKindV0 } from "./identity.ts";
 import {
+	type EndoObserveRepresentationSceneV0,
+	type EndoObserveRepresentationsAbsentV0,
+	type EndoObserveRepresentationsIndexV0,
+	validateEndoObserveRepresentationSceneV0,
+	validateEndoObserveRepresentationsIndexV0,
+} from "./observe-representation.ts";
+import {
 	type EndoOmpAbsentV0,
 	type EndoOmpSessionsV0,
 	type EndoOmpSessionV0,
@@ -594,7 +601,10 @@ export type EndoCockpitRecordV0 =
 	| EndoCockpitDevelopSessionV0
 	| EndoOmpSessionsV0
 	| EndoOmpAbsentV0
-	| EndoOmpSessionV0;
+	| EndoOmpSessionV0
+	| EndoObserveRepresentationsIndexV0
+	| EndoObserveRepresentationsAbsentV0
+	| EndoObserveRepresentationSceneV0;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Validation helpers
@@ -2824,6 +2834,9 @@ export const ENDO_COCKPIT_VERSIONS_V0 = defineEndoVersionTableV0<EndoCockpitReco
 	// An observation of OMP's saved sessions (protocol/omp-observation.ts): not evidence, never read from the store.
 	["endo.develop-omp-sessions.v0", validateEndoOmpSessionsV0],
 	["endo.develop-omp-session.v0", validateEndoOmpSessionV0],
+	// Representation Explorer (protocol/observe-representation.ts): deterministic projections of recorded captures.
+	["endo.observe-representations.v0", validateEndoObserveRepresentationsIndexV0],
+	["endo.observe-representation-scene.v0", validateEndoObserveRepresentationSceneV0],
 ]);
 
 /** Read a cockpit record under the version it declares; an unknown version is `unsupported-version`, never accepted. */

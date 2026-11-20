@@ -162,24 +162,22 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 	}
 	// Representation captures: explicit `--representations <dir>`, else `<store>/representations` only when it already exists.
 	let representations: Parameters<typeof launchEndoCockpitV0>[0]["representations"];
-	if (args.representations !== null) {
-		const { ObserveRepresentationObserverV0, resolveObserveRepresentationsRootV0 } = await import(
-			"../adapters/observe-representation/observer.ts"
-		);
-		let root: string;
-		try {
-			root = resolveObserveRepresentationsRootV0(args.representations);
-		} catch (error) {
-			throw new Error(startupFailure(error, args.port));
-		}
-		representations = { root, open: (key) => new ObserveRepresentationObserverV0({ root, key }) };
-	} else {
-		const { findStoreRepresentationsRootV0, ObserveRepresentationObserverV0 } = await import(
-			"../adapters/observe-representation/observer.ts"
-		);
-		const found = findStoreRepresentationsRootV0(args.root);
-		if (found !== null) {
-			representations = { root: found, open: (key) => new ObserveRepresentationObserverV0({ root: found, key }) };
+	if (args.representations !== null || existsSync(join(args.root, "representations"))) {
+		const { findStoreRepresentationsRootV0, ObserveRepresentationObserverV0, resolveObserveRepresentationsRootV0 } =
+			await import("../adapters/observe-representation/observer.ts");
+		if (args.representations !== null) {
+			let root: string;
+			try {
+				root = resolveObserveRepresentationsRootV0(args.representations);
+			} catch (error) {
+				throw new Error(startupFailure(error, args.port));
+			}
+			representations = { root, open: (key) => new ObserveRepresentationObserverV0({ root, key }) };
+		} else {
+			const found = findStoreRepresentationsRootV0(args.root);
+			if (found !== null) {
+				representations = { root: found, open: (key) => new ObserveRepresentationObserverV0({ root: found, key }) };
+			}
 		}
 	}
 	let launched: Awaited<ReturnType<typeof launchEndoCockpitV0>>;

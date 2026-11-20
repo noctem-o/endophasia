@@ -77,6 +77,19 @@ main
                 else:
                     self.assertIn("stage:reader", r.stderr)
 
+    def test_runs_the_amended_harness(self):
+        # Amendment 10: the installed runs use TRUST-004's harness copy, whose IA3 judges a PASS by export digest.
+        r = self.harness("""
+COMMIT=0123456789abcdef0123456789abcdef01234567
+systemd-run() { echo "argv:$*" >&2; }
+systemctl() { echo 0123456789abcdef0123456789abcdef; }
+start_run 1
+""", "none")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("/opt/trust003/src/research/develop-verify-trust-004/guest/harness.ts run /home/endoagent/dvt/installed-1 "
+                      "--commit 0123456789abcdef0123456789abcdef01234567 --target installed", r.stderr)
+        self.assertNotIn("rehearsal.ts", r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,15 @@ if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
   MATRIX_LIB=1 . "$SRC/research/develop-verify-trust-003/guest/matrix.sh" || exit 3
 fi
 T4=$SRC/research/develop-verify-trust-004/guest
+# Amendment 10: matrix.sh's start_run, with the harness replaced by TRUST-004's copy (IA3 judged by export digest, passes.ts).
+start_run() { # start_run <k>: the agent's installed run, in the background
+  systemd-run --quiet --collect --unit="endoagent-run-$1" --uid=endoagent --gid=endoagent -p PAMName=login \
+    -p StandardOutput=file:"$OUT/run-$1.out" -p StandardError=file:"$OUT/run-$1.err" -p WorkingDirectory=/home/endoagent \
+    /usr/bin/env -i PATH=/usr/bin HOME=/home/endoagent LANG=C.UTF-8 XDG_RUNTIME_DIR=/run/user/1500 \
+    /usr/bin/node "$T4/harness.ts" run "/home/endoagent/dvt/installed-$1" --commit "$COMMIT" --target installed || return 1
+  invocation=$(systemctl show --property=InvocationID --value "endoagent-run-$1.service")
+  [[ $invocation =~ ^[0-9a-f]{32}$ ]] || { stop_unit "endoagent-run-$1.service"; return 1; }
+}
 WS="/home/endoagent/dvt/installed-1 /home/endoagent/dvt/installed-2 /home/endoagent/dvt/availability"
 stamp() { echo "$(date -u +%FT%T.%NZ) $*" | tee -a "$OUT/timeline.txt"; }
 

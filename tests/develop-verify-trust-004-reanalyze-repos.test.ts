@@ -15,7 +15,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { resolveCandidate } from "../research/develop-verify-trust-002/service/objects.ts";
+import { encodeRequest } from "../research/develop-verify-trust-002/client/client.ts";
+import { objectId, resolveCandidate } from "../research/develop-verify-trust-002/service/objects.ts";
 import { RECORD_SCHEMA, seal } from "../research/develop-verify-trust-002/service/verifier.ts";
 import { acquireObjects } from "../research/develop-verify-trust-003/guest/reader.ts";
 import { reanalyze } from "../research/develop-verify-trust-004/reanalyze.ts";
@@ -23,6 +24,7 @@ import { reanalyze } from "../research/develop-verify-trust-004/reanalyze.ts";
 // End to end through reanalyze() on a synthetic pre-read capture: one authentic-shaped PASS record whose candidate is a real commit,
 // and installed-1/repos/A arranged per case. Only binding and the repository note are asserted; grading depends on the host.
 const INV = "0123456789abcdef0123456789abcdef";
+const REFUSAL = "fedcba9876543210fedcba9876543210";
 const GUEST = "research/develop-verify-trust-004/guest";
 const digest = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
 const GIT_ENV = {
@@ -79,6 +81,9 @@ interface Shape {
 	record?: (recFile: string) => void;
 	listedMode?: string;
 	journals?: string[];
+	extra?: Record<string, unknown>;
+	primary?: Record<string, unknown>;
+	offered?: { invocation: string; bytes: Buffer };
 }
 
 const ancestorRows = [
@@ -124,6 +129,7 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 		cases: [{ started: true, termination: "confirmed", matched: true }],
 		qualification: { reference: "PASS", negative: "FAIL" },
 		candidate,
+		...shape.primary,
 	};
 	rec.recordSha256 = seal(rec);
 	const st = join(root, "st/endo-verify-002");
@@ -132,6 +138,12 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 	const recFile = join(st, "records", `${INV}.json`);
 	writeFileSync(recFile, JSON.stringify(rec));
 	shape.record?.(recFile);
+	const records = [INV];
+	if (shape.extra) {
+		const extra = { ...rec, invocation: { id: REFUSAL }, ...shape.extra };
+		writeFileSync(join(st, "records", `${REFUSAL}.json`), JSON.stringify({ ...extra, recordSha256: seal(extra) }));
+		records.push(REFUSAL);
+	}
 	for (const id of shape.journals ?? []) writeFileSync(join(st, "journal", `${id}.jsonl`), "{}\n");
 	sh("tar", [
 		"--numeric-owner",
@@ -150,7 +162,10 @@ async function analyse(candidate: Record<string, unknown>, place: (repos: string
 		[
 			`d ${mode(st)} 968 968 4 0 0 0 1 ${S}`,
 			`d ${mode(join(st, "records"))} 968 968 2 0 0 0 2 ${S}/records`,
-			`f ${shape.listedMode ?? mode(recFile)} 968 968 1 0 0 0 3 ${S}/records/${INV}.json`,
+			...records.map(
+				(id) =>
+					`f ${shape.listedMode ?? mode(join(st, "records", `${id}.json`))} 968 968 1 0 0 0 3 ${S}/records/${id}.json`,
+			),
 		].join("\n"),
 	);
 	writeFileSync(
@@ -181,6 +196,31 @@ archive "$@"`,
 			sh("tar", ["-cf", join(pre, `repos-${a}.tar`), "-C", base, "repos"]);
 		}
 	}
+	if (shape.offered) {
+		const workspace = join(root, "installed-1");
+		mkdirSync(join(workspace, "offered"), { recursive: true });
+		mkdirSync(join(workspace, "repos"));
+		writeFileSync(join(workspace, "offered", `${shape.offered.invocation}.request`), shape.offered.bytes);
+		const capture = readFileSync(join(GUEST, "capture.sh"), "utf8");
+		const archive = capture.slice(capture.indexOf("safe_root()"), capture.indexOf("listing()"));
+		const workspaces = capture.slice(capture.indexOf('for w in "$@"; do'), capture.indexOf("sha256sum /etc/passwd"));
+		const captured = join(root, "captured");
+		mkdirSync(captured);
+		sh("bash", [
+			"-euc",
+			`D=$1; shift
+log() { :; }
+listing() { :; }
+${archive}
+${workspaces}`,
+			"capture-fixture",
+			captured,
+			workspace,
+		]);
+		for (const name of ["repos-installed-1.tar", "harness-installed-1.tar"])
+			expect(sh("tar", ["-tf", join(captured, name)])).not.toContain("offered");
+		cpSync(join(captured, "offered-installed-1.tar"), join(pre, "offered-installed-1.tar"));
+	}
 	const names = readdirSync(pre).sort();
 	writeFileSync(
 		join(pre, "SHA256SUMS"),
@@ -198,7 +238,170 @@ archive "$@"`,
 	};
 }
 
+function offeredFixture(submodule = false) {
+	const blob = Buffer.from("fixture only\n");
+	const entry = submodule ? "160000 sub\0" : "100644 ..\0";
+	const id = submodule ? "a".repeat(40) : objectId("sha1", "blob", blob);
+	const tree = Buffer.concat([Buffer.from(entry), Buffer.from(id, "hex")]);
+	const treeId = objectId("sha1", "tree", tree);
+	const commit = Buffer.from(`tree ${treeId}\n\nrefusal fixture\n`);
+	const commitId = objectId("sha1", "commit", commit);
+	const bytes = encodeRequest("roman-numerals-cli", "sha1", commitId, [
+		{ type: "commit", data: commit },
+		{ type: "tree", data: tree },
+		{ type: "blob", data: blob },
+	]);
+	const candidate = { objectFormat: "sha1", commit: commitId };
+	return {
+		candidate,
+		bytes,
+		treeId,
+		blocked: {
+			invocation: { id: REFUSAL, requestSha256: digest(bytes) },
+			verdict: "BLOCKED",
+			reason: submodule ? "unsupported-160000" : "unsupported-name",
+			candidate,
+		},
+	};
+}
+
 describe("TRUST-004 offline binding from archived repositories", () => {
+	it("detects changed offered custody in the pre/post comparison", () => {
+		const pre = join(root, "pre");
+		const post = join(root, "post");
+		const common = [
+			"state.tar",
+			"install.tar",
+			"system.tar",
+			"listing.txt",
+			"files.sha256",
+			"acl.txt",
+			"ancestors.txt",
+			"runtime.sha256",
+			"principals.txt",
+			"repos-installed-1.tar",
+			"harness-installed-1.tar",
+		];
+		const name = "offered-installed-1.tar";
+		const compare = (postBytes: string) => {
+			for (const [dir, offered] of [
+				[pre, "same"],
+				[post, postBytes],
+			] as const) {
+				mkdirSync(dir, { recursive: true });
+				for (const file of common) writeFileSync(join(dir, file), file);
+				writeFileSync(join(dir, name), offered);
+				writeFileSync(
+					join(dir, "SHA256SUMS"),
+					[...common.map((file) => `${digest(file)}  ${file}\n`), `${digest(offered)}  ${name}\n`].join(""),
+				);
+			}
+			return spawnSync("bash", [join(GUEST, "compare.sh"), pre, post], { encoding: "utf8" });
+		};
+		expect(compare("same").status).toBe(0);
+		const changed = compare("other");
+		expect(changed.status).toBe(1);
+		expect(changed.stdout).toContain(`DIFFERENT ${name}`);
+	});
+
+	it("does not cover a PASS naming the same missing commit as a verified offered-only refusal", async () => {
+		const { candidate, bytes, blocked, treeId } = offeredFixture();
+		const { row, rows, summary, repositories } = await analyse({ ...candidate, tree: treeId }, () => {}, {
+			primary: { invocation: { id: INV, requestSha256: digest(bytes) } },
+			extra: blocked,
+			offered: { invocation: REFUSAL, bytes },
+		});
+		expect(rows.find((r) => r.invocation === REFUSAL)).toMatchObject({
+			offeredOnly: { requestSha256: digest(bytes), tree: treeId, reason: "unsupported-name" },
+			binding: { status: "unavailable", reason: "commit-not-found" },
+			grade: { status: "not-applicable" },
+		});
+		expect(row).toMatchObject({
+			authenticity: { class: "PASS", authoritative: true },
+			offeredOnly: null,
+			binding: { status: "unavailable", reason: "commit-not-found" },
+			grade: { status: "not-applicable" },
+			unconfirmedPass: true,
+		});
+		expect(repositories).toEqual([]);
+		expect(summary).toMatchObject({
+			commitsWithoutRepositoryObjects: [candidate.commit],
+			commitsWithoutObjects: [candidate.commit],
+			uncoveredObjectInvocations: [INV],
+			offeredOnlyInvocations: [REFUSAL],
+		});
+		const live = join(root, "live.json");
+		writeFileSync(live, JSON.stringify({ rows }));
+		const report = join(root, "mixed.json");
+		const cli = spawnSync(
+			process.execPath,
+			["research/develop-verify-trust-004/reanalyze.ts", join(root, "evidence"), live, report],
+			{ encoding: "utf8", timeout: 30_000 },
+		);
+		expect(cli.status, cli.stderr).toBe(1);
+		expect(JSON.parse(readFileSync(report, "utf8")).summary).toMatchObject({
+			disagreementsWithLive: 0,
+			uncoveredObjectInvocations: [INV],
+		});
+	});
+
+	it.each([
+		"verified",
+		"verified submodule",
+		"missing request",
+		"wrong invocation",
+		"changed bytes",
+		"wrong commit bytes",
+		"wrong tree bytes",
+		"wrong refusal",
+		"non-authoritative",
+	] as const)("enforces per-record object coverage in the CLI: %s", async (scenario) => {
+		const { candidate, bytes, blocked } = offeredFixture(scenario === "verified submodule");
+		const request = JSON.parse(bytes.toString("utf8"));
+		const changedObject = scenario === "wrong commit bytes" ? 0 : scenario === "wrong tree bytes" ? 1 : -1;
+		if (changedObject !== -1) request.objects[changedObject].data = Buffer.from("different bytes").toString("base64");
+		const retained =
+			scenario === "changed bytes"
+				? Buffer.concat([bytes, Buffer.from(" ")])
+				: changedObject !== -1
+					? Buffer.from(JSON.stringify(request))
+					: bytes;
+		const record = {
+			...blocked,
+			invocation: { id: INV, requestSha256: digest(changedObject !== -1 ? retained : bytes) },
+			reason: scenario === "wrong refusal" ? "unsupported-160000" : blocked.reason,
+		};
+		const { rows } = await analyse(candidate, () => {}, {
+			primary: record,
+			...(scenario === "non-authoritative" ? { listedMode: "666" } : {}),
+			...(scenario === "missing request"
+				? {}
+				: { offered: { invocation: scenario === "wrong invocation" ? REFUSAL : INV, bytes: retained } }),
+		});
+		const live = join(root, "live.json");
+		writeFileSync(live, JSON.stringify({ rows }));
+		const out = join(root, "report.json");
+		const result = spawnSync(
+			process.execPath,
+			["research/develop-verify-trust-004/reanalyze.ts", join(root, "evidence"), live, out],
+			{ encoding: "utf8", timeout: 30_000 },
+		);
+		const verified = scenario === "verified" || scenario === "verified submodule";
+		expect(result.status, result.stderr).toBe(verified ? 0 : 1);
+		const report = JSON.parse(readFileSync(out, "utf8"));
+		expect(report.summary).toMatchObject({
+			disagreementsWithLive: 0,
+			commitsWithoutRepositoryObjects: [candidate.commit],
+			commitsWithoutObjects: verified ? [] : [candidate.commit],
+			offeredOnlyInvocations: verified ? [INV] : [],
+			uncoveredObjectInvocations: verified ? [] : [INV],
+		});
+		expect(report.rows[0]).toMatchObject({
+			repositoryObjects: false,
+			binding: { status: "unavailable", reason: "commit-not-found" },
+			grade: { status: "not-applicable" },
+		});
+	});
 	it.each([
 		["missing", null, "live trusted read MISSING"],
 		["truncated", '{"rows":[', "live trusted read INVALID"],
@@ -426,6 +629,7 @@ describe("TRUST-004 offline binding from archived repositories", () => {
 			expect(row.binding.unreadable).toEqual(["installed-1-A: commit-unreadable"]);
 			expect(summary.commitsUnreadable).toEqual([commit]);
 			expect(summary.commitsWithoutObjects).toEqual([]);
+			expect(summary.uncoveredObjectInvocations).toEqual([INV]);
 			expect(row.confirmedPass).toBe(false);
 		}, 60_000);
 

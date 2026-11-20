@@ -54,7 +54,10 @@ for w in "$@"; do
   n=$(basename "$w")
   archive "repos-$n" "$w" repos
   listing "$w/repos"
-  archive "harness-$n" "$w" --exclude=./repos .
+  if [[ $n =~ ^installed-[12]$ ]] && [[ -e "$w/offered" || -L "$w/offered" ]]; then
+    archive "offered-$n" "$w" offered
+  fi
+  archive "harness-$n" "$w" --exclude=./repos --exclude=./offered .
 done
 sha256sum /etc/passwd /etc/group /usr/bin/node /usr/bin/git /usr/bin/bwrap /usr/bin/setpriv >> "$D/runtime.sha256"
 getent passwd endoagent endo-verify-002 nobody > "$D/principals.txt"

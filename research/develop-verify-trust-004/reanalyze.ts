@@ -35,7 +35,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
+import { commitTree, objectId, resolveCandidate } from "../develop-verify-trust-002/service/objects.ts";
 import { contentProblem } from "../develop-verify-trust-002/service/records.ts";
+import { MAX_REQUEST_BYTES, parseRequest } from "../develop-verify-trust-002/service/request.ts";
 import type { Installation } from "../develop-verify-trust-002/service/verifier.ts";
 import {
 	acquireObjects,
@@ -100,10 +102,12 @@ function protectedAncestorProblem(text: string, verifierUid: number): string | n
 	return null;
 }
 
-function readRegular(path: string) {
+function readRegular(path: string, maxBytes = Infinity) {
 	const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 	try {
-		if (!fstatSync(fd).isFile()) throw new Error(`not a regular file: ${path}`);
+		const info = fstatSync(fd);
+		if (!info.isFile()) throw new Error(`not a regular file: ${path}`);
+		if (info.size > maxBytes) throw new Error(`file exceeds its size bound: ${path}`);
 		return readFileSync(fd);
 	} finally {
 		closeSync(fd);
@@ -264,6 +268,8 @@ export function prepareRepository(worktree: string, dest: string): RepositoryNot
 	return { objectFormat, alternates, replaceRefs, packedReplaceRefs: packed.includes("refs/replace/") };
 }
 
+const offeredArchiveNames = ["offered-installed-1.tar", "offered-installed-2.tar"];
+
 export function verifyCapture(source: string, pre: string) {
 	const manifest = readRegular(join(source, "SHA256SUMS"));
 	const digests = new Map<string, string>();
@@ -278,6 +284,8 @@ export function verifyCapture(source: string, pre: string) {
 			throw new Error(`pre-read capture: ${name} absent from manifest`);
 		if (name.startsWith("repos-") && name.endsWith(".tar") && !repoArchives.includes(name))
 			throw new Error(`unexpected repository archive: ${name}`);
+		if (name.startsWith("offered-") && name.endsWith(".tar") && !offeredArchiveNames.includes(name))
+			throw new Error(`unexpected offered-request archive: ${name}`);
 	}
 	const required = new Set([
 		"principals.txt",
@@ -291,11 +299,37 @@ export function verifyCapture(source: string, pre: string) {
 		if (!digests.has(name)) throw new Error(`pre-read capture: ${name} absent from manifest`);
 	}
 	for (const [name, digest] of digests) {
-		const bytes = readRegular(join(source, name));
+		const offered = offeredArchiveNames.includes(name);
+		const bytes = readRegular(join(source, name), offered ? 2 * MAX_REQUEST_BYTES + (1 << 20) : Infinity);
 		if (sha256(bytes) !== digest) throw new Error(`pre-read capture: ${name} does not match its manifest`);
-		if (required.has(name)) writeFileSync(join(pre, name), bytes, { flag: "wx", mode: 0o600 });
+		if (required.has(name) || offered) writeFileSync(join(pre, name), bytes, { flag: "wx", mode: 0o600 });
 	}
 	return { repoArchives, preManifestSha256: sha256(manifest) };
+}
+
+function offeredOnlyEvidence(
+	bytes: Buffer | null | undefined,
+	candidate: RecordCandidate,
+	requestSha256: unknown,
+	reason: unknown,
+) {
+	if (
+		bytes == null ||
+		(reason !== "unsupported-160000" && reason !== "unsupported-name") ||
+		sha256(bytes) !== requestSha256
+	)
+		return null;
+	const parsed = parseRequest(bytes);
+	if (!parsed.ok) return null;
+	const { task, objectFormat, commit, objects } = parsed.request;
+	if (task !== "roman-numerals-cli" || objectFormat !== candidate.objectFormat || commit !== candidate.commit)
+		return null;
+	const entry = objects.find((o) => o.type === "commit" && objectId(objectFormat, "commit", o.data) === commit);
+	const tree = entry === undefined ? null : commitTree(objectFormat, entry.data);
+	if (tree === null || !objects.some((o) => o.type === "tree" && objectId(objectFormat, "tree", o.data) === tree))
+		return null;
+	const refused = resolveCandidate(objectFormat, commit, objects);
+	return !refused.ok && refused.reason === reason ? { requestSha256, tree, reason } : null;
 }
 
 export async function reanalyze(evidence: string, liveRead: string, captureIssues: readonly string[] = []) {
@@ -405,6 +439,30 @@ export async function reanalyze(evidence: string, liveRead: string, captureIssue
 			}
 		}
 
+		const offeredRequests = new Map<string, Buffer | null>();
+		const refusedOfferedArchives: string[] = [];
+		for (const archive of offeredArchiveNames) {
+			if (!lstatSync(join(pre, archive), { throwIfNoEntry: false })) continue;
+			try {
+				const into = join(scratch, archive.slice(0, -4));
+				extract(join(pre, archive), into);
+				const dir = join(into, "offered");
+				const names = readdirSync(dir);
+				if (
+					readdirSync(into).length !== 1 ||
+					names.length > 2 ||
+					names.some((n) => !/^[0-9a-f]{32}\.request$/.test(n))
+				)
+					throw new Error("unexpected offered-request members");
+				const requests = names.map(
+					(name) => [name.slice(0, 32), readRegular(join(dir, name), MAX_REQUEST_BYTES)] as const,
+				);
+				for (const [id, bytes] of requests) offeredRequests.set(id, offeredRequests.has(id) ? null : bytes);
+			} catch {
+				refusedOfferedArchives.push(archive);
+			}
+		}
+
 		// 6. Per invocation.
 		const entries = (dir: string) =>
 			stateRefusal === null
@@ -490,6 +548,16 @@ export async function reanalyze(evidence: string, liveRead: string, captureIssue
 			const candidate = (rec.candidate ?? null) as RecordCandidate | null;
 			const commit = typeof candidate?.commit === "string" ? candidate.commit : null;
 			const pass = authenticity.authoritative && authenticity.class === "PASS";
+			const offeredOnly =
+				authenticity.authoritative &&
+				authenticity.class === "BLOCKED" &&
+				candidate !== null &&
+				candidate.tree === undefined &&
+				candidate.exportSha256 === undefined &&
+				candidate.files === undefined
+					? offeredOnlyEvidence(offeredRequests.get(inv), candidate, rec.invocation?.requestSha256, rec.reason)
+					: null;
+			let repositoryObjects = false;
 			const finish = (binding: Record<string, any>, grade: Record<string, any>) => {
 				const confirmed = pass && binding.status === "valid" && grade.status === "graded" && grade.correct === true;
 				const falsePass =
@@ -498,6 +566,8 @@ export async function reanalyze(evidence: string, liveRead: string, captureIssue
 					invocation: inv,
 					authenticity,
 					commit,
+					repositoryObjects,
+					offeredOnly: repositoryObjects ? null : offeredOnly,
 					binding,
 					grade,
 					confirmedPass: confirmed,
@@ -528,6 +598,11 @@ export async function reanalyze(evidence: string, liveRead: string, captureIssue
 					continue;
 				}
 				const bound = bindObjects(candidate, got);
+				if (
+					candidate.objectFormat === got.objectFormat &&
+					(bound.status !== "unavailable" || bound.reason.startsWith("unsupported-"))
+				)
+					repositoryObjects = true;
 				binding = { ...bound, repo: repo.slice(scratch.length + 7) };
 				if (bound.status === "valid") break;
 			}
@@ -622,9 +697,9 @@ export async function reanalyze(evidence: string, liveRead: string, captureIssue
 						}))
 						.filter((d) => JSON.stringify(d.live) !== JSON.stringify(d.offline));
 		const commits = [...new Set(rows.map((r) => r.commit).filter((c): c is string => typeof c === "string"))].sort();
-		const commitsMissing = commits.filter((c) =>
-			rows.filter((r) => r.commit === c).every((r) => r.binding.reason === "commit-not-found"),
-		);
+		const withoutRepository = rows.filter((r) => typeof r.commit === "string" && !r.repositoryObjects);
+		const uncovered = withoutRepository.filter((r) => !r.offeredOnly);
+		const uniqueCommits = (items: typeof rows) => [...new Set(items.map((r) => r.commit as string))].sort();
 		const authentic = rows.filter((r) => r.authenticity.authoritative && r.authenticity.class === "PASS");
 		return {
 			schemaVersion: "endo.research.dvt004.reanalysis.v0",
@@ -661,7 +736,11 @@ export async function reanalyze(evidence: string, liveRead: string, captureIssue
 				falsePasses: rows.filter((r) => r.falsePass).map((r) => r.invocation),
 				unconfirmedPasses: rows.filter((r) => r.unconfirmedPass).map((r) => r.invocation),
 				commitsReferenced: commits.length,
-				commitsWithoutObjects: commitsMissing,
+				commitsWithoutRepositoryObjects: uniqueCommits(withoutRepository),
+				commitsWithoutObjects: uniqueCommits(uncovered.filter((r) => r.binding.reason === "commit-not-found")),
+				uncoveredObjectInvocations: uncovered.map((r) => r.invocation),
+				offeredOnlyInvocations: rows.filter((r) => r.offeredOnly).map((r) => r.invocation),
+				refusedOfferedArchives,
 				commitsUnreadable: commits.filter((c) =>
 					rows.some((r) => r.commit === c && r.binding.reason === "commit-unreadable"),
 				),
@@ -707,6 +786,8 @@ if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === process.
 		result.evidenceIssues.length === 0 &&
 		result.summary.stateArchiveRefusal === null &&
 		result.summary.refusedRepositoryArchives.length === 0 &&
+		result.summary.refusedOfferedArchives.length === 0 &&
+		result.summary.uncoveredObjectInvocations.length === 0 &&
 		result.summary.disagreementsWithLive === 0 &&
 		result.summary.falsePasses.length === 0 &&
 		result.summary.unconfirmedPasses.length === 0

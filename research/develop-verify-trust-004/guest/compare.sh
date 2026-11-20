@@ -6,7 +6,11 @@ export LC_ALL=C
 pre=$1 post=$2 rc=0
 echo "pre manifest  $(sha256sum "$pre/SHA256SUMS" | cut -c1-64)"
 echo "post manifest $(sha256sum "$post/SHA256SUMS" | cut -c1-64)"
-for f in state.tar install.tar system.tar listing.txt files.sha256 acl.txt ancestors.txt runtime.sha256 principals.txt $(cd "$pre" && ls repos-*.tar harness-*.tar); do
+offered=()
+for f in offered-installed-{1,2}.tar; do
+  if [ -e "$pre/$f" ] || [ -e "$post/$f" ]; then offered+=("$f"); fi
+done
+for f in state.tar install.tar system.tar listing.txt files.sha256 acl.txt ancestors.txt runtime.sha256 principals.txt $(cd "$pre" && ls repos-*.tar harness-*.tar) "${offered[@]}"; do
   a=$(grep "  $f\$" "$pre/SHA256SUMS" | cut -c1-64); b=$(grep "  $f\$" "$post/SHA256SUMS" | cut -c1-64)
   if [ -n "$a" ] && [ "$a" = "$b" ]; then echo "same      $f $a"; else echo "DIFFERENT $f pre=$a post=$b"; rc=1; fi
 done

@@ -918,8 +918,20 @@ async function run(W: string, argv: readonly string[]): Promise<number> {
 				["160000", "sub", R.A.commit],
 			]);
 			const dots = craft([["100644", "..", blobId]]);
-			const s = await submit(encodeRequest(TASK, "sha1", sub.commitId, sub.objects));
-			const d = await submit(encodeRequest(TASK, "sha1", dots.commitId, dots.objects));
+			const subRequest = encodeRequest(TASK, "sha1", sub.commitId, sub.objects);
+			const dotsRequest = encodeRequest(TASK, "sha1", dots.commitId, dots.objects);
+			const s = await submit(subRequest);
+			const d = await submit(dotsRequest);
+			if (target === "installed") {
+				const offered = join(W, "offered");
+				mkdirSync(offered, { mode: 0o700 });
+				for (const [id, bytes] of [
+					[s.invocation, subRequest],
+					[d.invocation, dotsRequest],
+				] as const)
+					if (id !== null && /^[0-9a-f]{32}$/.test(id))
+						writeFileSync(join(offered, `${id}.request`), bytes, { flag: "wx", mode: 0o600 });
+			}
 			row(
 				{
 					id: "E1",

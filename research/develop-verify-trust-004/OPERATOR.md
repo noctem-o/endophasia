@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Freeze tag:** `refs/tags/trust004-amendment-16` (Amendment 16; exact file list in
+**Freeze tag:** `refs/tags/trust004-amendment-17` (Amendment 17; exact file list in
 [FROZEN.sha256](FROZEN.sha256)). Stage only the full commit ID in the independently verified handoff, never the branch tip
 or a commit obtained solely from the tag. This page is itself one of the
 frozen files, so the copy inside that commit is this page: read it from the checkout you stage. `tests/develop-verify-trust-004-freeze.test.ts`
@@ -32,18 +32,18 @@ a read-only disk holding a git bundle of the commit and a blank evidence disk.
 
 Set `ENDO13_WORK` explicitly in every terminal: `host.sh` refuses an empty setting. Never point it at
 `~/.capy/work/endo13`, which holds **attempt 1's retained evidence**, or at the Amendment 9 and Amendment 12 work and
-evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`), which hold **attempts 2 and 3**. Also retain **attempt 4** (`trust004-amendment13-run1*`) and any Amendment 14 or 15 work. All stay read only.
+evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`), which hold **attempts 2 and 3**. Also retain **attempt 4** (`trust004-amendment13-run1*`) and any Amendment 14 or 15 work. Retain **attempt 5** (`trust004-amendment16-run1*`). All stay read only.
 
 ## 1. Preconditions and inputs [host]
 
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-FREEZE_REF=refs/tags/trust004-amendment-16
+FREEZE_REF=refs/tags/trust004-amendment-17
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment16-run1
-W2=$HOME/.capy/work/trust004-amendment16-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment16-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment17-run1
+W2=$HOME/.capy/work/trust004-amendment17-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment17-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -198,6 +198,8 @@ authorisation record, is a refusal and starts nothing.
 account and `export size=… sha256=… device-prefix-sha256=…`, plus the host `collect` command with those values. The account is
 the harness's own report and is **not a verdict**. Run.sh status 3 is BLOCKED, 4 to 7 is INCOMPLETE, and 8 means the pre-read capture
 failed and the trusted read did not run. A failure after the trusted read is reported with its status.
+An export on its own is not a clean finish. Inside the analysis guest, verify `uninstall exit=0` in `uninstall.txt` and
+`cleanup exit=0` in `cleanup-guest.txt` together with the named pre-uninstall and numeric post-uninstall censuses.
 
 **Abort.** Press Ctrl-C at the console if any of these happens: unexpected output at a step, a prompt asking for input, host
 memory pressure, evidence of network access, or the audit changing. The current unit is stopped and recorded as interrupted. Then
@@ -445,3 +447,6 @@ A record that is `authoritative` with class PASS is a **protected positive recor
 to that record is a **correct result**. Agreement between the live read and the offline reanalysis of the pre-read capture is
 **independently authenticated evidence**. They are separate findings, and none of them is implied by a harness exit status. Zero
 executed rows are not zero observed failures.
+The analysis report lists `offeredOnlyInvocations` separately from repository coverage. A digest-matched E1 refusal can have
+offered-only evidence and still have no repository binding. Check `uncoveredObjectInvocations` for required object evidence
+that is still missing or unreadable.

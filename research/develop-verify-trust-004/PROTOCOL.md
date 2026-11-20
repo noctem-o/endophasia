@@ -721,3 +721,30 @@ before reanalysis. The updated operator tests verify diagnostics or retained ana
 invalid captures, outer and nested archive refusal, and a reanalyzer that produces no report. Real CLI
 tests verify fatal pre-read diagnostics and preservation of offline binding when the live comparison is
 absent or invalid. The successful-analysis case still exits zero.
+
+## Amendment 17 — offered-only object evidence and a verifiable cleanup receipt
+
+Attempt 5 remains **INCOMPLETE** under Amendment 16. Independent reanalysis agreed with the live reader on all 69
+invocations and confirmed all 17 authentic PASSes, with zero false or unconfirmed PASSes. It did not retain the objects
+for two request-only E1 commits named in four authoritative refusals. The control-copy tree also caused uninstall to
+exit nonzero; eventual absence is not a successful uninstall receipt.
+
+The harness now retains the exact two request buffers sent in each installed run's E1 row, keyed by invocation ID.
+Capture holds them in separate, manifested offered-request archives and includes those archives in pre/post comparison.
+They are not repository objects. Reanalysis credits a request only to its matching authoritative E1 BLOCKED record
+without a binding claim: the sealed request digest, task and commit must match, commit and tree IDs must recompute,
+and the expected refusal must reproduce. Offered-only evidence never enters Git, supplies a binding, or reaches the
+grader. Repository object coverage remains separate; a PASS requiring the same absent repository objects still fails.
+The CLI fails on uncovered record invocations, including unreadable object evidence; it reports repository gaps,
+offered-only invocations and uncovered invocations separately. §9 is unchanged.
+
+Cleanup now takes the combined named census while both principal names resolve, disposes of the two synthetic control
+copies before invoking uninstall, and rechecks processes using the saved numeric IDs after uninstall. The export
+retains the actual uninstall result and cleanup status. A failed cleanup remains nonzero even if export succeeded;
+an unverified export is never represented as confirmed. The verifier, TRUST-003, oracle and live measurement rules
+are unchanged.
+
+Offline regressions failed on Amendment 16 for same-commit offered coverage and the cleanup ordering and return status.
+Amendment 17 tests both valid E1 refusal shapes, rejection of unbound or altered offered requests, retention of
+distinct repository and offered coverage, the CLI object-evidence gate, and receipt/export preservation on failed
+uninstall or a lingering verifier process. No later change upgrades attempt 5; a new authorised run is needed.

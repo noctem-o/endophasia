@@ -174,10 +174,13 @@ await control(
 await control("F5 positive", correct.invocation, read(F5), (r) => authenticPass(r) && r.confirmedPass);
 
 // ---- G: the grader on a probe candidate ----
-const probe = Buffer.from(`import fs from "node:fs";
+const probe =
+	Buffer.from(`// TRUST-004 G probe. Each write mode prints the outcome and exits with its code (Amendment 13), so the export records which errno
+// came back without the grader's stdout: 10 EROFS, 11 EACCES, 12 EPERM, 1 the write succeeded (prints WROTE), 2 any other errno.
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 const mode = process.argv[2];
-const denied = (f) => { try { f(); console.log("WROTE"); process.exit(1); } catch (e) { console.log(e.code); process.exit(["EROFS", "EACCES", "EPERM"].includes(e.code) ? 0 : 2); } };
+const denied = (f) => { try { f(); console.log("WROTE"); process.exit(1); } catch (e) { console.log(e.code); process.exit({ EROFS: 10, EACCES: 11, EPERM: 12 }[e.code] ?? 2); } };
 if (mode === "write-new") denied(() => fs.writeFileSync("/work/new.txt", "x"));
 else if (mode === "write-existing") denied(() => fs.closeSync(fs.openSync("/work/probe.mjs", "r+")));
 else if (mode === "chmod") denied(() => fs.chmodSync("/work/probe.mjs", 0o777));
@@ -198,10 +201,12 @@ const probeOracle: Oracle = {
 	timeoutMs: oracle.timeoutMs,
 	maxOutputBytes: oracle.maxOutputBytes,
 	cases: [
-		k("write-new", "EROFS\n"),
-		k("write-existing", "EROFS\n"),
-		k("chmod", "EROFS\n"),
-		k("mkdir", "EROFS\n"),
+		k("write-new", "EROFS\n", 10),
+		// stageFiles leaves probe.mjs 0444 and root-owned, and the grader runs as uid 65534. An O_RDWR open is refused by DAC (EACCES)
+		// before the kernel reaches the read-only-mount check, so EROFS is unreachable here. chmod below still shows the read-only mount.
+		k("write-existing", "EACCES\n", 11),
+		k("chmod", "EROFS\n", 10),
+		k("mkdir", "EROFS\n", 10),
 		k("read-list", "probe.mjs\n"),
 		k("identity", "65534 65534\n"),
 		k("descendant", ""),
@@ -226,7 +231,8 @@ const want: Record<string, string> = {
 const grader = {
 	status: g.status,
 	reason: "reason" in g ? g.reason : null,
-	cases: g.cases,
+	// Each case's measured exit code and match beside its expectation: for a write mode the code names the errno (probe header).
+	cases: g.cases.map((c) => ({ ...c, expect: probeOracle.cases.find((p) => p.name === c.name)?.expect ?? null })),
 	leftover65534: census.stdout.trim(),
 	held:
 		g.cases.length === probeOracle.cases.length &&

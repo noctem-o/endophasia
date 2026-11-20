@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `c7c5208917a4be8fe11d9e110ce39b300ebcd66b` (Amendment 9; exact file list in
+**Selected source commit:** `refs/tags/trust004-amendment-10` (Amendment 10; exact file list in
 [FROZEN.sha256](FROZEN.sha256); this commit's own copy of this page already quotes that manifest's digests). Stage exactly this commit, not the branch tip. Later commits on the branch only change
 documentation and tests outside the manifest; `tests/develop-verify-trust-004-freeze.test.ts` checks in CI that this page and the
 manifest agree, here and at this commit.
@@ -29,19 +29,20 @@ The guest gets no network (`-nic none`), no shared host filesystem, no host secr
 a read-only disk holding a git bundle of the commit and a blank evidence disk.
 
 Set `ENDO13_WORK` explicitly in every terminal: `host.sh` refuses an empty setting. Never point it at
-`~/.capy/work/endo13`, which holds **attempt 1's retained evidence**.
+`~/.capy/work/endo13`, which holds **attempt 1's retained evidence**, or at the Amendment 9 work and evidence
+directories (`trust004-amendment9-run1*`), which hold **attempt 2's**. Both stay read only.
 
 ## 1. Preconditions and inputs [host]
 
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=c7c5208917a4be8fe11d9e110ce39b300ebcd66b
-FREEZE_REF=refs/tags/trust004-amendment-9
+F=refs/tags/trust004-amendment-10
+FREEZE_REF=refs/tags/trust004-amendment-10
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment9-run1
-W2=$HOME/.capy/work/trust004-amendment9-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment9-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment10-run1
+W2=$HOME/.capy/work/trust004-amendment10-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment10-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -171,7 +172,8 @@ authorisation record, is a refusal and starts nothing.
    `endoagent` (uid 1500), builds and checks the package, installs the verifier `endo-verify-002` and inspects it.
 2. `trust004-run` (limit 5 h), only if staging exited 0: `run.sh` runs the first stop, policy review and censuses, the
    availability request, then installed runs 1 and 2 as `endoagent` (the adversarial matrix; root's T10 and E3 actions are part of
-   it). Then quiescence, the pre-read capture, the trusted read only if that capture succeeded, the post-read capture, the
+   it). The runs use `guest/harness.ts`, the merged TRUST-002 harness with IA3 judged by export digest (Amendment 10): each
+   authoritative PASS, the availability record included, is listed once as correct, false-pass or uncovered. Then quiescence, the pre-read capture, the trusted read only if that capture succeeded, the post-read capture, the
    comparison, controls and trace analysis.
 3. The session stops any experiment unit still running and terminates leftover agent sessions. If it cannot confirm that, it
    reports **TERMINATION UNCERTAIN** and stops with status 75. Then finish.sh does not run and nothing is exported.

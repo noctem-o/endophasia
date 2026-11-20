@@ -470,3 +470,71 @@ No live guest result is asserted. Changed pins, in addition to this protocol:
 - `research/develop-verify-trust-004/qemu/test_transport.py`: `6b7531248baee45e799b4c9481bdf1483fea802066ec8bd4c2cfe645ebda89da`
 - `research/develop-verify-trust-004/reanalyze.ts`: `100b8e36b483d6369c7e4d3ec1352cf0432e6bbac46777c1a967ffba3ee443e9`
 - `tests/develop-verify-trust-004-reanalyze-repos.test.ts`: `aa1a0188b40eef9352c5d31ffb8664851aa5a7309ae531f99ad24139c6486254`
+## Amendment 10 — IA3 classification defect found by attempt 2
+
+Attempt 2 staged Amendment 9 (`c7c5208917a4be8fe11d9e110ce39b300ebcd66b`) and ran the first installed matrix; according to the
+analysis of attempt 2, all twenty rows held. The harness then reported `IA3 false` because of one authoritative record, `c14bbe75…`:
+the availability request's PASS (§4 item 3). That record's candidate is correct: tree `2b0833f8…` and blob `3764e839…` are those of
+the harness's own candidate A, and its export digest `42c5a86c…` recomputes from those bytes and equals TRUST-002's genuine PASS
+for A. So run 1 exited 1, run.sh stopped with status 6 before the pre-read capture, and attempt 2 is **INCOMPLETE**. This amendment
+does not reinterpret attempt 2. Its evidence is retained unchanged.
+
+**The defect is in the harness's classification, not in the boundary.** `rehearsal.ts` (lines 1082–1087) called an authoritative PASS
+false when its record's commit was not in `correctCommits`, which holds only the commits that this harness run created (A, P,
+Aslow). Any equivalent candidate committed elsewhere was therefore a "false PASS". The availability record exists on every installed run, so
+IA3 failed on every installed run and no live result was possible. Reading the code also shows that run 2 would have failed the
+same way on run 1's genuine PASSes, because the harness commits its fixtures at run time and run 2's commits differ from run 1's.
+
+**Corrected rule.** A PASS is a false PASS only when the export digest sealed in its record is one that the truth table judged
+incorrect. The truth table is keyed by export digest. The harness computes it by running the pinned oracle on each candidate it
+builds (A, B, D, E, P, S, X and M as before, plus Aslow, which T10 and E6 submit on the installed target; its 4 s per case gets a
+15 s limit instead of 5 s). It throws if two candidates share a digest but disagree. Each authoritative PASS gets exactly one
+disposition. **correct** means the truth table judged its digest correct. **false-pass** means the truth table judged it incorrect.
+**uncovered** means the table has no entry for that digest or the record names none: uncovered PASSes are listed, counted and
+fail IA3, but are never called false PASSes. IA3 holds only with no false PASS and no uncovered PASS. Each PASS also carries its
+origin: `preexisting` when its record was already present when the run started (the availability request, or run 1 seen from
+run 2), otherwise `this-run`. So the availability record is judged explicitly, like any other record, and counted once.
+`results.json` adds `records.authoritativeUncovered` and `records.authoritativePasses` (one entry per PASS with its origin,
+commit, export digest, truth-table candidate and disposition), and `rehearsal.log` prints the same list. RA5, the other acceptance
+criteria, the rows and §5's statement that `results.json` is an untrusted derived report are unchanged. The trusted read
+(TRUST-003 `read-records.ts`) and the verifier package are unchanged.
+
+**Where the fix lives.** The merged harness cannot be edited. TRUST-003's `stage.sh`, action 1 of every session, checks
+`research/develop-verify-trust-003/evidence/guest-checkout.sha256`, which pins `research/develop-verify-trust-002/rehearsal.ts`.
+TRUST-003 stays byte-identical. Therefore:
+
+- `guest/passes.ts` is the classifier (`truthByExport`, `classifyPasses`), pulled out of the inline filter so that it can be tested.
+- `guest/harness.ts` is the merged harness copied unchanged except for the hunks recorded in `guest/harness.patch`: module paths,
+  the truth table by export digest with Aslow, the preexisting set, and IA3 from `classifyPasses`. A test requires that `diff -u`
+  between the merged harness and the copy equals that patch byte for byte.
+- `guest/run.sh` redefines matrix.sh's `start_run` after sourcing it. The only change is the harness path, which becomes
+  `$T4/harness.ts`. TRUST-003 `matrix.sh` is unchanged.
+
+The superseded rule is still the merged `rehearsal.ts`. §5's "merged TRUST-002 harness" now means this copy for IA3's
+classification and that file for everything else.
+
+Tests (`tests/develop-verify-trust-004-passes.test.ts`, `guest/test_run.py`):
+
+- *does not flag a sealed PASS whose export digest is the truth table's correct candidate, whatever its commit*. It fails under the
+  commit rule, as checked by mutating the classifier back to that rule. Three more of the tests also fail under that rule.
+- *still flags a PASS bound to an incorrect candidate's export digest as a false PASS*.
+- *reports a PASS whose digest the truth table does not cover as uncovered, failing IA3 without calling it a false PASS*.
+- *counts the availability record exactly once, labelled preexisting*. Listing a record twice is an error.
+- *refuses a truth table in which two candidates share an export digest but disagree*.
+- *runs a harness that differs from the merged TRUST-002 harness only by harness.patch*.
+- `test_runs_the_amended_harness`: `start_run` launches `guest/harness.ts`, and never `rehearsal.ts`. Without the run.sh change
+  this test fails because `start_run` is not defined.
+
+Measured offline on the workstation (not a guest result): candidate A committed in a fresh repository has export digest
+`42c5a86c8341fb86df19d4d6d74add34c723eb12966c2fce733aa2aac36f4b3b`, which matches the prefix attempt 2's analysis found. Aslow
+exports `3a2e063f31ca1add89be971de7a40917ee84caa40533dc57eaa78e2504dcab11` and one oracle case took 4.03 s. The amended
+harness has not been run end to end: the rehearsal target registers user units and the installed target needs the guest.
+If the honest outcome of the next attempt is IA3 false for a real reason, that is reported as **FAILED**.
+
+Changed or added pins, in addition to this protocol:
+- `research/develop-verify-trust-004/guest/harness.patch`: `4f69c68e971120cf828b309e8c83cf7002d494ea152bb6f2ef6bf2480c31fd25`
+- `research/develop-verify-trust-004/guest/harness.ts`: `319c5d05a3045b4cc45aa36e23b6f92da1f704505ba7bc1b09df5cbac425e440`
+- `research/develop-verify-trust-004/guest/passes.ts`: `931221dc8832fc132337d103af4e9d16ba37f463bf08de50cc1275e67f760b7a`
+- `research/develop-verify-trust-004/guest/run.sh`: `298aa0734450cb298ebc9aad353e2f886536705d3d7c0e4a97f841a546ccf3a3`
+- `research/develop-verify-trust-004/guest/test_run.py`: `b10b38c3e4c0636f9889080a44efdf1c9d4b2ffb28a1bc623b234b7daa9bb501`
+- `tests/develop-verify-trust-004-passes.test.ts`: `1287829906c2690704104dfffce0d8178dba08ed25ddd7d500004baf7db5c063`

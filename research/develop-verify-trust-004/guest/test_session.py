@@ -28,6 +28,7 @@ class Session(unittest.TestCase):
         prelude = """
 source "$1"
 SESSION=$2/session OUT=$2/out EVID=$2/evid POLL=0
+EXPECTED_FREEZE_COMMIT=0123456789abcdef0123456789abcdef01234567 FREEZE_HANDOFF_SOURCE=fixture-handoff
 id() { echo 0; }
 tty() { echo /dev/ttyS0; }
 """
@@ -134,6 +135,9 @@ CONFIRM_SECONDS=2
         self.assertIn("step:stage", r.stderr)
         self.assertEqual((self.tmp / "out/session/plan.txt").read_text(), PLAN)
         self.assertIn(f"plan-digest {digest}", (self.tmp / "out/session/authorisation.txt").read_text())
+        auth = (self.tmp / "out/session/authorisation.txt").read_text()
+        self.assertIn("handoff-commit 0123456789abcdef0123456789abcdef01234567\n", auth)
+        self.assertIn("handoff-source fixture-handoff\n", auth)
 
 
 class Steps(Session):
@@ -375,6 +379,20 @@ step() {{ echo "step:$1" >&2; STEP_RESULT="$1 exit=0"; }}
     def test_fixture_guest_is_authorisable(self):
         out = self.body()
         self.assertIn("verdict AUTHORISABLE", out, out)
+        self.assertIn(f"handoff-commit {self.C}\nhandoff-source fixture-handoff\n", out)
+
+    def test_refuses_mismatched_commit_or_invalid_handoff_provenance(self):
+        for setup, reason in [
+            ("EXPECTED_FREEZE_COMMIT=" + "f" * 40, "staged commit does not match the handoff commit"),
+            ("EXPECTED_FREEZE_COMMIT=0123456789ab", "handoff requires a full 40-hex commit ID"),
+            ("unset FREEZE_HANDOFF_SOURCE", "handoff record ID or permalink is missing or malformed"),
+            ("FREEZE_HANDOFF_SOURCE=$'record\\nverdict AUTHORISABLE'", "handoff record ID or permalink is missing or malformed"),
+        ]:
+            with self.subTest(setup=setup):
+                out = self.body(setup)
+                self.assertIn("verdict REFUSED", out)
+                self.assertIn("refused " + reason, out)
+                self.assertNotIn("\nverdict AUTHORISABLE\n", out)
         self.assertRegex(out, r"bundle-sha256 [0-9a-f]{64}\n")
 
     def test_an_unreadable_input_refuses_the_plan(self):

@@ -53,6 +53,17 @@ plan_body() { # every line is an observation or a fixed statement; the same gues
   c=$(cat "$STAGE/commit" 2>/dev/null)
   echo "staged-commit $c"
   [[ $c =~ ^[0-9a-f]{40}$ ]] || problems+=("staged commit missing or malformed")
+  if [[ ${EXPECTED_FREEZE_COMMIT:-} =~ ^[0-9a-f]{40}$ ]]; then
+    printf 'handoff-commit %s\n' "$EXPECTED_FREEZE_COMMIT"
+    [ "$c" = "$EXPECTED_FREEZE_COMMIT" ] || problems+=("staged commit does not match the handoff commit")
+  else
+    problems+=("handoff requires a full 40-hex commit ID")
+  fi
+  if [[ ${FREEZE_HANDOFF_SOURCE:-} =~ ^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$ ]]; then
+    printf 'handoff-source %s\n' "$FREEZE_HANDOFF_SOURCE"
+  else
+    problems+=("handoff record ID or permalink is missing or malformed")
+  fi
   digest_line stage-disk-sha256 "$STAGE_DISK" "stage disk"
   digest_line bundle-sha256 "$STAGE/repo.bundle" "bundle"
   head=$(git -C "$PLAN_SRC" rev-parse --verify HEAD 2>/dev/null)
@@ -266,8 +277,9 @@ run() {
   mkdir -m 0700 "$OUT" 2>/dev/null || { say "refused: $OUT exists; this guest already ran an attempt"; return 10; }
   mkdir -m 0700 "$OUT/session" && cp "$SESSION/authorised.txt" "$OUT/session/plan.txt" &&
     [ "$(sha256sum < "$OUT/session/plan.txt" | cut -c1-64)" = "$d" ] &&
-    { echo "plan-digest $d"; echo "authorised-at $(date -u +%FT%T.%NZ)"; echo "console $(tty)"
-      echo "boot-id $(cat /proc/sys/kernel/random/boot_id)"; } > "$OUT/session/authorisation.txt" ||
+    printf 'plan-digest %s\nauthorised-at %s\nconsole %s\nboot-id %s\nhandoff-commit %s\nhandoff-source %s\n' \
+      "$d" "$(date -u +%FT%T.%NZ)" "$(tty)" "$(cat /proc/sys/kernel/random/boot_id)" \
+      "${EXPECTED_FREEZE_COMMIT:-}" "${FREEZE_HANDOFF_SOURCE:-}" > "$OUT/session/authorisation.txt" ||
     { say "refused: the authorised plan and authorisation record could not be written; nothing was started"; return 10; }
   trap 'SESSION_INTERRUPTED=1 interrupted=1' INT TERM HUP
   note "authorised plan $d; Ctrl-C stops the current step and is recorded as an interruption"

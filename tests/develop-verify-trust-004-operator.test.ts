@@ -77,6 +77,57 @@ it("aborts before staging when any selected path is occupied", () => {
 });
 
 describe("TRUST-004 OPERATOR.md frozen source check", () => {
+	it.each(["matching", "moved", "missing", "short"])(
+		"stages only the exact handoff commit: %s tag case",
+		(scenario) => {
+			const repo = join(root, "fixture.git");
+			expect(shell('git init -q --bare "$REPO"', { REPO: repo }).status).toBe(0);
+			const git = (args: string[], input?: string) => {
+				const r = spawnSync("git", ["--git-dir", repo, ...args], { input, encoding: "utf8" });
+				expect(r.status, r.stderr).toBe(0);
+				return r.stdout.trim();
+			};
+			const fixtureCommit = (text: string) => {
+				const blob = git(["hash-object", "-w", "--stdin"], text);
+				const manifest = git(["hash-object", "-w", "--stdin"], `${sha(text)}  content\n`);
+				const sub = git(["mktree"], `100644 blob ${manifest}\tFROZEN.sha256\n`);
+				const tree = git(["mktree"], `100644 blob ${blob}\tcontent\n040000 tree ${sub}\tpins\n`);
+				return git(
+					["hash-object", "-w", "-t", "commit", "--stdin"],
+					`tree ${tree}\nauthor Fixture <fixture@example.invalid> 0 +0000\ncommitter Fixture <fixture@example.invalid> 0 +0000\n\nfixture\n`,
+				);
+			};
+			const expected = fixtureCommit("reviewed");
+			const tagged = scenario === "moved" ? fixtureCommit("different but self-consistent") : expected;
+			const ref = "refs/tags/disposable-freeze";
+			git(["update-ref", ref, tagged]);
+			const source = blocks("1. Preconditions").find((b) => b.includes("git clone"));
+			expect(source).toBeDefined();
+			const w = join(root, "new-stage");
+			const r = shell(`${source}\nprintf 'STAGING %s\\n' "$F"`, {
+				W: w,
+				T: "pins",
+				ENDO_REPO: repo,
+				FREEZE_REF: ref,
+				F: ref,
+				EXPECTED_FREEZE_COMMIT:
+					scenario === "missing" ? "" : scenario === "short" ? expected.slice(0, 12) : expected,
+			});
+			if (scenario === "matching") {
+				expect(r.status, r.stderr).toBe(0);
+				expect(r.stdout).toContain(`STAGING ${expected}`);
+			} else {
+				expect(r.status, r.stdout + r.stderr).toBe(1);
+				expect(r.stdout).not.toContain("STAGING");
+				expect(r.stderr).toContain(
+					scenario === "moved"
+						? `tag resolves to ${tagged}, handoff requires ${expected}`
+						: "full 40-hex commit ID",
+				);
+			}
+		},
+	);
+
 	const line = () => {
 		const source = blocks("1. Preconditions").find((b) => b.includes("git clone"));
 		const found = source?.split("\n").find((l) => l.includes("FROZEN.sha256") && l.includes("sha256sum"));

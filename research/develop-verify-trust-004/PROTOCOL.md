@@ -674,3 +674,23 @@ the scoped intake, retaining a valid binding of the fixture PASS. This is an off
 a new attempt or an offline confirmation of the retained live evidence. Separate extraction tests check
 that the working-tree link is not materialized, that its name remains reserved, and that protected paths
 still refuse links in both preflight and extraction.
+
+## Amendment 15 — pin the staged commit to an independent handoff
+
+The Amendment 14 procedure accepted the tag as its own expected value. Verifying a manifest from that
+checkout proves internal consistency, not that the operator obtained the reviewed commit. The handoff
+now supplies the full 40-hex commit ID independently of the tag. The host refuses missing or abbreviated
+IDs and refuses any mismatch, reporting the resolved commit and the commit the handoff requires. The tag
+and all earlier freezes remain untouched.
+
+At the guest console the operator supplies that same commit ID and the source record's identifier. The
+session plan includes both and refuses a mismatched staged commit or invalid provenance. The existing plan
+digest and rechecks bind those inputs to the confirmation. The exported session authorisation file records
+the full handoff commit and the record identifier before any experiment unit starts. This records the
+operator's provenance, not an independent attestation from the guest.
+
+The disposable-tag test runs the operator page's real source block against a matching tag, a tag
+pointing to a different commit with an internally consistent manifest, and missing and abbreviated pins.
+On Amendment 14 the three negative cases continued to staging; on Amendment 15 only the matching case
+does. Session tests cover refusal and authorisation records. No live run was made. Amendment 14's archive
+handling, capture, TRUST-003 and the G expectations are unchanged.

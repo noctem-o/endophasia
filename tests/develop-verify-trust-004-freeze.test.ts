@@ -57,21 +57,20 @@ function contradictions(doc: string, manifest: Map<string, string>) {
 		if (Number(m[1]) !== manifest.size)
 			problems.push(`line ${line}: quotes ${m[1]} entries, FROZEN.sha256 has ${manifest.size}`);
 	}
-	const f = /^F=([0-9a-f]{40}|refs\/tags\/trust004-amendment-\d+)$/m.exec(doc)?.[1];
-	const selected = /\*\*Selected source commit:\*\* `([0-9a-f]{40}|refs\/tags\/trust004-amendment-\d+)`/.exec(
-		doc,
-	)?.[1];
-	if (f === undefined || selected === undefined) problems.push("no F= line or no selected source commit");
-	else if (f !== selected) problems.push(`F=${f} but the selected source commit is ${selected}`);
+	const ref = /^FREEZE_REF=(refs\/tags\/trust004-amendment-\d+)$/m.exec(doc)?.[1];
+	const selected = /\*\*Freeze tag:\*\* `(refs\/tags\/trust004-amendment-\d+)`/.exec(doc)?.[1];
+	if (ref === undefined || selected === undefined || ref !== selected)
+		problems.push("freeze tag and FREEZE_REF disagree");
+	if (!/^F=\$EXPECTED_FREEZE_COMMIT$/m.test(doc)) problems.push("F is not sourced from the independent handoff");
 	return problems;
 }
 
 const doc = readFileSync(`${T}/OPERATOR.md`, "utf8");
 const manifestText = readFileSync(`${T}/FROZEN.sha256`, "utf8");
 const manifest = manifestOf(manifestText);
-const F = /^F=([^\s]+)$/m.exec(doc)?.[1] ?? "";
 const ref = /^FREEZE_REF=(refs\/tags\/trust004-amendment-\d+)$/m.exec(doc)?.[1] ?? "";
-const haveF = git("cat-file", "-e", `${F}^{commit}`).status === 0;
+const F = ref ? git("rev-parse", "--verify", `${ref}^{commit}`).stdout.trim() : "";
+const haveF = /^[0-9a-f]{40}$/.test(F);
 const required = process.env.TRUST004_FREEZE_CHECK === "1";
 
 describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
@@ -84,7 +83,7 @@ describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
 		expect(doc).toContain(manifest.get(`${T}/guest/session.sh`));
 	});
 
-	it("catches a stale session.sh digest and an F that disagrees with the selected commit", () => {
+	it("catches stale digests and counts and a handoff pin replaced by the tag", () => {
 		const stale = doc.replaceAll(
 			manifest.get(`${T}/guest/session.sh`) as string,
 			"43a348be67a002f14de87fa6769776742031b2ee348f67570d424079ea60896c",
@@ -95,17 +94,13 @@ describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
 		expect(contradictions(staleCount, manifest)).toContain(
 			`line ${doc.slice(0, doc.indexOf("frozen-check all N")).split("\n").length}: quotes 36 entries, FROZEN.sha256 has ${manifest.size}`,
 		);
-		const otherF = doc.replace(/^F=\S+$/m, `F=${"0".repeat(40)}`);
-		expect(contradictions(otherF, manifest)).toContain(`F=${"0".repeat(40)} but the selected source commit is ${F}`);
+		const otherF = doc.replace(/^F=\S+$/m, `F=${ref}`);
+		expect(contradictions(otherF, manifest)).toContain("F is not sourced from the independent handoff");
 	});
 
 	it("has F available when the full-history check is required", () => {
 		if (!required) return;
-		expect(haveF, `selected source commit ${F} is not in this clone`).toBe(true);
-		expect(ref).not.toBe("");
-		const tag = git("rev-parse", "--verify", `${ref}^{commit}`);
-		expect(tag.status, tag.stderr).toBe(0);
-		expect(tag.stdout).toBe(git("rev-parse", "--verify", `${F}^{commit}`).stdout);
+		expect(haveF, `the freeze tag ${ref} does not resolve to a commit in this clone`).toBe(true);
 	});
 
 	it.runIf(haveF)(
@@ -117,7 +112,6 @@ describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
 			const docAtF = git("show", `${F}:${T}/OPERATOR.md`);
 			expect(docAtF.status, docAtF.stderr).toBe(0);
 			expect(contradictions(docAtF.stdout, manifest)).toEqual([]);
-			expect(docAtF.stdout).toContain(`\nF=${ref}\n`);
 			expect(docAtF.stdout, "the operator page on the branch must be the page inside F").toBe(doc);
 			for (const [path, digest] of manifest) {
 				const blob = spawnSync("git", ["show", `${F}:${path}`]);

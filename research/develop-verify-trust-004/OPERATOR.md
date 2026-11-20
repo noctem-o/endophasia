@@ -10,11 +10,12 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `refs/tags/trust004-amendment-14` (Amendment 14; exact file list in
-[FROZEN.sha256](FROZEN.sha256)). Stage exactly the commit this tag names, not the branch tip. This page is itself one of the
+**Freeze tag:** `refs/tags/trust004-amendment-15` (Amendment 15; exact file list in
+[FROZEN.sha256](FROZEN.sha256)). Stage only the full commit ID in the independently verified handoff, never the branch tip
+or a commit obtained solely from the tag. This page is itself one of the
 frozen files, so the copy inside that commit is this page: read it from the checkout you stage. `tests/develop-verify-trust-004-freeze.test.ts`
-checks in CI that the tag names that commit, that every frozen file there matches the manifest, that this page there is the page on
-the branch, and that every digest and entry count it quotes agrees with that manifest.
+checks the commit the tag names for manifest consistency and verifies that its operator page is identical to the branch page.
+CI does not replace the independent commit check at staging.
 
 ## 0. Authority and boundaries
 
@@ -31,19 +32,18 @@ a read-only disk holding a git bundle of the commit and a blank evidence disk.
 
 Set `ENDO13_WORK` explicitly in every terminal: `host.sh` refuses an empty setting. Never point it at
 `~/.capy/work/endo13`, which holds **attempt 1's retained evidence**, or at the Amendment 9 and Amendment 12 work and
-evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`), which hold **attempts 2 and 3**. Also retain **attempt 4** (`trust004-amendment13-run1*`). All stay read only.
+evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`), which hold **attempts 2 and 3**. Also retain **attempt 4** (`trust004-amendment13-run1*`) and any Amendment 14 work. All stay read only.
 
 ## 1. Preconditions and inputs [host]
 
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=refs/tags/trust004-amendment-14
-FREEZE_REF=refs/tags/trust004-amendment-14
+FREEZE_REF=refs/tags/trust004-amendment-15
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment14-run1
-W2=$HOME/.capy/work/trust004-amendment14-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment14-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment15-run1
+W2=$HOME/.capy/work/trust004-amendment15-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment15-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -61,22 +61,28 @@ for p in "$W" "$W2" "$E"; do
 done
 ```
 
-**Source.** Use a private clone with the branch pointing at the selected commit, so that `host.sh stage` bundles exactly that:
+**Source.** Read the full 40-hex commit ID from the independently verified handoff, not from Git or this page.
+Use a private clone with the branch pointing at that commit, so that `host.sh stage` bundles exactly that:
 
 ```sh
+IFS= read -r -p 'Full commit ID from the independent handoff: ' EXPECTED_FREEZE_COMMIT || exit 1
+```
+
+```sh
+[[ ${EXPECTED_FREEZE_COMMIT:-} =~ ^[0-9a-f]{40}$ ]] || { echo "handoff requires a full 40-hex commit ID" >&2; exit 1; }
+F=$EXPECTED_FREEZE_COMMIT
 mkdir -m 0700 -- "$W" && mkdir -m 0700 -- "$W/vm" || exit 2
-git clone -q --no-checkout "$ENDO_REPO" "$W/src"
+git clone -q --no-checkout "$ENDO_REPO" "$W/src" || exit 1
 git -C "$W/src" fetch -q origin "$FREEZE_REF:$FREEZE_REF" || exit 1
 tagged=$(git -C "$W/src" rev-parse --verify "$FREEZE_REF^{commit}") || exit 1
-[[ $F == "$FREEZE_REF" || $F == "$tagged" ]] || { echo "wrong freeze commit" >&2; exit 1; }
-F=$tagged
-git -C "$W/src" update-ref refs/heads/develop-verify-trust-004 "$F"
-git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-004
-git -C "$W/src" rev-parse HEAD                                    # must print $F
+[[ $tagged == "$F" ]] || { printf 'tag resolves to %s, handoff requires %s\n' "$tagged" "$F" >&2; exit 1; }
+git -C "$W/src" update-ref refs/heads/develop-verify-trust-004 "$F" || exit 1
+git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-004 || exit 1
+[[ $(git -C "$W/src" rev-parse --verify HEAD) == "$F" ]] || { echo "checkout differs from the handoff commit" >&2; exit 1; }
 test -z "$(git -C "$W/src" status --porcelain)" && echo clean
 (cd "$W/src" && sha256sum --quiet --strict -c "$T/FROZEN.sha256") || { echo "frozen files do not match" >&2; exit 1; }
 wc -l < "$W/src/$T/FROZEN.sha256"                                # the guest plan's frozen-check must report this count
-grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c
+grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 09b190c649dee7bef2839a59bd660c1912a7baf6003843d08fdc4303ca9e36f7
 ```
 
 **Image and signature.** The protocol image is `Arch-Linux-x86_64-cloudimg-20261101.620452.qcow2`, SHA-256
@@ -142,7 +148,9 @@ cannot identify the guest, stop and do not signal anything.
 
 ## 3. Authorise and run [guest root]
 
-At the attach console, as root:
+At the attach console, as root, enter the same full commit ID from the independent handoff and a
+stable identifier for that record (for example its message permalink or record ID, without spaces or secrets).
+The plan and authorisation file retain both. Do not use the staged commit as the source of either input.
 
 ```sh
 ip -br link; lsblk
@@ -150,12 +158,16 @@ install -d -m 0700 /root/stage && tar -xf /dev/vdb -C /root/stage && cat /root/s
 git clone -q --bare /root/stage/repo.bundle /root/session.git 2>/dev/null
 git --git-dir=/root/session.git show "$(cat /root/stage/commit)":research/develop-verify-trust-004/guest/session.sh > /root/session.sh
 sha256sum /root/session.sh
+IFS= read -r -p 'Full commit ID from the independent handoff: ' EXPECTED_FREEZE_COMMIT || exit 1
+IFS= read -r -p 'Independent handoff record ID or permalink: ' FREEZE_HANDOFF_SOURCE || exit 1
+export EXPECTED_FREEZE_COMMIT FREEZE_HANDOFF_SOURCE
 bash /root/session.sh plan
 ```
 
 Expected: only `lo`; disks `vda`, `vdb` (read-only) and `vdc`; the commit is `$F`; session.sh is
-`8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c`. The plan should end with `verdict AUTHORISABLE` and a
-`plan-digest`. Read every line before authorising: staged commit, stage-disk and bundle digests (the bundle is inside the stage
+`09b190c649dee7bef2839a59bd660c1912a7baf6003843d08fdc4303ca9e36f7`. The plan should end with `verdict AUTHORISABLE` and a
+`plan-digest`. Read every line before authorising: handoff commit and record ID match the independent handoff, the staged
+commit matches that commit, stage-disk and bundle digests (the bundle is inside the stage
 disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all N entries match` with N equal to the count `wc -l` printed in section 1, `session-script is the staged commit's`, `network-interfaces lo`,
 `shared-filesystems none`, `block-devices vda vdb vdc`, `stage-disk-read-only 1`, `virtualization kvm`, hostname
 `endo13-guest`, kernel `7.3.4-arch1-2`, the eleven pinned packages, and the three pending actions. A `verdict REFUSED` lists each

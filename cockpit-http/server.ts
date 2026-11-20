@@ -41,6 +41,11 @@ import {
 	readEndoCockpitTimelineV0,
 } from "../cockpit/index.ts";
 import {
+	ENDO_OBSERVE_REPRESENTATION_SELECTOR_PATTERN_V0,
+	ENDO_OBSERVE_REPRESENTATIONS_ABSENT_V0,
+	type EndoObserveRepresentationObserverV0,
+} from "../protocol/observe-representation.ts";
+import {
 	ENDO_OMP_ABSENT_V0,
 	ENDO_OMP_SELECTOR_PATTERN_V0,
 	type EndoOmpObserverV0,
@@ -171,6 +176,11 @@ export interface EndoCockpitServerOptionsV0 {
 	 * (protocol/omp-observation.ts); the server reaches no file itself. Absent: the OMP routes answer one constant.
 	 */
 	omp?: EndoOmpObserverV0;
+	/**
+	 * A read-only observer of recorded representation captures (`endo studio --representations` or `<store>/representations`).
+	 * The server reaches no file itself. Absent: `/api/v0/observe/representations` answers one constant (`available: false`).
+	 */
+	representations?: EndoObserveRepresentationObserverV0;
 }
 
 export interface EndoCockpitServerV0 {
@@ -376,6 +386,46 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 			}
 		}
 		if (segments[0] !== "api" || segments[1] !== "v0") return refuse("not-found");
+		if (segments[2] === "observe") {
+			const representations = options.representations;
+			if (segments.length === 4 && segments[3] === "representations") {
+				parseQuery(rawQuery, []);
+				if (representations === undefined)
+					return {
+						records: [ENDO_OBSERVE_REPRESENTATIONS_ABSENT_V0],
+						body: ENDO_OBSERVE_REPRESENTATIONS_ABSENT_V0,
+					};
+				admit();
+				const record = representations.list();
+				return { records: [record], body: record };
+			}
+			if (segments.length === 5 && segments[3] === "representation") {
+				const selector = segments[4]!;
+				if (representations === undefined || !ENDO_OBSERVE_REPRESENTATION_SELECTOR_PATTERN_V0.test(selector))
+					return refuse("not-found");
+				let layer: number | "all" | undefined;
+				if (rawQuery !== "") {
+					if (rawQuery.length > MAX_QUERY_CHARS || !rawQuery.startsWith("layer=")) return refuse("bad-request");
+					const rawLayer = rawQuery.slice(6);
+					if (rawLayer === "all") {
+						layer = "all";
+					} else if (/^(0|[1-9][0-9]{0,3})$/.test(rawLayer)) {
+						layer = Number(rawLayer);
+					} else {
+						return refuse("bad-request");
+					}
+				}
+				admit();
+				try {
+					const record = representations.scene(selector, layer === undefined ? undefined : { layer });
+					return record === null ? refuse("not-found") : { records: [record], body: record };
+				} catch (error) {
+					if (error instanceof TypeError) return refuse("bad-request");
+					throw error;
+				}
+			}
+			return refuse("not-found");
+		}
 		if (segments[2] === "develop" && segments[3] === "omp") {
 			// `develop/omp/sessions` and `develop/omp/session/<selector>`: GET only, no query, a whole fresh read of the files each time.
 			parseQuery(rawQuery, []);

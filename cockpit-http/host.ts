@@ -16,6 +16,7 @@
 
 import { lstatSync, readlinkSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import type { EndoObserveRepresentationObserverV0 } from "../protocol/observe-representation.ts";
 import type { EndoOmpObserverV0 } from "../protocol/omp-observation.ts";
 import type { EndoCockpitWorkbenchV0 } from "../protocol/workbench-http.ts";
 import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
@@ -54,6 +55,11 @@ export interface EndoCockpitLaunchOptionsV0 {
 	 * builds it; this module imports no adapter and reads no session file.
 	 */
 	omp?: { root: string; open(key: EndoDigestKeyV0): EndoOmpObserverV0 };
+	/**
+	 * Opens the read-only observer of recorded representation captures under the server's own key (`endo studio --representations`
+	 * or `<store>/representations`). The caller builds it; this module imports no adapter and reads no capture file.
+	 */
+	representations?: { root: string; open(key: EndoDigestKeyV0): EndoObserveRepresentationObserverV0 };
 	/**
 	 * The workspace the page opens on, said in the page itself (`endo workspace open` and the live workbench give `develop`; `endo studio` gives nothing and its
 	 * page is served byte for byte as built). It costs no request, and the page never reads its own address to decide.
@@ -205,6 +211,13 @@ export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): 
 		if (isWithin(ompPlace, storePlace) || isWithin(storePlace, ompPlace))
 			throw new TypeError("the OMP sessions directory and the store overlap: name two separate directories");
 	}
+	if (options.representations !== undefined) {
+		const repPlace = place(options.representations.root, "the representations directory");
+		if (isWithin(repPlace, keyPlace))
+			throw new TypeError(
+				"the cockpit key file is inside the representations directory: Studio writes nothing there",
+			);
+	}
 	const created = !exists(keyFile);
 	const digestKey = loadOrCreateEndoDigestKeyV0(keyFile);
 	options.onKey?.({ path: keyFile, created });
@@ -216,6 +229,7 @@ export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): 
 		...(options.onError === undefined ? {} : { onError: options.onError }),
 		...(options.workbench === undefined ? {} : { workbench: options.workbench }),
 		...(options.omp === undefined ? {} : { omp: options.omp.open(digestKey) }),
+		...(options.representations === undefined ? {} : { representations: options.representations.open(digestKey) }),
 	});
 	return { server, key: { path: keyFile, created } };
 }

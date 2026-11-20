@@ -1,10 +1,7 @@
 # OBSERVE and VERIFY: what is measured, and what the evidence justifies
 
-Status: **design, apart from harness-level observation.** What Endophasia records about a harness today (lifecycle, context,
-tools, usage, evidence, trajectories) is implemented and is described in [status.md](status.md). **Nothing below it exists in
-this repository as code**: there is no model-internal observation provider, no TransformerLens, vLLM-Lens or NNsight integration,
-no typed Observe scene and no WebGPU renderer. This page is the architecture those would follow; the first Studio page
-([studio.md](studio.md)) shows none of it.
+Status: **design, apart from harness-level observation and the bounded Representation Explorer vertical slice.** What Endophasia records about a harness today (lifecycle, context,
+tools, usage, evidence, trajectories) is implemented and is described in [status.md](status.md). For the first bounded, read-only model-representation slice (typed scene contract, deterministic 2D PCA projection, isolated offline TransformerLens 4.x `TransformerBridge` capture script, and Studio Observe Representation Explorer), see [observe-representation-explorer.md](designs/observe-representation-explorer.md). Live serving-time model-internal providers (vLLM-Lens, NNsight, live `llama.cpp` instrumentation) and WebGPU rendering remain design only.
 
 The text was moved here from the README's "Observe and Verify" section unchanged, except that one sentence now says "a browser
 view could render" these scenes, not "the planned browser cockpit can", because the first Studio page exists and renders none of this.

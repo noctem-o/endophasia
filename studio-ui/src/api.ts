@@ -2,6 +2,7 @@
 // Requests use document.baseURI without printing or persisting its per-launch capability.
 // Every outcome becomes a classified reply with fixed failure text; raw exceptions and URLs never reach the page.
 
+import type { EndoObserveRepresentationSceneV0 } from "../../protocol/observe-representation.ts";
 import type { EndoOmpSessionV0 } from "../../protocol/omp-observation.ts";
 import { type AttemptsReply, readAttempts } from "./model/attempts-wire.ts";
 import { type AttentionReply, readAttention } from "./model/attention-wire.ts";
@@ -32,6 +33,12 @@ import {
 	readWorkbenchDiff,
 	readWorkbenchProject,
 } from "./model/project-wire.ts";
+import {
+	type RepresentationIndex,
+	readRepresentationScene,
+	readRepresentationsIndex,
+	representationSelector,
+} from "./model/representation-wire.ts";
 import type { ReadRequest } from "./model/state.ts";
 import {
 	readWorkbenchCommand,
@@ -660,6 +667,104 @@ const isNoWorkbench = (v: unknown): boolean =>
 const REQUEST_TIMEOUT_MS = 60_000;
 /** The broker's own rule for a replay nonce (adapters/pi/workbench.ts). */
 const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
+
+export type RepresentationRequest = { kind: "list" } | { kind: "scene"; selector: string; layer?: number | "all" };
+
+export type RepresentationReply =
+	| { kind: "list"; record: RepresentationIndex }
+	| { kind: "scene"; record: EndoObserveRepresentationSceneV0 }
+	| { kind: "failure"; message: string; stale: boolean };
+
+/**
+ * Recorded representation captures for Observe's Representation Explorer: two fixed relative GET routes,
+ * gated by opaque server selector and explicit layer grammar. Read only when the operator opens the view.
+ */
+export async function fetchRepresentations(
+	request: RepresentationRequest,
+	cancel: AbortSignal,
+): Promise<RepresentationReply> {
+	const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+	let route = "./api/v0/observe/representations";
+	if (request.kind === "scene") {
+		if (!representationSelector(request.selector)) {
+			return { kind: "failure", message: "Invalid artifact selection. Refresh the artifact list.", stale: true };
+		}
+		route = `./api/v0/observe/representation/${request.selector}`;
+		if (request.layer !== undefined) {
+			if (request.layer === "all") {
+				route += "?layer=all";
+			} else if (Number.isSafeInteger(request.layer) && request.layer >= 0 && request.layer <= 9999) {
+				route += `?layer=${request.layer}`;
+			} else {
+				return { kind: "failure", message: "Invalid layer parameter. Refresh the artifact list.", stale: false };
+			}
+		}
+	}
+	try {
+		const response = await fetch(new URL(route, document.baseURI), {
+			method: "GET",
+			credentials: "omit",
+			referrerPolicy: "no-referrer",
+			redirect: "error",
+			cache: "no-store",
+			signal: AbortSignal.any([cancel, timeout]),
+		});
+		if (response.status === 404) {
+			return {
+				kind: "failure",
+				message: "That capture artifact is no longer present or was replaced on disk. Refresh the artifact list.",
+				stale: true,
+			};
+		}
+		if (response.status === 400) {
+			return {
+				kind: "failure",
+				message: "The server refused that representation request (unsupported layer or invalid query).",
+				stale: false,
+			};
+		}
+		if (response.status === 429) {
+			return {
+				kind: "failure",
+				message: "The server is pacing reads. Wait a moment, then refresh explicitly.",
+				stale: false,
+			};
+		}
+		if (response.status !== 200) {
+			return {
+				kind: "failure",
+				message: "The representation read failed. Nothing from it was accepted.",
+				stale: false,
+			};
+		}
+		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "")) {
+			throw new Error("content type");
+		}
+		const body: unknown = await response.json();
+		if (request.kind === "list") {
+			const record = readRepresentationsIndex(body);
+			if (record !== null) return { kind: "list", record };
+		} else {
+			const record = readRepresentationScene(body);
+			if (record !== null) return { kind: "scene", record };
+		}
+		return {
+			kind: "failure",
+			message: "Unsupported or malformed representation payload. Nothing from it was accepted.",
+			stale: false,
+		};
+	} catch {
+		return {
+			kind: "failure",
+			message: cancel.aborted
+				? "Request interrupted."
+				: timeout.aborted
+					? "The request timed out. Refresh explicitly."
+					: "The response could not be read or the server could not be reached.",
+			stale: false,
+		};
+	}
+}
 
 /** Request one snapshot, relative to the page's own address. Never throws: a failure is a `Reply`. */
 export async function fetchSnapshot(request: ReadRequest): Promise<Fetched> {

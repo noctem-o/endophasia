@@ -10,10 +10,11 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `57e401c293311e6e7d8f384bae89fbb9a5d292fc` (Amendment 11; exact file list in
-[FROZEN.sha256](FROZEN.sha256); this commit's own copy of this page already quotes that manifest's digests). Stage exactly this commit, not the branch tip. Later commits on the branch only change
-documentation and tests outside the manifest; `tests/develop-verify-trust-004-freeze.test.ts` checks in CI that this page and the
-manifest agree, here and at this commit.
+**Selected source commit:** `refs/tags/trust004-amendment-12` (Amendment 12; exact file list in
+[FROZEN.sha256](FROZEN.sha256)). Stage exactly the commit this tag names, not the branch tip. This page is itself one of the
+frozen files, so the copy inside that commit is this page: read it from the checkout you stage. `tests/develop-verify-trust-004-freeze.test.ts`
+checks in CI that the tag names that commit, that every frozen file there matches the manifest, that this page there is the page on
+the branch, and that every digest and entry count it quotes agrees with that manifest.
 
 ## 0. Authority and boundaries
 
@@ -37,12 +38,12 @@ directories (`trust004-amendment9-run1*`), which hold **attempt 2's**. Both stay
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=57e401c293311e6e7d8f384bae89fbb9a5d292fc
-FREEZE_REF=refs/tags/trust004-amendment-11
+F=refs/tags/trust004-amendment-12
+FREEZE_REF=refs/tags/trust004-amendment-12
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment11-run1
-W2=$HOME/.capy/work/trust004-amendment11-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment11-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment12-run1
+W2=$HOME/.capy/work/trust004-amendment12-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment12-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```
@@ -74,6 +75,7 @@ git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-00
 git -C "$W/src" rev-parse HEAD                                    # must print $F
 test -z "$(git -C "$W/src" status --porcelain)" && echo clean
 (cd "$W/src" && sha256sum --quiet --strict -c "$T/FROZEN.sha256") || { echo "frozen files do not match" >&2; exit 1; }
+wc -l < "$W/src/$T/FROZEN.sha256"                                # the guest plan's frozen-check must report this count
 grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c
 ```
 
@@ -154,7 +156,7 @@ bash /root/session.sh plan
 Expected: only `lo`; disks `vda`, `vdb` (read-only) and `vdc`; the commit is `$F`; session.sh is
 `8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c`. The plan should end with `verdict AUTHORISABLE` and a
 `plan-digest`. Read every line before authorising: staged commit, stage-disk and bundle digests (the bundle is inside the stage
-disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all 41 entries match`, `session-script is the staged commit's`, `network-interfaces lo`,
+disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all N entries match` with N equal to the count `wc -l` printed in section 1, `session-script is the staged commit's`, `network-interfaces lo`,
 `shared-filesystems none`, `block-devices vda vdb vdc`, `stage-disk-read-only 1`, `virtualization kvm`, hostname
 `endo13-guest`, kernel `7.3.4-arch1-2`, the eleven pinned packages, and the three pending actions. A `verdict REFUSED` lists each
 reason: stop, preserve the console log and do not work around it.

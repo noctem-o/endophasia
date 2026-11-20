@@ -544,6 +544,10 @@ Changed or added pins, in addition to this protocol:
 The Amendment 10 tag remains unchanged. Its IA3 rule, the roles, the authority requirements and the acceptance criteria are kept.
 Review of the pushed head found two corrections:
 
+*Severity (added with Amendment 12):* the `collect` finding is the most serious defect review has found in this harness. The
+evidence path itself, run as root, could be steered by the principal under test into exporting root-readable guest files. Our
+own evidence collection was the weakest link, not the verifier boundary.
+
 - **4636855623 (collect).** TRUST-003 `matrix.sh`'s `collect`, which run.sh reuses, runs as guest root. It copies
   `/home/endoagent/probe-*.strace` with plain `cp`, which follows a symbolic link. The agent owns that directory, so it can
   plant a link that puts a root-only guest file into the evidence `finish.sh` exports, or a FIFO that blocks root. run.sh now
@@ -567,3 +571,34 @@ Changed or added pins, in addition to this protocol:
 - `research/develop-verify-trust-004/guest/agentfile.py`: `4881b21c8f0dd15516609aa64f781f9cd4f528d5452d284b3d9db3aaf177b442`
 - `research/develop-verify-trust-004/guest/run.sh`: `752855bc661fbbdbf6cacb3e2134ac0f323c40fbf4c3e757ef4c724d472bb144`
 - `research/develop-verify-trust-004/guest/test_run.py`: `9001144705c6eba48a66ca314f7d16b6ea8772009b9d20a67da390d003dd6a4b`
+
+## Amendment 12 — the frozen operator page is the operator's page
+
+Amendment 11's own copy of OPERATOR.md, inside `57e401c29`, told the operator to expect `frozen-check all 36 entries match`.
+Its manifest has 41 entries. The branch page was corrected after the freeze, which left the operator to choose between two pages.
+An operator who reads the page inside F (the page the stage disk holds and a cold start provides) would compare 36 against 41.
+They would either abort a valid run or learn to ignore the check. This is the third time a frozen commit's page has contradicted
+its own manifest. The section 1 check had the same failure mode (review 4636943999): it counted stdout lines, so a missing
+manifest looked like zero failures. Each was a check that reported success because it did not actually run.
+
+Corrections:
+
+- OPERATOR.md is now a frozen file. The page in F is the page the operator reads. It names F by its tag
+  (`refs/tags/trust004-amendment-12`), because a commit cannot contain its own hash, and later branch commits cannot change it
+  without a new freeze.
+- The page quotes no entry count. Section 1 prints `wc -l` of the staged checkout's FROZEN.sha256, and the authorisation
+  checklist requires the plan's `frozen-check all N entries match` to show that N. Section 1's verification is
+  `sha256sum --quiet --strict -c` and stops on any failure (Amendment 11 head review, 4636943999 and 4636944009).
+- `tests/develop-verify-trust-004-freeze.test.ts` now also requires:
+  - OPERATOR.md is in the manifest.
+  - Every entry or file count the page quotes equals the manifest's entry count. A stale `36` is caught by a negative case.
+  - The operator page on the branch is byte-identical to the page inside F.
+  
+  As before, it checks that the tag names F, that every frozen blob at F matches, and that every quoted digest matches.
+- Amendment 11's text gains a severity line for the `collect` finding, the most serious defect review has found in this harness.
+  Its tag and its frozen copy are unchanged.
+
+No code, harness, rule or criterion changes. Amendments 10 and 11 stand. No live guest result is asserted.
+
+Changed or added pins, in addition to this protocol:
+- `research/develop-verify-trust-004/OPERATOR.md`: `f9cf16f8d292e93803f59810eff5068a668c3c39cd0ced30889f465b92dc7425`

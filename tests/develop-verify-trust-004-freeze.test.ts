@@ -52,6 +52,11 @@ function contradictions(doc: string, manifest: Map<string, string>) {
 			if (m[1] !== digest && !EXTERNAL.has(m[1] as string))
 				problems.push(`${rel} is quoted as ${m[1]}, FROZEN.sha256 says ${digest}`);
 	}
+	for (const m of doc.matchAll(/\b(\d+) (?:frozen |manifest )?(?:entries|files)\b/g)) {
+		const line = doc.slice(0, m.index).split("\n").length;
+		if (Number(m[1]) !== manifest.size)
+			problems.push(`line ${line}: quotes ${m[1]} entries, FROZEN.sha256 has ${manifest.size}`);
+	}
 	const f = /^F=([0-9a-f]{40}|refs\/tags\/trust004-amendment-\d+)$/m.exec(doc)?.[1];
 	const selected = /\*\*Selected source commit:\*\* `([0-9a-f]{40}|refs\/tags\/trust004-amendment-\d+)`/.exec(
 		doc,
@@ -70,6 +75,10 @@ const haveF = git("cat-file", "-e", `${F}^{commit}`).status === 0;
 const required = process.env.TRUST004_FREEZE_CHECK === "1";
 
 describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
+	it("is itself a frozen file, so the page inside F is the page the operator reads", () => {
+		expect(manifest.has(`${T}/OPERATOR.md`)).toBe(true);
+	});
+
 	it("quotes only the manifest's own digests for frozen files", () => {
 		expect(contradictions(doc, manifest)).toEqual([]);
 		expect(doc).toContain(manifest.get(`${T}/guest/session.sh`));
@@ -81,6 +90,11 @@ describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
 			"43a348be67a002f14de87fa6769776742031b2ee348f67570d424079ea60896c",
 		);
 		expect(contradictions(stale, manifest).length).toBeGreaterThan(0);
+		const staleCount = doc.replace("`frozen-check all N entries match`", "`frozen-check all 36 entries match`");
+		expect(staleCount).not.toBe(doc);
+		expect(contradictions(staleCount, manifest)).toContain(
+			`line ${doc.slice(0, doc.indexOf("frozen-check all N")).split("\n").length}: quotes 36 entries, FROZEN.sha256 has ${manifest.size}`,
+		);
 		const otherF = doc.replace(/^F=\S+$/m, `F=${"0".repeat(40)}`);
 		expect(contradictions(otherF, manifest)).toContain(`F=${"0".repeat(40)} but the selected source commit is ${F}`);
 	});
@@ -104,6 +118,7 @@ describe("TRUST-004 OPERATOR.md agrees with its freeze", () => {
 			expect(docAtF.status, docAtF.stderr).toBe(0);
 			expect(contradictions(docAtF.stdout, manifest)).toEqual([]);
 			expect(docAtF.stdout).toContain(`\nF=${ref}\n`);
+			expect(docAtF.stdout, "the operator page on the branch must be the page inside F").toBe(doc);
 			for (const [path, digest] of manifest) {
 				const blob = spawnSync("git", ["show", `${F}:${path}`]);
 				expect(blob.status, path).toBe(0);

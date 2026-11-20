@@ -102,10 +102,14 @@ describe("TRUST-004 OPERATOR.md frozen source check", () => {
 		expect(r.stdout.includes("CONTINUED")).toBe(rc === 0);
 	});
 
-	it("expects the plan to report the manifest's own entry count", () => {
-		const entries = readFileSync(join(T, "FROZEN.sha256"), "utf8").trim().split("\n").length;
-		const quoted = [...doc.matchAll(/frozen-check all (\d+) entries match/g)].map((m) => Number(m[1]));
-		expect(quoted).toEqual([entries]);
+	it("compares the plan's entry count with the staged manifest instead of quoting a number", () => {
+		expect(doc).not.toMatch(/frozen-check all \d+ entries/);
+		expect(line()).toBeDefined();
+		const source = blocks("1. Preconditions").find((b) => b.includes("git clone")) as string;
+		expect(source).toContain('wc -l < "$W/src/$T/FROZEN.sha256"');
+		expect(doc).toContain(
+			"`frozen-check all N entries match` with N equal to the count `wc -l` printed in section 1",
+		);
 	});
 });
 

@@ -110,22 +110,23 @@ describe("protocol/staged-changeset strict schema validation", () => {
 				after: { bytes: 1, sha256: validShaB, executable: false },
 			},
 		];
+		const summary = {
+			baselineFiles: 1,
+			candidateFiles: 1,
+			unchangedFiles: 0,
+			addedFiles: 0,
+			modifiedFiles: 1,
+			modeChangedFiles: 0,
+			deletedFiles: 0,
+			stagedBytes: 1,
+		};
 		const manifest = {
 			schemaVersion: ENDO_STAGED_CHANGESET_V0,
 			baselineSha256: base.sha256,
 			baselineRootGitExcluded: false,
 			changes,
-			summary: {
-				baselineFiles: 1,
-				candidateFiles: 1,
-				unchangedFiles: 0,
-				addedFiles: 0,
-				modifiedFiles: 1,
-				modeChangedFiles: 0,
-				deletedFiles: 0,
-				stagedBytes: 1,
-			},
-			changesetSha256: endoChangeSetDigestV0(base.sha256, false, changes),
+			summary,
+			changesetSha256: endoChangeSetDigestV0(base.sha256, false, changes, summary),
 		};
 		expect(readEndoStagedChangeSetManifestV0(manifest)).toMatchObject({ ok: true });
 		expect(readEndoStagedChangeSetManifestV0({ ...manifest, unknownField: 1 })).toMatchObject({
@@ -360,16 +361,6 @@ describe("staged change-set collection, verification, and preview", () => {
 				"too-deep",
 			],
 			[
-				"total staged bytes over bound",
-				(w) => {
-					writeFileSync(join(w, "src/f1.bin"), Buffer.alloc(900, 1));
-					writeFileSync(join(w, "src/f2.bin"), Buffer.alloc(900, 2));
-					writeFileSync(join(w, "src/f3.bin"), Buffer.alloc(900, 3));
-				},
-				"src/f3.bin",
-				"total-too-large",
-			],
-			[
 				"unsafe filename with bidi override",
 				(w) => writeFileSync(join(w, "src/bad\u202ename.txt"), "spoof"),
 				"src/bad\u202ename.txt",
@@ -385,6 +376,32 @@ describe("staged change-set collection, verification, and preview", () => {
 			expect(res.status, label).toBe("refused");
 			expect(res.refusals, label).toContainEqual({ path: expectedPath, reason: expectedReason });
 			expect(existsSync(staging), label).toBe(false);
+		}
+
+		// Total staged bytes over bound (directory enumeration order is filesystem-dependent).
+		{
+			const cand = makeCand();
+			writeFileSync(join(cand, "src/f1.bin"), Buffer.alloc(900, 1));
+			writeFileSync(join(cand, "src/f2.bin"), Buffer.alloc(900, 2));
+			writeFileSync(join(cand, "src/f3.bin"), Buffer.alloc(900, 3));
+			const staging = join(fresh("total-stage"), "out");
+			const res = collectStagedChangeSetV0(baseline, cand, staging, limits);
+			expect(res.status).toBe("refused");
+			expect(res.refusals.some((r) => r.reason === "total-too-large")).toBe(true);
+			expect(existsSync(staging)).toBe(false);
+		}
+
+		// Unsafe filenames still count against maxWalkedEntries and stop the walk early.
+		{
+			const cand = makeCand();
+			for (let i = 0; i < 20; i++) writeFileSync(join(cand, `bad\u202e${i}.txt`), "x");
+			const tightLimits: EndoChangeSetLimitsV0 = { ...limits, maxWalkedEntries: 5 };
+			const staging = join(fresh("unsafe-flood-stage"), "out");
+			const res = collectStagedChangeSetV0(baseline, cand, staging, tightLimits);
+			expect(res.status).toBe("refused");
+			expect(res.refusals.some((r) => r.reason === "too-many-files")).toBe(true);
+			expect(res.refusals.length).toBeLessThanOrEqual(6);
+			expect(existsSync(staging)).toBe(false);
 		}
 
 		// Symlink workspace root itself.
@@ -618,6 +635,33 @@ describe("staged change-set collection, verification, and preview", () => {
 			symlinkSync(moved, join(staging, "manifest.json"));
 			expect(verifyStagedChangeSetV0(staging)).toMatchObject({ ok: false, reason: "invalid-manifest" });
 		}
+		// 12. Shifting baselineFiles/candidateFiles/unchangedFiles by the same offset fails digest verification.
+		{
+			const { staging, manifest } = makeStaged();
+			const shifted = {
+				...manifest,
+				summary: {
+					...manifest.summary,
+					baselineFiles: manifest.summary.baselineFiles + 10,
+					candidateFiles: manifest.summary.candidateFiles + 10,
+					unchangedFiles: manifest.summary.unchangedFiles + 10,
+				},
+			};
+			chmodSync(join(staging, "manifest.json"), 0o600);
+			writeFileSync(join(staging, "manifest.json"), JSON.stringify(shifted));
+			chmodSync(join(staging, "manifest.json"), 0o444);
+			expect(verifyStagedChangeSetV0(staging)).toMatchObject({ ok: false, reason: "digest-mismatch" });
+		}
+		// 13. Stricter verifier limits reject bundles exceeding maxChangedFiles or maxTotalStagedBytes.
+		{
+			const { staging } = makeStaged();
+			expect(
+				verifyStagedChangeSetV0(staging, {}, { ...DEFAULT_ENDO_CHANGESET_LIMITS_V0, maxChangedFiles: 1 }),
+			).toMatchObject({ ok: false, reason: "invalid-manifest" });
+			expect(
+				verifyStagedChangeSetV0(staging, {}, { ...DEFAULT_ENDO_CHANGESET_LIMITS_V0, maxTotalStagedBytes: 1 }),
+			).toMatchObject({ ok: false, reason: "invalid-manifest" });
+		}
 	});
 
 	it("renders host-safe unified diffs, binary markers, trailing-newline edits, truncation, and refuses moved baselines", () => {
@@ -628,6 +672,7 @@ describe("staged change-set collection, verification, and preview", () => {
 		writeTree(baseDir, {
 			"src/math.mjs": "line1\nline2\nreturn a - b;\nline4\n",
 			"src/nl.txt": "hello",
+			"src/bom.txt": "plain\n",
 			"assets/logo.bin": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]),
 			"bin/script.sh": "#!/bin/sh\necho ok\n",
 			"old.txt": "removed line\n",
@@ -637,6 +682,7 @@ describe("staged change-set collection, verification, and preview", () => {
 			{
 				"src/math.mjs": "line1\nline2\nreturn a + b;\nline4\n",
 				"src/nl.txt": "hello\n",
+				"src/bom.txt": Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from("plain\n")]),
 				"assets/logo.bin": Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x02]),
 				"bin/script.sh": "#!/bin/sh\necho ok\n",
 				"src/added.txt": "first\nsecond\n",
@@ -681,6 +727,11 @@ describe("staged change-set collection, verification, and preview", () => {
 		const nlEntry = withBase.entries.find((e) => e.path === "src/nl.txt")!;
 		expect(nlEntry.content).toBe("unified-diff");
 		expect(nlEntry.diff).toContain("-hello\n\\ No newline at end of file\n+hello");
+
+		const bomEntry = withBase.entries.find((e) => e.path === "src/bom.txt")!;
+		expect(bomEntry.content).toBe("unified-diff");
+		expect(bomEntry.diff).toContain("@@ -1,1 +1,1 @@");
+		expect(bomEntry.diff).toContain("-plain\n+\ufeffplain");
 
 		expect(withBase.entries.find((e) => e.path === "assets/logo.bin")).toMatchObject({
 			content: "binary",

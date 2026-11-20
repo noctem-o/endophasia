@@ -132,7 +132,7 @@ export interface EndoStagedChangeSetManifestV0 {
 	baselineRootGitExcluded: boolean;
 	changes: EndoStagedChangeV0[];
 	summary: EndoStagedChangeSetSummaryV0;
-	/** SHA-256 over the canonical JSON of `{ baselineSha256, baselineRootGitExcluded, changes }`. */
+	/** SHA-256 over the canonical JSON of `{ baselineSha256, baselineRootGitExcluded, changes, summary }`. */
 	changesetSha256: string;
 }
 
@@ -198,7 +198,13 @@ export function endoChangeSetDigestInputV0(
 	baselineSha256: string,
 	baselineRootGitExcluded: boolean,
 	changes: readonly EndoStagedChangeV0[],
-): { baselineSha256: string; baselineRootGitExcluded: boolean; changes: EndoStagedChangeV0[] } {
+	summary: EndoStagedChangeSetSummaryV0,
+): {
+	baselineSha256: string;
+	baselineRootGitExcluded: boolean;
+	changes: EndoStagedChangeV0[];
+	summary: EndoStagedChangeSetSummaryV0;
+} {
 	return {
 		baselineSha256,
 		baselineRootGitExcluded,
@@ -224,6 +230,16 @@ export function endoChangeSetDigestInputV0(
 				after: { bytes: c.after.bytes, sha256: c.after.sha256, executable: c.after.executable },
 			};
 		}),
+		summary: {
+			baselineFiles: summary.baselineFiles,
+			candidateFiles: summary.candidateFiles,
+			unchangedFiles: summary.unchangedFiles,
+			addedFiles: summary.addedFiles,
+			modifiedFiles: summary.modifiedFiles,
+			modeChangedFiles: summary.modeChangedFiles,
+			deletedFiles: summary.deletedFiles,
+			stagedBytes: summary.stagedBytes,
+		},
 	};
 }
 

@@ -19,11 +19,12 @@ import {
 	chmodSync,
 	closeSync,
 	constants,
+	type Dir,
 	fstatSync,
 	lstatSync,
 	mkdirSync,
+	opendirSync,
 	openSync,
-	readdirSync,
 	readFileSync,
 	readSync,
 	rmSync,
@@ -39,6 +40,7 @@ import {
 	type EndoChangeSetRefusalV0,
 	type EndoStagedChangeSetCollectionV0,
 	type EndoStagedChangeSetManifestV0,
+	type EndoStagedChangeSetSummaryV0,
 	type EndoStagedChangeV0,
 	type EndoWorkspaceBaselineEntryV0,
 	type EndoWorkspaceBaselineV0,
@@ -150,9 +152,10 @@ export function endoChangeSetDigestV0(
 	baselineSha256: string,
 	baselineRootGitExcluded: boolean,
 	changes: readonly EndoStagedChangeV0[],
+	summary: EndoStagedChangeSetSummaryV0,
 ): string {
 	return sha256HexV0(
-		canonicalEndoJsonV0(endoChangeSetDigestInputV0(baselineSha256, baselineRootGitExcluded, changes)),
+		canonicalEndoJsonV0(endoChangeSetDigestInputV0(baselineSha256, baselineRootGitExcluded, changes, summary)),
 	);
 }
 
@@ -235,6 +238,7 @@ function walkPlainTree(root: string, opts: WalkOptions): WalkResult {
 	let walkedEntries = 0;
 	let workspaceBytes = 0;
 	let stagedBytes = 0;
+	let stopped = false;
 	const rootDev = rootLstat.dev;
 
 	if (IS_LINUX) {
@@ -262,10 +266,11 @@ function walkPlainTree(root: string, opts: WalkOptions): WalkResult {
 				return { files, refusals: [{ path: ".", reason: "unreadable" }], emptyDirs, executablePaths };
 
 			const visitDir = (dirFd: number, prefix: string, depth: number): void => {
+				if (stopped) return;
 				const beforeDir = fstatSync(dirFd, { bigint: true });
-				let names: string[];
+				let entries: Dir;
 				try {
-					names = readdirSync(fdPath(dirFd)).sort();
+					entries = opendirSync(fdPath(dirFd));
 				} catch (error) {
 					if (isAgentCaused(error)) {
 						refusals.push({ path: prefix === "" ? "." : prefix, reason: "unreadable" });
@@ -273,84 +278,33 @@ function walkPlainTree(root: string, opts: WalkOptions): WalkResult {
 					}
 					throw error;
 				}
-				opts.hooks.afterDirOpen?.(prefix === "" ? "." : prefix);
-				if (names.length === 0 && prefix !== "" && opts.rejectEmptyDirs) emptyDirs.push(prefix);
-
-				for (const name of names) {
-					const relPath = prefix === "" ? name : `${prefix}/${name}`;
-					if (name === ".git") {
-						if (opts.skipRootGit && prefix === "") continue;
-						refusals.push({ path: relPath, reason: "git-metadata" });
-						continue;
-					}
-					if (!isSafeChangeSetSegmentV0(name) || !isPlainChangeSetPathV0(relPath)) {
-						refusals.push({ path: relPath, reason: "unsafe-path" });
-						continue;
-					}
-					walkedEntries++;
-					if (walkedEntries > opts.limits.maxWalkedEntries) {
-						refusals.push({ path: relPath, reason: "too-many-files" });
-						return;
-					}
-
-					let childFd: number;
-					try {
-						childFd = openSync(join(fdPath(dirFd), name), PATH_FLAGS);
-					} catch (error) {
-						if (isAgentCaused(error)) {
-							refusals.push({ path: relPath, reason: "unreadable" });
+				let sawEntry = false;
+				try {
+					opts.hooks.afterDirOpen?.(prefix === "" ? "." : prefix);
+					for (let entry = entries.readSync(); entry !== null; entry = entries.readSync()) {
+						if (stopped) return;
+						sawEntry = true;
+						const name = entry.name;
+						if (name === ".git" && opts.skipRootGit && prefix === "") continue;
+						const relPath = prefix === "" ? name : `${prefix}/${name}`;
+						walkedEntries++;
+						if (walkedEntries > opts.limits.maxWalkedEntries) {
+							refusals.push({ path: relPath, reason: "too-many-files" });
+							stopped = true;
+							return;
+						}
+						if (name === ".git") {
+							refusals.push({ path: relPath, reason: "git-metadata" });
 							continue;
 						}
-						throw error;
-					}
-
-					try {
-						const stat = fstatSync(childFd, { bigint: true });
-						if (stat.isSymbolicLink()) {
-							refusals.push({ path: relPath, reason: "symbolic-link" });
-							continue;
-						}
-						const childMount = readMountId(childFd);
-						if (childMount === null) {
-							refusals.push({ path: relPath, reason: "unreadable" });
-							continue;
-						}
-						if (stat.dev !== rootDev || childMount !== rootMount) {
-							refusals.push({ path: relPath, reason: "separate-mount" });
-							continue;
-						}
-						if (stat.isDirectory()) {
-							if (depth + 1 > opts.limits.maxDepth) {
-								refusals.push({ path: relPath, reason: "too-deep" });
-								continue;
-							}
-							visitDir(childFd, relPath, depth + 1);
-							continue;
-						}
-						if (!stat.isFile()) {
-							refusals.push({ path: relPath, reason: "not-a-regular-file" });
-							continue;
-						}
-						if (stat.nlink !== 1n) {
-							refusals.push({ path: relPath, reason: "hard-link" });
-							continue;
-						}
-						if (opts.rejectExecutable && (stat.mode & 0o111n) !== 0n) {
-							executablePaths.push(relPath);
-						}
-						const declaredSize = Number(stat.size);
-						if (stat.size > BigInt(opts.limits.maxFileBytes)) {
-							refusals.push({ path: relPath, reason: "too-large" });
-							continue;
-						}
-						if (workspaceBytes + declaredSize > opts.limits.maxWorkspaceBytes) {
-							refusals.push({ path: relPath, reason: "total-too-large" });
+						if (!isSafeChangeSetSegmentV0(name) || !isPlainChangeSetPathV0(relPath)) {
+							refusals.push({ path: relPath, reason: "unsafe-path" });
 							continue;
 						}
 
-						let readFd: number;
+						let childFd: number;
 						try {
-							readFd = openSync(fdPath(childFd), constants.O_RDONLY | constants.O_NONBLOCK);
+							childFd = openSync(join(fdPath(dirFd), name), PATH_FLAGS);
 						} catch (error) {
 							if (isAgentCaused(error)) {
 								refusals.push({ path: relPath, reason: "unreadable" });
@@ -359,90 +313,159 @@ function walkPlainTree(root: string, opts: WalkOptions): WalkResult {
 							throw error;
 						}
 
-						let reason: EndoChangeSetRefusalReasonV0 | null = null;
-						let bytesBuf: Buffer | null = null;
 						try {
-							const opened = fstatSync(readFd, { bigint: true });
-							if (!opened.isFile() || !sameFileStat(opened, stat)) {
-								reason = "changed-during-collection";
-							} else {
-								opts.hooks.afterOpen?.(relPath);
-								const chunks: Buffer[] = [];
-								let total = 0;
-								for (;;) {
-									const chunk = Buffer.alloc(Math.min(READ_CHUNK_BYTES, opts.limits.maxFileBytes + 1 - total));
-									if (chunk.length === 0) {
-										reason = "too-large";
-										break;
-									}
-									const n = readSync(readFd, chunk, 0, chunk.length, null);
-									if (n === 0) break;
-									chunks.push(chunk.subarray(0, n));
-									total += n;
-									if (total > opts.limits.maxFileBytes) {
-										reason = "too-large";
-										break;
-									}
-								}
-								if (reason === null) {
-									const afterRead = fstatSync(readFd, { bigint: true });
-									let recheckFd: number | undefined;
-									let recheckStat: BigIntStats | undefined;
-									try {
-										recheckFd = openSync(join(fdPath(dirFd), name), PATH_FLAGS);
-										recheckStat = fstatSync(recheckFd, { bigint: true });
-									} catch {
-										recheckStat = undefined;
-									} finally {
-										if (recheckFd !== undefined) closeSync(recheckFd);
-									}
-									if (
-										BigInt(total) !== stat.size ||
-										!sameFileStat(afterRead, stat) ||
-										recheckStat === undefined ||
-										!sameFileStat(recheckStat, stat)
-									) {
-										reason = "changed-during-collection";
-									} else {
-										bytesBuf = Buffer.concat(chunks);
-									}
-								}
+							const stat = fstatSync(childFd, { bigint: true });
+							if (stat.isSymbolicLink()) {
+								refusals.push({ path: relPath, reason: "symbolic-link" });
+								continue;
 							}
-						} catch (error) {
-							if (isAgentCaused(error)) reason = "unreadable";
-							else throw error;
-						} finally {
-							closeSync(readFd);
-						}
-
-						if (reason !== null || bytesBuf === null) {
-							refusals.push({ path: relPath, reason: reason ?? "unreadable" });
-							continue;
-						}
-
-						workspaceBytes += bytesBuf.length;
-						if (workspaceBytes > opts.limits.maxWorkspaceBytes) {
-							refusals.push({ path: relPath, reason: "total-too-large" });
-							continue;
-						}
-						const sha256 = createHash("sha256").update(bytesBuf).digest("hex");
-						const executable = (stat.mode & 0o100n) !== 0n;
-						const retain =
-							opts.retainBuffer?.({ path: relPath, bytes: bytesBuf.length, sha256, executable }) ?? false;
-						if (retain) {
-							stagedBytes += bytesBuf.length;
-							if (stagedBytes > opts.limits.maxTotalStagedBytes) {
+							const childMount = readMountId(childFd);
+							if (childMount === null) {
+								refusals.push({ path: relPath, reason: "unreadable" });
+								continue;
+							}
+							if (stat.dev !== rootDev || childMount !== rootMount) {
+								refusals.push({ path: relPath, reason: "separate-mount" });
+								continue;
+							}
+							if (stat.isDirectory()) {
+								if (depth + 1 > opts.limits.maxDepth) {
+									refusals.push({ path: relPath, reason: "too-deep" });
+									continue;
+								}
+								visitDir(childFd, relPath, depth + 1);
+								continue;
+							}
+							if (!stat.isFile()) {
+								refusals.push({ path: relPath, reason: "not-a-regular-file" });
+								continue;
+							}
+							if (stat.nlink !== 1n) {
+								refusals.push({ path: relPath, reason: "hard-link" });
+								continue;
+							}
+							if (opts.rejectExecutable && (stat.mode & 0o111n) !== 0n) {
+								executablePaths.push(relPath);
+							}
+							const declaredSize = Number(stat.size);
+							if (stat.size > BigInt(opts.limits.maxFileBytes)) {
+								refusals.push({ path: relPath, reason: "too-large" });
+								continue;
+							}
+							if (workspaceBytes + declaredSize > opts.limits.maxWorkspaceBytes) {
 								refusals.push({ path: relPath, reason: "total-too-large" });
 								continue;
 							}
-							files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable, content: bytesBuf });
-						} else {
-							files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable });
+
+							let readFd: number;
+							try {
+								readFd = openSync(fdPath(childFd), constants.O_RDONLY | constants.O_NONBLOCK);
+							} catch (error) {
+								if (isAgentCaused(error)) {
+									refusals.push({ path: relPath, reason: "unreadable" });
+									continue;
+								}
+								throw error;
+							}
+
+							let reason: EndoChangeSetRefusalReasonV0 | null = null;
+							let bytesBuf: Buffer | null = null;
+							try {
+								const opened = fstatSync(readFd, { bigint: true });
+								if (!opened.isFile() || !sameFileStat(opened, stat)) {
+									reason = "changed-during-collection";
+								} else {
+									opts.hooks.afterOpen?.(relPath);
+									const chunks: Buffer[] = [];
+									let total = 0;
+									for (;;) {
+										const chunk = Buffer.alloc(
+											Math.min(READ_CHUNK_BYTES, opts.limits.maxFileBytes + 1 - total),
+										);
+										if (chunk.length === 0) {
+											reason = "too-large";
+											break;
+										}
+										const n = readSync(readFd, chunk, 0, chunk.length, null);
+										if (n === 0) break;
+										chunks.push(chunk.subarray(0, n));
+										total += n;
+										if (total > opts.limits.maxFileBytes) {
+											reason = "too-large";
+											break;
+										}
+									}
+									if (reason === null) {
+										const afterRead = fstatSync(readFd, { bigint: true });
+										let recheckFd: number | undefined;
+										let recheckStat: BigIntStats | undefined;
+										try {
+											recheckFd = openSync(join(fdPath(dirFd), name), PATH_FLAGS);
+											recheckStat = fstatSync(recheckFd, { bigint: true });
+										} catch {
+											recheckStat = undefined;
+										} finally {
+											if (recheckFd !== undefined) closeSync(recheckFd);
+										}
+										if (
+											BigInt(total) !== stat.size ||
+											!sameFileStat(afterRead, stat) ||
+											recheckStat === undefined ||
+											!sameFileStat(recheckStat, stat)
+										) {
+											reason = "changed-during-collection";
+										} else {
+											bytesBuf = Buffer.concat(chunks);
+										}
+									}
+								}
+							} catch (error) {
+								if (isAgentCaused(error)) reason = "unreadable";
+								else throw error;
+							} finally {
+								closeSync(readFd);
+							}
+
+							if (reason !== null || bytesBuf === null) {
+								refusals.push({ path: relPath, reason: reason ?? "unreadable" });
+								continue;
+							}
+
+							workspaceBytes += bytesBuf.length;
+							if (workspaceBytes > opts.limits.maxWorkspaceBytes) {
+								refusals.push({ path: relPath, reason: "total-too-large" });
+								continue;
+							}
+							const sha256 = createHash("sha256").update(bytesBuf).digest("hex");
+							const executable = (stat.mode & 0o100n) !== 0n;
+							const retain =
+								opts.retainBuffer?.({ path: relPath, bytes: bytesBuf.length, sha256, executable }) ?? false;
+							if (retain) {
+								stagedBytes += bytesBuf.length;
+								if (stagedBytes > opts.limits.maxTotalStagedBytes) {
+									refusals.push({ path: relPath, reason: "total-too-large" });
+									continue;
+								}
+								files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable, content: bytesBuf });
+							} else {
+								files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable });
+							}
+						} finally {
+							closeSync(childFd);
 						}
-					} finally {
-						closeSync(childFd);
 					}
+				} catch (error) {
+					if (isAgentCaused(error)) {
+						refusals.push({ path: prefix === "" ? "." : prefix, reason: "unreadable" });
+						return;
+					}
+					throw error;
+				} finally {
+					entries.closeSync();
 				}
+
+				if (stopped) return;
+				if (!sawEntry && prefix !== "" && opts.rejectEmptyDirs) emptyDirs.push(prefix);
 
 				const afterDir = fstatSync(dirFd, { bigint: true });
 				if (beforeDir.ctimeNs !== afterDir.ctimeNs || beforeDir.mtimeNs !== afterDir.mtimeNs) {
@@ -457,11 +480,12 @@ function walkPlainTree(root: string, opts: WalkOptions): WalkResult {
 	} else {
 		// Non-Linux POSIX fallback: lstat + O_NOFOLLOW + before/after stat verification.
 		const visitDirPosix = (dirPath: string, prefix: string, depth: number): void => {
+			if (stopped) return;
 			let beforeDir: BigIntStats;
-			let names: string[];
+			let entries: Dir;
 			try {
 				beforeDir = lstatSync(dirPath, { bigint: true });
-				names = readdirSync(dirPath).sort();
+				entries = opendirSync(dirPath);
 			} catch (error) {
 				if (isAgentCaused(error)) {
 					refusals.push({ path: prefix === "" ? "." : prefix, reason: "unreadable" });
@@ -469,149 +493,166 @@ function walkPlainTree(root: string, opts: WalkOptions): WalkResult {
 				}
 				throw error;
 			}
-			opts.hooks.afterDirOpen?.(prefix === "" ? "." : prefix);
-			if (names.length === 0 && prefix !== "" && opts.rejectEmptyDirs) emptyDirs.push(prefix);
-
-			for (const name of names) {
-				const relPath = prefix === "" ? name : `${prefix}/${name}`;
-				if (name === ".git") {
-					if (opts.skipRootGit && prefix === "") continue;
-					refusals.push({ path: relPath, reason: "git-metadata" });
-					continue;
-				}
-				if (!isSafeChangeSetSegmentV0(name) || !isPlainChangeSetPathV0(relPath)) {
-					refusals.push({ path: relPath, reason: "unsafe-path" });
-					continue;
-				}
-				walkedEntries++;
-				if (walkedEntries > opts.limits.maxWalkedEntries) {
-					refusals.push({ path: relPath, reason: "too-many-files" });
-					return;
-				}
-				const full = join(dirPath, name);
-				let stat: BigIntStats;
-				try {
-					stat = lstatSync(full, { bigint: true });
-				} catch (error) {
-					if (isAgentCaused(error)) {
-						refusals.push({ path: relPath, reason: "unreadable" });
+			let sawEntry = false;
+			try {
+				opts.hooks.afterDirOpen?.(prefix === "" ? "." : prefix);
+				for (let entry = entries.readSync(); entry !== null; entry = entries.readSync()) {
+					if (stopped) return;
+					sawEntry = true;
+					const name = entry.name;
+					if (name === ".git" && opts.skipRootGit && prefix === "") continue;
+					const relPath = prefix === "" ? name : `${prefix}/${name}`;
+					walkedEntries++;
+					if (walkedEntries > opts.limits.maxWalkedEntries) {
+						refusals.push({ path: relPath, reason: "too-many-files" });
+						stopped = true;
+						return;
+					}
+					if (name === ".git") {
+						refusals.push({ path: relPath, reason: "git-metadata" });
 						continue;
 					}
-					throw error;
-				}
-				if (stat.isSymbolicLink()) {
-					refusals.push({ path: relPath, reason: "symbolic-link" });
-					continue;
-				}
-				if (stat.dev !== rootDev) {
-					refusals.push({ path: relPath, reason: "separate-mount" });
-					continue;
-				}
-				if (stat.isDirectory()) {
-					if (depth + 1 > opts.limits.maxDepth) {
-						refusals.push({ path: relPath, reason: "too-deep" });
+					if (!isSafeChangeSetSegmentV0(name) || !isPlainChangeSetPathV0(relPath)) {
+						refusals.push({ path: relPath, reason: "unsafe-path" });
 						continue;
 					}
-					visitDirPosix(full, relPath, depth + 1);
-					continue;
-				}
-				if (!stat.isFile()) {
-					refusals.push({ path: relPath, reason: "not-a-regular-file" });
-					continue;
-				}
-				if (stat.nlink !== 1n) {
-					refusals.push({ path: relPath, reason: "hard-link" });
-					continue;
-				}
-				if (opts.rejectExecutable && (stat.mode & 0o111n) !== 0n) executablePaths.push(relPath);
-				if (stat.size > BigInt(opts.limits.maxFileBytes)) {
-					refusals.push({ path: relPath, reason: "too-large" });
-					continue;
-				}
-				if (workspaceBytes + Number(stat.size) > opts.limits.maxWorkspaceBytes) {
-					refusals.push({ path: relPath, reason: "total-too-large" });
-					continue;
-				}
-				let readFd: number;
-				try {
-					readFd = openSync(full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-				} catch (error) {
-					const code = (error as NodeJS.ErrnoException).code;
-					if (code === "ELOOP") {
+					const full = join(dirPath, name);
+					let stat: BigIntStats;
+					try {
+						stat = lstatSync(full, { bigint: true });
+					} catch (error) {
+						if (isAgentCaused(error)) {
+							refusals.push({ path: relPath, reason: "unreadable" });
+							continue;
+						}
+						throw error;
+					}
+					if (stat.isSymbolicLink()) {
 						refusals.push({ path: relPath, reason: "symbolic-link" });
 						continue;
 					}
-					if (isAgentCaused(error)) {
-						refusals.push({ path: relPath, reason: "unreadable" });
+					if (stat.dev !== rootDev) {
+						refusals.push({ path: relPath, reason: "separate-mount" });
 						continue;
 					}
-					throw error;
-				}
-				let reason: EndoChangeSetRefusalReasonV0 | null = null;
-				let bytesBuf: Buffer | null = null;
-				try {
-					const opened = fstatSync(readFd, { bigint: true });
-					if (!opened.isFile() || !sameFileStat(opened, stat)) {
-						reason = "changed-during-collection";
-					} else {
-						opts.hooks.afterOpen?.(relPath);
-						const chunks: Buffer[] = [];
-						let total = 0;
-						for (;;) {
-							const chunk = Buffer.alloc(Math.min(READ_CHUNK_BYTES, opts.limits.maxFileBytes + 1 - total));
-							if (chunk.length === 0) {
-								reason = "too-large";
-								break;
-							}
-							const n = readSync(readFd, chunk, 0, chunk.length, null);
-							if (n === 0) break;
-							chunks.push(chunk.subarray(0, n));
-							total += n;
-							if (total > opts.limits.maxFileBytes) {
-								reason = "too-large";
-								break;
-							}
+					if (stat.isDirectory()) {
+						if (depth + 1 > opts.limits.maxDepth) {
+							refusals.push({ path: relPath, reason: "too-deep" });
+							continue;
 						}
-						if (reason === null) {
-							const afterRead = fstatSync(readFd, { bigint: true });
-							const again = lstatSync(full, { bigint: true, throwIfNoEntry: false });
-							if (
-								BigInt(total) !== stat.size ||
-								!sameFileStat(afterRead, stat) ||
-								again === undefined ||
-								!sameFileStat(again, stat)
-							) {
-								reason = "changed-during-collection";
-							} else {
-								bytesBuf = Buffer.concat(chunks);
-							}
-						}
+						visitDirPosix(full, relPath, depth + 1);
+						continue;
 					}
-				} catch (error) {
-					if (isAgentCaused(error)) reason = "unreadable";
-					else throw error;
-				} finally {
-					closeSync(readFd);
-				}
-				if (reason !== null || bytesBuf === null) {
-					refusals.push({ path: relPath, reason: reason ?? "unreadable" });
-					continue;
-				}
-				workspaceBytes += bytesBuf.length;
-				const sha256 = createHash("sha256").update(bytesBuf).digest("hex");
-				const executable = (stat.mode & 0o100n) !== 0n;
-				const retain = opts.retainBuffer?.({ path: relPath, bytes: bytesBuf.length, sha256, executable }) ?? false;
-				if (retain) {
-					stagedBytes += bytesBuf.length;
-					if (stagedBytes > opts.limits.maxTotalStagedBytes) {
+					if (!stat.isFile()) {
+						refusals.push({ path: relPath, reason: "not-a-regular-file" });
+						continue;
+					}
+					if (stat.nlink !== 1n) {
+						refusals.push({ path: relPath, reason: "hard-link" });
+						continue;
+					}
+					if (opts.rejectExecutable && (stat.mode & 0o111n) !== 0n) executablePaths.push(relPath);
+					if (stat.size > BigInt(opts.limits.maxFileBytes)) {
+						refusals.push({ path: relPath, reason: "too-large" });
+						continue;
+					}
+					if (workspaceBytes + Number(stat.size) > opts.limits.maxWorkspaceBytes) {
 						refusals.push({ path: relPath, reason: "total-too-large" });
 						continue;
 					}
-					files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable, content: bytesBuf });
-				} else {
-					files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable });
+					let readFd: number;
+					try {
+						readFd = openSync(full, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+					} catch (error) {
+						const code = (error as NodeJS.ErrnoException).code;
+						if (code === "ELOOP") {
+							refusals.push({ path: relPath, reason: "symbolic-link" });
+							continue;
+						}
+						if (isAgentCaused(error)) {
+							refusals.push({ path: relPath, reason: "unreadable" });
+							continue;
+						}
+						throw error;
+					}
+					let reason: EndoChangeSetRefusalReasonV0 | null = null;
+					let bytesBuf: Buffer | null = null;
+					try {
+						const opened = fstatSync(readFd, { bigint: true });
+						if (!opened.isFile() || !sameFileStat(opened, stat)) {
+							reason = "changed-during-collection";
+						} else {
+							opts.hooks.afterOpen?.(relPath);
+							const chunks: Buffer[] = [];
+							let total = 0;
+							for (;;) {
+								const chunk = Buffer.alloc(Math.min(READ_CHUNK_BYTES, opts.limits.maxFileBytes + 1 - total));
+								if (chunk.length === 0) {
+									reason = "too-large";
+									break;
+								}
+								const n = readSync(readFd, chunk, 0, chunk.length, null);
+								if (n === 0) break;
+								chunks.push(chunk.subarray(0, n));
+								total += n;
+								if (total > opts.limits.maxFileBytes) {
+									reason = "too-large";
+									break;
+								}
+							}
+							if (reason === null) {
+								const afterRead = fstatSync(readFd, { bigint: true });
+								const again = lstatSync(full, { bigint: true, throwIfNoEntry: false });
+								if (
+									BigInt(total) !== stat.size ||
+									!sameFileStat(afterRead, stat) ||
+									again === undefined ||
+									!sameFileStat(again, stat)
+								) {
+									reason = "changed-during-collection";
+								} else {
+									bytesBuf = Buffer.concat(chunks);
+								}
+							}
+						}
+					} catch (error) {
+						if (isAgentCaused(error)) reason = "unreadable";
+						else throw error;
+					} finally {
+						closeSync(readFd);
+					}
+					if (reason !== null || bytesBuf === null) {
+						refusals.push({ path: relPath, reason: reason ?? "unreadable" });
+						continue;
+					}
+					workspaceBytes += bytesBuf.length;
+					const sha256 = createHash("sha256").update(bytesBuf).digest("hex");
+					const executable = (stat.mode & 0o100n) !== 0n;
+					const retain =
+						opts.retainBuffer?.({ path: relPath, bytes: bytesBuf.length, sha256, executable }) ?? false;
+					if (retain) {
+						stagedBytes += bytesBuf.length;
+						if (stagedBytes > opts.limits.maxTotalStagedBytes) {
+							refusals.push({ path: relPath, reason: "total-too-large" });
+							continue;
+						}
+						files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable, content: bytesBuf });
+					} else {
+						files.push({ path: relPath, bytes: bytesBuf.length, sha256, executable });
+					}
 				}
+			} catch (error) {
+				if (isAgentCaused(error)) {
+					refusals.push({ path: prefix === "" ? "." : prefix, reason: "unreadable" });
+					return;
+				}
+				throw error;
+			} finally {
+				entries.closeSync();
 			}
+
+			if (stopped) return;
+			if (!sawEntry && prefix !== "" && opts.rejectEmptyDirs) emptyDirs.push(prefix);
 
 			const afterDir = lstatSync(dirPath, { bigint: true, throwIfNoEntry: false });
 			if (
@@ -627,6 +668,11 @@ function walkPlainTree(root: string, opts: WalkOptions): WalkResult {
 	}
 
 	files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+	refusals.sort((a, b) =>
+		a.path !== b.path ? (a.path < b.path ? -1 : 1) : a.reason < b.reason ? -1 : a.reason > b.reason ? 1 : 0,
+	);
+	emptyDirs.sort();
+	executablePaths.sort();
 	return { files, refusals, emptyDirs, executablePaths };
 }
 
@@ -773,25 +819,27 @@ export function collectStagedChangeSetV0(
 		};
 	}
 
+	const summary: EndoStagedChangeSetSummaryV0 = {
+		baselineFiles: checkedBaseline.value.files.length,
+		candidateFiles: walked.files.length,
+		unchangedFiles,
+		addedFiles,
+		modifiedFiles,
+		modeChangedFiles,
+		deletedFiles,
+		stagedBytes,
+	};
 	const manifest: EndoStagedChangeSetManifestV0 = {
 		schemaVersion: ENDO_STAGED_CHANGESET_V0,
 		baselineSha256: checkedBaseline.value.sha256,
 		baselineRootGitExcluded: checkedBaseline.value.rootGitExcluded,
 		changes,
-		summary: {
-			baselineFiles: checkedBaseline.value.files.length,
-			candidateFiles: walked.files.length,
-			unchangedFiles,
-			addedFiles,
-			modifiedFiles,
-			modeChangedFiles,
-			deletedFiles,
-			stagedBytes,
-		},
+		summary,
 		changesetSha256: endoChangeSetDigestV0(
 			checkedBaseline.value.sha256,
 			checkedBaseline.value.rootGitExcluded,
 			changes,
+			summary,
 		),
 	};
 
@@ -903,22 +951,30 @@ export function verifyStagedChangeSetV0(
 	if (dirStat.isSymbolicLink() || !dirStat.isDirectory())
 		return { ok: false, reason: "invalid-staging-dir", detail: "staging path is not a plain directory" };
 
-	let topEntries: string[];
+	const topEntries: string[] = [];
+	let dirHandle: Dir;
 	try {
-		topEntries = readdirSync(stagingDir).sort();
+		dirHandle = opendirSync(stagingDir);
 	} catch {
 		return { ok: false, reason: "invalid-staging-dir", detail: "staging directory could not be listed" };
 	}
+	try {
+		for (let entry = dirHandle.readSync(); entry !== null; entry = dirHandle.readSync()) {
+			if (entry.name !== "manifest.json" && entry.name !== "files")
+				return {
+					ok: false,
+					reason: "unexpected-staged-entry",
+					detail: `unexpected top-level entry in staging directory: ${entry.name}`,
+				};
+			topEntries.push(entry.name);
+		}
+	} catch {
+		return { ok: false, reason: "invalid-staging-dir", detail: "staging directory could not be listed" };
+	} finally {
+		dirHandle.closeSync();
+	}
 	if (!topEntries.includes("manifest.json"))
 		return { ok: false, reason: "missing-manifest", detail: "manifest.json is missing from staging directory" };
-	for (const entry of topEntries) {
-		if (entry !== "manifest.json" && entry !== "files")
-			return {
-				ok: false,
-				reason: "unexpected-staged-entry",
-				detail: `unexpected top-level entry in staging directory: ${entry}`,
-			};
-	}
 
 	const manifestRead = readPlainRegularFile(join(stagingDir, "manifest.json"), MAX_MANIFEST_BYTES);
 	if (!manifestRead.ok)
@@ -940,6 +996,7 @@ export function verifyStagedChangeSetV0(
 		manifest.baselineSha256,
 		manifest.baselineRootGitExcluded,
 		manifest.changes,
+		manifest.summary,
 	);
 	if (recomputedDigest !== manifest.changesetSha256)
 		return {
@@ -961,6 +1018,13 @@ export function verifyStagedChangeSetV0(
 			detail: "manifest.changesetSha256 does not match expected changeset pin",
 		};
 
+	if (manifest.changes.length > limits.maxChangedFiles || manifest.summary.stagedBytes > limits.maxTotalStagedBytes)
+		return {
+			ok: false,
+			reason: "invalid-manifest",
+			detail: "manifest exceeds verifier change-set limits",
+		};
+
 	if (!topEntries.includes("files"))
 		return { ok: false, reason: "invalid-staging-dir", detail: "files directory is missing from staging directory" };
 
@@ -968,7 +1032,7 @@ export function verifyStagedChangeSetV0(
 	const walked = walkPlainTree(filesRoot, {
 		limits: {
 			...limits,
-			maxWorkspaceBytes: Math.max(limits.maxWorkspaceBytes, limits.maxTotalStagedBytes),
+			maxWorkspaceBytes: Math.min(limits.maxWorkspaceBytes, limits.maxTotalStagedBytes),
 		},
 		skipRootGit: false,
 		hooks: {},
@@ -1034,7 +1098,7 @@ export function verifyStagedChangeSetV0(
 
 // ---- host-safe, subprocess-free preview & unified diff renderer ---------------------------------------------------------------------
 
-const utf8Fatal = new TextDecoder("utf-8", { fatal: true });
+const utf8Fatal = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 function decodeTextOrBinary(bytes: Buffer): string | null {
 	if (bytes.includes(0)) return null;

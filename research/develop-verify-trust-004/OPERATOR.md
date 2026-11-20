@@ -73,7 +73,7 @@ git -C "$W/src" update-ref refs/heads/develop-verify-trust-004 "$F"
 git -C "$W/src" -c advice.detachedHead=false checkout -q develop-verify-trust-004
 git -C "$W/src" rev-parse HEAD                                    # must print $F
 test -z "$(git -C "$W/src" status --porcelain)" && echo clean
-(cd "$W/src" && sha256sum -c $T/FROZEN.sha256 | grep -vc ': OK$')  # must print 0
+(cd "$W/src" && sha256sum --quiet --strict -c "$T/FROZEN.sha256") || { echo "frozen files do not match" >&2; exit 1; }
 grep -F guest/session.sh "$W/src/$T/FROZEN.sha256"             # 8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c
 ```
 
@@ -154,7 +154,7 @@ bash /root/session.sh plan
 Expected: only `lo`; disks `vda`, `vdb` (read-only) and `vdc`; the commit is `$F`; session.sh is
 `8cc8b2a232513699d07527da48f1a414695d619c8b3a0467e6040f808e4dbc3c`. The plan should end with `verdict AUTHORISABLE` and a
 `plan-digest`. Read every line before authorising: staged commit, stage-disk and bundle digests (the bundle is inside the stage
-disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all 36 entries match`, `session-script is the staged commit's`, `network-interfaces lo`,
+disk you recorded; a digest that could not be computed reads `UNAVAILABLE` and refuses the plan), `frozen-check all 41 entries match`, `session-script is the staged commit's`, `network-interfaces lo`,
 `shared-filesystems none`, `block-devices vda vdb vdc`, `stage-disk-read-only 1`, `virtualization kvm`, hostname
 `endo13-guest`, kernel `7.3.4-arch1-2`, the eleven pinned packages, and the three pending actions. A `verdict REFUSED` lists each
 reason: stop, preserve the console log and do not work around it.

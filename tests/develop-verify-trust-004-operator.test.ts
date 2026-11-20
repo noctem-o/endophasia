@@ -76,6 +76,39 @@ it("aborts before staging when any selected path is occupied", () => {
 	}
 });
 
+describe("TRUST-004 OPERATOR.md frozen source check", () => {
+	const line = () => {
+		const source = blocks("1. Preconditions").find((b) => b.includes("git clone"));
+		const found = source?.split("\n").find((l) => l.includes("FROZEN.sha256") && l.includes("sha256sum"));
+		expect(found).toBeDefined();
+		return found as string;
+	};
+	const tree = (files: Record<string, string>, manifest: string | null) => {
+		const src = join(W, "src");
+		mkdirSync(join(src, T), { recursive: true });
+		for (const [name, body] of Object.entries(files)) writeFileSync(join(src, name), body);
+		if (manifest !== null) writeFileSync(join(src, T, "FROZEN.sha256"), manifest);
+	};
+	it.each([
+		["every frozen file matches", { a: "a" }, `${sha("a")}  a\n`, 0],
+		["a frozen file differs", { a: "changed" }, `${sha("a")}  a\n`, 1],
+		["a frozen file is missing", {}, `${sha("a")}  a\n`, 1],
+		["the manifest is missing", { a: "a" }, null, 1],
+		["the manifest has a malformed line", { a: "a" }, `${sha("a")}  a\nnot a checksum line\n`, 1],
+	])("continues only when every frozen file verifies: %s", (_, files, manifest, rc) => {
+		tree(files, manifest);
+		const r = shell(`${line()}\necho CONTINUED`, { W, T });
+		expect(r.status, r.stderr).toBe(rc);
+		expect(r.stdout.includes("CONTINUED")).toBe(rc === 0);
+	});
+
+	it("expects the plan to report the manifest's own entry count", () => {
+		const entries = readFileSync(join(T, "FROZEN.sha256"), "utf8").trim().split("\n").length;
+		const quoted = [...doc.matchAll(/frozen-check all (\d+) entries match/g)].map((m) => Number(m[1]));
+		expect(quoted).toEqual([entries]);
+	});
+});
+
 describe("TRUST-004 OPERATOR.md evidence custody", () => {
 	it("seals only the opaque raw bytes and host logs", () => {
 		const r = custody({});

@@ -10,7 +10,7 @@ handoff between the installed runs, the capture and the trusted read, and nothin
 is before anything is installed (Amendment 4, [PROTOCOL.md](PROTOCOL.md)). After it, the operator can only interrupt, and an
 interruption is recorded as a failure, never as a pause.
 
-**Selected source commit:** `refs/tags/trust004-amendment-12` (Amendment 12; exact file list in
+**Selected source commit:** `refs/tags/trust004-amendment-13` (Amendment 13; exact file list in
 [FROZEN.sha256](FROZEN.sha256)). Stage exactly the commit this tag names, not the branch tip. This page is itself one of the
 frozen files, so the copy inside that commit is this page: read it from the checkout you stage. `tests/develop-verify-trust-004-freeze.test.ts`
 checks in CI that the tag names that commit, that every frozen file there matches the manifest, that this page there is the page on
@@ -30,20 +30,20 @@ The guest gets no network (`-nic none`), no shared host filesystem, no host secr
 a read-only disk holding a git bundle of the commit and a blank evidence disk.
 
 Set `ENDO13_WORK` explicitly in every terminal: `host.sh` refuses an empty setting. Never point it at
-`~/.capy/work/endo13`, which holds **attempt 1's retained evidence**, or at the Amendment 9 work and evidence
-directories (`trust004-amendment9-run1*`), which hold **attempt 2's**. Both stay read only.
+`~/.capy/work/endo13`, which holds **attempt 1's retained evidence**, or at the Amendment 9 and Amendment 12 work and
+evidence directories (`trust004-amendment9-run1*`, `trust004-amendment12-run1*`), which hold **attempts 2 and 3**. All stay read only.
 
 ## 1. Preconditions and inputs [host]
 
 Use a bash shell and set these for every later block. `ENDO_REPO` is any clone URL or local checkout that contains the commit:
 
 ```sh
-F=refs/tags/trust004-amendment-12
-FREEZE_REF=refs/tags/trust004-amendment-12
+F=refs/tags/trust004-amendment-13
+FREEZE_REF=refs/tags/trust004-amendment-13
 OLD=$HOME/.capy/work/endo13                 # attempt 1: read only
-W=$HOME/.capy/work/trust004-amendment12-run1
-W2=$HOME/.capy/work/trust004-amendment12-run1-analysis
-E=$HOME/endo-evidence/trust004-amendment12-run1    # retained evidence, outside every work directory
+W=$HOME/.capy/work/trust004-amendment13-run1
+W2=$HOME/.capy/work/trust004-amendment13-run1-analysis
+E=$HOME/endo-evidence/trust004-amendment13-run1    # retained evidence, outside every work directory
 ENDO_REPO=https://github.com/noctem-o/endophasia.git
 T=research/develop-verify-trust-004
 ```

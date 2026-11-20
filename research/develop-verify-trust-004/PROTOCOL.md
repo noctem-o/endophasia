@@ -602,3 +602,47 @@ No code, harness, rule or criterion changes. Amendments 10 and 11 stand. No live
 
 Changed or added pins, in addition to this protocol:
 - `research/develop-verify-trust-004/OPERATOR.md`: `f9cf16f8d292e93803f59810eff5068a668c3c39cd0ced30889f465b92dc7425`
+
+## Amendment 13 — the G write-existing expectation, and a probe that reports its errno
+
+Attempt 3 staged Amendment 12 (`91b42e0ac`, tag `trust004-amendment-12`). According to its analysis (ENDO-21), both installed
+runs completed with 20/20 rows held, IA1–IA4 held in both, and there were zero authoritative false or uncovered PASSes. The
+trusted read confirmed 17 authentic PASSes, and the pre-read and post-read captures were identical. The one failure was control G
+`write-existing`. Its evidence is retained unchanged and is not reinterpreted here.
+
+**The expectation was wrong, not the boundary.** `stageFiles` (TRUST-003 `reader.ts`, unchanged) stages `probe.mjs` 0444 and
+root-owned, and the grader runs as uid 65534. An `O_RDWR` open is therefore refused by DAC with EACCES before the kernel reaches
+the read-only-mount check, so EROFS cannot be returned there. `chmod` on the same path returns EROFS, which shows the read-only
+mount. `write-existing` now expects `EACCES`.
+
+**A probe that reports its own mismatch.** The unchanged grader compares each case's stdout and records only `matched` and the
+measured `exitCode`. So attempt 3's export could not say which errno came back, and the analysis had to infer it from the code.
+The probe's write modes now exit with a code naming the outcome, written in the probe's header: 10 EROFS, 11 EACCES, 12 EPERM,
+1 when the write succeeded (`WROTE`), 2 for any other errno. Each of the four write cases requires its code and its unchanged stdout:
+`write-new`, `chmod` and `mkdir` expect `EROFS` with 10, and `write-existing` expects `EACCES` with 11. `controls.json` records each
+case's measured `exitCode` and `matched` beside its expectation, so a future write mismatch is answered by the export alone.
+
+The other five G cases keep their expectations and exit codes. A `read-list` or `identity` mismatch still fails on exact stdout,
+but the export cannot say which string came back. That gap is accepted. If it ever fires, the answer is one more discriminator
+case at that time. TRUST-003, including `reader.ts` and the `stage.sh` pins, is unchanged. The harness tar's leading `./` member
+is not addressed here.
+
+**The only semantic changes are the `write-existing` expectation and the probe's exit-code vocabulary.** OPERATOR.md changes only
+the selected tag, fresh `trust004-amendment13-run1*` paths, and attempt 3's directories added to the read-only list.
+
+Tests (`tests/develop-verify-trust-004-controls.test.ts`). Outside the sandbox, the probe runs with `/work` pointed at a scratch
+directory. Five of the six tests fail against Amendment 12's `controls.ts`:
+
+- *states the vocabulary in the probe's header and maps it exactly*
+- *write-existing on a 0444 file reports EACCES with code 11*
+- *chmod of a file owned by another uid reports EPERM with code 12*
+- *a write that succeeds prints WROTE with code 1, and any other errno exits 2*
+- *expects each write case's stdout and code, and leaves every other G case unchanged*
+- *records each case's measured exit code and match beside its expectation in controls.json*
+
+EROFS needs the grader's read-only mount, so it is checked only as part of the vocabulary. No live guest result is asserted.
+
+Changed or added pins, in addition to this protocol:
+- `research/develop-verify-trust-004/OPERATOR.md`: `5bbf6589523f266e2b294cad8be8a2c7ed545ed9f091d95e2ba8fc36b458cffb`
+- `research/develop-verify-trust-004/guest/controls.ts`: `a35200589a00de20e03441b86d8832b42897bc405be5c2ed62f1b2e07a678fb0`
+- `tests/develop-verify-trust-004-controls.test.ts`: `bfa4324229dc3604a5a95bcfccefafdd5dba970309866eaf7dadfd84d8990653`

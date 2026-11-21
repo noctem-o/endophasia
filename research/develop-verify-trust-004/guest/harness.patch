@@ -1,0 +1,156 @@
+--- research/develop-verify-trust-002/rehearsal.ts
++++ research/develop-verify-trust-004/guest/harness.ts
+@@ -1,3 +1,6 @@
++// DEVELOP-VERIFY-TRUST-004 Amendment 10: the TRUST-002 harness (research/develop-verify-trust-002/rehearsal.ts), copied because
++// TRUST-003's stage.sh pins the merged file's bytes. It differs only by the hunks in harness.patch: the module paths, and IA3 judged by
++// export digest (passes.ts) instead of by the commits this harness created. Everything below is the merged harness's own text.
+ // DEVELOP-VERIFY-TRUST-002: the experiment harness (PROTOCOL.md §5). Research only.
+ //
+ //   node rehearsal.ts run <workspace> --commit <frozen commit> [--repository <dir>] [--target rehearsal|installed]
+@@ -30,15 +33,16 @@
+ } from "node:fs";
+ import { homedir, release } from "node:os";
+ import { dirname, join, resolve } from "node:path";
+-import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
+-import { audit, sudoRefused } from "./audit.ts";
+-import { collectObjects, encodeRequest, GIT_ENV, send } from "./client/client.ts";
+-import { build, INSTALLED, renderUnits, TASK } from "./install/layout.ts";
+-import { type ObjectType, objectId, resolveCandidate } from "./service/objects.ts";
+-import { consumerVerdict, readAuthoritative } from "./service/records.ts";
+-import { seal } from "./service/verifier.ts";
++import { canonicalEndoJsonV0 } from "../../../runtime/contracts/canonical-json.ts";
++import { audit, sudoRefused } from "../../develop-verify-trust-002/audit.ts";
++import { collectObjects, encodeRequest, GIT_ENV, send } from "../../develop-verify-trust-002/client/client.ts";
++import { build, INSTALLED, renderUnits, TASK } from "../../develop-verify-trust-002/install/layout.ts";
++import { type ObjectType, objectId, resolveCandidate } from "../../develop-verify-trust-002/service/objects.ts";
++import { consumerVerdict, readAuthoritative } from "../../develop-verify-trust-002/service/records.ts";
++import { seal } from "../../develop-verify-trust-002/service/verifier.ts";
++import { classifyPasses, type TruthEntry, truthByExport } from "./passes.ts";
+ 
+-const HERE = dirname(new URL(import.meta.url).pathname);
++const HERE = resolve(dirname(new URL(import.meta.url).pathname), "../../develop-verify-trust-002");
+ const REPO = resolve(HERE, "../..");
+ const V1 = join(REPO, "research/develop-verify-trust");
+ const F1_HOOK = join(REPO, "research/develop-validation/fixtures/env-hook.mjs");
+@@ -215,8 +219,10 @@
+ 		snapshot(forged);
+ 	};
+ 	const forged: string[] = [];
+-	/** Commits whose candidate is correct (A, P): an authoritative PASS for any other commit is a false PASS (IA3). */
+-	const correctCommits = new Set<string>();
++	/** Amendment 10: export digest -> the truth table's judgement of that candidate. IA3 judges every authoritative PASS by it. */
++	let truthTable: ReadonlyMap<string, TruthEntry> = new Map();
++	/** Records present before this run started (the availability request, an earlier run): judged like any other, labelled. */
++	const preexisting = new Set(existsSync(join(state, "records")) ? readdirSync(join(state, "records")) : []);
+ 
+ 	try {
+ 		// -- fixtures: ground truth and repositories --
+@@ -226,24 +232,25 @@
+ 		const fixtureDir = (c: string) =>
+ 			["S", "X", "M"].includes(c) ? join(HERE, "fixtures/candidates", c) : join(V1, "fixtures/candidates", c);
+ 		const truth: Record<string, { correct: boolean; failing: string[]; stderrBytesMax: number }> = {};
+-		for (const c of ["A", "B", "D", "E", "P", "S", "X", "M"]) {
++		const judge = (c: string, dir: string, timeout: number) => {
+ 			const failing: string[] = [];
+ 			let stderrMax = 0;
+ 			for (const k of oracle.cases) {
+ 				const tmp = join(W, "truth", `${c}-${k.name}`);
+-				cpSync(fixtureDir(c), tmp, { recursive: true });
++				cpSync(dir, tmp, { recursive: true });
+ 				const r = spawnSync("/usr/bin/node", k.argv.slice(1), {
+ 					cwd: tmp,
+ 					env: { PATH: "/usr/bin", HOME: tmp },
+-					timeout: 5_000,
++					timeout,
+ 					maxBuffer: 8 << 20,
+ 				});
+ 				stderrMax = Math.max(stderrMax, r.stderr?.length ?? 0);
+ 				if (r.status !== k.expect.exitCode || r.stdout?.toString("utf8") !== k.expect.stdout) failing.push(k.name);
+ 			}
+ 			truth[c] = { correct: failing.length === 0, failing, stderrBytesMax: stderrMax };
+-		}
+-		rmSync(join(W, "truth"), { recursive: true, force: true });
++			rmSync(join(W, "truth"), { recursive: true, force: true });
++		};
++		for (const c of ["A", "B", "D", "E", "P", "S", "X", "M"]) judge(c, fixtureDir(c), 5_000);
+ 		log(
+ 			`truth: ${JSON.stringify(Object.fromEntries(Object.entries(truth).map(([k, v]) => [k, v.correct ? "correct" : `incorrect(${v.failing.length})`])))}`,
+ 		);
+@@ -283,6 +290,14 @@
+ 			if (!c.ok) throw new Error(c.reason);
+ 			return c.candidate.exportSha256;
+ 		};
++		// Aslow is submitted in T10 and E6 on the installed target, so its PASS must be judged too: 4 s per case, so a longer limit.
++		judge("Aslow", R.Aslow.dir, 15_000);
++		truthTable = truthByExport(
++			Object.entries(truth).map(([c, t]) => ({ candidate: c, exportSha256: exportOf(R[c]), correct: t.correct })),
++		);
++		log(
++			`truth by export: ${JSON.stringify(Object.fromEntries([...truthTable].map(([d, t]) => [d, `${t.candidate} ${t.correct ? "correct" : "incorrect"}`])))}`,
++		);
+ 		const read = (invocation: string, expect?: { commit?: string; exportSha256?: string }) =>
+ 			readAuthoritative({
+ 				state,
+@@ -379,7 +394,6 @@
+ 				t2.verdict === "FAIL" && t2.class === "FAIL" && t2.authoritative === wantAuthPass,
+ 			);
+ 		}
+-		correctCommits.add(R.A.commit).add(R.P.commit).add(R.Aslow.commit);
+ 
+ 		// ---- T3, T4: the caller's environment ----
+ 		const clientIn = (env: Record<string, string>, r: { dir: string; commit: string }) => {
+@@ -904,8 +918,20 @@
+ 				["160000", "sub", R.A.commit],
+ 			]);
+ 			const dots = craft([["100644", "..", blobId]]);
+-			const s = await submit(encodeRequest(TASK, "sha1", sub.commitId, sub.objects));
+-			const d = await submit(encodeRequest(TASK, "sha1", dots.commitId, dots.objects));
++			const subRequest = encodeRequest(TASK, "sha1", sub.commitId, sub.objects);
++			const dotsRequest = encodeRequest(TASK, "sha1", dots.commitId, dots.objects);
++			const s = await submit(subRequest);
++			const d = await submit(dotsRequest);
++			if (target === "installed") {
++				const offered = join(W, "offered");
++				mkdirSync(offered, { mode: 0o700 });
++				for (const [id, bytes] of [
++					[s.invocation, subRequest],
++					[d.invocation, dotsRequest],
++				] as const)
++					if (id !== null && /^[0-9a-f]{32}$/.test(id))
++						writeFileSync(join(offered, `${id}.request`), bytes, { flag: "wx", mode: 0o600 });
++			}
+ 			row(
+ 				{
+ 					id: "E1",
+@@ -1081,10 +1107,9 @@
+ 	const all = readdirSync(join(state, "records")).filter((n) => /^[0-9a-f]{32}\.json$/.test(n));
+ 	const reads = all.map((n) => ({ name: n, r: read2(state, install, verifierUid, n.slice(0, 32)) }));
+ 	const authoritative = reads.filter((x) => x.r.authoritative).map((x) => x.name);
+-	const falsePasses = reads
+-		.filter((x) => x.r.authoritative && x.r.class === "PASS")
+-		.filter((x) => !correctCommits.has(String((x.r.record?.candidate as { commit?: unknown } | null)?.commit)))
+-		.map((x) => x.name);
++	const judged = classifyPasses(reads, truthTable, preexisting);
++	const falsePasses = judged.falsePasses;
++	log(`IA3 passes: ${JSON.stringify(judged.passes.map((p) => [p.name, p.origin, p.candidate, p.disposition]))}`);
+ 	const by = (id: string) => rows.find((r) => r.id === id);
+ 	const held = (...ids: string[]) => ids.every((id) => by(id)?.held === true);
+ 	const acceptance =
+@@ -1101,7 +1126,7 @@
+ 			: {
+ 					IA1: held("T1"),
+ 					IA2: held("T6", "T7", "T8", "E6"),
+-					IA3: falsePasses.length === 0,
++					IA3: judged.ia3,
+ 					IA4: held(
+ 						"T2",
+ 						"T3",
+@@ -1132,6 +1157,8 @@
+ 			forgedByAttacker: forged.length,
+ 			authoritative: authoritative.length,
+ 			authoritativeFalsePasses: falsePasses,
++			authoritativeUncovered: judged.uncovered,
++			authoritativePasses: judged.passes,
+ 			overwritten,
+ 		},
+ 		acceptance,

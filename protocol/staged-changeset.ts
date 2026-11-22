@@ -296,6 +296,21 @@ function checkSortedUniquePaths(paths: readonly string[], what: string): void {
 	}
 }
 
+/**
+ * Reject any path that lies beneath another path of the same tree. Every path passed here names a plain regular file in one tree (the
+ * baseline, or the before or after side of a change set), and a regular file cannot have descendants. Checks each proper `/`-boundary
+ * prefix against a set rather than relying on sort adjacency, because sorting interleaves siblings such as `a-b` between `a` and `a/c`.
+ */
+function checkNoFileAncestors(paths: readonly string[], what: string): void {
+	const files = new Set(paths);
+	for (const path of paths) {
+		for (let slash = path.indexOf("/"); slash !== -1; slash = path.indexOf("/", slash + 1)) {
+			const ancestor = path.slice(0, slash);
+			if (files.has(ancestor)) bad(`${what} contains ${path} beneath regular file ${ancestor}`);
+		}
+	}
+}
+
 export function checkEndoWorkspaceBaselineV0(value: unknown): EndoWorkspaceBaselineV0 {
 	const r = closedObject(value, ["schemaVersion", "rootGitExcluded", "files", "totalBytes", "sha256"], "baseline");
 	if (r.schemaVersion !== ENDO_WORKSPACE_BASELINE_V0) bad("baseline.schemaVersion mismatch");
@@ -320,6 +335,7 @@ export function checkEndoWorkspaceBaselineV0(value: unknown): EndoWorkspaceBasel
 		files.push({ path, bytes, sha256, executable });
 	}
 	checkSortedUniquePaths(paths, "baseline.files");
+	checkNoFileAncestors(paths, "baseline.files");
 	const totalBytes = nonNegInt(r.totalBytes, "baseline.totalBytes");
 	if (totalBytes !== sumBytes) bad("baseline.totalBytes does not match sum of file bytes");
 	const sha256 = sha256String(r.sha256, "baseline.sha256");
@@ -348,6 +364,8 @@ export function checkEndoStagedChangeSetManifestV0(value: unknown): EndoStagedCh
 
 	const changes: EndoStagedChangeV0[] = [];
 	const paths: string[] = [];
+	const beforePaths: string[] = [];
+	const afterPaths: string[] = [];
 	let addedFiles = 0;
 	let modifiedFiles = 0;
 	let modeChangedFiles = 0;
@@ -394,8 +412,12 @@ export function checkEndoStagedChangeSetManifestV0(value: unknown): EndoStagedCh
 		} else {
 			bad(`manifest.changes[${i}].kind is not a valid change kind`);
 		}
+		if (raw.kind !== "added") beforePaths.push(path);
+		if (raw.kind !== "deleted") afterPaths.push(path);
 	}
 	checkSortedUniquePaths(paths, "manifest.changes");
+	checkNoFileAncestors(beforePaths, "manifest.changes before-state");
+	checkNoFileAncestors(afterPaths, "manifest.changes after-state");
 
 	const sumObj = closedObject(
 		r.summary,

@@ -31,6 +31,7 @@ import {
 	ENDO_STAGED_CHANGESET_V0,
 	ENDO_WORKSPACE_BASELINE_V0,
 	type EndoChangeSetLimitsV0,
+	type EndoStagedChangeV0,
 	isPlainChangeSetPathV0,
 	readEndoStagedChangeSetManifestV0,
 	readEndoWorkspaceBaselineV0,
@@ -177,6 +178,185 @@ describe("protocol/staged-changeset strict schema validation", () => {
 		expect(isPlainChangeSetPathV0("/etc/passwd")).toBe(false);
 		expect(isPlainChangeSetPathV0("src/a\u202eb.ts")).toBe(false);
 		expect(isPlainChangeSetPathV0("src/a\\b.ts")).toBe(false);
+	});
+});
+
+describe("protocol/staged-changeset rejects impossible file trees (regular file with a descendant)", () => {
+	const shaA = sha("a");
+	const shaB = sha("b");
+	const state = (sha256: string, executable = false) => ({ bytes: 1, sha256, executable });
+
+	function baselineOf(paths: string[]) {
+		const files = paths.map((path) => ({ path, ...state(shaA) }));
+		return {
+			schemaVersion: ENDO_WORKSPACE_BASELINE_V0,
+			rootGitExcluded: false,
+			files,
+			totalBytes: files.length,
+			sha256: endoBaselineDigestV0(false, files),
+		};
+	}
+
+	type Change = EndoStagedChangeV0;
+
+	const added = (path: string): Change => ({ path, kind: "added", before: null, after: state(shaB) });
+	const deleted = (path: string): Change => ({ path, kind: "deleted", before: state(shaA), after: null });
+	const modified = (path: string): Change => ({ path, kind: "modified", before: state(shaA), after: state(shaB) });
+	const mode = (path: string): Change => ({ path, kind: "mode", before: state(shaA), after: state(shaA, true) });
+
+	function manifestOf(changes: Change[]) {
+		const count = (kind: Change["kind"]) => changes.filter((c) => c.kind === kind).length;
+		const summary = {
+			baselineFiles: count("modified") + count("mode") + count("deleted"),
+			candidateFiles: count("modified") + count("mode") + count("added"),
+			unchangedFiles: 0,
+			addedFiles: count("added"),
+			modifiedFiles: count("modified"),
+			modeChangedFiles: count("mode"),
+			deletedFiles: count("deleted"),
+			stagedBytes: changes.filter((c) => c.after !== null).length,
+		};
+		const baselineSha256 = sha("baseline");
+		return {
+			schemaVersion: ENDO_STAGED_CHANGESET_V0,
+			baselineSha256,
+			baselineRootGitExcluded: false,
+			changes,
+			summary,
+			changesetSha256: endoChangeSetDigestV0(baselineSha256, false, changes, summary),
+		};
+	}
+
+	it("rejects baseline files that are ancestors of other baseline files, with valid digests", () => {
+		const rejected: [string[], RegExp][] = [
+			[["src", "src/index.ts"], /src\/index\.ts beneath regular file src\b/],
+			[["a", "a/b", "a/b/c"], /a\/b beneath regular file a\b/],
+			[["a", "a-b", "a/c"], /a\/c beneath regular file a\b/],
+			[["a/b", "a/b-c", "a/b/c"], /a\/b\/c beneath regular file a\/b\b/],
+		];
+		for (const [paths, message] of rejected) {
+			const baseline = baselineOf(paths);
+			expect(endoBaselineDigestV0(false, baseline.files)).toBe(baseline.sha256);
+			const read = readEndoWorkspaceBaselineV0(baseline);
+			expect(read, paths.join(",")).toMatchObject({ ok: false, kind: "invalid" });
+			if (!read.ok) expect(read.message).toMatch(message);
+		}
+		for (const paths of [
+			["a/b", "a/bc"],
+			["a/b", "a/b-c", "a/bc/d"],
+			["src.ts", "src/index.ts"],
+		]) {
+			expect(readEndoWorkspaceBaselineV0(baselineOf(paths)), paths.join(",")).toMatchObject({ ok: true });
+		}
+	});
+
+	it("rejects ancestor conflicts within the before-state or within the after-state of a change set", () => {
+		const rejected: [Change[], RegExp][] = [
+			[[deleted("src"), deleted("src/index.ts")], /before-state contains src\/index\.ts beneath regular file src\b/],
+			[[added("out"), added("out/x")], /after-state contains out\/x beneath regular file out\b/],
+			[[added("src"), modified("src/a.ts")], /after-state contains src\/a\.ts beneath regular file src\b/],
+			[
+				[deleted("pkg/mod"), modified("pkg/mod/x")],
+				/before-state contains pkg\/mod\/x beneath regular file pkg\/mod\b/,
+			],
+			[[mode("bin"), added("bin/run")], /after-state contains bin\/run beneath regular file bin\b/],
+			[[deleted("a"), deleted("a-b"), deleted("a/c")], /before-state contains a\/c beneath regular file a\b/],
+		];
+		for (const [changes, message] of rejected) {
+			const manifest = manifestOf(changes);
+			expect(endoChangeSetDigestV0(manifest.baselineSha256, false, manifest.changes, manifest.summary)).toBe(
+				manifest.changesetSha256,
+			);
+			const read = readEndoStagedChangeSetManifestV0(manifest);
+			expect(read, changes.map((c) => `${c.kind}:${c.path}`).join(",")).toMatchObject({
+				ok: false,
+				kind: "invalid",
+			});
+			if (!read.ok) expect(read.message).toMatch(message);
+		}
+	});
+
+	it("accepts file-to-directory and directory-to-file replacements across the before and after states", () => {
+		const accepted: Change[][] = [
+			[deleted("src"), added("src/index.ts")],
+			[added("src"), deleted("src/a.ts"), deleted("src/b.ts")],
+			[deleted("pkg/mod"), added("pkg/mod/x"), added("pkg/mod/y/z")],
+			[added("out/x"), modified("out/y")],
+		];
+		for (const changes of accepted) {
+			expect(
+				readEndoStagedChangeSetManifestV0(manifestOf(changes)),
+				changes.map((c) => c.path).join(","),
+			).toMatchObject({
+				ok: true,
+			});
+		}
+	});
+
+	it("collects and verifies file-to-directory and directory-to-file replacements end to end", () => {
+		const cases: { base: Record<string, string>; cand: Record<string, string>; expected: [string, string][] }[] = [
+			{
+				base: { src: "file\n", "keep.txt": "k\n" },
+				cand: { "src/index.ts": "export {};\n", "keep.txt": "k\n" },
+				expected: [
+					["src", "deleted"],
+					["src/index.ts", "added"],
+				],
+			},
+			{
+				base: { "src/a.ts": "a\n", "src/b.ts": "b\n" },
+				cand: { src: "now a file\n" },
+				expected: [
+					["src", "added"],
+					["src/a.ts", "deleted"],
+					["src/b.ts", "deleted"],
+				],
+			},
+		];
+		for (const { base, cand, expected } of cases) {
+			const baseDir = fresh("replace-base");
+			const candDir = fresh("replace-cand");
+			const staging = join(fresh("replace-stage"), "out");
+			writeTree(baseDir, base);
+			writeTree(candDir, cand);
+			const baseline = captureWorkspaceBaselineV0(baseDir);
+			if (!baseline.ok) throw new Error("baseline failed");
+			const collected = collectStagedChangeSetV0(baseline.baseline, candDir, staging);
+			expect(collected.status).toBe("collected");
+			if (collected.status !== "collected") return;
+			expect(collected.manifest.changes.map((c) => [c.path, c.kind])).toEqual(expected);
+			expect(
+				verifyStagedChangeSetV0(staging, {
+					expectedBaselineSha256: baseline.baseline.sha256,
+					expectedChangesetSha256: collected.manifest.changesetSha256,
+				}),
+			).toEqual({ ok: true, manifest: collected.manifest });
+		}
+	});
+
+	it("verifyStagedChangeSetV0 refuses a handcrafted bundle whose digest-valid manifest describes an impossible baseline", () => {
+		const stage = (changes: Change[]) => {
+			const staging = join(fresh("conflict-stage"), "out");
+			mkdirSync(join(staging, "files"), { recursive: true });
+			const manifest = manifestOf(changes);
+			writeFileSync(join(staging, "manifest.json"), JSON.stringify(manifest));
+			chmodSync(join(staging, "manifest.json"), 0o444);
+			return { staging, manifest };
+		};
+		const control = stage([deleted("src/index.ts"), deleted("src2")]);
+		expect(
+			verifyStagedChangeSetV0(control.staging, { expectedChangesetSha256: control.manifest.changesetSha256 }),
+		).toEqual({
+			ok: true,
+			manifest: control.manifest,
+		});
+		const conflict = stage([deleted("src"), deleted("src/index.ts")]);
+		const verified = verifyStagedChangeSetV0(conflict.staging, {
+			expectedBaselineSha256: conflict.manifest.baselineSha256,
+			expectedChangesetSha256: conflict.manifest.changesetSha256,
+		});
+		expect(verified).toMatchObject({ ok: false, reason: "invalid-manifest" });
+		if (!verified.ok) expect(verified.detail).toMatch(/src\/index\.ts beneath regular file src\b/);
 	});
 });
 

@@ -45,7 +45,17 @@ import {
 	endoProtectedTrialOutcomeV0,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
-import { DEFAULT_ENDO_CHANGESET_LIMITS_V0, type EndoChangeSetLimitsV0 } from "../protocol/staged-changeset.ts";
+import {
+	DEFAULT_ENDO_CHANGESET_LIMITS_V0,
+	ENDO_CHANGESET_REFUSAL_REASONS_V0,
+	type EndoChangeSetLimitsV0,
+	type EndoChangeSetRefusalReasonV0,
+} from "../protocol/staged-changeset.ts";
+
+/** A complete refusal census: every reason, 0 unless given. */
+const census = (given: Partial<Record<EndoChangeSetRefusalReasonV0, number>> = {}) =>
+	Object.fromEntries(ENDO_CHANGESET_REFUSAL_REASONS_V0.map((k) => [k, given[k] ?? 0]));
+
 import { makePiAgentDirectoryV1, piExampleSpecV1 } from "../research/protected-eval/model-connected/pi-condition.ts";
 import { readEndoProtectedTrialFileV0, sealEndoProtectedTrialV0 } from "../runtime/contracts/protected-experiment.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
@@ -770,7 +780,12 @@ describe.runIf(REAL)(
 				expectModelReached(r);
 				expect(r.agent).toMatchObject({ status: "completed", termination: "confirmed" });
 				expect(r.changeset.baseline).toMatchObject({ status: "pinned", files: 3 });
-				expect(r.changeset.collection).toMatchObject({ status: "collected", refusals: [], refusalsOmitted: 0 });
+				expect(r.changeset.collection).toMatchObject({
+					status: "collected",
+					refusals: [],
+					refusalsOmitted: 0,
+					refusalCounts: census(),
+				});
 				expect(r.changeset.collection.summary).toMatchObject({
 					baselineFiles: 3,
 					candidateFiles: 3,
@@ -856,6 +871,9 @@ describe.runIf(REAL)(
 				const links = stagedRecordOf(out, "links").changeset.collection;
 				expect(links.refusals).toHaveLength(ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2);
 				expect(links.refusalsOmitted).toBe(1);
+				expect(links.refusalCounts).toEqual(
+					census({ "symbolic-link": ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2 + 1 }),
+				);
 				expect(stagedCellOf(out, "link").refused).toEqual([]);
 			});
 		}, 180_000);
@@ -922,6 +940,7 @@ describe.runIf(REAL)(
 					summary: null,
 					refusals: [],
 					refusalsOmitted: 0,
+					refusalCounts: census(),
 				});
 				expect(r.changeset.verification.status).toBe("not-run");
 				expect(r.evaluation.status).toBe("not-run");

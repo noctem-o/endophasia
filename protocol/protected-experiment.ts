@@ -17,6 +17,7 @@ import {
 	ENDO_CHANGESET_REFUSAL_REASONS_V0,
 	ENDO_CHANGESET_VERIFY_FAILURE_REASONS_V0,
 	type EndoChangeSetLimitsV0,
+	type EndoChangeSetRefusalReasonV0,
 	type EndoChangeSetRefusalV0,
 	type EndoChangeSetVerifyFailureReasonV0,
 	type EndoStagedChangeSetSummaryV0,
@@ -535,7 +536,8 @@ export type EndoProtectedInvalidatingV3 = (typeof ENDO_PROTECTED_INVALIDATING_V3
 /**
  * The most refusals a staged record lists, and the longest refusal path it records. A refusal's path is whatever the collector
  * refused, so it is bounded by the filesystem rather than by any change-set limit: the record is bounded when it is sealed instead,
- * and says so (see `EndoProtectedChangeSetRefusalV2.truncated` and `refusalsOmitted`).
+ * and says so (see `EndoProtectedChangeSetRefusalV2.truncated` and `refusalsOmitted`). What a record derives from its refusals
+ * (its invalidating conditions) it derives from `refusalCounts`, which counts every refusal, listed or not.
  */
 export const ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2 = 4096;
 export const ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 = 400;
@@ -555,11 +557,31 @@ export interface EndoProtectedChangeSetV2 {
 		refusals: EndoProtectedChangeSetRefusalV2[];
 		/** How many further refusals the collector made that the record does not list: 0 when it lists them all. */
 		refusalsOmitted: number;
+		/** Every refusal the collector made, listed or omitted, counted by reason (each reason present, 0 when none). */
+		refusalCounts: Record<EndoChangeSetRefusalReasonV0, number>;
 	};
 	verification: {
 		status: "verified" | "failed" | "not-run";
 		reason: EndoChangeSetVerifyFailureReasonV0 | null;
 		candidateSha256: string | null;
+	};
+}
+
+/**
+ * What a staged attempt handed the evaluator, as the invalidating conditions read it: its status, and one refusal for each reason the
+ * collector refused anything for, from the complete census rather than the bounded list, so a reason past the list's bound still counts.
+ */
+export function endoProtectedStagedHandedV2(
+	collection: EndoProtectedChangeSetV2["collection"],
+): Pick<EndoProtectedTrialV0["submission"], "status" | "refusals"> {
+	return {
+		status: collection.status,
+		refusals: ENDO_CHANGESET_REFUSAL_REASONS_V0.filter((reason) => collection.refusalCounts[reason] > 0).map(
+			(reason) => ({
+				path: ".",
+				reason,
+			}),
+		) as unknown as EndoProtectedTrialV0["submission"]["refusals"],
 	};
 }
 
@@ -1137,10 +1159,7 @@ function trialOf(value: unknown, version: string): EndoProtectedTrial {
 	const handed: Pick<EndoProtectedTrialV0["submission"], "status" | "refusals"> =
 		changeset === null
 			? (submission as EndoProtectedTrialV0["submission"])
-			: {
-					status: changeset.collection.status,
-					refusals: changeset.collection.refusals as unknown as EndoProtectedTrialV0["submission"]["refusals"],
-				};
+			: endoProtectedStagedHandedV2(changeset.collection);
 	const e = obj(
 		o.evaluation,
 		["status", "definitionSha256", "driverSha256", "cases", "reason", "outputSha256"],
@@ -1334,7 +1353,7 @@ function changesetOf(
 	};
 	const c = obj(
 		o.collection,
-		["status", "changesetSha256", "summary", "refusals", "refusalsOmitted"],
+		["status", "changesetSha256", "summary", "refusals", "refusalsOmitted", "refusalCounts"],
 		"changeset.collection",
 	);
 	const refusals = list(c.refusals, "changeset.collection.refusals", ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2).map(
@@ -1362,6 +1381,19 @@ function changesetOf(
 	const refusalsOmitted = count(c.refusalsOmitted, "changeset.collection.refusalsOmitted");
 	if (refusalsOmitted > 0 && refusals.length !== ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2)
 		fail("refusals are omitted only from a full list");
+	const rc = obj(c.refusalCounts, ENDO_CHANGESET_REFUSAL_REASONS_V0, "changeset.collection.refusalCounts");
+	const refusalCounts = Object.fromEntries(
+		ENDO_CHANGESET_REFUSAL_REASONS_V0.map((k) => [k, count(rc[k], `changeset.collection.refusalCounts.${k}`)]),
+	) as Record<EndoChangeSetRefusalReasonV0, number>;
+	// The census is the whole population: the listed refusals are part of it, and the rest are exactly the omitted ones.
+	if (
+		ENDO_CHANGESET_REFUSAL_REASONS_V0.reduce((n, k) => n + refusalCounts[k], 0) !==
+		refusals.length + refusalsOmitted
+	)
+		fail("the refusal counts are not the listed and omitted refusals");
+	for (const k of ENDO_CHANGESET_REFUSAL_REASONS_V0)
+		if (refusals.filter((r) => r.reason === k).length > refusalCounts[k])
+			fail(`the refusal counts list fewer ${k} refusals than the record does`);
 	const summary = nullable(c.summary, (x) => {
 		const s = obj(x, SUMMARY_KEYS, "changeset.collection.summary");
 		return Object.fromEntries(
@@ -1374,6 +1406,7 @@ function changesetOf(
 		summary,
 		refusals,
 		refusalsOmitted,
+		refusalCounts,
 	};
 	const vf = obj(o.verification, ["status", "reason", "candidateSha256"], "changeset.verification");
 	const verification = {

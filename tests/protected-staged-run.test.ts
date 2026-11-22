@@ -38,7 +38,17 @@ import {
 	endoProtectedTrialOutcomeV0,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
-import { DEFAULT_ENDO_CHANGESET_LIMITS_V0, type EndoChangeSetLimitsV0 } from "../protocol/staged-changeset.ts";
+import {
+	DEFAULT_ENDO_CHANGESET_LIMITS_V0,
+	ENDO_CHANGESET_REFUSAL_REASONS_V0,
+	type EndoChangeSetLimitsV0,
+	type EndoChangeSetRefusalReasonV0,
+} from "../protocol/staged-changeset.ts";
+
+/** A complete refusal census: every reason, 0 unless given. */
+const census = (given: Partial<Record<EndoChangeSetRefusalReasonV0, number>> = {}) =>
+	Object.fromEntries(ENDO_CHANGESET_REFUSAL_REASONS_V0.map((k) => [k, given[k] ?? 0]));
+
 import { readEndoProtectedTrialFileV0, sealEndoProtectedTrialV0 } from "../runtime/contracts/protected-experiment.ts";
 
 const EXAMPLE = fileURLToPath(new URL("../research/protected-eval/example/", import.meta.url));
@@ -437,6 +447,7 @@ describe.runIf(REAL)("staged change-set submission in a real protected run", () 
 		const expectPath = (r: EndoProtectedTrialV2, n: number) => {
 			expectAgentRefusal(r, "unsafe-path");
 			expect(r.changeset.collection.refusalsOmitted).toBe(0);
+			expect(r.changeset.collection.refusalCounts).toEqual(census({ "unsafe-path": 1 }));
 			expect(r.changeset.collection.refusals).toEqual([
 				n <= PATH_MAX
 					? { path: longPath(n), reason: "unsafe-path", truncated: null }
@@ -455,6 +466,7 @@ describe.runIf(REAL)("staged change-set submission in a real protected run", () 
 			).toBe(true);
 			expect(r.changeset.collection.refusals.at(-1)?.path).toBe(`l${String(LIST_MAX - 1).padStart(5, "0")}`);
 			expect(r.changeset.collection.refusalsOmitted).toBe(Math.max(0, n - LIST_MAX));
+			expect(r.changeset.collection.refusalCounts).toEqual(census({ "symbolic-link": n }));
 		};
 
 		it("records each as the agent's refusal, never evaluated, and the run goes on to its remaining trials", async () => {
@@ -546,12 +558,97 @@ describe.runIf(REAL)("staged change-set submission in a real protected run", () 
 						delete (c.refusals[0] as { truncated?: unknown }).truncated;
 					}),
 				],
+				[
+					"a census that is not the listed and omitted refusals",
+					/the refusal counts are not the listed and omitted refusals/,
+					reseal(full, (c) => {
+						c.refusalCounts["symbolic-link"] += 1;
+					}),
+				],
+				[
+					"a census with fewer of a reason than the list",
+					/the refusal counts list fewer unsafe-path refusals than the record does/,
+					reseal(cut, (c) => {
+						c.refusalCounts["unsafe-path"] = 0;
+						c.refusalCounts["symbolic-link"] = 1;
+					}),
+				],
+				[
+					"no census",
+					/missing field refusalCounts/,
+					reseal(full, (c) => {
+						delete (c as Partial<typeof c>).refusalCounts;
+					}),
+				],
+				[
+					"a disturbance past the list's bound, without its invalidating condition",
+					/invalidating is not what the record's facts imply \(collection-disturbed\)/,
+					reseal(full, (c) => {
+						c.refusalCounts["symbolic-link"] -= 1;
+						c.refusalCounts["changed-during-collection"] = 1;
+					}),
+				],
 			];
 			for (const [what, why, seal] of refused) {
 				expect(seal, what).toThrow(/unreadable protected-trial record/);
 				expect(seal, what).toThrow(why);
 			}
 		}, 180_000);
+
+		/** Codex's scenario (4656402978): links, then `z.txt`, which sorts after them and changes while the collector reads it. */
+		const disturbed = async (links: number) => {
+			const out = fresh("run");
+			const spec = specWith(
+				{
+					disturbed: `${linksAgent(links)} fs.writeFileSync("z.txt", "z\\n");`,
+				},
+				{},
+				DEFAULT_ENDO_CHANGESET_LIMITS_V0,
+			);
+			let attempt = "";
+			await runProtectedExperimentV0({
+				spec,
+				dir: out,
+				onBeforeBaselinePinned: (a) => {
+					attempt = a;
+				},
+				changeSetHooksForTests: {
+					afterOpen: (rel) => {
+						if (rel === "z.txt") writeFileSync(join(attempt, "work", "z.txt"), "changed while read\n");
+					},
+				},
+			});
+			const r = recordOf(out, "disturbed");
+			expect(r.controller.finalized).toBe("normally");
+			expect(r.agent).toMatchObject({ status: "completed", termination: "confirmed" });
+			expect(r.changeset.collection.status).toBe("refused");
+			expect(r.changeset.collection.refusalCounts).toEqual(
+				census({ "symbolic-link": links, "changed-during-collection": 1 }),
+			);
+			expect(r.changeset.verification.status).toBe("not-run");
+			expect(r.evaluation.status).toBe("not-run");
+			// The disturbance is the controller's, wherever it falls in the list: attrition, never the agent's failure.
+			expect(r.invalidating).toEqual(["collection-disturbed"]);
+			expect(endoProtectedTrialOutcomeV0(r)).toEqual({ outcome: "attrition", reason: "collection-disturbed" });
+			const { cell, refused } = cellOf(out, "disturbed");
+			expect(refused).toEqual([]);
+			expect(cell).toMatchObject({ qualified: 0, failed: 0, attrition: { "collection-disturbed": 1 } });
+			return r.changeset.collection;
+		};
+
+		it("a disturbance the list's bound omits is still attrition: the record derives it from the complete census", async () => {
+			const c = await disturbed(LIST_MAX);
+			expect(c.refusals).toHaveLength(LIST_MAX);
+			expect(c.refusals.every((x) => x.reason === "symbolic-link")).toBe(true);
+			expect(c.refusalsOmitted).toBe(1);
+		}, 120_000);
+
+		it("a disturbance inside the list's bound is attrition as before", async () => {
+			const c = await disturbed(8);
+			expect(c.refusalsOmitted).toBe(0);
+			expect(c.refusals).toHaveLength(9);
+			expect(c.refusals.at(-1)).toEqual({ path: "z.txt", reason: "changed-during-collection", truncated: null });
+		}, 120_000);
 
 		it("through an interrupted run and its resume: the agent's refusal stays the agent's, and only the interrupted attempt is attrition", async () => {
 			const spec = specWith(
@@ -607,6 +704,7 @@ describe.runIf(REAL)("staged change-set submission in a real protected run", () 
 				summary: null,
 				refusals: [],
 				refusalsOmitted: 0,
+				refusalCounts: census(),
 			});
 			expect(r.changeset.verification).toEqual({ status: "not-run", reason: null, candidateSha256: null });
 			expect(r.evaluation).toMatchObject({ status: "not-run", cases: null, outputSha256: null });

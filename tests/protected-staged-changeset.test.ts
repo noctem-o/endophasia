@@ -31,6 +31,7 @@ import { endoProtectedStagedBaselineV2 } from "../cli/experiment-protected.ts";
 import {
 	ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2,
 	ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2,
+	endoProtectedStagedHandedV2,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
 import {
@@ -436,6 +437,33 @@ describe("a staged record's refusals: every refusal the collector can make, boun
 		expect(r?.path).toBe("d".repeat(PATH_MAX - 1));
 		expect(r?.path.isWellFormed()).toBe(true);
 		expect(r?.truncated).toEqual({ length: PATH_MAX + 2, sha256: sha(astral) });
+	});
+
+	it("counts every refusal by reason, so a disturbance past the bound still reaches the invalidating conditions", () => {
+		const { baseline } = pinned({ "README.md": "x\n" });
+		const work = join(fresh("work"), "w");
+		writeTree(work, { "README.md": "x\n", "z.txt": "z\n" });
+		for (let i = 0; i < LIST_MAX; i++) symlinkSync("/etc/passwd", join(work, `l${String(i).padStart(5, "0")}`));
+		const c = collectStagedChangeSetV0(baseline, work, join(fresh("c"), "s"), DEFAULT_ENDO_CHANGESET_LIMITS_V0, {
+			afterOpen: (rel) => {
+				if (rel === "z.txt") writeFileSync(join(work, "z.txt"), "changed while read\n");
+			},
+		});
+		if (c.status !== "refused") throw new Error(c.status);
+		expect(c.refusals).toHaveLength(LIST_MAX + 1);
+		expect(c.refusals.at(-1)).toEqual({ path: "z.txt", reason: "changed-during-collection" });
+		const bounded = endoProtectedChangeSetRefusalsV2(c.refusals);
+		expect(bounded.refusals.some((r) => r.reason === "changed-during-collection")).toBe(false);
+		expect(bounded.refusalsOmitted).toBe(1);
+		expect(bounded.refusalCounts["symbolic-link"]).toBe(LIST_MAX);
+		expect(bounded.refusalCounts["changed-during-collection"]).toBe(1);
+		const handed = endoProtectedStagedHandedV2({
+			status: "refused",
+			changesetSha256: null,
+			summary: null,
+			...bounded,
+		});
+		expect(handed.refusals.map((r) => r.reason)).toEqual(["symbolic-link", "changed-during-collection"]);
 	});
 
 	it("lists every refusal up to the bound and counts the rest, in the collector's order", () => {

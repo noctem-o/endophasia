@@ -94,6 +94,7 @@ import { type EndoPreflightV0, preflightV0 } from "../adapters/sandbox/preflight
 import {
 	captureWorkspaceBaselineV0,
 	collectStagedChangeSetV0,
+	type EndoChangeSetHooksV0,
 	endoBaselineDigestV0,
 	endoStagedCandidateRecordV0,
 	verifyStagedChangeSetV0,
@@ -114,6 +115,7 @@ import {
 	type EndoProtectedTrial,
 	type EndoProtectedTrialV0,
 	endoProtectedModelConnectedV0,
+	endoProtectedStagedHandedV2,
 	endoProtectedStagedV2,
 	endoProtectedTrialIsModelConnectedV0,
 	endoProtectedTrialIsStagedV2,
@@ -175,6 +177,8 @@ export interface EndoProtectedRunOptionsV0 {
 	 * unconfirmed, to show nothing is collected or evaluated then. It can only withhold confirmation. Never reachable from the CLI.
 	 */
 	unconfirmedTerminationForTests?: boolean;
+	/** For tests only: the collector's own test hooks, to disturb a staged collection while it reads. Never reachable from the CLI. */
+	changeSetHooksForTests?: EndoChangeSetHooksV0;
 }
 
 export interface EndoProtectedRunSummaryV0 {
@@ -687,8 +691,7 @@ const NOT_COLLECTED_CHANGESET: EndoProtectedChangeSetV2["collection"] = {
 	status: "not-collected",
 	changesetSha256: null,
 	summary: null,
-	refusals: [],
-	refusalsOmitted: 0,
+	...endoProtectedChangeSetRefusalsV2([]),
 };
 const NOT_VERIFIED: EndoProtectedChangeSetV2["verification"] = {
 	status: "not-run",
@@ -740,10 +743,7 @@ function finish(
 	const handed: Pick<EndoProtectedTrialV0["submission"], "status" | "refusals"> =
 		changeset === undefined
 			? (facts as { submission: EndoProtectedTrialV0["submission"] }).submission
-			: {
-					status: changeset.collection.status,
-					refusals: changeset.collection.refusals as unknown as EndoProtectedTrialV0["submission"]["refusals"],
-				};
+			: endoProtectedStagedHandedV2(changeset.collection);
 	const staged = changeset === undefined ? [] : expectedStagedInvalidatingV2(changeset);
 	const status =
 		facts.preflight.status === "established"
@@ -1278,15 +1278,14 @@ async function collectAndEvaluateStaged(
 	let changesetSha256: string | null = null;
 	let collectionFailed = false;
 	try {
-		const collected = collectStagedChangeSetV0(pin, work, stagingDir, limits);
+		const collected = collectStagedChangeSetV0(pin, work, stagingDir, limits, options.changeSetHooksForTests);
 		if (collected.status === "collected") {
 			changesetSha256 = collected.manifest.changesetSha256;
 			collection = {
 				status: "collected",
 				changesetSha256,
 				summary: collected.manifest.summary,
-				refusals: [],
-				refusalsOmitted: 0,
+				...endoProtectedChangeSetRefusalsV2([]),
 			};
 		} else
 			collection = {

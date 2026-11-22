@@ -43,7 +43,10 @@ describe("the frontend's source", () => {
 				"compare/Comparison.tsx",
 				"use-compare.ts",
 				"use-develop.ts",
+				"use-evolve.ts",
 				"use-workbench.ts",
+				"evolve/EvolveWorkspace.tsx",
+				"model/protected-experiment-wire.ts",
 				"develop/Live.tsx",
 				"develop/Course.tsx",
 				"develop/Changes.tsx",
@@ -215,7 +218,12 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(23);
+		expect(api.match(/\/api\//g)?.length).toBe(25);
+		// Evolve Protected Experiment Inspector (EVOLVE-INSPECT-001): two fixed GET routes, gated by opaque selector, zero write routes.
+		expect(api).toContain("./api/v0/evolve/experiments");
+		expect(api).toMatch(/\.\/api\/v0\/evolve\/experiment\/\$\{request\.selector\}/);
+		expect(api).toMatch(/if \(!evolveExperimentSelector\(request\.selector\)\)/);
+		expect(api).not.toMatch(/evolve\/(run|rerun|execute|delete|mutate|create)/);
 		// Representation Explorer (OBSERVE-GEOMETRY-001): two fixed GET routes, gated by opaque selector and explicit layer grammar.
 		expect(api).toContain("./api/v0/observe/representations");
 		expect(api).toMatch(/\.\/api\/v0\/observe\/representation\/\$\{request\.selector\}/);

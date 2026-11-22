@@ -34,6 +34,13 @@ import {
 	readWorkbenchProject,
 } from "./model/project-wire.ts";
 import {
+	type EvolveExperimentDetail,
+	type EvolveExperimentsIndex,
+	evolveExperimentSelector,
+	readEvolveExperimentDetail,
+	readEvolveExperimentsIndex,
+} from "./model/protected-experiment-wire.ts";
+import {
 	type RepresentationIndex,
 	readRepresentationScene,
 	readRepresentationsIndex,
@@ -751,6 +758,85 @@ export async function fetchRepresentations(
 		return {
 			kind: "failure",
 			message: "Unsupported or malformed representation payload. Nothing from it was accepted.",
+			stale: false,
+		};
+	} catch {
+		return {
+			kind: "failure",
+			message: cancel.aborted
+				? "Request interrupted."
+				: timeout.aborted
+					? "The request timed out. Refresh explicitly."
+					: "The response could not be read or the server could not be reached.",
+			stale: false,
+		};
+	}
+}
+
+export type EvolveRequest = { kind: "list" } | { kind: "detail"; selector: string };
+
+export type EvolveReply =
+	| { kind: "list"; record: EvolveExperimentsIndex }
+	| { kind: "detail"; record: EvolveExperimentDetail }
+	| { kind: "failure"; message: string; stale: boolean };
+
+/**
+ * Evolve Protected Experiment Inspector: two fixed GET-only routes (`evolve/experiments` and `evolve/experiment/<selector>`),
+ * gated by opaque server selector. Read only when the operator opens Evolve or refreshes explicitly.
+ */
+export async function fetchEvolveExperiments(request: EvolveRequest, cancel: AbortSignal): Promise<EvolveReply> {
+	const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+	let route = "./api/v0/evolve/experiments";
+	if (request.kind === "detail") {
+		if (!evolveExperimentSelector(request.selector)) {
+			return { kind: "failure", message: "Invalid experiment selection. Refresh the run list.", stale: true };
+		}
+		route = `./api/v0/evolve/experiment/${request.selector}`;
+	}
+	try {
+		const response = await fetch(new URL(route, document.baseURI), {
+			method: "GET",
+			credentials: "omit",
+			referrerPolicy: "no-referrer",
+			redirect: "error",
+			cache: "no-store",
+			signal: AbortSignal.any([cancel, timeout]),
+		});
+		if (response.status === 404) {
+			return {
+				kind: "failure",
+				message: "That protected run is no longer present or changed on disk. Refresh the run list.",
+				stale: true,
+			};
+		}
+		if (response.status === 429) {
+			return {
+				kind: "failure",
+				message: "The server is pacing reads. Wait a moment, then refresh explicitly.",
+				stale: false,
+			};
+		}
+		if (response.status !== 200) {
+			return {
+				kind: "failure",
+				message: "The protected-experiment read failed. Nothing from it was accepted.",
+				stale: false,
+			};
+		}
+		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "")) {
+			throw new Error("content type");
+		}
+		const body: unknown = await response.json();
+		if (request.kind === "list") {
+			const record = readEvolveExperimentsIndex(body);
+			if (record !== null) return { kind: "list", record };
+		} else {
+			const record = readEvolveExperimentDetail(body);
+			if (record !== null) return { kind: "detail", record };
+		}
+		return {
+			kind: "failure",
+			message: "Unsupported or malformed protected-experiment payload. Nothing from it was accepted.",
 			stale: false,
 		};
 	} catch {

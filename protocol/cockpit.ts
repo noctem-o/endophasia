@@ -142,6 +142,13 @@ import {
 	validateEndoOmpSessionV0,
 } from "./omp-observation.ts";
 import { isIso8601UtcV0, isPlainJsonObjectV0 } from "./primitives.ts";
+import {
+	type EndoEvolveProtectedExperimentDetailV0,
+	type EndoEvolveProtectedExperimentsAbsentV0,
+	type EndoEvolveProtectedExperimentsIndexV0,
+	validateEndoEvolveProtectedExperimentDetailV0,
+	validateEndoEvolveProtectedExperimentsReplyV0,
+} from "./protected-experiment-observation.ts";
 import { defineEndoVersionTableV0, type EndoVersionedReadV0, readEndoVersionedV0 } from "./versioned.ts";
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -604,7 +611,10 @@ export type EndoCockpitRecordV0 =
 	| EndoOmpSessionV0
 	| EndoObserveRepresentationsIndexV0
 	| EndoObserveRepresentationsAbsentV0
-	| EndoObserveRepresentationSceneV0;
+	| EndoObserveRepresentationSceneV0
+	| EndoEvolveProtectedExperimentsIndexV0
+	| EndoEvolveProtectedExperimentsAbsentV0
+	| EndoEvolveProtectedExperimentDetailV0;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Validation helpers
@@ -2837,6 +2847,9 @@ export const ENDO_COCKPIT_VERSIONS_V0 = defineEndoVersionTableV0<EndoCockpitReco
 	// Representation Explorer (protocol/observe-representation.ts): deterministic projections of recorded captures.
 	["endo.observe-representations.v0", validateEndoObserveRepresentationsIndexV0],
 	["endo.observe-representation-scene.v0", validateEndoObserveRepresentationSceneV0],
+	// Evolve Protected Experiment Inspector (protocol/protected-experiment-observation.ts): read-only independently verified reports.
+	["endo.evolve-protected-experiments.v0", validateEndoEvolveProtectedExperimentsReplyV0],
+	["endo.evolve-protected-experiment.v0", validateEndoEvolveProtectedExperimentDetailV0],
 ]);
 
 /** Read a cockpit record under the version it declares; an unknown version is `unsupported-version`, never accepted. */

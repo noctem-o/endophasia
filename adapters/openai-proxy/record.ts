@@ -24,6 +24,7 @@ import { createServer, connect as netConnect, type Server, type Socket } from "n
 import { rootCertificates, connect as tlsConnect } from "node:tls";
 import type { JsonValueV0 } from "../../protocol/primitives.ts";
 import { ENDO_CAPTURE_VERSION_V0, type EndoCaptureLogV0 } from "./capture-log.ts";
+import { GOVERNED_REFUSAL_ERROR_V0, TRANSFER_LIMIT_ERROR_V0 } from "./cassette-read.ts";
 import {
 	type EndoCapturedHeaderV0,
 	endoRequestDigestV0,
@@ -204,18 +205,7 @@ const MAX_QUEUED_BYTES = 4 * 1024 * 1024;
 
 /** Complete request wire (head plus fixed-length body), inclusive, for governed admission only. */
 export const GOVERNED_REQUEST_MAX_BYTES_V0 = 1024 * 1024;
-/**
- * The error a governed refusal records on every exchange it ends (`upstream-error`, transport `not-forwarded`): the judge refused the front
- * request, and nothing queued behind it on that connection was forwarded either. A reader tells a refusal from a model server's failure by
- * it (adapters/sandbox/model-evidence.ts).
- */
-export const GOVERNED_REFUSAL_ERROR_V0 = "governed request refused before forwarding";
-/**
- * The error recorded on an exchange the proxy's own transfer bound ended (`upstream-error`, after it was forwarded): reaching
- * `maxTransferredBytes` destroys every connection, so the model server's side did not fail. A reader tells it from a model server's
- * failure by it (adapters/sandbox/model-evidence.ts; Stage 0 review of EVAL-ISO-003).
- */
-export const TRANSFER_LIMIT_ERROR_V0 = "transfer limit reached";
+export { GOVERNED_REFUSAL_ERROR_V0, TRANSFER_LIMIT_ERROR_V0 };
 const GOVERNED_REQUEST_IDLE_MS = 5000;
 
 /** How long a retired hop may take to send request bytes the upstream has not read yet before it is dropped. */

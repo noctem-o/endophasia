@@ -50,6 +50,11 @@ import {
 	ENDO_OMP_SELECTOR_PATTERN_V0,
 	type EndoOmpObserverV0,
 } from "../protocol/omp-observation.ts";
+import {
+	ENDO_EVOLVE_EXPERIMENT_SELECTOR_PATTERN_V0,
+	ENDO_EVOLVE_PROTECTED_EXPERIMENTS_ABSENT_V0,
+	type EndoEvolveProtectedExperimentsObserverV0,
+} from "../protocol/protected-experiment-observation.ts";
 import type { EndoCockpitWorkbenchV0 } from "../protocol/workbench-http.ts";
 
 import { readEndoCockpitCompareCandidatesV0, readEndoCockpitSelectedComparisonV0 } from "./candidates.ts";
@@ -181,6 +186,11 @@ export interface EndoCockpitServerOptionsV0 {
 	 * The server reaches no file itself. Absent: `/api/v0/observe/representations` answers one constant (`available: false`).
 	 */
 	representations?: EndoObserveRepresentationObserverV0;
+	/**
+	 * A read-only observer of completed protected experiments (`endo studio --protected-runs <dir>`).
+	 * Strictly opt-in; the server reaches no file itself. Absent: `/api/v0/evolve/experiments` answers one constant (`available: false`).
+	 */
+	protectedRuns?: EndoEvolveProtectedExperimentsObserverV0;
 }
 
 export interface EndoCockpitServerV0 {
@@ -423,6 +433,30 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 					if (error instanceof TypeError) return refuse("bad-request");
 					throw error;
 				}
+			}
+			return refuse("not-found");
+		}
+		if (segments[2] === "evolve") {
+			// `evolve/experiments` and `evolve/experiment/<selector>`: GET only, no query, fresh independently verified read each time.
+			parseQuery(rawQuery, []);
+			const protectedRuns = options.protectedRuns;
+			if (segments.length === 4 && segments[3] === "experiments") {
+				if (protectedRuns === undefined)
+					return {
+						records: [ENDO_EVOLVE_PROTECTED_EXPERIMENTS_ABSENT_V0],
+						body: ENDO_EVOLVE_PROTECTED_EXPERIMENTS_ABSENT_V0,
+					};
+				admit();
+				const record = protectedRuns.list();
+				return { records: [record], body: record };
+			}
+			if (segments.length === 5 && segments[3] === "experiment") {
+				const selector = segments[4]!;
+				if (protectedRuns === undefined || !ENDO_EVOLVE_EXPERIMENT_SELECTOR_PATTERN_V0.test(selector))
+					return refuse("not-found");
+				admit();
+				const record = protectedRuns.detail(selector);
+				return record === null ? refuse("not-found") : { records: [record], body: record };
 			}
 			return refuse("not-found");
 		}

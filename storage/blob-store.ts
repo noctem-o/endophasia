@@ -10,7 +10,17 @@
 // Writes are atomic (tmp + rename + directory fsync). A put for an address that already holds verifying bytes is a
 // no-op; one whose existing file does not verify is a tamper and throws. Every get re-verifies. Synchronous node:fs.
 
-import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	fstatSync,
+	fsyncSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+} from "node:fs";
 import { join } from "node:path";
 import type { EndoDigestKeyV0, EndoKeyedDigestV0 } from "../runtime/contracts/keyed-digest.ts";
 import { writeExactSyncV0 } from "./log.ts";
@@ -48,7 +58,15 @@ export function createEndoBlobStoreV0(
 			);
 	};
 	const verified = (value: string): Uint8Array => {
-		const bytes = new Uint8Array(readFileSync(fileOf(value)));
+		const fd = openSync(fileOf(value), constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0));
+		let bytes: Uint8Array;
+		try {
+			const st = fstatSync(fd);
+			if (!st.isFile()) throw new TypeError(`blob ${value} is not a regular file`);
+			bytes = new Uint8Array(readFileSync(fd));
+		} finally {
+			closeSync(fd);
+		}
 		const actual = key.digestBytes(bytes).value;
 		if (actual !== value) throw new TypeError(`blob ${value} does not verify: its bytes digest to ${actual}`);
 		return bytes;

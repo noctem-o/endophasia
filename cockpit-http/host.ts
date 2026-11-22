@@ -18,6 +18,7 @@ import { lstatSync, readlinkSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import type { EndoObserveRepresentationObserverV0 } from "../protocol/observe-representation.ts";
 import type { EndoOmpObserverV0 } from "../protocol/omp-observation.ts";
+import type { EndoEvolveProtectedExperimentsObserverV0 } from "../protocol/protected-experiment-observation.ts";
 import type { EndoCockpitWorkbenchV0 } from "../protocol/workbench-http.ts";
 import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
@@ -60,6 +61,11 @@ export interface EndoCockpitLaunchOptionsV0 {
 	 * or `<store>/representations`). The caller builds it; this module imports no adapter and reads no capture file.
 	 */
 	representations?: { root: string; open(key: EndoDigestKeyV0): EndoObserveRepresentationObserverV0 };
+	/**
+	 * Opens the read-only observer of completed protected experiments under the server's own key (`endo studio --protected-runs`).
+	 * Strictly opt-in; the caller builds it, and this module imports no adapter and reads no experiment record.
+	 */
+	protectedRuns?: { root: string; open(key: EndoDigestKeyV0): EndoEvolveProtectedExperimentsObserverV0 };
 	/**
 	 * The workspace the page opens on, said in the page itself (`endo workspace open` and the live workbench give `develop`; `endo studio` gives nothing and its
 	 * page is served byte for byte as built). It costs no request, and the page never reads its own address to decide.
@@ -218,6 +224,13 @@ export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): 
 				"the cockpit key file is inside the representations directory: Studio writes nothing there",
 			);
 	}
+	if (options.protectedRuns !== undefined) {
+		const runsPlace = place(options.protectedRuns.root, "the protected runs directory");
+		if (isWithin(runsPlace, keyPlace))
+			throw new TypeError(
+				"the cockpit key file is inside the protected runs directory: Studio writes nothing there",
+			);
+	}
 	const created = !exists(keyFile);
 	const digestKey = loadOrCreateEndoDigestKeyV0(keyFile);
 	options.onKey?.({ path: keyFile, created });
@@ -230,6 +243,7 @@ export async function launchEndoCockpitV0(options: EndoCockpitLaunchOptionsV0): 
 		...(options.workbench === undefined ? {} : { workbench: options.workbench }),
 		...(options.omp === undefined ? {} : { omp: options.omp.open(digestKey) }),
 		...(options.representations === undefined ? {} : { representations: options.representations.open(digestKey) }),
+		...(options.protectedRuns === undefined ? {} : { protectedRuns: options.protectedRuns.open(digestKey) }),
 	});
 	return { server, key: { path: keyFile, created } };
 }

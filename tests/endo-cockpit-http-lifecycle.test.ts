@@ -180,9 +180,10 @@ describe("source boundary", () => {
 				"./comparison.ts",
 				"./develop.ts",
 				"../protocol/workbench-http.ts",
-				// The OMP and Representation Explorer closed records and observer interfaces: the server reads no file itself.
+				// The OMP, Representation Explorer and Protected Experiment closed records and observer interfaces: the server reads no file itself.
 				"../protocol/observe-representation.ts",
 				"../protocol/omp-observation.ts",
+				"../protocol/protected-experiment-observation.ts",
 				"../cockpit/index.ts",
 				"node:crypto",
 				"node:http",
@@ -195,9 +196,10 @@ describe("source boundary", () => {
 		expect(specifiers(read("cockpit-http/host.ts")).sort()).toEqual(
 			[
 				"../protocol/workbench-http.ts",
-				// Types only: the OMP and Representation observers are opened under the server's key by the caller's factory; the host imports no adapter.
+				// Types only: the OMP, Representation and Protected Experiment observers are opened under the server's key by the caller's factory; the host imports no adapter.
 				"../protocol/observe-representation.ts",
 				"../protocol/omp-observation.ts",
+				"../protocol/protected-experiment-observation.ts",
 				"../runtime/contracts/keyed-digest.ts",
 				"../storage/digest-key.ts",
 				"./server.ts",

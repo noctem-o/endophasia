@@ -529,15 +529,46 @@ describe("harness neutrality of `endo workspace open`", () => {
 		expect(pi).toEqual(["adapters/pi/lifecycle.ts", "adapters/pi/mapping.ts", "adapters/pi/trajectory.ts"]);
 		const studio = closure(["cli/studio.ts", "cockpit-http/host.ts"]);
 		for (const f of pi) expect(studio.has(f)).toBe(true);
-		// OMP and observe-representation: only read-only file observers, reached through Studio's own module (never run by this command).
+		// OMP, observe-representation and protected-experiment: only read-only file observers and offline verifiers, reached through Studio's own module (never run by this command).
 		for (const f of reached.values())
-			if (f.startsWith("adapters/omp/") || f.startsWith("adapters/observe-representation/"))
+			if (
+				f.startsWith("adapters/omp/") ||
+				f.startsWith("adapters/observe-representation/") ||
+				f.startsWith("adapters/protected-experiment/") ||
+				f.startsWith("adapters/sandbox/") ||
+				f.startsWith("adapters/openai-proxy/")
+			)
 				expect(studio.has(f)).toBe(true);
+		// The protected-experiment observer reaches ONLY offline read-only verifiers under sandbox/ and openai-proxy/:
+		// never the live sandbox runner, bubblewrap, live Unix-socket relay, recording proxy, or cassette server.
+		expect([...reached].filter((f) => f.startsWith("adapters/sandbox/")).sort()).toEqual([
+			"adapters/sandbox/model-evidence.ts",
+			"adapters/sandbox/model-relay-policy.ts",
+			"adapters/sandbox/protected-report.ts",
+			"adapters/sandbox/staged-changeset.ts",
+		]);
+		expect([...reached].filter((f) => f.startsWith("adapters/openai-proxy/")).sort()).toEqual([
+			"adapters/openai-proxy/capture-log.ts",
+			"adapters/openai-proxy/cassette-read.ts",
+		]);
 		// An allow-list of adapter directories: Git (read-only observation), the recorded-evidence projections Studio reads (Pi, DSH),
-		// OMP's read-only saved-session observer, and Observe's read-only representation observer. A new adapter (a harness, a provider, a proxy) fails here.
+		// OMP's read-only saved-session observer, Observe's read-only representation observer, and Evolve's read-only protected-experiment
+		// observer (with its pinned offline verifier modules under sandbox/ and openai-proxy/). Any other adapter (a harness, provider, or live proxy) fails here.
 		const adapters = new Set([...reached].filter((f) => f.startsWith("adapters/")).map((f) => f.split("/")[1]));
 		expect(
-			[...adapters].filter((d) => !["git", "pi", "dsh-native", "omp", "observe-representation"].includes(d!)),
+			[...adapters].filter(
+				(d) =>
+					![
+						"git",
+						"pi",
+						"dsh-native",
+						"omp",
+						"observe-representation",
+						"protected-experiment",
+						"sandbox",
+						"openai-proxy",
+					].includes(d!),
+			),
 		).toEqual([]);
 		for (const f of reached) {
 			expect(f).not.toMatch(/^adapters\/(rpc-jsonl|acp)\//);

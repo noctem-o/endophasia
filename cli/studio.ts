@@ -24,7 +24,7 @@ import { endoStudioHelpV0 } from "./help.ts";
 import { takeEndoRootV0 } from "./root-args.ts";
 
 export const ENDO_STUDIO_USAGE_V0 =
-	"usage: endo studio [<root>] [--root dir] [--port n] [--key-file path] [--omp-sessions dir] [--representations dir]";
+	"usage: endo studio [<root>] [--root dir] [--port n] [--key-file path] [--omp-sessions dir] [--representations dir] [--protected-runs dir]";
 
 export interface EndoStudioArgsV0 {
 	readonly root: string;
@@ -37,6 +37,8 @@ export interface EndoStudioArgsV0 {
 	readonly ompSessions: string | null;
 	/** Optional directory of recorded representation captures named with `--representations`, or null. */
 	readonly representations: string | null;
+	/** Optional directory of completed protected experiments named with `--protected-runs`, or null (explicit opt-in only). */
+	readonly protectedRuns: string | null;
 }
 
 /** A port as written without leading zeros, 0 to 65535: the range the server accepts, enforced before a key is created. */
@@ -55,11 +57,17 @@ export function parseEndoStudioArgsV0(
 	// (which takes `./-x`): reading it as the root would start Studio, and create its key, on the wrong thing.
 	const leading = argv[0];
 	if (leading?.startsWith("-") && !leading.startsWith("--")) throw new TypeError(`unknown option: ${leading}`);
-	const taken = takeEndoRootV0(argv, 0, new Set(["--port", "--key-file", "--omp-sessions", "--representations"]), env);
+	const taken = takeEndoRootV0(
+		argv,
+		0,
+		new Set(["--port", "--key-file", "--omp-sessions", "--representations", "--protected-runs"]),
+		env,
+	);
 	let port: number | undefined;
 	let keyFile: string | undefined;
 	let ompSessions: string | undefined;
 	let representations: string | undefined;
+	let protectedRuns: string | undefined;
 	const value = (rest: readonly string[], index: number, flag: string): string => {
 		const given = rest[index + 1];
 		if (given === undefined || given.startsWith("--")) throw new TypeError(`the flag ${flag} needs a value`);
@@ -89,6 +97,11 @@ export function parseEndoStudioArgsV0(
 			representations = value(taken.rest, index, "--representations");
 			if (representations.length === 0) throw new TypeError("the representations directory is empty");
 			index += 1;
+		} else if (arg === "--protected-runs") {
+			if (protectedRuns !== undefined) throw new TypeError("--protected-runs was given more than once");
+			protectedRuns = value(taken.rest, index, "--protected-runs");
+			if (protectedRuns.length === 0) throw new TypeError("the protected runs directory is empty");
+			index += 1;
 		} else if (arg.startsWith("-")) throw new TypeError(`unknown option: ${arg}`);
 		else throw new TypeError(`unexpected argument: ${arg} (a store is named first, or with --root)`);
 	}
@@ -99,6 +112,7 @@ export function parseEndoStudioArgsV0(
 		keyFile: keyFile ?? null,
 		ompSessions: ompSessions ?? null,
 		representations: representations ?? null,
+		protectedRuns: protectedRuns ?? null,
 	};
 }
 
@@ -180,6 +194,20 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 			}
 		}
 	}
+	// Completed protected experiments: strictly opt-in via `--protected-runs <dir>`; read-only, never scans HOME or historical roots.
+	let protectedRuns: Parameters<typeof launchEndoCockpitV0>[0]["protectedRuns"];
+	if (args.protectedRuns !== null) {
+		const { ProtectedExperimentObserverV0, resolveProtectedRunsRootV0 } = await import(
+			"../adapters/protected-experiment/observer.ts"
+		);
+		let root: string;
+		try {
+			root = resolveProtectedRunsRootV0(args.protectedRuns);
+		} catch (error) {
+			throw new Error(startupFailure(error, args.port));
+		}
+		protectedRuns = { root, open: (key) => new ProtectedExperimentObserverV0({ root, key }) };
+	}
 	let launched: Awaited<ReturnType<typeof launchEndoCockpitV0>>;
 	try {
 		launched = await launchEndoCockpitV0({
@@ -188,6 +216,7 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 			...(args.keyFile === null ? {} : { keyFile: args.keyFile }),
 			...(omp === undefined ? {} : { omp }),
 			...(representations === undefined ? {} : { representations }),
+			...(protectedRuns === undefined ? {} : { protectedRuns }),
 			uiDirectory,
 			onKey: (key) => {
 				if (key.created) process.stderr.write(`studio: created Studio's own digest key ${key.path}\n`);
@@ -207,6 +236,10 @@ export async function studioCommand(argv: readonly string[]): Promise<void> {
 	if (omp !== undefined)
 		process.stderr.write(
 			"studio: observing Oh My Pi's saved sessions in the directory you named: read-only, metadata only, a snapshot each time the page asks. It cannot control OMP or tell whether OMP is running\n",
+		);
+	if (protectedRuns !== undefined)
+		process.stderr.write(
+			"studio: inspecting completed protected experiments in the directory you named: read-only, independently verified on each read. It cannot run, rerun, or modify experiments\n",
 		);
 	process.stdout.write(`Endophasia Studio (read-only, loopback only): ${server.baseUrl}/\n`);
 	await stopped;

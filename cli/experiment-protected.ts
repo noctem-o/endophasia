@@ -128,6 +128,7 @@ import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import {
 	checkEndoProtectedRunV0,
+	endoProtectedChangeSetRefusalsV2,
 	readEndoProtectedTrialFileV0,
 	sealEndoProtectedTrialV0,
 } from "../runtime/contracts/protected-experiment.ts";
@@ -687,6 +688,7 @@ const NOT_VERIFIED: EndoProtectedChangeSetV2["verification"] = {
 	status: "not-run",
 	reason: null,
 	candidateSha256: null,
+	refusalsOmitted: 0,
 };
 
 /** A staged attempt's baseline facts: the pin, and whether the attempt's trees were found to be it. */
@@ -1276,7 +1278,6 @@ async function collectAndEvaluateStaged(
 				summary: collected.manifest.summary,
 				refusals: [],
 			};
-		} else collection = { status: "refused", changesetSha256: null, summary: null, refusals: collected.refusals };
 	} catch {
 		collectionFailed = true;
 	}
@@ -1284,6 +1285,14 @@ async function collectAndEvaluateStaged(
 	options.onChangeSetCollected?.(attemptDir);
 	let verification = NOT_VERIFIED;
 	let evaluation: Parameters<typeof finish>[2]["evaluation"] = NOT_RUN;
+				refusalsOmitted: 0,
+			};
+		} else
+			collection = {
+				status: "refused",
+				changesetSha256: null,
+				summary: null,
+				...endoProtectedChangeSetRefusalsV2(collected.refusals),
 	try {
 		if (collectionFailed)
 			evaluation = {

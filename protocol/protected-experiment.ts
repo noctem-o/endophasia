@@ -532,13 +532,29 @@ export type EndoProtectedInvalidatingV3 = (typeof ENDO_PROTECTED_INVALIDATING_V3
  *   and the trusted baseline tree, then the reconstruction of the candidate in a fresh directory; `candidateSha256` is the digest (in the
  *   baseline record's form) of the tree that was evaluated.
  */
+/**
+ * The most refusals a staged record lists, and the longest refusal path it records. A refusal's path is whatever the collector
+ * refused, so it is bounded by the filesystem rather than by any change-set limit: the record is bounded when it is sealed instead,
+ * and says so (see `EndoProtectedChangeSetRefusalV2.truncated` and `refusalsOmitted`).
+ */
+export const ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2 = 4096;
+export const ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 = 400;
+
+/** A recorded refusal. A path longer than the record's bound keeps its first characters, and records its full length and digest. */
+export interface EndoProtectedChangeSetRefusalV2 extends EndoChangeSetRefusalV0 {
+	truncated: { length: number; sha256: string } | null;
+}
+
 export interface EndoProtectedChangeSetV2 {
 	baseline: { status: "pinned" | "mismatch" | "not-pinned"; sha256: string; files: number; totalBytes: number };
 	collection: {
 		status: "collected" | "refused" | "not-collected";
 		changesetSha256: string | null;
 		summary: EndoStagedChangeSetSummaryV0 | null;
-		refusals: EndoChangeSetRefusalV0[];
+		/** The first refusals, in the collector's order, at most `ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2`. */
+		refusals: EndoProtectedChangeSetRefusalV2[];
+		/** How many further refusals the collector made that the record does not list: 0 when it lists them all. */
+		refusalsOmitted: number;
 	};
 	verification: {
 		status: "verified" | "failed" | "not-run";
@@ -1316,14 +1332,36 @@ function changesetOf(
 		files: count(b.files, "changeset.baseline.files"),
 		totalBytes: count(b.totalBytes, "changeset.baseline.totalBytes"),
 	};
-	const c = obj(o.collection, ["status", "changesetSha256", "summary", "refusals"], "changeset.collection");
-	const refusals = list(c.refusals, "changeset.collection.refusals", 4096).map((r, i) => {
-		const x = obj(r, ["path", "reason"], `changeset.collection.refusals[${i}]`);
-		return {
-			path: text(x.path, "path", 400),
-			reason: oneOf(x.reason, ENDO_CHANGESET_REFUSAL_REASONS_V0, `changeset.collection.refusals[${i}].reason`),
-		};
-	});
+	const c = obj(
+		o.collection,
+		["status", "changesetSha256", "summary", "refusals", "refusalsOmitted"],
+		"changeset.collection",
+	);
+	const refusals = list(c.refusals, "changeset.collection.refusals", ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2).map(
+		(r, i): EndoProtectedChangeSetRefusalV2 => {
+			const w = `changeset.collection.refusals[${i}]`;
+			const x = obj(r, ["path", "reason", "truncated"], w);
+			const path = text(x.path, `${w}.path`, ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2);
+			const truncated = nullable(x.truncated, (t) => {
+				const y = obj(t, ["length", "sha256"], `${w}.truncated`);
+				return {
+					length: count(y.length, `${w}.truncated.length`, ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 + 1),
+					sha256: match(y.sha256, HEX64, `${w}.truncated.sha256`),
+				};
+			});
+			// A truncated path keeps as many characters as the bound allows, less one when the bound would split a surrogate pair.
+			if (truncated !== null && path.length < ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 - 1)
+				fail(`${w}: a truncated path keeps the bound's length`);
+			return {
+				path,
+				reason: oneOf(x.reason, ENDO_CHANGESET_REFUSAL_REASONS_V0, `${w}.reason`),
+				truncated,
+			};
+		},
+	);
+	const refusalsOmitted = count(c.refusalsOmitted, "changeset.collection.refusalsOmitted");
+	if (refusalsOmitted > 0 && refusals.length !== ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2)
+		fail("refusals are omitted only from a full list");
 	const summary = nullable(c.summary, (x) => {
 		const s = obj(x, SUMMARY_KEYS, "changeset.collection.summary");
 		return Object.fromEntries(
@@ -1335,6 +1373,7 @@ function changesetOf(
 		changesetSha256: nullable(c.changesetSha256, (x) => match(x, HEX64, "changeset.collection.changesetSha256")),
 		summary,
 		refusals,
+		refusalsOmitted,
 	};
 	const vf = obj(o.verification, ["status", "reason", "candidateSha256"], "changeset.verification");
 	const verification = {

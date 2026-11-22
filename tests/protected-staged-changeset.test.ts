@@ -13,6 +13,7 @@ import {
 	readFileSync,
 	rmSync,
 	statSync,
+	symlinkSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,14 +28,20 @@ import {
 	verifyStagedChangeSetV0,
 } from "../adapters/sandbox/staged-changeset.ts";
 import { endoProtectedStagedBaselineV2 } from "../cli/experiment-protected.ts";
-import { readEndoProtectedSpecV0 } from "../protocol/protected-experiment.ts";
 import {
+	ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2,
+	ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2,
+	readEndoProtectedSpecV0,
+} from "../protocol/protected-experiment.ts";
+import {
+	DEFAULT_ENDO_CHANGESET_LIMITS_V0,
 	ENDO_STAGED_CHANGESET_V0,
 	type EndoChangeSetLimitsV0,
 	type EndoStagedChangeV0,
 	type EndoWorkspaceBaselineV0,
 } from "../protocol/staged-changeset.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoProtectedChangeSetRefusalsV2 } from "../runtime/contracts/protected-experiment.ts";
 
 const cleanup: string[] = [];
 function chmodTree(path: string): void {
@@ -381,5 +388,72 @@ describe("the version 2 and 3 protected specs", () => {
 		expect(readEndoProtectedSpecV0(spec({ submission: ["README.md"] }, "endo.protected-experiment-spec.v0")).ok).toBe(
 			true,
 		);
+	});
+});
+
+describe("a staged record's refusals: every refusal the collector can make, bounded explicitly when the record is sealed", () => {
+	const PATH_MAX = ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2;
+	const LIST_MAX = ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2;
+	/** A refused path of exactly `length` characters: two walkable directories and a name the collector refuses as unsafe. */
+	const longPath = (length: number) => `${"a".repeat(100)}/${"b".repeat(100)}/${"c".repeat(length - 202)}`;
+
+	it("the collector itself refuses paths past the record's bound, and more refusals than the record lists", () => {
+		const { baseline } = pinned({ "README.md": "x\n" });
+		const work = join(fresh("work"), "w");
+		writeTree(work, { "README.md": "x\n", [longPath(PATH_MAX + 3)]: "x" });
+		for (let i = 0; i <= LIST_MAX; i++) symlinkSync("/etc/passwd", join(work, `l${String(i).padStart(5, "0")}`));
+		const c = collectStagedChangeSetV0(baseline, work, join(fresh("c"), "s"), DEFAULT_ENDO_CHANGESET_LIMITS_V0);
+		expect(c.status).toBe("refused");
+		if (c.status !== "refused") return;
+		expect(c.refusals).toHaveLength(LIST_MAX + 2);
+		expect(c.refusals.filter((r) => r.reason === "symbolic-link")).toHaveLength(LIST_MAX + 1);
+		expect(c.refusals.find((r) => r.reason === "unsafe-path")?.path).toBe(longPath(PATH_MAX + 3));
+		const bounded = endoProtectedChangeSetRefusalsV2(c.refusals);
+		expect(bounded.refusals).toHaveLength(LIST_MAX);
+		expect(bounded.refusalsOmitted).toBe(2);
+		expect(bounded.refusals[0]).toEqual({
+			path: longPath(PATH_MAX + 3).slice(0, PATH_MAX),
+			reason: "unsafe-path",
+			truncated: { length: PATH_MAX + 3, sha256: sha(longPath(PATH_MAX + 3)) },
+		});
+	});
+
+	it("keeps a path at the bound whole, and cuts one past it with its full length and digest", () => {
+		for (const length of [PATH_MAX - 1, PATH_MAX, PATH_MAX + 1, PATH_MAX + 3, PATH_MAX + 4]) {
+			const path = longPath(length);
+			const [r] = endoProtectedChangeSetRefusalsV2([{ path, reason: "unsafe-path" }]).refusals;
+			if (length <= PATH_MAX) expect(r, String(length)).toEqual({ path, reason: "unsafe-path", truncated: null });
+			else
+				expect(r, String(length)).toEqual({
+					path: path.slice(0, PATH_MAX),
+					reason: "unsafe-path",
+					truncated: { length, sha256: sha(path) },
+				});
+		}
+		// Never cut inside a surrogate pair: the kept prefix stays well-formed text.
+		const astral = `${"d".repeat(PATH_MAX - 1)}\u{1F600}x`;
+		const [r] = endoProtectedChangeSetRefusalsV2([{ path: astral, reason: "unsafe-path" }]).refusals;
+		expect(r?.path).toBe("d".repeat(PATH_MAX - 1));
+		expect(r?.path.isWellFormed()).toBe(true);
+		expect(r?.truncated).toEqual({ length: PATH_MAX + 2, sha256: sha(astral) });
+	});
+
+	it("lists every refusal up to the bound and counts the rest, in the collector's order", () => {
+		const of = (n: number) =>
+			Array.from({ length: n }, (_, i) => ({
+				path: `l${String(i).padStart(5, "0")}`,
+				reason: "symbolic-link" as const,
+			}));
+		for (const [n, listed, omitted] of [
+			[LIST_MAX - 1, LIST_MAX - 1, 0],
+			[LIST_MAX, LIST_MAX, 0],
+			[LIST_MAX + 1, LIST_MAX, 1],
+			[LIST_MAX + 2, LIST_MAX, 2],
+		] as const) {
+			const b = endoProtectedChangeSetRefusalsV2(of(n));
+			expect(b.refusals, String(n)).toHaveLength(listed);
+			expect(b.refusalsOmitted, String(n)).toBe(omitted);
+			expect(b.refusals.at(-1)?.path, String(n)).toBe(of(n)[listed - 1]?.path);
+		}
 	});
 });

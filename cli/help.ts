@@ -185,6 +185,9 @@ Arguments:
   --representations dir  read recorded representation capture artifacts (*.json, endo.observe-representation-capture.v0) from
                          this directory for Observe's Representation Explorer. Read-only; if omitted, Studio checks
                          <root>/representations when it already exists and creates nothing.
+  --protected-runs dir   read completed protected experiment runs (endo.protected-run.v0..v3) from this directory for Evolve's
+                         read-only Protected Experiment Inspector. Opt-in only: if omitted, Evolve reads nothing. Never runs,
+                         reruns, or modifies experiments.
 
 Side effects: Studio is read-only with respect to the observed store. The first launch creates its dedicated key file if it
 does not exist (32 random bytes, mode 0600, in a 0700 directory) and says so on stderr; that is the only thing it writes. Help,

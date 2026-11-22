@@ -238,10 +238,47 @@ never inferred from recordings). The page can **read** the live conversation and
 
 Design, threat model and slicing: [develop-workbench.md](develop-workbench.md).
 
+## Evolve — Protected Experiment Inspector (read-only, opt-in)
+
+Studio's **Evolve** workspace is a strictly read-only projection of completed protected experiments (`endo experiment protected-run`).
+It is **opt-in only** and reads nothing unless the operator explicitly names a directory at launch:
+
+```sh
+endo studio --protected-runs /path/to/completed-runs
+```
+
+When `--protected-runs` is omitted, `/api/v0/evolve/experiments` returns a fixed absent constant (`available: false`), Studio never
+scans `$HOME` or exposes historical research artifacts automatically, and Evolve explains how to configure a source.
+
+- **Supported versions.** Reads `endo.protected-run.v0` through `v3` (offline fixed-path, model-connected fixed-path, offline
+  staged-changeset, and model-connected staged-changeset runs), producing `endo.protected-report.v0` / `v1` parity via the shared
+  independent reader (`adapters/sandbox/protected-report.ts`). Any unknown or malformed `schemaVersion` is reported explicitly as
+  `unsupported-version` or `invalid` and refused on detail reads — never partially interpreted or treated as a pass.
+- **What the inspector can establish.** Exact parity with `endo experiment protected-report`: run identity, spec SHA-256, seed,
+  isolation and declared model-access declarations, the Task × Condition matrix (`planned`, `attempted`, `notAttempted`, `qualified`,
+  `passed`, `failed`, `failedWithoutSubmission`, `failedBelowMinimumExchanges`, `retries`, `attrition`), and independently verified
+  per-attempt provenance (trial schema version, `recordSha256`, preflight status, evaluator digests/cases, submission or
+  staged-changeset verification digests, model-recording verification counts, and invalidating conditions). Evaluated candidate
+  correctness and agent process completion remain separate fields (a candidate that passed evaluation while its agent timed out
+  afterward is displayed as both).
+- **What the inspector cannot establish.** Evolve cannot execute, rerun, reproduce, edit, or delete experiments. It does not prove
+  authorship, does not prevent same-uid host modification between runs (tampering is detected on re-hashing, not prevented), and
+  never treats model transcripts as proof of behaviour.
+- **Refused, missing, or tampered evidence.** Missing `record.json` files, digest mismatches, coordinate mismatches, symlinked
+  records, failed model-recording verification, or tampered staged change sets stay explicitly listed in the **Refused or invalid
+  records** panel and count as `record-refused` attrition. Missing per-attempt fields display `UNAVAILABLE` rather than being
+  inferred from aggregates.
+- **Privacy & capability URL disclosure.** Anyone holding Studio's private loopback URL while `--protected-runs` is enabled can
+  read the presented projection: run IDs, relative directory labels, spec/profile/evaluator/changeset digests, declared model
+  upstream and model name, Task × Condition counts, refused-record relative paths/reasons, and per-attempt provenance metadata.
+  Raw host filesystem paths (`agent.directory`, `evaluator.file`, absolute run paths), hidden evaluator cases, model digest keys,
+  relay secrets, and private model transcripts are never served. Studio never writes to `--protected-runs` (and refuses to start if
+  `--key-file` resolves inside it).
+
 ## Limits
 
-- Three workspaces, Observe, Compare and Develop; all read-only in `endo studio` (Develop gains a live conversation and one governed prompt only when the page is served by `endo harness attach --control --workbench`). Capabilities and Evolve remain placeholders. No steering, no attachment management, no push or live view: the frontend reads when it opens and
-  on explicit Observe refresh or Compare discovery, pagination and comparison actions. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
+- Four workspaces — Observe, Compare, Develop, and Evolve — all read-only in `endo studio` (Develop gains a live conversation and governed prompts only when served by `endo harness attach --control --workbench` or `endo develop`; Evolve reads only an explicitly configured `--protected-runs` directory). Capabilities remains an explicit placeholder. No steering, no attachment management, no push or live view: the frontend reads when it opens and
+  on explicit Observe refresh, Compare discovery/comparison, or Evolve refresh actions. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).
 - Verified on the CI platform (Ubuntu 24.04, Node 22.19.0 and the newest 22.x) by the installed-tarball smoke test

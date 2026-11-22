@@ -1,10 +1,11 @@
-// Studio shell: read-only Observe, Compare and Develop workspaces with persistent, separate request state.
-// Capabilities and Evolve remain explicit placeholders.
+// Studio shell: read-only Observe, Compare, Develop and Evolve workspaces with persistent, separate request state.
+// Capabilities remains an explicit placeholder.
 import { lazy, type ReactElement, Suspense, useEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../protocol/cockpit-develop.ts";
 import { CompareWorkspace } from "./compare/CompareWorkspace.tsx";
 import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
 import { useReasoningView } from "./develop/Reasoning.tsx";
+import { EvolveWorkspace } from "./evolve/EvolveWorkspace.tsx";
 import { candidateValue } from "./model/compare.ts";
 import { NO_FILTERS } from "./model/contract.ts";
 import { sourcesModel } from "./model/detail.ts";
@@ -18,6 +19,7 @@ import { PanelBoundary } from "./ui/Panel.tsx";
 import { Note } from "./ui/text.tsx";
 import { useCompare } from "./use-compare.ts";
 import { useDevelop } from "./use-develop.ts";
+import { useEvolve } from "./use-evolve.ts";
 import { useObserve } from "./use-observe.ts";
 import { useOmp } from "./use-omp.ts";
 import { useProject } from "./use-project.ts";
@@ -25,7 +27,7 @@ import { useRepresentations } from "./use-representations.ts";
 import { useWorkbench } from "./use-workbench.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
-// The placeholder workspaces are loaded on demand, so the build's handling of a dynamic import (a separate file under the same
+// The placeholder workspace is loaded on demand, so the build's handling of a dynamic import (a separate file under the same
 // capability-prefixed assets path) is exercised by every browser run.
 const Unavailable = lazy(() => import("./observe/Unavailable.tsx"));
 
@@ -34,7 +36,7 @@ const WORKSPACES = [
 	{ id: "compare", label: "Compare", ready: true },
 	{ id: "develop", label: "Develop", ready: true },
 	{ id: "capabilities", label: "Capabilities", ready: false },
-	{ id: "evolve", label: "Evolve", ready: false },
+	{ id: "evolve", label: "Evolve", ready: true },
 ] as const;
 
 export function App(): ReactElement {
@@ -56,6 +58,7 @@ export function App(): ReactElement {
 	const [atmosphere, setAtmosphere] = useState<Atmosphere>(DEFAULT_ATMOSPHERE);
 	const compare = useCompare(workspace === "compare");
 	const develop = useDevelop(workspace === "develop");
+	const evolve = useEvolve(workspace === "evolve");
 	const omp = useOmp(workspace === "develop");
 	const workbench = useWorkbench(workspace === "develop");
 	const workbenchOn = workbench.state.availability === "available";
@@ -335,6 +338,8 @@ export function App(): ReactElement {
 							atmosphere={atmosphere}
 							onAtmosphere={setAtmosphere}
 						/>
+					) : workspace === "evolve" ? (
+						<EvolveWorkspace evolve={evolve} />
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>
 							<Unavailable

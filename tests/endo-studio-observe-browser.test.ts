@@ -1421,7 +1421,7 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		const page = await open(`${server.baseUrl}/`);
 		await page.click("#timeline tr[data-seq='5'] button.seq");
 		const reads = snapshotRequests(page);
-		for (const name of ["capabilities", "evolve"]) {
+		for (const name of ["capabilities"]) {
 			await page.click(`button[data-workspace=${name}]`);
 			await page.waitFor(`document.querySelector("[data-testid=unavailable-${name}]")`, 5000);
 			const said = await text(page, `[data-testid=unavailable-${name}]`);

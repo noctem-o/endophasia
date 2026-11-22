@@ -357,7 +357,7 @@ Design records: [work attempts](docs/designs/develop-work-attempts.md) · [recei
 <a id="endophasia-web"></a>
 ## Endophasia Web (Browser Instrument)
 
-The browser interface — **Endophasia Web**, served locally under the `endo` CLI — is a React and TypeScript application with **Observe**, **Compare** and **Develop** workspaces. Every mode binds strictly to `127.0.0.1` behind a private per-launch capability URL, with no external requests.
+The browser interface — **Endophasia Web**, served locally under the `endo` CLI — is a React and TypeScript application with **Observe**, **Compare**, **Develop** and **Evolve** workspaces. Every mode binds strictly to `127.0.0.1` behind a private per-launch capability URL, with no external requests.
 
 <table>
   <tr>
@@ -376,13 +376,13 @@ The browser interface — **Endophasia Web**, served locally under the `endo` CL
 
 | Command | Needs | The page can | The page cannot |
 | :--- | :--- | :--- | :--- |
-| `endo studio [<root>]` | A store (`--representations`, `--omp-sessions` optional) | Read recorded evidence in Observe (Timeline + Representation Explorer), Compare and recorded-session Develop | Write to the store or request any action |
+| `endo studio [<root>]` | A store (`--representations`, `--omp-sessions`, `--protected-runs` optional) | Read recorded evidence in Observe (Timeline + Representation Explorer), Compare, recorded-session Develop and opt-in read-only Evolve | Write to the store, execute experiments or request any action |
 | `endo workspace open --project <id>` | A registered project (no Pi or model) | After pairing: create/edit tasks, move statuses, inspect attempts, receipts, ledgers, provenance and the attention overview | Prompt, steer, stop an agent or run commands |
 | `endo develop` (`harness attach --control --workbench`) | Pi on Linux with a controlling terminal | After pairing: all of the above, plus live conversation, structured private activity, Course gauges, Git changes and *requests* for PROMPT, STEER, QUEUE, STOP or attempt send | Approve its own request — authorisation belongs to the terminal (or an attested Everyday grant) |
 
 - **Instrument & Field.** **Instrument** is DEVELOP's crisp default sheet. **Field** is an OLED-oriented night-survey appearance with **Focus** mode and selectable **Atmospheres** (`None`, `Contours`, `Rain`, `Storm`). Weather is pure scenery: its renderer receives zero session state.
 - **Course.** Above the session rail, **Course** draws two gauges (`Run`, `Request`) and — when a task has a prepared attempt — six record-backed stages (`Brief · Assent · Send · Run · Check · Judge`). It visualises what the page holds; it is never a workflow engine or verifier ([docs/develop-course.md](docs/develop-course.md)).
-- **Not yet shipped.** `endo web`, a native desktop app, live serving-time activation capture, embedded terminals and live control of non-Pi harnesses remain future directions. **Capabilities** and **Evolve** stay explicit placeholders.
+- **Not yet shipped.** `endo web`, a native desktop app, live serving-time activation capture, governed experiment execution from Evolve, embedded terminals and live control of non-Pi harnesses remain future directions. **Capabilities** stays an explicit placeholder.
 
 <details>
 <summary><strong>Access, privacy and retention boundaries</strong></summary>
@@ -419,7 +419,7 @@ Endophasia is an experimental project. This table reflects **source-tree `main` 
 | | Oh My Pi saved-session metadata observer | `studio --omp-sessions <dir>`, `task link` |
 | **Research & Experiments** | Model-boundary capture and cassette replay | `proxy record`, `proxy replay`, `replay` |
 | | Controlled Pi experiments with declared conditions | `experiment run`, `experiment report` |
-| | Bubblewrap-sandboxed experiments (`v0`–`v3`): fixed paths or staged change sets, model relay, capability-consistent Pi prompt, hidden evaluator | `experiment protected-run`, `experiment protected-report` |
+| | Bubblewrap-sandboxed experiments (`v0`–`v3`): fixed paths or staged change sets, model relay, capability-consistent Pi prompt, hidden evaluator and read-only Studio Evolve inspector | `experiment protected-run`, `experiment protected-report`, `studio --protected-runs <dir>` |
 | | Authorised STEER, QUEUE and STOP outside the workbench | `harness attach --control`, `steer` |
 | | Verified scratch copies, governed continuation and matched two-turn A/A workflow | Source-tree APIs & research scripts |
 | | ACP v1 adapter and ACP v2 conformance study | Library APIs |
@@ -500,6 +500,7 @@ flowchart LR
     V --> C
     V --> W
     E -->|"protected-report"| C
+    E -.->|"--protected-runs (read-only)"| V
 ```
 
 - **Recording & admission.** An optional recording proxy captures the HTTP model boundary for cassette replay and controlled experiments. Pi capabilities are admitted from live transport, identity and conformance evidence; changing runtime or configuration invalidates dependent evidence.

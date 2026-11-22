@@ -29,16 +29,20 @@ describe("what loads when", () => {
 		expect(staticImports(studio).sort()).toEqual(
 			["./help.ts", "./root-args.ts", "node:fs", "node:path", "node:url"].sort(),
 		);
-		// The OMP and Representation Explorer observers are loaded lazily after the host and the arguments were checked.
+		// The OMP, Representation Explorer and Protected Experiment observers are loaded lazily after the host and the arguments were checked.
 		expect(dynamicImports(studio)).toEqual([
 			"../cockpit-http/host.ts",
 			"../adapters/omp/observer.ts",
 			"../adapters/observe-representation/observer.ts",
+			"../adapters/protected-experiment/observer.ts",
 		]);
 		expect(code(studio).indexOf('import("../adapters/omp/observer.ts")')).toBeGreaterThan(
 			code(studio).indexOf("parseEndoStudioArgsV0(argv)"),
 		);
 		expect(code(studio).indexOf('import("../adapters/observe-representation/observer.ts")')).toBeGreaterThan(
+			code(studio).indexOf("parseEndoStudioArgsV0(argv)"),
+		);
+		expect(code(studio).indexOf('import(\n\t\t\t"../adapters/protected-experiment/observer.ts"')).toBeGreaterThan(
 			code(studio).indexOf("parseEndoStudioArgsV0(argv)"),
 		);
 		const body = code(studio);

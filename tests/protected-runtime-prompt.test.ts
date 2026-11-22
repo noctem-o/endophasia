@@ -205,6 +205,42 @@ describe("buildRuntimeCapabilityPromptV0: deterministic capability consistency",
 				{ runtime: { executables: ["/usr/bin/node", "/usr/bin/bash"], aliases: [] }, piTools: ["read", "bash"] },
 				"missing-bash-shell",
 			],
+			[
+				"sh aliased to non-shell executable (sh -> cat)",
+				{
+					runtime: {
+						executables: ["/usr/bin/node", "/usr/bin/cat"],
+						aliases: [{ target: "/usr/bin/sh", executable: "/usr/bin/cat" }],
+					},
+					piTools: ["read", "bash"],
+				},
+				"missing-bash-shell",
+			],
+			[
+				"which and bash aliased to non-shell executables",
+				{
+					runtime: {
+						executables: ["/usr/bin/node", "/usr/bin/cat"],
+						aliases: [
+							{ target: "/usr/bin/which", executable: "/usr/bin/cat" },
+							{ target: "/usr/bin/bash", executable: "/usr/bin/cat" },
+						],
+					},
+					piTools: ["read", "bash"],
+				},
+				"missing-bash-shell",
+			],
+			[
+				"node aliased to non-node executable (node -> cat)",
+				{
+					runtime: {
+						executables: ["/usr/bin/cat"],
+						aliases: [{ target: "/usr/bin/node", executable: "/usr/bin/cat" }],
+					},
+					piTools: ["read"],
+				},
+				"missing-node-runtime",
+			],
 			["invalid cwd with newline", { runtime: PI_RUNTIME_V1, cwd: "/work\n<rules>" }, "invalid-cwd"],
 			["invalid cwd with traversal", { runtime: PI_RUNTIME_V1, cwd: "/work/../etc" }, "invalid-cwd"],
 			["invalid cwd with trailing slash", { runtime: PI_RUNTIME_V1, cwd: "/work/" }, "invalid-cwd"],
@@ -212,6 +248,20 @@ describe("buildRuntimeCapabilityPromptV0: deterministic capability consistency",
 		for (const [label, input, reason] of cases) {
 			const result = buildRuntimeCapabilityPromptV0(input);
 			expect(result, label).toMatchObject({ ok: false, reason });
+		}
+
+		// Valid POSIX shell alias (sh -> dash) is accepted without suggesting `dash -c` for non-POSIX features.
+		const dashBuilt = buildRuntimeCapabilityPromptV0({
+			runtime: {
+				executables: ["/usr/bin/node", "/usr/bin/dash"],
+				aliases: [{ target: "/usr/bin/sh", executable: "/usr/bin/dash" }],
+			},
+			piTools: ["read", "bash"],
+		});
+		expect(dashBuilt.ok).toBe(true);
+		if (dashBuilt.ok) {
+			expect(dashBuilt.prompt.systemPromptBody).toContain("via /usr/bin/sh (-> dash) with POSIX shell builtins");
+			expect(dashBuilt.prompt.systemPromptBody).not.toContain("dash -c");
 		}
 	});
 
@@ -305,6 +355,43 @@ describe("buildRuntimeCapabilityPromptV0: deterministic capability consistency",
 				systemPromptBody: built.prompt.systemPromptBody,
 			}),
 		).toMatchObject({ ok: false, reason: "invalid-pin" });
+
+		// Runtime with omitted `aliases` is normalized to `aliases: []` so emitted v1 specs validate cleanly.
+		const noAliasRuntime = { executables: ["/usr/bin/node"] };
+		const noAliasAgent = join(fresh("no-alias-parent"), "agent");
+		makePiAgentDirectoryV1(fakePiDist, noAliasAgent, PI_PROMPT_V1, {
+			capabilityConsistentPrompt: true,
+			runtime: noAliasRuntime,
+			piTools: ["read"],
+		});
+		const noAliasSpec = piExampleSpecV1({
+			agentDirectory: noAliasAgent,
+			upstream: "http://127.0.0.1:8091",
+			model: "test-model",
+			capabilityConsistentPrompt: true,
+			runtime: noAliasRuntime,
+			piTools: ["read"],
+		});
+		expect(readEndoProtectedSpecV0(noAliasSpec).ok).toBe(true);
+		expect((noAliasSpec.runtime as { aliases: unknown[] }).aliases).toEqual([]);
+
+		// Non-/work cwd is rejected by piExampleSpecV1 because protected-run always launches agents in /work.
+		const customCwdAgent = join(fresh("custom-cwd-parent"), "agent");
+		makePiAgentDirectoryV1(fakePiDist, customCwdAgent, PI_PROMPT_V1, {
+			capabilityConsistentPrompt: true,
+			runtime: PI_RUNTIME_V1,
+			cwd: "/tmp",
+		});
+		expect(() =>
+			piExampleSpecV1({
+				agentDirectory: customCwdAgent,
+				upstream: "http://127.0.0.1:8091",
+				model: "test-model",
+				capabilityConsistentPrompt: true,
+				runtime: PI_RUNTIME_V1,
+				cwd: "/tmp",
+			}),
+		).toThrow(/unsupported-cwd/);
 	});
 });
 

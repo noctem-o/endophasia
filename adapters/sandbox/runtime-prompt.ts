@@ -118,6 +118,8 @@ const SANDBOX_PATH_DIR = "/usr/bin";
 const SAFE_ABS_PATH = /^\/[A-Za-z0-9._+/~-]{1,240}$/;
 const SAFE_CMD_NAME = /^[A-Za-z0-9._+-]{1,64}$/;
 const SAFE_CWD = /^\/[A-Za-z0-9._/@+-]{0,200}$/;
+const SUPPORTED_POSIX_SHELLS = new Set(["sh", "bash", "dash", "ash", "zsh", "ksh", "mksh"]);
+const EXTENDED_SHELLS = new Set(["bash", "zsh", "ksh", "mksh"]);
 
 function isSafeAbsPath(p: string): boolean {
 	return SAFE_ABS_PATH.test(p) && !p.includes("//") && !p.split("/").includes("..") && !p.split("/").includes(".");
@@ -257,25 +259,29 @@ export function buildRuntimeCapabilityPromptV0(input: {
 	}
 	mountedAliases.sort((a, b) => (a.alias < b.alias ? -1 : a.alias > b.alias ? 1 : 0));
 
+	const resolvedTarget = new Map<string, string>();
+	for (const name of mountedExecutables) resolvedTarget.set(name, name);
+	for (const a of mountedAliases) resolvedTarget.set(a.alias, a.targetExecutable);
+
 	const requireNode = input.requireNode ?? true;
-	if (requireNode && !seenCommandNames.has("node")) {
+	if (requireNode && resolvedTarget.get("node") !== "node") {
 		return refuse("missing-node-runtime", "Pi requires /usr/bin/node in runtime.executables");
 	}
 
 	const hasCmd = (name: string) => seenCommandNames.has(name);
+	const hasExecutableCmd = (name: string) => resolvedTarget.get(name) === name;
 	const hasTool = (name: EndoPiToolV0) => seenTools.has(name);
 
 	// Pi 1.6.0's getShellConfig() tries /bin/bash (absent in empty root), then `which bash`, then falls back to `sh -c`.
-	// When `bash` tool is registered, require a shell that Pi can actually launch inside the sandbox.
-	if (hasTool("bash")) {
-		const canInvokeBashViaWhich = hasCmd("which") && hasCmd("bash");
-		const canInvokeShFallback = hasCmd("sh");
-		if (!canInvokeBashViaWhich && !canInvokeShFallback) {
-			return refuse(
-				"missing-bash-shell",
-				"Pi bash tool requires /usr/bin/sh (e.g. alias to /usr/bin/bash) when /bin/bash and which are absent",
-			);
-		}
+	// When `bash` tool is registered, require a runnable shell executable (resolving aliases to their underlying binary).
+	const canInvokeBashViaWhich = hasExecutableCmd("which") && resolvedTarget.get("bash") === "bash";
+	const shTarget = resolvedTarget.get("sh");
+	const canInvokeShFallback = shTarget !== undefined && SUPPORTED_POSIX_SHELLS.has(shTarget);
+	if (hasTool("bash") && !canInvokeBashViaWhich && !canInvokeShFallback) {
+		return refuse(
+			"missing-bash-shell",
+			"Pi bash tool requires a runnable POSIX shell at /usr/bin/sh (e.g. alias to /usr/bin/bash) when /bin/bash and which+bash are absent",
+		);
 	}
 
 	const absentCommonCommands = COMMON_UNIX_COMMANDS.filter((c) => !hasCmd(c));
@@ -312,10 +318,16 @@ export function buildRuntimeCapabilityPromptV0(input: {
 	}
 	if (hasTool("bash")) {
 		const shAlias = mountedAliases.find((a) => a.alias === "sh");
-		if (shAlias && !hasCmd("which")) {
-			runtimeLines.push(
-				`- Shell execution: the bash tool runs \`sh -c\` via /usr/bin/sh (-> ${shAlias.targetExecutable}) with shell builtins available; invoke \`${shAlias.targetExecutable} -c\` explicitly if non-POSIX features are needed.`,
-			);
+		if (shAlias && !canInvokeBashViaWhich) {
+			if (EXTENDED_SHELLS.has(shAlias.targetExecutable)) {
+				runtimeLines.push(
+					`- Shell execution: the bash tool runs \`sh -c\` via /usr/bin/sh (-> ${shAlias.targetExecutable}) with shell builtins available; invoke \`${shAlias.targetExecutable} -c\` explicitly if non-POSIX features are needed.`,
+				);
+			} else {
+				runtimeLines.push(
+					`- Shell execution: the bash tool runs \`sh -c\` via /usr/bin/sh (-> ${shAlias.targetExecutable}) with POSIX shell builtins available.`,
+				);
+			}
 		}
 		runtimeLines.push(
 			"- Only the executables listed above are present on PATH (/usr/bin); any external command outside this list will fail with exit code 127.",
@@ -328,9 +340,9 @@ export function buildRuntimeCapabilityPromptV0(input: {
 	const rules: string[] = [];
 	if (hasTool("bash")) {
 		const ops: string[] = [];
-		if (hasCmd("ls")) ops.push("`ls -R` to list directory trees");
-		if (hasCmd("grep")) ops.push("`grep -rn` to search file contents");
-		if (hasCmd("node")) ops.push("`node` to run JavaScript/TypeScript scripts directly");
+		if (hasExecutableCmd("ls")) ops.push("`ls -R` to list directory trees");
+		if (hasExecutableCmd("grep")) ops.push("`grep -rn` to search file contents");
+		if (hasExecutableCmd("node")) ops.push("`node` to run JavaScript/TypeScript scripts directly");
 		if (ops.length > 0) rules.push(`Within bash, use only mounted commands: ${ops.join("; ")}.`);
 	}
 	if (hasTool("read")) {

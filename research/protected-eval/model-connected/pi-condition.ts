@@ -268,7 +268,17 @@ export function piExampleSpecV1(options: {
 	cwd?: string;
 	contextWindow?: number;
 }): Record<string, unknown> {
-	const runtime = options.runtime ?? PI_RUNTIME_V1;
+	if (options.cwd !== undefined && options.cwd !== "/work") {
+		throw new EndoRuntimePromptErrorV0(
+			"unsupported-cwd",
+			`protected-run executes agents in /work; custom cwd ${JSON.stringify(options.cwd)} is not supported by piExampleSpecV1`,
+		);
+	}
+	const rawRuntime = options.runtime ?? PI_RUNTIME_V1;
+	const runtime = {
+		executables: [...rawRuntime.executables],
+		aliases: [...(rawRuntime.aliases ?? [])],
+	};
 	if (options.capabilityConsistentPrompt === true) {
 		verifyPiAgentRuntimePromptPinV1(options.agentDirectory, runtime, {
 			piTools: options.piTools,

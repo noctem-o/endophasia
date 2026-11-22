@@ -170,6 +170,11 @@ export interface EndoProtectedRunOptionsV0 {
 	onBeforeBaselinePinned?: (attemptDir: string) => void;
 	/** For tests: called with a staged attempt's directory once its change set is collected, before the evaluator step verifies it. */
 	onChangeSetCollected?: (attemptDir: string) => void;
+	/**
+	 * For tests only: every agent scope (a normal attempt's, and one a resume stops) is stopped as always and then reported as
+	 * unconfirmed, to show nothing is collected or evaluated then. It can only withhold confirmation. Never reachable from the CLI.
+	 */
+	unconfirmedTerminationForTests?: boolean;
 }
 
 export interface EndoProtectedRunSummaryV0 {
@@ -683,12 +688,12 @@ const NOT_COLLECTED_CHANGESET: EndoProtectedChangeSetV2["collection"] = {
 	changesetSha256: null,
 	summary: null,
 	refusals: [],
+	refusalsOmitted: 0,
 };
 const NOT_VERIFIED: EndoProtectedChangeSetV2["verification"] = {
 	status: "not-run",
 	reason: null,
 	candidateSha256: null,
-	refusalsOmitted: 0,
 };
 
 /** A staged attempt's baseline facts: the pin, and whether the attempt's trees were found to be it. */
@@ -861,6 +866,7 @@ function scopeRecorder(attemptDir: string, name: (typeof SANDBOXES)[number]) {
 async function endAttemptScopes(
 	p: Prepared,
 	attemptDir: string,
+	options: EndoProtectedRunOptionsV0,
 ): Promise<Record<string, { unit: string; ended: "confirmed" | "unconfirmed" }>> {
 	const out: Record<string, { unit: string; ended: "confirmed" | "unconfirmed" }> = {};
 	for (const name of SANDBOXES) {
@@ -868,7 +874,8 @@ async function endAttemptScopes(
 		if (!existsSync(path)) continue;
 		const rec = readJson(path) as { unit: string; launcher?: EndoProcessIdentityV0 };
 		const launcherGone = rec.launcher === undefined ? true : (await endSandboxV0(rec.launcher)) === "confirmed";
-		const ended = await stopScopeV0(p.containment, rec.unit);
+		const stopped = await stopScopeV0(p.containment, rec.unit);
+		const ended = name === "agent" && options.unconfirmedTerminationForTests === true ? "unconfirmed" : stopped;
 		out[name] = { unit: rec.unit, ended: launcherGone && ended === "confirmed" ? "confirmed" : "unconfirmed" };
 	}
 	return out;
@@ -913,10 +920,11 @@ async function finalizeOnResume(
 	attemptDir: string,
 	base: ReturnType<typeof recordBase>,
 	required: number,
+	options: EndoProtectedRunOptionsV0,
 ): Promise<EndoProtectedTrial> {
 	// Every sandbox of the attempt that recorded a scope (the preflight, the agent, the evaluation) is ended first: its launcher by
 	// identity, its scope through the user manager.
-	const scopes = await endAttemptScopes(p, attemptDir);
+	const scopes = await endAttemptScopes(p, attemptDir, options);
 	// An evaluation the controller stopped during left the cases' inputs behind: removed, like every evaluation's.
 	rmSync(join(attemptDir, ".evaluation"), { recursive: true, force: true });
 	const preflight: EndoPreflightV0 = existsSync(join(attemptDir, "preflight.json"))
@@ -1138,6 +1146,7 @@ async function runAttempt(
 					writeJsonAtomically(join(attemptDir, "agent-started.json"), { init });
 					options.onAgentStarted?.(attemptDir);
 				},
+				...(options.unconfirmedTerminationForTests === true ? { unconfirmedEndForTests: true } : {}),
 			},
 		);
 		const output = Buffer.concat([ran.stdout, ran.stderr]);
@@ -1277,14 +1286,6 @@ async function collectAndEvaluateStaged(
 				changesetSha256,
 				summary: collected.manifest.summary,
 				refusals: [],
-			};
-	} catch {
-		collectionFailed = true;
-	}
-	restoreOwnerAccess(work);
-	options.onChangeSetCollected?.(attemptDir);
-	let verification = NOT_VERIFIED;
-	let evaluation: Parameters<typeof finish>[2]["evaluation"] = NOT_RUN;
 				refusalsOmitted: 0,
 			};
 		} else
@@ -1293,6 +1294,14 @@ async function collectAndEvaluateStaged(
 				changesetSha256: null,
 				summary: null,
 				...endoProtectedChangeSetRefusalsV2(collected.refusals),
+			};
+	} catch {
+		collectionFailed = true;
+	}
+	restoreOwnerAccess(work);
+	options.onChangeSetCollected?.(attemptDir);
+	let verification = NOT_VERIFIED;
+	let evaluation: Parameters<typeof finish>[2]["evaluation"] = NOT_RUN;
 	try {
 		if (collectionFailed)
 			evaluation = {
@@ -1638,6 +1647,7 @@ async function runPrepared(
 						latestDir,
 						recordBase(run, entry, latest, started, profile, evaluator),
 						p.model?.access.minExchanges ?? 0,
+						options,
 					);
 					summary.finalizedOnResume++;
 				}

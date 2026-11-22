@@ -13,6 +13,18 @@
 
 import { isPlainJsonObjectV0, type JsonValueV0 } from "./primitives.ts";
 import {
+	DEFAULT_ENDO_CHANGESET_LIMITS_V0,
+	ENDO_CHANGESET_REFUSAL_REASONS_V0,
+	ENDO_CHANGESET_VERIFY_FAILURE_REASONS_V0,
+	type EndoChangeSetLimitsV0,
+	type EndoChangeSetRefusalReasonV0,
+	type EndoChangeSetRefusalV0,
+	type EndoChangeSetVerifyFailureReasonV0,
+	type EndoStagedChangeSetSummaryV0,
+	endoFileAncestorConflictV0,
+	isPlainChangeSetPathV0,
+} from "./staged-changeset.ts";
+import {
 	defineEndoVersionTableV0,
 	EndoInvalidRecordV0,
 	type EndoVersionedReadV0,
@@ -29,6 +41,55 @@ export const ENDO_FUNCTION_EVALUATOR_V0 = "endo.function-evaluator.v0";
 export const ENDO_PROTECTED_SPEC_V1 = "endo.protected-experiment-spec.v1";
 export const ENDO_PROTECTED_RUN_V1 = "endo.protected-run.v1";
 export const ENDO_PROTECTED_TRIAL_V1 = "endo.protected-trial.v1";
+// Versions 2 and 3 (docs/designs/protected-staged-changeset.md) are versions 0 and 1 with staged change-set submission: every task's
+// submission is the whole difference between a controller-pinned baseline and the agent's terminated workspace, collected, verified and
+// reconstructed before it is evaluated. Version 2 is offline (as 0), version 3 model-connected (as 1). Versions 0 and 1 are unchanged.
+export const ENDO_PROTECTED_SPEC_V2 = "endo.protected-experiment-spec.v2";
+export const ENDO_PROTECTED_RUN_V2 = "endo.protected-run.v2";
+export const ENDO_PROTECTED_TRIAL_V2 = "endo.protected-trial.v2";
+export const ENDO_PROTECTED_SPEC_V3 = "endo.protected-experiment-spec.v3";
+export const ENDO_PROTECTED_RUN_V3 = "endo.protected-run.v3";
+export const ENDO_PROTECTED_TRIAL_V3 = "endo.protected-trial.v3";
+
+const MODEL_CONNECTED_VERSIONS: ReadonlySet<string> = new Set([
+	ENDO_PROTECTED_SPEC_V1,
+	ENDO_PROTECTED_RUN_V1,
+	ENDO_PROTECTED_TRIAL_V1,
+	ENDO_PROTECTED_SPEC_V3,
+	ENDO_PROTECTED_RUN_V3,
+	ENDO_PROTECTED_TRIAL_V3,
+]);
+const STAGED_VERSIONS: ReadonlySet<string> = new Set([
+	ENDO_PROTECTED_SPEC_V2,
+	ENDO_PROTECTED_RUN_V2,
+	ENDO_PROTECTED_TRIAL_V2,
+	ENDO_PROTECTED_SPEC_V3,
+	ENDO_PROTECTED_RUN_V3,
+	ENDO_PROTECTED_TRIAL_V3,
+]);
+/** Whether a spec, run or trial version is model-connected (1 and 3). */
+export const endoProtectedModelConnectedV0 = (version: string): boolean => MODEL_CONNECTED_VERSIONS.has(version);
+/** Whether a spec, run or trial version submits staged change sets (2 and 3). */
+export const endoProtectedStagedV2 = (version: string): boolean => STAGED_VERSIONS.has(version);
+/** The run version a spec version runs as, and the trial version a run version records: each only as its own. */
+export const ENDO_PROTECTED_RUN_OF_SPEC = {
+	[ENDO_PROTECTED_SPEC_V0]: ENDO_PROTECTED_RUN_V0,
+	[ENDO_PROTECTED_SPEC_V1]: ENDO_PROTECTED_RUN_V1,
+	[ENDO_PROTECTED_SPEC_V2]: ENDO_PROTECTED_RUN_V2,
+	[ENDO_PROTECTED_SPEC_V3]: ENDO_PROTECTED_RUN_V3,
+} as const;
+export const ENDO_PROTECTED_TRIAL_OF_RUN = {
+	[ENDO_PROTECTED_RUN_V0]: ENDO_PROTECTED_TRIAL_V0,
+	[ENDO_PROTECTED_RUN_V1]: ENDO_PROTECTED_TRIAL_V1,
+	[ENDO_PROTECTED_RUN_V2]: ENDO_PROTECTED_TRIAL_V2,
+	[ENDO_PROTECTED_RUN_V3]: ENDO_PROTECTED_TRIAL_V3,
+} as const;
+const SPEC_OF_RUN = {
+	[ENDO_PROTECTED_RUN_V0]: ENDO_PROTECTED_SPEC_V0,
+	[ENDO_PROTECTED_RUN_V1]: ENDO_PROTECTED_SPEC_V1,
+	[ENDO_PROTECTED_RUN_V2]: ENDO_PROTECTED_SPEC_V2,
+	[ENDO_PROTECTED_RUN_V3]: ENDO_PROTECTED_SPEC_V3,
+} as const;
 
 // ---- the spec -----------------------------------------------------------------------------------------------------------------------------
 
@@ -124,7 +185,34 @@ export interface EndoProtectedSpecV1 extends Omit<EndoProtectedSpecV0, "schemaVe
 	modelAccess: EndoProtectedModelAccessV1;
 }
 
-export type EndoProtectedSpec = EndoProtectedSpecV0 | EndoProtectedSpecV1;
+/**
+ * A staged task's submission (versions 2 and 3): the agent's whole workspace, compared with the baseline the controller pinned from the
+ * task's `workspace`, collected (`collectStagedChangeSetV0`) within these explicit bounds. Each bound is at most the collector's default.
+ */
+export interface EndoProtectedStagedSubmissionV2 {
+	mode: "staged-changeset";
+	limits: EndoChangeSetLimitsV0;
+}
+
+export interface EndoProtectedStagedTaskV2 extends Omit<EndoProtectedTaskV0, "submission"> {
+	submission: EndoProtectedStagedSubmissionV2;
+}
+
+/** An offline experiment whose tasks submit staged change sets. `limits.maxFileBytes`/`maxTotalBytes` bound fixed-path collection only. */
+export interface EndoProtectedSpecV2 extends Omit<EndoProtectedSpecV0, "schemaVersion" | "tasks"> {
+	schemaVersion: typeof ENDO_PROTECTED_SPEC_V2;
+	tasks: EndoProtectedStagedTaskV2[];
+}
+
+/** A model-connected experiment whose tasks submit staged change sets. */
+export interface EndoProtectedSpecV3 extends Omit<EndoProtectedSpecV1, "schemaVersion" | "tasks"> {
+	schemaVersion: typeof ENDO_PROTECTED_SPEC_V3;
+	tasks: EndoProtectedStagedTaskV2[];
+}
+
+export type EndoProtectedModelSpec = EndoProtectedSpecV1 | EndoProtectedSpecV3;
+export type EndoProtectedStagedSpec = EndoProtectedSpecV2 | EndoProtectedSpecV3;
+export type EndoProtectedSpec = EndoProtectedSpecV0 | EndoProtectedSpecV1 | EndoProtectedSpecV2 | EndoProtectedSpecV3;
 
 // ---- the evaluator definition -----------------------------------------------------------------------------------------------------------
 
@@ -183,7 +271,17 @@ export interface EndoProtectedRunV1 extends Omit<EndoProtectedRunV0, "schemaVers
 	spec: EndoProtectedSpecV1;
 }
 
-export type EndoProtectedRun = EndoProtectedRunV0 | EndoProtectedRunV1;
+export interface EndoProtectedRunV2 extends Omit<EndoProtectedRunV0, "schemaVersion" | "spec"> {
+	schemaVersion: typeof ENDO_PROTECTED_RUN_V2;
+	spec: EndoProtectedSpecV2;
+}
+
+export interface EndoProtectedRunV3 extends Omit<EndoProtectedRunV0, "schemaVersion" | "spec"> {
+	schemaVersion: typeof ENDO_PROTECTED_RUN_V3;
+	spec: EndoProtectedSpecV3;
+}
+
+export type EndoProtectedRun = EndoProtectedRunV0 | EndoProtectedRunV1 | EndoProtectedRunV2 | EndoProtectedRunV3;
 
 // ---- the trial record -------------------------------------------------------------------------------------------------------------------
 
@@ -407,7 +505,111 @@ export interface EndoProtectedTrialV1
 	invalidating: EndoProtectedInvalidatingV1[];
 }
 
-export type EndoProtectedTrial = EndoProtectedTrialV0 | EndoProtectedTrialV1;
+/**
+ * The staged versions' invalidating conditions, added to their base version's. `baseline-mismatch`: before the agent was started, the
+ * attempt's baseline or workspace tree was not the baseline pinned from the spec, so the agent was not started. `changeset-unverified`: a
+ * collected change set did not verify against its pins, the complete baseline record and the baseline tree, or could not be reconstructed
+ * exactly; nothing was evaluated. Neither is the agent's doing: its termination was confirmed before collection.
+ */
+export const ENDO_PROTECTED_STAGED_INVALIDATING_V2 = ["baseline-mismatch", "changeset-unverified"] as const;
+export const ENDO_PROTECTED_INVALIDATING_V2 = [
+	...ENDO_PROTECTED_INVALIDATING_V0,
+	...ENDO_PROTECTED_STAGED_INVALIDATING_V2,
+] as const;
+export type EndoProtectedInvalidatingV2 = (typeof ENDO_PROTECTED_INVALIDATING_V2)[number];
+export const ENDO_PROTECTED_INVALIDATING_V3 = [
+	...ENDO_PROTECTED_INVALIDATING_V1,
+	...ENDO_PROTECTED_STAGED_INVALIDATING_V2,
+] as const;
+export type EndoProtectedInvalidatingV3 = (typeof ENDO_PROTECTED_INVALIDATING_V3)[number];
+
+/**
+ * A staged attempt's change-set evidence, in place of a fixed-path submission.
+ * - `baseline`: the pin, derived from the spec's workspace before anything ran; `pinned` when the attempt's baseline and workspace
+ *   trees were captured again after the preflight and both were exactly it (only then is the agent started), `mismatch` when not, and
+ *   `not-pinned` when the attempt ended before the comparison.
+ * - `collection`: what `collectStagedChangeSetV0` returned after the agent's termination was confirmed, with its digest pin.
+ * - `verification`: the evaluator step's independent check of the staging directory against both pins, the complete baseline record
+ *   and the trusted baseline tree, then the reconstruction of the candidate in a fresh directory; `candidateSha256` is the digest (in the
+ *   baseline record's form) of the tree that was evaluated.
+ */
+/**
+ * The most refusals a staged record lists, and the longest refusal path it records. A refusal's path is whatever the collector
+ * refused, so it is bounded by the filesystem rather than by any change-set limit: the record is bounded when it is sealed instead,
+ * and says so (see `EndoProtectedChangeSetRefusalV2.truncated` and `refusalsOmitted`). What a record derives from its refusals
+ * (its invalidating conditions) it derives from `refusalCounts`, which counts every refusal, listed or not.
+ */
+export const ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2 = 4096;
+export const ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 = 400;
+
+/** A recorded refusal. A path longer than the record's bound keeps its first characters, and records its full length and digest. */
+export interface EndoProtectedChangeSetRefusalV2 extends EndoChangeSetRefusalV0 {
+	truncated: { length: number; sha256: string } | null;
+}
+
+export interface EndoProtectedChangeSetV2 {
+	baseline: { status: "pinned" | "mismatch" | "not-pinned"; sha256: string; files: number; totalBytes: number };
+	collection: {
+		status: "collected" | "refused" | "not-collected";
+		changesetSha256: string | null;
+		summary: EndoStagedChangeSetSummaryV0 | null;
+		/** The first refusals, in the collector's order, at most `ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2`. */
+		refusals: EndoProtectedChangeSetRefusalV2[];
+		/** How many further refusals the collector made that the record does not list: 0 when it lists them all. */
+		refusalsOmitted: number;
+		/** Every refusal the collector made, listed or omitted, counted by reason (each reason present, 0 when none). */
+		refusalCounts: Record<EndoChangeSetRefusalReasonV0, number>;
+	};
+	verification: {
+		status: "verified" | "failed" | "not-run";
+		reason: EndoChangeSetVerifyFailureReasonV0 | null;
+		candidateSha256: string | null;
+	};
+}
+
+/**
+ * What a staged attempt handed the evaluator, as the invalidating conditions read it: its status, and one refusal for each reason the
+ * collector refused anything for, from the complete census rather than the bounded list, so a reason past the list's bound still counts.
+ */
+export function endoProtectedStagedHandedV2(
+	collection: EndoProtectedChangeSetV2["collection"],
+): Pick<EndoProtectedTrialV0["submission"], "status" | "refusals"> {
+	return {
+		status: collection.status,
+		refusals: ENDO_CHANGESET_REFUSAL_REASONS_V0.filter((reason) => collection.refusalCounts[reason] > 0).map(
+			(reason) => ({
+				path: ".",
+				reason,
+			}),
+		) as unknown as EndoProtectedTrialV0["submission"]["refusals"],
+	};
+}
+
+export interface EndoProtectedTrialV2
+	extends Omit<EndoProtectedTrialV0, "schemaVersion" | "submission" | "invalidating"> {
+	schemaVersion: typeof ENDO_PROTECTED_TRIAL_V2;
+	changeset: EndoProtectedChangeSetV2;
+	invalidating: EndoProtectedInvalidatingV2[];
+}
+
+export interface EndoProtectedTrialV3
+	extends Omit<EndoProtectedTrialV1, "schemaVersion" | "submission" | "invalidating"> {
+	schemaVersion: typeof ENDO_PROTECTED_TRIAL_V3;
+	changeset: EndoProtectedChangeSetV2;
+	invalidating: EndoProtectedInvalidatingV3[];
+}
+
+export type EndoProtectedTrial =
+	| EndoProtectedTrialV0
+	| EndoProtectedTrialV1
+	| EndoProtectedTrialV2
+	| EndoProtectedTrialV3;
+export type EndoProtectedModelTrial = EndoProtectedTrialV1 | EndoProtectedTrialV3;
+export type EndoProtectedStagedTrial = EndoProtectedTrialV2 | EndoProtectedTrialV3;
+export const endoProtectedTrialIsModelConnectedV0 = (r: EndoProtectedTrial): r is EndoProtectedModelTrial =>
+	endoProtectedModelConnectedV0(r.schemaVersion);
+export const endoProtectedTrialIsStagedV2 = (r: EndoProtectedTrial): r is EndoProtectedStagedTrial =>
+	endoProtectedStagedV2(r.schemaVersion);
 
 // ---- validation ---------------------------------------------------------------------------------------------------------------------------
 
@@ -454,7 +656,7 @@ function containmentOf(v: unknown, what: string): EndoProtectedContainmentV0 {
 }
 
 function limitsOf(v: unknown, version: string): EndoProtectedLimitsV0 | EndoProtectedLimitsV1 {
-	const v1 = version === ENDO_PROTECTED_SPEC_V1;
+	const v1 = endoProtectedModelConnectedV0(version);
 	const o = obj(
 		v,
 		[
@@ -540,8 +742,36 @@ function modelAccessOf(v: unknown): EndoProtectedModelAccessV1 {
 	};
 }
 
+/** A staged task's submission: the mode, and every collection bound explicitly, each at most the collector's default. */
+function stagedSubmissionOf(v: unknown, what: string): EndoProtectedStagedSubmissionV2 {
+	const o = obj(v, ["mode", "limits"], what);
+	const l = obj(
+		o.limits,
+		["maxFileBytes", "maxTotalStagedBytes", "maxWorkspaceBytes", "maxWalkedEntries", "maxChangedFiles", "maxDepth"],
+		`${what}.limits`,
+	);
+	const d = DEFAULT_ENDO_CHANGESET_LIMITS_V0;
+	return {
+		mode: oneOf(o.mode, ["staged-changeset"] as const, `${what}.mode`),
+		limits: {
+			maxFileBytes: count(l.maxFileBytes, `${what}.limits.maxFileBytes`, 1, d.maxFileBytes),
+			maxTotalStagedBytes: count(
+				l.maxTotalStagedBytes,
+				`${what}.limits.maxTotalStagedBytes`,
+				1,
+				d.maxTotalStagedBytes,
+			),
+			maxWorkspaceBytes: count(l.maxWorkspaceBytes, `${what}.limits.maxWorkspaceBytes`, 1, d.maxWorkspaceBytes),
+			maxWalkedEntries: count(l.maxWalkedEntries, `${what}.limits.maxWalkedEntries`, 1, d.maxWalkedEntries),
+			maxChangedFiles: count(l.maxChangedFiles, `${what}.limits.maxChangedFiles`, 1, d.maxChangedFiles),
+			maxDepth: count(l.maxDepth, `${what}.limits.maxDepth`, 1, d.maxDepth),
+		},
+	};
+}
+
 function specOf(value: unknown, version: string): EndoProtectedSpec {
-	const v1 = version === ENDO_PROTECTED_SPEC_V1;
+	const v1 = endoProtectedModelConnectedV0(version);
+	const staged = endoProtectedStagedV2(version);
 	const o = obj(
 		value,
 		[
@@ -585,7 +815,7 @@ function specOf(value: unknown, version: string): EndoProtectedSpec {
 		if (items.length === 0 || new Set(items.map((x) => x.id)).size !== items.length)
 			fail(`${what} ids must be unique`);
 	};
-	const tasks = list(o.tasks, "tasks", 64).map((t, i): EndoProtectedTaskV0 => {
+	const tasks = list(o.tasks, "tasks", 64).map((t, i): EndoProtectedTaskV0 | EndoProtectedStagedTaskV2 => {
 		const w = `tasks[${i}]`;
 		const x = obj(t, ["id", "workspace", "submission", "evaluator"], w);
 		if (!isPlainJsonObjectV0(x.workspace)) fail(`${w}.workspace is not an object`);
@@ -602,21 +832,30 @@ function specOf(value: unknown, version: string): EndoProtectedSpec {
 				configurable: true,
 			});
 		}
+		const e = obj(x.evaluator, ["file", "sha256"], `${w}.evaluator`);
+		const evaluator = {
+			file: match(e.file, ABS, `${w}.evaluator.file`),
+			sha256: match(e.sha256, HEX64, `${w}.evaluator.sha256`),
+		};
+		if (staged) {
+			// The workspace is the baseline: every path a plain change-set path (no .git), and together a possible tree.
+			for (const path of Object.keys(workspace))
+				if (!isPlainChangeSetPathV0(path)) fail(`${w}.workspace path is not a plain change-set path`);
+			if (endoFileAncestorConflictV0(Object.keys(workspace)) !== null)
+				fail(`${w}.workspace holds a file beneath another file`);
+			return {
+				id: match(x.id, SLUG, `${w}.id`),
+				workspace,
+				submission: stagedSubmissionOf(x.submission, `${w}.submission`),
+				evaluator,
+			};
+		}
 		const submission = list(x.submission, `${w}.submission`, 256).map((p, j) =>
 			match(p, REL, `${w}.submission[${j}]`),
 		);
 		if (submission.length === 0 || new Set(submission).size !== submission.length)
 			fail(`${w}.submission must name each file once`);
-		const e = obj(x.evaluator, ["file", "sha256"], `${w}.evaluator`);
-		return {
-			id: match(x.id, SLUG, `${w}.id`),
-			workspace,
-			submission,
-			evaluator: {
-				file: match(e.file, ABS, `${w}.evaluator.file`),
-				sha256: match(e.sha256, HEX64, `${w}.evaluator.sha256`),
-			},
-		};
+		return { id: match(x.id, SLUG, `${w}.id`), workspace, submission, evaluator };
 	});
 	ids(tasks, "task");
 	const conditions = list(o.conditions, "conditions", 64).map((c, i): EndoProtectedConditionV0 => {
@@ -643,18 +882,18 @@ function specOf(value: unknown, version: string): EndoProtectedSpec {
 	};
 	if (!v1)
 		return {
-			schemaVersion: ENDO_PROTECTED_SPEC_V0,
+			schemaVersion: version,
 			...common,
 			limits: limitsOf(o.limits, version),
 			runtime: { executables },
-		};
+		} as EndoProtectedSpecV0 | EndoProtectedSpecV2;
 	return {
-		schemaVersion: ENDO_PROTECTED_SPEC_V1,
+		schemaVersion: version,
 		...common,
 		limits: limitsOf(o.limits, version) as EndoProtectedLimitsV1,
 		runtime: { executables, aliases },
 		modelAccess: modelAccessOf(o.modelAccess),
-	};
+	} as EndoProtectedSpecV1 | EndoProtectedSpecV3;
 }
 
 function evaluatorOf(value: unknown): EndoFunctionEvaluatorV0 {
@@ -709,8 +948,8 @@ function runOf(value: unknown, version: string): EndoProtectedRun {
 		],
 		"run",
 	);
-	// A version 0 run is over a version 0 spec, a version 1 run over a version 1 spec: never the other.
-	const spec = specOf(o.spec, version === ENDO_PROTECTED_RUN_V1 ? ENDO_PROTECTED_SPEC_V1 : ENDO_PROTECTED_SPEC_V0);
+	// A run is over a spec of its own version only (version 0 over version 0, …, version 3 over version 3): never another.
+	const spec = specOf(o.spec, SPEC_OF_RUN[version as keyof typeof SPEC_OF_RUN]);
 	const plan = list(o.plan, "plan", 1_000_000).map((e, i) => planEntryOf(e, `plan[${i}]`));
 	const cells = spec.tasks.length * spec.conditions.length * spec.trials;
 	if (plan.length !== cells || plan.some((e, i) => e.position !== i))
@@ -777,7 +1016,8 @@ export const ENDO_PROTECTED_RELAY_SOCKET_TARGET_V1 = "/run/endo/model.sock";
 export const ENDO_PROTECTED_RELAY_BRIDGE_TARGET_V1 = "/run/endo/bridge.cjs";
 
 function trialOf(value: unknown, version: string): EndoProtectedTrial {
-	const v1 = version === ENDO_PROTECTED_TRIAL_V1;
+	const v1 = endoProtectedModelConnectedV0(version);
+	const staged = endoProtectedStagedV2(version);
 	const o = obj(
 		value,
 		[
@@ -788,7 +1028,7 @@ function trialOf(value: unknown, version: string): EndoProtectedTrial {
 			"preflight",
 			"network",
 			"agent",
-			"submission",
+			staged ? "changeset" : "submission",
 			"evaluation",
 			"controller",
 			"invalidating",
@@ -909,39 +1149,17 @@ function trialOf(value: unknown, version: string): EndoProtectedTrial {
 	if ((agent.status === "not-run") !== (agent.termination === "not-applicable"))
 		fail("agent.termination is not-applicable exactly when the agent did not run");
 	if (agent.status === "completed" && agent.exitCode !== 0) fail("a completed agent exited 0");
-	const s = obj(o.submission, ["status", "files", "sha256", "refusals"], "submission");
-	const files = list(s.files, "submission.files", 4096).map((f, i) => {
-		const x = obj(f, ["path", "bytes", "sha256"], `files[${i}]`);
-		return {
-			path: match(x.path, REL, `files[${i}].path`),
-			bytes: count(x.bytes, `files[${i}].bytes`),
-			sha256: match(x.sha256, HEX64, `files[${i}].sha256`),
-		};
-	});
-	for (let i = 1; i < files.length; i++)
-		if ((files[i - 1] as { path: string }).path >= (files[i] as { path: string }).path)
-			fail("submission files are sorted by path, each once");
-	const refusals = list(s.refusals, "submission.refusals", 4096).map((r, i) => {
-		const x = obj(r, ["path", "reason"], `refusals[${i}]`);
-		return {
-			path: text(x.path, "path", 400),
-			reason: oneOf(x.reason, ENDO_PROTECTED_REFUSALS_V0, `refusals[${i}].reason`),
-		};
-	});
-	const submission = {
-		status: oneOf(s.status, ["collected", "refused", "missing", "not-collected"] as const, "submission.status"),
-		files,
-		sha256: nullable(s.sha256, (x) => match(x, HEX64, "submission.sha256")),
-		refusals,
-	};
-	if (submission.status === "collected" && (submission.sha256 === null || files.length === 0 || refusals.length > 0))
-		fail("a collected submission has files, a digest and no refusals");
-	if (submission.status !== "collected" && (submission.sha256 !== null || files.length > 0))
-		fail("only a collected submission has files and a digest");
-	if ((submission.status === "refused" || submission.status === "missing") && refusals.length === 0)
-		fail("a refused or missing submission says why");
-	if (submission.status === "collected" && agent.termination !== "confirmed")
-		fail("a submission is collected only after the agent's termination was confirmed");
+	const ctl = obj(o.controller, ["finalized"], "controller");
+	const controller = { finalized: oneOf(ctl.finalized, ["normally", "on-resume"] as const, "controller.finalized") };
+	const changeset = staged ? changesetOf(o.changeset, agent, preflight.status, controller.finalized) : null;
+	// What the evaluator was handed, by status and refusals: a fixed-path submission, or a staged change set's collection.
+	const submission = staged
+		? null
+		: submissionOf(o.submission, agent.termination as EndoProtectedTrialV0["agent"]["termination"]);
+	const handed: Pick<EndoProtectedTrialV0["submission"], "status" | "refusals"> =
+		changeset === null
+			? (submission as EndoProtectedTrialV0["submission"])
+			: endoProtectedStagedHandedV2(changeset.collection);
 	const e = obj(
 		o.evaluation,
 		["status", "definitionSha256", "driverSha256", "cases", "reason", "outputSha256"],
@@ -961,20 +1179,32 @@ function trialOf(value: unknown, version: string): EndoProtectedTrial {
 		outputSha256: nullable(e.outputSha256, (x) => match(x, HEX64, "evaluation.outputSha256")),
 	};
 	if (evaluation.status === "passed" || evaluation.status === "failed") {
-		if (submission.status !== "collected") fail("an evaluation result needs a collected submission");
+		if (handed.status !== "collected") fail("an evaluation result needs a collected submission");
 		if (preflight.status !== "established") fail("an evaluation result needs an established boundary");
 		if (cases === null && evaluation.reason === null) fail("an evaluation result counts its cases or says why not");
+		if (changeset !== null && changeset.verification.status !== "verified")
+			fail("an evaluation result needs a verified change set");
 	}
+	if (changeset !== null && changeset.verification.status === "failed" && evaluation.status !== "not-run")
+		fail("a change set that did not verify is never evaluated");
 	if (evaluation.status === "passed" && (cases === null || cases.passed !== cases.total))
 		fail("a passed evaluation passed every case");
 	if (evaluation.status !== "passed" && evaluation.status !== "failed" && cases !== null)
 		fail("only an evaluation that ran counts cases");
-	const ctl = obj(o.controller, ["finalized"], "controller");
-	const controller = { finalized: oneOf(ctl.finalized, ["normally", "on-resume"] as const, "controller.finalized") };
-	if (controller.finalized === "on-resume" && (evaluation.status !== "not-run" || submission.status === "collected"))
+	if (controller.finalized === "on-resume" && (evaluation.status !== "not-run" || handed.status === "collected"))
 		fail("a record finalized on resume has no collected submission and no evaluation");
 	const invalidating = list(o.invalidating, "invalidating", 16).map((x, i) =>
-		oneOf(x, v1 ? ENDO_PROTECTED_INVALIDATING_V1 : ENDO_PROTECTED_INVALIDATING_V0, `invalidating[${i}]`),
+		oneOf(
+			x,
+			staged
+				? v1
+					? ENDO_PROTECTED_INVALIDATING_V3
+					: ENDO_PROTECTED_INVALIDATING_V2
+				: v1
+					? ENDO_PROTECTED_INVALIDATING_V1
+					: ENDO_PROTECTED_INVALIDATING_V0,
+			`invalidating[${i}]`,
+		),
 	);
 	if (new Set(invalidating).size !== invalidating.length) fail("invalidating repeats a condition");
 	const relay = network.relay as EndoProtectedRelayV1 | null;
@@ -987,19 +1217,23 @@ function trialOf(value: unknown, version: string): EndoProtectedTrial {
 			agent.status,
 			controller.finalized,
 			mounts,
+			changeset?.baseline.status === "mismatch",
 		);
 	// The invalidating conditions follow from the facts above: none may be omitted, and none may be invented.
-	const expected = v1
-		? expectedInvalidatingV1(
-				controller.finalized,
-				preflight.status,
-				agent,
-				submission,
-				evaluation.status,
-				relay as EndoProtectedRelayV1,
-				recording as EndoProtectedRecordingV1,
-			)
-		: expectedInvalidating(controller.finalized, preflight.status, agent, submission, evaluation.status);
+	const expected: string[] = [
+		...(v1
+			? expectedInvalidatingV1(
+					controller.finalized,
+					preflight.status,
+					agent,
+					handed,
+					evaluation.status,
+					relay as EndoProtectedRelayV1,
+					recording as EndoProtectedRecordingV1,
+				)
+			: expectedInvalidating(controller.finalized, preflight.status, agent, handed, evaluation.status)),
+		...(changeset === null ? [] : expectedStagedInvalidatingV2(changeset)),
+	];
 	if ([...invalidating].sort().join() !== [...expected].sort().join())
 		fail(`invalidating is not what the record's facts imply (${expected.join(", ") || "none"})`);
 	return {
@@ -1040,7 +1274,7 @@ function trialOf(value: unknown, version: string): EndoProtectedTrial {
 		preflight,
 		network: network as EndoProtectedTrialV0["network"],
 		agent: agent as EndoProtectedTrialV0["agent"],
-		submission,
+		...(changeset === null ? { submission } : { changeset }),
 		evaluation,
 		controller,
 		invalidating: invalidating as EndoProtectedInvalidatingV0[],
@@ -1048,6 +1282,178 @@ function trialOf(value: unknown, version: string): EndoProtectedTrial {
 		recordedAt: match(o.recordedAt, ISO, "recordedAt"),
 		recordSha256: match(o.recordSha256, HEX64, "recordSha256"),
 	} as EndoProtectedTrial;
+}
+
+/** A fixed-path submission (versions 0 and 1). */
+function submissionOf(
+	v: unknown,
+	termination: EndoProtectedTrialV0["agent"]["termination"],
+): EndoProtectedTrialV0["submission"] {
+	const s = obj(v, ["status", "files", "sha256", "refusals"], "submission");
+	const files = list(s.files, "submission.files", 4096).map((f, i) => {
+		const x = obj(f, ["path", "bytes", "sha256"], `files[${i}]`);
+		return {
+			path: match(x.path, REL, `files[${i}].path`),
+			bytes: count(x.bytes, `files[${i}].bytes`),
+			sha256: match(x.sha256, HEX64, `files[${i}].sha256`),
+		};
+	});
+	for (let i = 1; i < files.length; i++)
+		if ((files[i - 1] as { path: string }).path >= (files[i] as { path: string }).path)
+			fail("submission files are sorted by path, each once");
+	const refusals = list(s.refusals, "submission.refusals", 4096).map((r, i) => {
+		const x = obj(r, ["path", "reason"], `refusals[${i}]`);
+		return {
+			path: text(x.path, "path", 400),
+			reason: oneOf(x.reason, ENDO_PROTECTED_REFUSALS_V0, `refusals[${i}].reason`),
+		};
+	});
+	const submission = {
+		status: oneOf(s.status, ["collected", "refused", "missing", "not-collected"] as const, "submission.status"),
+		files,
+		sha256: nullable(s.sha256, (x) => match(x, HEX64, "submission.sha256")),
+		refusals,
+	};
+	if (submission.status === "collected" && (submission.sha256 === null || files.length === 0 || refusals.length > 0))
+		fail("a collected submission has files, a digest and no refusals");
+	if (submission.status !== "collected" && (submission.sha256 !== null || files.length > 0))
+		fail("only a collected submission has files and a digest");
+	if ((submission.status === "refused" || submission.status === "missing") && refusals.length === 0)
+		fail("a refused or missing submission says why");
+	if (submission.status === "collected" && termination !== "confirmed")
+		fail("a submission is collected only after the agent's termination was confirmed");
+	return submission;
+}
+
+const SUMMARY_KEYS = [
+	"baselineFiles",
+	"candidateFiles",
+	"unchangedFiles",
+	"addedFiles",
+	"modifiedFiles",
+	"modeChangedFiles",
+	"deletedFiles",
+	"stagedBytes",
+] as const;
+
+/** A staged change set's evidence (versions 2 and 3), against itself and the agent's facts. */
+function changesetOf(
+	v: unknown,
+	agent: Pick<EndoProtectedTrialV0["agent"], "status" | "termination">,
+	preflight: EndoProtectedTrialV0["preflight"]["status"],
+	finalized: EndoProtectedTrialV0["controller"]["finalized"],
+): EndoProtectedChangeSetV2 {
+	const o = obj(v, ["baseline", "collection", "verification"], "changeset");
+	const b = obj(o.baseline, ["status", "sha256", "files", "totalBytes"], "changeset.baseline");
+	const baseline = {
+		status: oneOf(b.status, ["pinned", "mismatch", "not-pinned"] as const, "changeset.baseline.status"),
+		sha256: match(b.sha256, HEX64, "changeset.baseline.sha256"),
+		files: count(b.files, "changeset.baseline.files"),
+		totalBytes: count(b.totalBytes, "changeset.baseline.totalBytes"),
+	};
+	const c = obj(
+		o.collection,
+		["status", "changesetSha256", "summary", "refusals", "refusalsOmitted", "refusalCounts"],
+		"changeset.collection",
+	);
+	const refusals = list(c.refusals, "changeset.collection.refusals", ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2).map(
+		(r, i): EndoProtectedChangeSetRefusalV2 => {
+			const w = `changeset.collection.refusals[${i}]`;
+			const x = obj(r, ["path", "reason", "truncated"], w);
+			const path = text(x.path, `${w}.path`, ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2);
+			const truncated = nullable(x.truncated, (t) => {
+				const y = obj(t, ["length", "sha256"], `${w}.truncated`);
+				return {
+					length: count(y.length, `${w}.truncated.length`, ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 + 1),
+					sha256: match(y.sha256, HEX64, `${w}.truncated.sha256`),
+				};
+			});
+			// A truncated path keeps as many characters as the bound allows, less one when the bound would split a surrogate pair.
+			if (truncated !== null && path.length < ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 - 1)
+				fail(`${w}: a truncated path keeps the bound's length`);
+			return {
+				path,
+				reason: oneOf(x.reason, ENDO_CHANGESET_REFUSAL_REASONS_V0, `${w}.reason`),
+				truncated,
+			};
+		},
+	);
+	const refusalsOmitted = count(c.refusalsOmitted, "changeset.collection.refusalsOmitted");
+	if (refusalsOmitted > 0 && refusals.length !== ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2)
+		fail("refusals are omitted only from a full list");
+	const rc = obj(c.refusalCounts, ENDO_CHANGESET_REFUSAL_REASONS_V0, "changeset.collection.refusalCounts");
+	const refusalCounts = Object.fromEntries(
+		ENDO_CHANGESET_REFUSAL_REASONS_V0.map((k) => [k, count(rc[k], `changeset.collection.refusalCounts.${k}`)]),
+	) as Record<EndoChangeSetRefusalReasonV0, number>;
+	// The census is the whole population: the listed refusals are part of it, and the rest are exactly the omitted ones.
+	if (
+		ENDO_CHANGESET_REFUSAL_REASONS_V0.reduce((n, k) => n + refusalCounts[k], 0) !==
+		refusals.length + refusalsOmitted
+	)
+		fail("the refusal counts are not the listed and omitted refusals");
+	for (const k of ENDO_CHANGESET_REFUSAL_REASONS_V0)
+		if (refusals.filter((r) => r.reason === k).length > refusalCounts[k])
+			fail(`the refusal counts list fewer ${k} refusals than the record does`);
+	const summary = nullable(c.summary, (x) => {
+		const s = obj(x, SUMMARY_KEYS, "changeset.collection.summary");
+		return Object.fromEntries(
+			SUMMARY_KEYS.map((k) => [k, count(s[k], `changeset.collection.summary.${k}`)]),
+		) as unknown as EndoStagedChangeSetSummaryV0;
+	});
+	const collection = {
+		status: oneOf(c.status, ["collected", "refused", "not-collected"] as const, "changeset.collection.status"),
+		changesetSha256: nullable(c.changesetSha256, (x) => match(x, HEX64, "changeset.collection.changesetSha256")),
+		summary,
+		refusals,
+		refusalsOmitted,
+		refusalCounts,
+	};
+	const vf = obj(o.verification, ["status", "reason", "candidateSha256"], "changeset.verification");
+	const verification = {
+		status: oneOf(vf.status, ["verified", "failed", "not-run"] as const, "changeset.verification.status"),
+		reason: nullable(vf.reason, (x) =>
+			oneOf(x, ENDO_CHANGESET_VERIFY_FAILURE_REASONS_V0, "changeset.verification.reason"),
+		),
+		candidateSha256: nullable(vf.candidateSha256, (x) => match(x, HEX64, "changeset.verification.candidateSha256")),
+	};
+	// The agent is started only on a pinned baseline; a mismatch is found after the boundary was established, before any agent.
+	if (agent.status !== "not-run" && baseline.status !== "pinned")
+		fail("an agent is started only on a pinned baseline");
+	if (baseline.status === "mismatch" && (preflight !== "established" || finalized !== "normally"))
+		fail("a baseline mismatch is found after an established boundary, in an attempt the controller finished");
+	const collected = collection.status === "collected";
+	if (collected !== (collection.changesetSha256 !== null) || collected !== (summary !== null))
+		fail("a collected change set, and only one, has a digest and a summary");
+	if ((collection.status === "refused") !== refusals.length > 0) fail("a refused change set, and only one, says why");
+	if (collection.status !== "not-collected" && agent.termination !== "confirmed")
+		fail("a change set is collected only after the agent's termination was confirmed");
+	if (summary !== null) {
+		if (summary.baselineFiles !== baseline.files) fail("the change set's baseline is not the pinned baseline");
+		if (
+			summary.baselineFiles !==
+				summary.unchangedFiles + summary.modifiedFiles + summary.modeChangedFiles + summary.deletedFiles ||
+			summary.candidateFiles !==
+				summary.unchangedFiles + summary.modifiedFiles + summary.modeChangedFiles + summary.addedFiles
+		)
+			fail("the change set's summary contradicts its own counts");
+	}
+	const verified = verification.status === "verified";
+	if (verification.status !== "not-run" && !collected) fail("only a collected change set is verified");
+	if (verified !== (verification.candidateSha256 !== null))
+		fail("a verified change set, and only one, names the candidate it reconstructed");
+	if ((verification.status === "failed") !== (verification.reason !== null))
+		fail("a change set that did not verify, and only one, says why");
+	return { baseline, collection, verification };
+}
+
+/** The staged versions' own invalidating conditions, in a fixed order, after their base version's. */
+export function expectedStagedInvalidatingV2(
+	changeset: Pick<EndoProtectedChangeSetV2, "baseline" | "verification">,
+): (typeof ENDO_PROTECTED_STAGED_INVALIDATING_V2)[number][] {
+	const out: (typeof ENDO_PROTECTED_STAGED_INVALIDATING_V2)[number][] = [];
+	if (changeset.baseline.status === "mismatch") out.push("baseline-mismatch");
+	if (changeset.verification.status === "failed") out.push("changeset-unverified");
+	return out;
 }
 
 function scopeLimitsOf(v: unknown): { memoryMaxBytes: number; cpuQuotaPercent: number } {
@@ -1155,6 +1561,7 @@ function modelConsistency(
 	agent: EndoProtectedTrialV0["agent"]["status"],
 	finalized: EndoProtectedTrialV0["controller"]["finalized"],
 	mounts: readonly EndoProtectedMountV1[],
+	baselineMismatch = false,
 ): void {
 	// The sandbox's one way out is the relay's socket, mounted alone, with the bridge beside it.
 	const sockets = mounts.filter((m) => m.kind === "socket");
@@ -1179,7 +1586,8 @@ function modelConsistency(
 	if (relay.status === "not-started" && agent !== "not-run") fail("an agent ran without its relay");
 	// After an established boundary, the controller either starts the relay or records that it failed to: never neither, unless it
 	// stopped in between (on resume).
-	if (relay.status === "not-started" && preflight === "established" && finalized !== "on-resume")
+	// A staged attempt whose baseline did not match its pin after the boundary was established starts neither its relay nor its agent.
+	if (relay.status === "not-started" && preflight === "established" && finalized !== "on-resume" && !baselineMismatch)
 		fail("a relay not started after an established boundary needs an attempt finalized on resume");
 	if (agent !== "not-run" && relay.status !== "ran" && relay.status !== "interrupted")
 		fail("an agent ran without its relay");
@@ -1256,7 +1664,7 @@ export function expectedInvalidatingV1(
 }
 
 /** Successful model exchanges in a version 1 record: answered with a 2xx status, and verified. */
-export const endoProtectedSuccessfulExchangesV1 = (r: EndoProtectedTrialV1): number =>
+export const endoProtectedSuccessfulExchangesV1 = (r: EndoProtectedModelTrial): number =>
 	r.recording.exchanges.filter(
 		(e) => e.class === "answered" && e.verified && e.status !== null && e.status >= 200 && e.status < 300,
 	).length;
@@ -1266,15 +1674,21 @@ export const ENDO_PROTECTED_SPEC_VERSIONS_V0 = defineEndoVersionTableV0<EndoProt
 	[
 		[ENDO_PROTECTED_SPEC_V0, (v) => specOf(v, ENDO_PROTECTED_SPEC_V0)],
 		[ENDO_PROTECTED_SPEC_V1, (v) => specOf(v, ENDO_PROTECTED_SPEC_V1)],
+		[ENDO_PROTECTED_SPEC_V2, (v) => specOf(v, ENDO_PROTECTED_SPEC_V2)],
+		[ENDO_PROTECTED_SPEC_V3, (v) => specOf(v, ENDO_PROTECTED_SPEC_V3)],
 	],
 );
 export const ENDO_PROTECTED_RUN_VERSIONS_V0 = defineEndoVersionTableV0<EndoProtectedRun>("endo.protected-run", [
 	[ENDO_PROTECTED_RUN_V0, (v) => runOf(v, ENDO_PROTECTED_RUN_V0)],
 	[ENDO_PROTECTED_RUN_V1, (v) => runOf(v, ENDO_PROTECTED_RUN_V1)],
+	[ENDO_PROTECTED_RUN_V2, (v) => runOf(v, ENDO_PROTECTED_RUN_V2)],
+	[ENDO_PROTECTED_RUN_V3, (v) => runOf(v, ENDO_PROTECTED_RUN_V3)],
 ]);
 export const ENDO_PROTECTED_TRIAL_VERSIONS_V0 = defineEndoVersionTableV0<EndoProtectedTrial>("endo.protected-trial", [
 	[ENDO_PROTECTED_TRIAL_V0, (v) => trialOf(v, ENDO_PROTECTED_TRIAL_V0)],
 	[ENDO_PROTECTED_TRIAL_V1, (v) => trialOf(v, ENDO_PROTECTED_TRIAL_V1)],
+	[ENDO_PROTECTED_TRIAL_V2, (v) => trialOf(v, ENDO_PROTECTED_TRIAL_V2)],
+	[ENDO_PROTECTED_TRIAL_V3, (v) => trialOf(v, ENDO_PROTECTED_TRIAL_V3)],
 ]);
 export const ENDO_FUNCTION_EVALUATOR_VERSIONS_V0 = defineEndoVersionTableV0<EndoFunctionEvaluatorV0>(
 	"endo.function-evaluator",
@@ -1305,14 +1719,18 @@ export function endoProtectedTrialOutcomeV0(r: EndoProtectedTrial): {
 	// evaluator found (kept as the evaluator's fact), it is a judged failure. Never attrition, since the agent decides whether it calls
 	// the model (and an agent able to remove itself from the denominator could bias a comparison), and never a pass.
 	if (
-		r.schemaVersion === ENDO_PROTECTED_TRIAL_V1 &&
+		endoProtectedTrialIsModelConnectedV0(r) &&
 		r.agent.status !== "not-run" &&
 		endoProtectedSuccessfulExchangesV1(r) < r.recording.required
 	)
 		return { outcome: "failed", reason: "model-exchanges-below-minimum" };
 	if (r.evaluation.status === "passed") return { outcome: "passed", reason: null };
 	if (r.evaluation.status === "failed") return { outcome: "failed", reason: r.evaluation.reason };
-	if (r.submission.status === "missing" || r.submission.status === "refused")
+	// A staged change set the collector refused (a link, a special file, .git, too large or too many) is the agent's own doing too.
+	if (endoProtectedTrialIsStagedV2(r)) {
+		if (r.changeset.collection.status === "refused")
+			return { outcome: "failed", reason: `changeset-${r.changeset.collection.refusals[0]?.reason ?? "refused"}` };
+	} else if (r.submission.status === "missing" || r.submission.status === "refused")
 		return { outcome: "failed", reason: `submission-${r.submission.refusals[0]?.reason ?? r.submission.status}` };
 	return { outcome: "attrition", reason: `evaluation-${r.evaluation.status}` };
 }

@@ -108,6 +108,31 @@ export const ENDO_CHANGESET_REFUSAL_REASONS_V0 = [
 
 export type EndoChangeSetRefusalReasonV0 = (typeof ENDO_CHANGESET_REFUSAL_REASONS_V0)[number];
 
+/**
+ * Why a staged change set did not verify (`verifyStagedChangeSetV0`) or could not be reconstructed (`reconstructStagedCandidateV0`).
+ * `baseline-conflict`: the manifest contradicts the complete pinned baseline record (an `added` path the baseline already holds or that
+ * lies beneath or above a baseline file kept in the candidate, a `before` state that is not the baseline's). `baseline-mismatch`: the
+ * trusted baseline tree on disk is not the pinned record. `candidate-mismatch`: the reconstructed tree is not the one the verified
+ * manifest and baseline imply.
+ */
+export const ENDO_CHANGESET_VERIFY_FAILURE_REASONS_V0 = [
+	"invalid-staging-dir",
+	"missing-manifest",
+	"invalid-manifest",
+	"digest-mismatch",
+	"pin-mismatch",
+	"unsafe-staged-file",
+	"executable-staged-file",
+	"missing-staged-file",
+	"unexpected-staged-entry",
+	"staged-bytes-mismatch",
+	"baseline-conflict",
+	"baseline-mismatch",
+	"candidate-mismatch",
+] as const;
+
+export type EndoChangeSetVerifyFailureReasonV0 = (typeof ENDO_CHANGESET_VERIFY_FAILURE_REASONS_V0)[number];
+
 export interface EndoChangeSetRefusalV0 {
 	/** Relative path inside the workspace (or `.` for the workspace root itself). */
 	path: string;
@@ -302,13 +327,20 @@ function checkSortedUniquePaths(paths: readonly string[], what: string): void {
  * prefix against a set rather than relying on sort adjacency, because sorting interleaves siblings such as `a-b` between `a` and `a/c`.
  */
 function checkNoFileAncestors(paths: readonly string[], what: string): void {
+	const conflict = endoFileAncestorConflictV0(paths);
+	if (conflict !== null) bad(`${what} contains ${conflict.path} beneath regular file ${conflict.ancestor}`);
+}
+
+/** The first path of one tree's regular files that lies beneath another of them, or null when the paths describe a possible tree. */
+export function endoFileAncestorConflictV0(paths: Iterable<string>): { path: string; ancestor: string } | null {
 	const files = new Set(paths);
-	for (const path of paths) {
+	for (const path of files) {
 		for (let slash = path.indexOf("/"); slash !== -1; slash = path.indexOf("/", slash + 1)) {
 			const ancestor = path.slice(0, slash);
-			if (files.has(ancestor)) bad(`${what} contains ${path} beneath regular file ${ancestor}`);
+			if (files.has(ancestor)) return { path, ancestor };
 		}
 	}
+	return null;
 }
 
 export function checkEndoWorkspaceBaselineV0(value: unknown): EndoWorkspaceBaselineV0 {

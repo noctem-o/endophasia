@@ -1,6 +1,6 @@
 # Staged change sets: boundary-agnostic multi-file collection
 
-Status: **implemented as a library (`protocol/staged-changeset.ts`, `adapters/sandbox/staged-changeset.ts`).** Not yet wired into `endo develop`, `endo attempt`, or `endo experiment protected-run`.
+Status: **implemented as a library (`protocol/staged-changeset.ts`, `adapters/sandbox/staged-changeset.ts`).** Wired into `endo experiment protected-run` as an opt-in mode (`docs/designs/protected-staged-changeset.md`); not into `endo develop` or `endo attempt`.
 
 ## 1. Purpose
 

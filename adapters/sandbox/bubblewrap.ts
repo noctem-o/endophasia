@@ -471,6 +471,11 @@ export async function runSandboxV0(
 		/** Called right after the launch with the launcher's identity (pid and start time), so a resume can end exactly it. */
 		onLauncher?: (launcher: EndoProcessIdentityV0) => void;
 		onStarted?: (init: EndoProcessIdentityV0) => void;
+		/**
+		 * For tests only: the scope is stopped exactly as always, and its end is then reported as unconfirmed whatever the user manager
+		 * said, to show what a caller records when termination cannot be confirmed. It can only withhold confirmation, never grant it.
+		 */
+		unconfirmedEndForTests?: boolean;
 		experimentalLaunch?: (launch: {
 			unit: string;
 			launcher: EndoProcessIdentityV0;
@@ -659,7 +664,8 @@ export async function runSandboxV0(
 	const exitStatus = /"exit-code":\s*([0-9]+)/.exec(status);
 	const known = init as EndoProcessIdentityV0 | null;
 	// The guarantee: the user manager confirms the scope ended. The init's identity is kept as a supplementary observation.
-	const ended = await stopScopeV0(options.containment, unit);
+	const stopped = await stopScopeV0(options.containment, unit);
+	const ended = options.unconfirmedEndForTests === true ? "unconfirmed" : stopped;
 	const result = options.limits === undefined ? undefined : scopeResultV0(options.containment, unit);
 	// Only now, with the scope stopped, may the release pipe close (an EOF on it would release a blocked init).
 	(release as NodeJS.WritableStream & { destroy?: () => void }).destroy?.();

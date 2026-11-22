@@ -38,6 +38,7 @@ import {
 	type EndoChangeSetLimitsV0,
 	type EndoChangeSetRefusalReasonV0,
 	type EndoChangeSetRefusalV0,
+	type EndoChangeSetVerifyFailureReasonV0,
 	type EndoStagedChangeSetCollectionV0,
 	type EndoStagedChangeSetManifestV0,
 	type EndoStagedChangeSetSummaryV0,
@@ -46,6 +47,7 @@ import {
 	type EndoWorkspaceBaselineV0,
 	endoBaselineDigestInputV0,
 	endoChangeSetDigestInputV0,
+	endoFileAncestorConflictV0,
 	isPlainChangeSetPathV0,
 	isSafeChangeSetSegmentV0,
 	readEndoStagedChangeSetManifestV0,
@@ -66,6 +68,8 @@ const isAgentCaused = (error: unknown): boolean =>
 
 const fdPath = (fd: number): string => `/proc/self/fd/${fd}`;
 
+export type { EndoChangeSetVerifyFailureReasonV0 };
+
 /** Test-only hooks for simulating mid-collection races or agent-caused I/O errors. */
 export interface EndoChangeSetHooksV0 {
 	afterOpen?: (relPath: string) => void;
@@ -84,18 +88,6 @@ export type EndoBaselineCaptureResultV0 =
 	| { ok: true; baseline: EndoWorkspaceBaselineV0 }
 	| { ok: false; refusals: EndoChangeSetRefusalV0[] };
 
-export type EndoChangeSetVerifyFailureReasonV0 =
-	| "invalid-staging-dir"
-	| "missing-manifest"
-	| "invalid-manifest"
-	| "digest-mismatch"
-	| "pin-mismatch"
-	| "unsafe-staged-file"
-	| "executable-staged-file"
-	| "missing-staged-file"
-	| "unexpected-staged-entry"
-	| "staged-bytes-mismatch";
-
 export type EndoChangeSetVerifyResultV0 =
 	| { ok: true; manifest: EndoStagedChangeSetManifestV0 }
 	| { ok: false; reason: EndoChangeSetVerifyFailureReasonV0; detail: string };
@@ -103,7 +95,18 @@ export type EndoChangeSetVerifyResultV0 =
 export interface EndoChangeSetVerifyOptionsV0 {
 	expectedBaselineSha256?: string;
 	expectedChangesetSha256?: string;
+	/**
+	 * The complete pinned baseline record. A manifest lists only changed paths, so on its own it cannot show an `added` path that collides
+	 * with an unchanged baseline file; given the record, every change is checked against it and the implied candidate tree must be possible.
+	 */
+	baseline?: EndoWorkspaceBaselineV0;
+	/** The trusted baseline tree on disk (requires `baseline`): captured again, and refused unless it is exactly the pinned record. */
+	baselineTree?: string;
 }
+
+export type EndoCandidateReconstructionV0 =
+	| { ok: true; candidate: EndoWorkspaceBaselineV0 }
+	| { ok: false; reason: EndoChangeSetVerifyFailureReasonV0; detail: string };
 
 export interface EndoChangeSetPreviewOptionsV0 extends EndoChangeSetVerifyOptionsV0 {
 	/** Optional read-only baseline directory used to render unified diffs for modified and deleted text files. */
@@ -1025,6 +1028,24 @@ export function verifyStagedChangeSetV0(
 			detail: "manifest exceeds verifier change-set limits",
 		};
 
+	if (options.baselineTree !== undefined && options.baseline === undefined)
+		throw new TypeError("staged-changeset: a baseline directory is verified only against its baseline record");
+	if (options.baseline !== undefined) {
+		const conflict = baselineConflict(manifest, options.baseline);
+		if (conflict !== null) return { ok: false, reason: "baseline-conflict", detail: conflict };
+	}
+	if (options.baselineTree !== undefined && options.baseline !== undefined) {
+		const captured = captureWorkspaceBaselineV0(options.baselineTree, limits, {
+			skipRootGit: options.baseline.rootGitExcluded,
+		});
+		if (!captured.ok || captured.baseline.sha256 !== options.baseline.sha256)
+			return {
+				ok: false,
+				reason: "baseline-mismatch",
+				detail: "the baseline tree on disk is not the pinned baseline record",
+			};
+	}
+
 	if (!topEntries.includes("files"))
 		return { ok: false, reason: "invalid-staging-dir", detail: "files directory is missing from staging directory" };
 
@@ -1094,6 +1115,143 @@ export function verifyStagedChangeSetV0(
 	}
 
 	return { ok: true, manifest };
+}
+
+/**
+ * Why a manifest contradicts the complete baseline record it claims to be against, or null. Every `before` state must be the baseline's
+ * entry exactly, every `added` path absent from it, the summary's baseline and candidate counts those of the two trees, and the candidate
+ * tree implied by baseline plus changes possible (no regular file beneath another): the check a manifest alone cannot make, because
+ * unchanged baseline files are not listed in it.
+ */
+function baselineConflict(manifest: EndoStagedChangeSetManifestV0, baseline: EndoWorkspaceBaselineV0): string | null {
+	const checked = readEndoWorkspaceBaselineV0(baseline);
+	if (!checked.ok) return `the baseline record is invalid (${checked.message})`;
+	if (endoBaselineDigestV0(checked.value.rootGitExcluded, checked.value.files) !== checked.value.sha256)
+		return "the baseline record's digest does not match its entries";
+	if (manifest.baselineSha256 !== checked.value.sha256) return "the manifest names another baseline";
+	if (manifest.baselineRootGitExcluded !== checked.value.rootGitExcluded)
+		return "the manifest's baselineRootGitExcluded is not the baseline's";
+	const byPath = new Map(checked.value.files.map((f) => [f.path, f]));
+	const after = new Set(byPath.keys());
+	for (const change of manifest.changes) {
+		const prev = byPath.get(change.path);
+		if (change.kind === "added") {
+			if (prev !== undefined) return `added path ${change.path} is already a baseline file`;
+			after.add(change.path);
+			continue;
+		}
+		if (
+			prev === undefined ||
+			prev.bytes !== change.before.bytes ||
+			prev.sha256 !== change.before.sha256 ||
+			prev.executable !== change.before.executable
+		)
+			return `the before state of ${change.path} is not the baseline's`;
+		if (change.kind === "deleted") after.delete(change.path);
+	}
+	if (manifest.summary.baselineFiles !== checked.value.files.length)
+		return "the manifest's baseline file count is not the baseline's";
+	if (manifest.summary.candidateFiles !== after.size)
+		return "the manifest's candidate file count is not the tree baseline plus changes implies";
+	const conflict = endoFileAncestorConflictV0(after);
+	if (conflict !== null)
+		return `the candidate tree baseline plus changes implies holds ${conflict.path} beneath regular file ${conflict.ancestor}`;
+	return null;
+}
+
+/**
+ * The candidate tree a change set describes against its baseline, in the baseline record's form (executability from the manifest): every
+ * baseline file the manifest does not name, and the `after` state of every change that is not a deletion. Pure; the caller checks the
+ * manifest against the baseline first (`verifyStagedChangeSetV0` with `baseline`).
+ */
+export function endoStagedCandidateRecordV0(
+	manifest: EndoStagedChangeSetManifestV0,
+	baseline: EndoWorkspaceBaselineV0,
+): EndoWorkspaceBaselineV0 {
+	const changed = new Set(manifest.changes.map((c) => c.path));
+	const files: EndoWorkspaceBaselineEntryV0[] = baseline.files.filter((f) => !changed.has(f.path));
+	for (const change of manifest.changes)
+		if (change.kind !== "deleted") files.push({ path: change.path, ...change.after });
+	files.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+	return {
+		schemaVersion: ENDO_WORKSPACE_BASELINE_V0,
+		rootGitExcluded: baseline.rootGitExcluded,
+		files,
+		totalBytes: files.reduce((n, f) => n + f.bytes, 0),
+		sha256: endoBaselineDigestV0(baseline.rootGitExcluded, files),
+	};
+}
+
+/**
+ * Reconstruct the candidate tree a verified staged change set describes, in a new directory `candidateDir` (which must not exist): every
+ * baseline file the manifest leaves unchanged read from the trusted `baselineDir` and checked against the baseline record, and every
+ * added, modified or mode-changed file read from `stagingDir/files` and checked against the manifest, each written exclusively and
+ * read-only (`0o444`, never executable: executability stays metadata, as in staging). The result is captured again and must be exactly
+ * the expected tree. Call it only after `verifyStagedChangeSetV0` with the same baseline record and tree; every byte is re-checked here
+ * anyway, so a file swapped between the two is refused. Nothing is written outside `candidateDir`, and nothing is left there on refusal.
+ */
+export function reconstructStagedCandidateV0(
+	manifest: EndoStagedChangeSetManifestV0,
+	baseline: EndoWorkspaceBaselineV0,
+	baselineDir: string,
+	stagingDir: string,
+	candidateDir: string,
+	limits: EndoChangeSetLimitsV0 = DEFAULT_ENDO_CHANGESET_LIMITS_V0,
+): EndoCandidateReconstructionV0 {
+	validateLimits(limits);
+	const conflict = baselineConflict(manifest, baseline);
+	if (conflict !== null) return { ok: false, reason: "baseline-conflict", detail: conflict };
+	const candidate = endoStagedCandidateRecordV0(manifest, baseline);
+	const changed = new Set(manifest.changes.map((c) => c.path));
+	const expected = candidate.files.map((entry) => ({
+		entry,
+		root: changed.has(entry.path) ? join(stagingDir, "files") : baselineDir,
+	}));
+
+	mkdirSync(candidateDir, { mode: 0o700 });
+	const refuse = (reason: EndoChangeSetVerifyFailureReasonV0, detail: string): EndoCandidateReconstructionV0 => {
+		rmSync(candidateDir, { recursive: true, force: true });
+		return { ok: false, reason, detail };
+	};
+	try {
+		for (const { entry, root } of expected) {
+			const read = readPlainRelativeFile(root, entry.path, limits.maxFileBytes);
+			const from = root === baselineDir ? "baseline" : "staged";
+			if (!read.ok) return refuse(from === "baseline" ? "baseline-mismatch" : "staged-bytes-mismatch", read.detail);
+			if (
+				read.bytes.length !== entry.bytes ||
+				createHash("sha256").update(read.bytes).digest("hex") !== entry.sha256
+			)
+				return refuse(
+					from === "baseline" ? "baseline-mismatch" : "staged-bytes-mismatch",
+					`${from} file ${entry.path} is not the one the ${from === "baseline" ? "baseline record" : "manifest"} pins`,
+				);
+			const target = join(candidateDir, entry.path);
+			mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+			const fd = openSync(
+				target,
+				constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+				0o600,
+			);
+			try {
+				writeAllSyncV0(fd, read.bytes);
+			} finally {
+				closeSync(fd);
+			}
+			chmodSync(target, 0o444);
+		}
+	} catch (error) {
+		rmSync(candidateDir, { recursive: true, force: true });
+		throw error;
+	}
+	const entries = candidate.files;
+	// The tree on disk, captured again: the same paths, sizes and contents (executability is metadata, so it is compared from the record).
+	const captured = captureWorkspaceBaselineV0(candidateDir, limits);
+	const strip = (files: readonly EndoWorkspaceBaselineEntryV0[]) =>
+		canonicalEndoJsonV0(files.map((f) => ({ path: f.path, bytes: f.bytes, sha256: f.sha256 })));
+	if (!captured.ok || strip(captured.baseline.files) !== strip(entries))
+		return refuse("candidate-mismatch", "the reconstructed tree is not the one the change set and baseline imply");
+	return { ok: true, candidate };
 }
 
 // ---- host-safe, subprocess-free preview & unified diff renderer ---------------------------------------------------------------------

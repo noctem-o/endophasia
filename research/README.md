@@ -1,7 +1,9 @@
 # Real recordings and studies
 
 The completed studies and recordings, with the conditions and limits of each result. The main
-[README](../README.md#research-direction) gives a shorter summary.
+[README](../README.md#research-direction) gives a shorter summary. For the protected-experiment
+programme (`PI-RUNTIME-*` and `REASONING-*` studies), see
+[`docs/research-index.md`](../docs/research-index.md).
 
 The Pi harness studies used Pi 1.0.1 and qwen3.8-27b (Q4_K_M) on one machine with a llama.cpp
 OpenAI-compatible server. The governed initial-child pilot used Pi 1.0.4 and Nanbeige4.3-33B.

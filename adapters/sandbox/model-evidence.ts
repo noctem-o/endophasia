@@ -7,12 +7,15 @@
 // one recorded; it is not proof against someone with the host account, who could rewrite both (docs/protected-experiments.md §8).
 
 import { join } from "node:path";
-import { loadEndoCassetteV0 } from "../../adapters/openai-proxy/cassette.ts";
-import { GOVERNED_REFUSAL_ERROR_V0, TRANSFER_LIMIT_ERROR_V0 } from "../../adapters/openai-proxy/record.ts";
+import {
+	GOVERNED_REFUSAL_ERROR_V0,
+	loadEndoCassetteV0,
+	TRANSFER_LIMIT_ERROR_V0,
+} from "../../adapters/openai-proxy/cassette-read.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { createEndoBlobStoreV0 } from "../../storage/blob-store.ts";
-import { admitModelRequestV0, type EndoModelRelayPolicyV0 } from "./model-relay.ts";
+import { admitModelRequestV0, type EndoModelRelayPolicyV0 } from "./model-relay-policy.ts";
 
 /**
  * What became of one recorded exchange:

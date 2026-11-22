@@ -14,7 +14,6 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
 	ProtectedExperimentObserverV0,
@@ -364,7 +363,24 @@ describe("EVOLVE-INSPECT-001: security boundaries, symlink rejection, HTTP guard
 		expect(() => resolveProtectedRunsRootV0(join(rootBase, "does-not-exist"))).toThrow(/existing directory/);
 
 		const runsDir = freshDir("key-inside-runs");
-		const uiDir = fileURLToPath(new URL("../studio-ui/dist", import.meta.url));
+		// Minimal self-contained Studio UI manifest so this test never depends on a pre-built `studio-ui/dist`.
+		const uiDir = freshDir("minimal-studio-ui");
+		const html = Buffer.from("<!doctype html><html><body></body></html>", "utf8");
+		writeFileSync(join(uiDir, "index.html"), html);
+		writeFileSync(
+			join(uiDir, "studio-ui.manifest.json"),
+			JSON.stringify({
+				format: "endo.studio-ui-manifest/v0",
+				entry: "index.html",
+				files: [
+					{
+						name: "index.html",
+						bytes: html.length,
+						sha256: createHash("sha256").update(html).digest("hex"),
+					},
+				],
+			}),
+		);
 		await expect(
 			launchEndoCockpitV0({
 				root: tempRoot("endo-host-store-"),

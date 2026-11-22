@@ -753,6 +753,9 @@ describe("contract validators", () => {
 			// Representation Explorer projections (protocol/observe-representation.ts).
 			"endo.observe-representations.v0",
 			"endo.observe-representation-scene.v0",
+			// Protected Experiment Inspector projections (protocol/protected-experiment-observation.ts).
+			"endo.evolve-protected-experiments.v0",
+			"endo.evolve-protected-experiment.v0",
 		]);
 	});
 

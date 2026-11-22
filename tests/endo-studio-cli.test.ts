@@ -92,6 +92,7 @@ describe("the arguments", () => {
 			keyFile: null,
 			ompSessions: null,
 			representations: null,
+			protectedRuns: null,
 		});
 		expect(parse("./rec")).toMatchObject({ root: "./rec", defaultNote: null, port: 0 });
 		expect(parse("--root", "./rec", "--port", "8085")).toMatchObject({ root: "./rec", port: 8085 });

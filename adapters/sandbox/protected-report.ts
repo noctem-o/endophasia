@@ -23,7 +23,7 @@ import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canoni
 import { endoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { checkEndoProtectedRunV0, checkEndoProtectedTrialV0 } from "../../runtime/contracts/protected-experiment.ts";
 import { verifyModelEvidenceV0 } from "./model-evidence.ts";
-import { type EndoModelRelayPolicyV0, modelRelayPolicyDigestV0 } from "./model-relay.ts";
+import { type EndoModelRelayPolicyV0, modelRelayPolicyDigestV0 } from "./model-relay-policy.ts";
 import { endoBaselineDigestV0, endoStagedCandidateRecordV0, verifyStagedChangeSetV0 } from "./staged-changeset.ts";
 
 /** Refusal of a protected-experiment operation, with a bounded human-readable reason. */
@@ -248,14 +248,14 @@ function modelEvidenceProblem(
 	)
 		return "the record names other resource limits than the run declares";
 	if (v.recording.status === "none" || v.recording.status === "inconsistent") return null;
-	if (plainDirChain(attemptDir, ["model", "store"]) !== "ok") {
-		return "the attempt's model recording store is not a plain directory";
-	}
 	let key: ReturnType<typeof readAttemptKeySafe>;
 	try {
 		key = readAttemptKeySafe(attemptDir);
 	} catch {
 		return "the attempt's digest key is not readable";
+	}
+	if (plainDirChain(attemptDir, ["model", "store"]) !== "ok") {
+		return "the attempt's model recording store is not a plain directory";
 	}
 	try {
 		return verifyModelEvidenceV0({

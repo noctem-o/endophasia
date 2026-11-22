@@ -4,7 +4,7 @@
 
 <br>
 
-<h1>E N D O P H A S I A</h1>
+<h1>endophasia</h1>
 
 <p><strong>Work with agents. Inspect the evidence. Test what changes.</strong></p>
 
@@ -32,8 +32,8 @@ for checking what coding agents actually did, and keeping the record for every c
 
 <br>
 
-<img src="docs/images/develop-verify-ledger-1440.png" alt="Endophasia Develop workbench in Instrument mode showing the acceptance ledger against HEAD beside Git working-tree changes" width="100%">
-<p><sub><strong>Instrument</strong> — an attempt's acceptance ledger against <code>HEAD</code> beside the live Git tree. Checks are observed; acceptance stays yours.</sub></p>
+<img src="docs/images/readme-hero-field-storm-1440.png" alt="Endophasia Develop workbench in Field mode with Storm atmosphere, Course gauges, folded reasoning, expanded Pi tool-call inspection, and live Git changes" width="100%">
+<p><sub><strong>Field (Storm)</strong> — live <em>Course</em> gauges, folded model-provided reasoning, inspectable tool calls with explicit safe-preview &amp; provenance labels, Git tree changes and terminal-gated Strict mode (synthetic fixture; weather is scenery).</sub></p>
 
 </div>
 
@@ -362,9 +362,9 @@ The browser interface — **Endophasia Web**, served locally under the `endo` CL
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/images/atmosphere-conversation-storm-strike-1440.png" alt="Develop workbench in Field mode with Storm atmosphere, Course gauges, folded reasoning, and Git changes">
+      <img src="docs/images/readme-instrument-ledger-1440.png" alt="Develop workbench in Instrument mode showing the six-stage Course rail, acceptance ledger against HEAD, Mode Strict bar, and Git changes">
       <br>
-      <sub><strong>Field, Course &amp; Atmospheres</strong> — live <em>Run</em> and <em>Request</em> gauges, folded or explicitly <em>withheld</em> model reasoning, and optional weather atmospheres (<em>"weather is scenery and shows nothing about the session"</em>).</sub>
+      <sub><strong>Instrument &amp; Acceptance Ledger</strong> — six-stage <em>Course</em> rail (<code>Brief · Assent · Send · Run · Check · Judge</code>), per-criterion ledger against <code>HEAD</code>, and live Git changes. Checks are observed; acceptance stays yours.</sub>
     </td>
     <td width="50%" valign="top">
       <img src="docs/images/observe-representation-explorer-1440.png" alt="Observe Representation Explorer showing 2D PCA projection of SmolLM2 residual stream with Observed, Derived, Interpreted, and Unavailable badges">

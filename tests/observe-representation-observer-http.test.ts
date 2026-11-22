@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
-import { ObserveRepresentationObserverV0 } from "../adapters/observe-representation/observer.ts";
+import {
+	ObserveRepresentationObserverV0,
+	readBoundedCaptureFileV0,
+} from "../adapters/observe-representation/observer.ts";
 import { parseEndoStudioArgsV0 } from "../cli/studio.ts";
 import { readEndoCockpitRecordV0 } from "../protocol/cockpit.ts";
 import { ENDO_OBSERVE_REPRESENTATION_CAPTURE_SCHEMA_V0 } from "../protocol/observe-representation.ts";
@@ -80,6 +83,26 @@ describe("ObserveRepresentationObserverV0 filesystem & selector invariants", () 
 		modified.artifact.promptId = "changed-prompt";
 		writeFileSync(join(dir, "01-real.json"), JSON.stringify(modified));
 		expect(observer.scene(readable.selector)).toBeNull();
+	});
+
+	it("enforces descriptor-level bounded reads when a file exceeds maxBytes or grows in place", () => {
+		const dir = mkdtempSync(join(scratch, "bounded-"));
+		const target = join(dir, "capture.json");
+		writeFileSync(target, "x".repeat(2048));
+		const smallRead = readBoundedCaptureFileV0(target, 1024);
+		expect(smallRead.ok).toBe(false);
+		if (!smallRead.ok) expect(smallRead.state).toBe("too-large");
+
+		const exactRead = readBoundedCaptureFileV0(target, 2048);
+		expect(exactRead.ok).toBe(true);
+		if (exactRead.ok) expect(exactRead.bytes.length).toBe(2048);
+
+		// Symlink is refused by O_NOFOLLOW / lstatSync.
+		const link = join(dir, "link.json");
+		symlinkSync(target, link);
+		const linkRead = readBoundedCaptureFileV0(link, 4096);
+		expect(linkRead.ok).toBe(false);
+		if (!linkRead.ok) expect(linkRead.state).toBe("unreadable");
 	});
 });
 

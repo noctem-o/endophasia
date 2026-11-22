@@ -11,7 +11,7 @@
 // - No local filesystem path, raw exception, or unvalidated content is ever returned to the browser.
 
 import { createHash } from "node:crypto";
-import { lstatSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readSync, realpathSync } from "node:fs";
 import { join, relative } from "node:path";
 import { projectEndoObserveRepresentationSceneV0 } from "../../cockpit/projections/representation-scene.ts";
 import {
@@ -44,6 +44,90 @@ interface DiscoveredFile {
 	ino: bigint;
 	size: bigint;
 	born: bigint;
+}
+
+const sameFileSnapshot = (
+	a: { dev: bigint; ino: bigint; size: bigint; mtimeNs: bigint; ctimeNs: bigint },
+	b: { dev: bigint; ino: bigint; size: bigint; mtimeNs: bigint; ctimeNs: bigint },
+): boolean =>
+	a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs;
+
+export type BoundedCaptureReadV0 =
+	| { ok: true; bytes: Buffer; size: bigint }
+	| { ok: false; state: "too-large" | "unreadable"; reason: string };
+
+/**
+ * Descriptor-based bounded read of one plain regular file (matching `adapters/omp/journal.ts`).
+ * Opens with `O_RDONLY | O_NOFOLLOW | O_NONBLOCK`, verifies the opened descriptor's `fstatSync` size against
+ * `maxBytes` before allocating, reads at most `maxBytes` bytes via `readSync`, probes for unexpected growth past
+ * EOF, and confirms file identity/size stayed stable across the read.
+ */
+export function readBoundedCaptureFileV0(
+	path: string,
+	maxBytes: number = ENDO_OBSERVE_REPRESENTATION_LIMITS_V0.maxFileBytes,
+	expected?: { dev: bigint; ino: bigint },
+): BoundedCaptureReadV0 {
+	const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+	if (before === undefined || before.isSymbolicLink() || !before.isFile()) {
+		return { ok: false, state: "unreadable", reason: "Artifact file changed or is not a plain regular file." };
+	}
+	if (expected !== undefined && (before.dev !== expected.dev || before.ino !== expected.ino)) {
+		return { ok: false, state: "unreadable", reason: "Artifact file changed or is not a plain regular file." };
+	}
+	if (before.size > BigInt(maxBytes)) {
+		return { ok: false, state: "too-large", reason: "Artifact file exceeds the 16 MiB bounded read limit." };
+	}
+	let fd: number;
+	try {
+		fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+	} catch {
+		return { ok: false, state: "unreadable", reason: "Artifact file could not be read." };
+	}
+	try {
+		const opened = fstatSync(fd, { bigint: true });
+		if (!opened.isFile()) {
+			return { ok: false, state: "unreadable", reason: "Artifact file changed or is not a plain regular file." };
+		}
+		if (expected !== undefined && (opened.dev !== expected.dev || opened.ino !== expected.ino)) {
+			return { ok: false, state: "unreadable", reason: "Artifact file changed or is not a plain regular file." };
+		}
+		if (opened.size > BigInt(maxBytes)) {
+			return { ok: false, state: "too-large", reason: "Artifact file exceeds the 16 MiB bounded read limit." };
+		}
+		if (!sameFileSnapshot(before, opened)) {
+			return { ok: false, state: "unreadable", reason: "Artifact file changed while being read." };
+		}
+		const size = Number(opened.size);
+		const bytes = Buffer.alloc(size);
+		let offset = 0;
+		while (offset < size) {
+			const n = readSync(fd, bytes, offset, size - offset, offset);
+			if (n === 0) break;
+			offset += n;
+		}
+		// Probe 1 byte past the expected EOF to ensure the file did not grow during the read.
+		const extra = Buffer.alloc(1);
+		const grew = readSync(fd, extra, 0, 1, offset) > 0;
+		const after = fstatSync(fd, { bigint: true });
+		const still = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+		if (after.size > BigInt(maxBytes)) {
+			return { ok: false, state: "too-large", reason: "Artifact file exceeds the 16 MiB bounded read limit." };
+		}
+		if (
+			grew ||
+			offset !== size ||
+			!sameFileSnapshot(opened, after) ||
+			still === undefined ||
+			!sameFileSnapshot(opened, still)
+		) {
+			return { ok: false, state: "unreadable", reason: "Artifact file changed while being read." };
+		}
+		return { ok: true, bytes, size: opened.size };
+	} catch {
+		return { ok: false, state: "unreadable", reason: "Artifact file could not be read." };
+	} finally {
+		closeSync(fd);
+	}
 }
 
 /** Resolve an operator-named `--representations` directory, or throw a TypeError if unusable. */
@@ -179,24 +263,25 @@ export class ObserveRepresentationObserverV0 implements EndoObserveRepresentatio
 			artifactSha256: sha256,
 		});
 
-		if (file.size > BigInt(ENDO_OBSERVE_REPRESENTATION_LIMITS_V0.maxFileBytes)) {
-			return unreadable("too-large", "Artifact file exceeds the 16 MiB bounded read limit.");
-		}
-
-		let bytes: Buffer;
 		try {
-			const before = lstatSync(file.path, { bigint: true });
-			if (before.isSymbolicLink() || !before.isFile() || before.dev !== file.dev || before.ino !== file.ino) {
-				return unreadable("unreadable", "Artifact file changed or is not a plain regular file.");
-			}
-			bytes = readFileSync(file.path);
-			const after = lstatSync(file.path, { bigint: true });
-			if (after.dev !== file.dev || after.ino !== file.ino || after.size !== BigInt(bytes.length)) {
-				return unreadable("unreadable", "Artifact file changed while being read.");
+			if (realpathSync(this.#root) !== this.#root) {
+				return unreadable("unreadable", "Representations directory changed or is a symbolic link.");
 			}
 		} catch {
-			return unreadable("unreadable", "Artifact file could not be read.");
+			return unreadable("unreadable", "Representations directory could not be verified.");
 		}
+
+		const read = readBoundedCaptureFileV0(file.path, ENDO_OBSERVE_REPRESENTATION_LIMITS_V0.maxFileBytes, {
+			dev: file.dev,
+			ino: file.ino,
+		});
+		if (!read.ok) {
+			return unreadable(read.state, read.reason);
+		}
+		if (read.size !== file.size) {
+			return unreadable("unreadable", "Artifact file changed while being read.");
+		}
+		const bytes = read.bytes;
 
 		const sha256 = createHash("sha256").update(bytes).digest("hex");
 		let parsed: unknown;

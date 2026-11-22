@@ -31,11 +31,14 @@ import {
 	runProtectedExperimentV0,
 } from "../cli/experiment-protected.ts";
 import {
+	ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2,
+	ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2,
 	type EndoProtectedSpecV2,
 	type EndoProtectedTrialV2,
 	endoProtectedTrialOutcomeV0,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
+import { DEFAULT_ENDO_CHANGESET_LIMITS_V0, type EndoChangeSetLimitsV0 } from "../protocol/staged-changeset.ts";
 import { readEndoProtectedTrialFileV0, sealEndoProtectedTrialV0 } from "../runtime/contracts/protected-experiment.ts";
 
 const EXAMPLE = fileURLToPath(new URL("../research/protected-eval/example/", import.meta.url));
@@ -101,7 +104,11 @@ const ALL_CHANGES = (solution: string) =>
 		"fs.rmSync('README.md');",
 	].join("\n");
 
-function specWith(agents: Record<string, string>, change: Partial<EndoProtectedSpecV2> = {}): EndoProtectedSpecV2 {
+function specWith(
+	agents: Record<string, string>,
+	change: Partial<EndoProtectedSpecV2> = {},
+	limits: EndoChangeSetLimitsV0 = LIMITS,
+): EndoProtectedSpecV2 {
 	const evaluatorDir = fresh("evaluator");
 	for (const part of ["reference", "negative"]) {
 		mkdirSync(join(evaluatorDir, part, "src"), { recursive: true });
@@ -135,7 +142,7 @@ function specWith(agents: Record<string, string>, change: Partial<EndoProtectedS
 			{
 				id: "merge-intervals",
 				workspace: FIXTURE,
-				submission: { mode: "staged-changeset", limits: LIMITS },
+				submission: { mode: "staged-changeset", limits },
 				evaluator: {
 					file: join(evaluatorDir, "evaluator.json"),
 					sha256: sha(join(evaluatorDir, "evaluator.json")),
@@ -399,6 +406,258 @@ describe.runIf(REAL)("staged change-set submission in a real protected run", () 
 		await expect(runProtectedExperimentV0({ spec: swapped, dir: fresh("run") })).rejects.toThrow(
 			EndoProtectedRefusalV0,
 		);
+	});
+
+	describe("every refusal the collector can make seals, bounded explicitly (the record's own constants, at and one past each)", () => {
+		const PATH_MAX = ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2;
+		const LIST_MAX = ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2;
+		/** A refused path of exactly `length` characters: two walkable directories and a name the collector refuses as unsafe. */
+		const longPath = (length: number) => `${"a".repeat(100)}/${"b".repeat(100)}/${"c".repeat(length - 202)}`;
+		const pathAgent = (length: number) =>
+			`import fs from "node:fs"; const p = ${JSON.stringify(longPath(length))}; fs.mkdirSync(p.slice(0, 201), { recursive: true }); fs.writeFileSync(p, "x");`;
+		const linksAgent = (n: number) =>
+			`import fs from "node:fs"; for (let i = 0; i < ${n}; i++) fs.symlinkSync("/etc/passwd", "l" + String(i).padStart(5, "0"));`;
+		const PATHS = [PATH_MAX, PATH_MAX + 1, PATH_MAX + 3, PATH_MAX + 4];
+		const LINKS = [LIST_MAX, LIST_MAX + 1, LIST_MAX + 2];
+		const agents = {
+			...Object.fromEntries(PATHS.map((n) => [`path-${n}`, pathAgent(n)])),
+			...Object.fromEntries(LINKS.map((n) => [`links-${n}`, linksAgent(n)])),
+			honest: ALL_CHANGES(SOLUTION),
+		};
+		/** The agent's own refusal, recorded as the agent's failure: finalized normally, never evaluated, never attrition. */
+		const expectAgentRefusal = (r: EndoProtectedTrialV2, reason: string) => {
+			expect(r.controller.finalized).toBe("normally");
+			expect(r.agent).toMatchObject({ status: "completed", termination: "confirmed" });
+			expect(r.changeset.collection.status).toBe("refused");
+			expect(r.changeset.verification.status).toBe("not-run");
+			expect(r.evaluation.status).toBe("not-run");
+			expect(r.invalidating).toEqual([]);
+			expect(endoProtectedTrialOutcomeV0(r)).toEqual({ outcome: "failed", reason: `changeset-${reason}` });
+		};
+		const expectPath = (r: EndoProtectedTrialV2, n: number) => {
+			expectAgentRefusal(r, "unsafe-path");
+			expect(r.changeset.collection.refusalsOmitted).toBe(0);
+			expect(r.changeset.collection.refusals).toEqual([
+				n <= PATH_MAX
+					? { path: longPath(n), reason: "unsafe-path", truncated: null }
+					: {
+							path: longPath(n).slice(0, PATH_MAX),
+							reason: "unsafe-path",
+							truncated: { length: n, sha256: createHash("sha256").update(longPath(n)).digest("hex") },
+						},
+			]);
+		};
+		const expectLinks = (r: EndoProtectedTrialV2, n: number) => {
+			expectAgentRefusal(r, "symbolic-link");
+			expect(r.changeset.collection.refusals).toHaveLength(Math.min(n, LIST_MAX));
+			expect(
+				r.changeset.collection.refusals.every((x) => x.reason === "symbolic-link" && x.truncated === null),
+			).toBe(true);
+			expect(r.changeset.collection.refusals.at(-1)?.path).toBe(`l${String(LIST_MAX - 1).padStart(5, "0")}`);
+			expect(r.changeset.collection.refusalsOmitted).toBe(Math.max(0, n - LIST_MAX));
+		};
+
+		it("records each as the agent's refusal, never evaluated, and the run goes on to its remaining trials", async () => {
+			const out = fresh("run");
+			const spec = specWith(agents, {}, DEFAULT_ENDO_CHANGESET_LIMITS_V0);
+			expect(await runProtectedExperimentV0({ spec, dir: out })).toMatchObject({
+				attempts: Object.keys(agents).length,
+				finalizedOnResume: 0,
+			});
+			for (const n of PATHS) expectPath(recordOf(out, `path-${n}`), n);
+			for (const n of LINKS) expectLinks(recordOf(out, `links-${n}`), n);
+			expect(recordOf(out, "honest").evaluation.status).toBe("passed");
+			const report = reportProtectedExperimentV0(out);
+			expect(report.refusedRecords).toEqual([]);
+			for (const c of [...PATHS.map((n) => `path-${n}`), ...LINKS.map((n) => `links-${n}`)])
+				expect(report.cells.find((x) => x.condition === c)).toMatchObject({
+					qualified: 1,
+					failed: 1,
+					failedWithoutSubmission: 1,
+				});
+
+			// The reader holds the bounds: nothing past them reads, and a record cannot claim an omission or a cut it did not make.
+			const reseal = (
+				r: EndoProtectedTrialV2,
+				mutate: (c: EndoProtectedTrialV2["changeset"]["collection"]) => void,
+			) => {
+				const { recordSha256: _ignored, ...rest } = structuredClone(r);
+				mutate(rest.changeset.collection);
+				return () => sealEndoProtectedTrialV0(rest as never);
+			};
+			const full = recordOf(out, `links-${LIST_MAX + 1}`);
+			const cut = recordOf(out, `path-${PATH_MAX + 3}`);
+			expect(reseal(full, () => {})).not.toThrow();
+			expect(reseal(cut, () => {})).not.toThrow();
+			const refused: [string, RegExp, () => unknown][] = [
+				[
+					"one refusal past the list's bound",
+					/refusals is not a list/,
+					reseal(full, (c) => {
+						c.refusals.push({ path: "l99999", reason: "symbolic-link", truncated: null });
+					}),
+				],
+				[
+					"an omission from a list that is not full",
+					/omitted only from a full list/,
+					reseal(full, (c) => {
+						c.refusals.pop();
+					}),
+				],
+				[
+					"no count of omitted refusals",
+					/missing field refusalsOmitted/,
+					reseal(full, (c) => {
+						delete (c as Partial<typeof c>).refusalsOmitted;
+					}),
+				],
+				[
+					"a path one past the bound, uncut",
+					/path is not acceptable text/,
+					reseal(cut, (c) => {
+						c.refusals[0] = { path: longPath(PATH_MAX + 1), reason: "unsafe-path", truncated: null };
+					}),
+				],
+				[
+					"a cut path past the bound",
+					/path is not acceptable text/,
+					reseal(cut, (c) => {
+						(c.refusals[0] as { path: string }).path = longPath(PATH_MAX + 1);
+					}),
+				],
+				[
+					"a cut that kept less than the bound",
+					/a truncated path keeps the bound's length/,
+					reseal(cut, (c) => {
+						(c.refusals[0] as { path: string }).path = "a";
+					}),
+				],
+				[
+					"a cut claimed for a path within the bound",
+					/truncated.length is not an integer in range/,
+					reseal(cut, (c) => {
+						(c.refusals[0] as { truncated: { length: number } }).truncated.length = PATH_MAX;
+					}),
+				],
+				[
+					"no word on whether the path was cut",
+					/missing field truncated/,
+					reseal(cut, (c) => {
+						delete (c.refusals[0] as { truncated?: unknown }).truncated;
+					}),
+				],
+			];
+			for (const [what, why, seal] of refused) {
+				expect(seal, what).toThrow(/unreadable protected-trial record/);
+				expect(seal, what).toThrow(why);
+			}
+		}, 180_000);
+
+		it("through an interrupted run and its resume: the agent's refusal stays the agent's, and only the interrupted attempt is attrition", async () => {
+			const spec = specWith(
+				{
+					[`path-${PATH_MAX + 3}`]: pathAgent(PATH_MAX + 3),
+					[`links-${LIST_MAX + 1}`]: linksAgent(LIST_MAX + 1),
+					sleeper:
+						'import fs from "node:fs"; fs.writeFileSync("src/interval.mjs", "x"); setInterval(() => {}, 1000);',
+				},
+				{},
+				DEFAULT_ENDO_CHANGESET_LIMITS_V0,
+			);
+			const specFile = join(fresh("spec"), "spec.json");
+			writeFileSync(specFile, JSON.stringify(spec));
+			const out = fresh("run");
+			const controller = spawn(process.execPath, [CLI, "experiment", "protected-run", specFile, "--out", out], {
+				stdio: "ignore",
+			});
+			const started = join(attemptOf(out, "sleeper"), "agent-started.json");
+			for (let i = 0; i < 1200 && !existsSync(started); i++) await new Promise((r) => setTimeout(r, 50));
+			expect(existsSync(started)).toBe(true);
+			const ns = JSON.parse(readFileSync(started, "utf8")).init;
+			controller.kill("SIGKILL");
+			await new Promise((r) => controller.on("close", r));
+			for (let i = 0; i < 200 && processAliveV0(ns); i++) await new Promise((r) => setTimeout(r, 50));
+			expect(await runProtectedExperimentV0({ spec, dir: out })).toMatchObject({ finalizedOnResume: 1 });
+			expectPath(recordOf(out, `path-${PATH_MAX + 3}`), PATH_MAX + 3);
+			expectLinks(recordOf(out, `links-${LIST_MAX + 1}`), LIST_MAX + 1);
+			const sleeper = recordOf(out, "sleeper");
+			expect(sleeper.controller.finalized).toBe("on-resume");
+			expect(sleeper.invalidating).toEqual(["controller-interrupted", "agent-interrupted"]);
+			const report = reportProtectedExperimentV0(out);
+			expect(report.refusedRecords).toEqual([]);
+			expect(report.cells.find((x) => x.condition === `path-${PATH_MAX + 3}`)).toMatchObject({
+				qualified: 1,
+				failed: 1,
+			});
+			expect(report.cells.find((x) => x.condition === `links-${LIST_MAX + 1}`)).toMatchObject({
+				qualified: 1,
+				failed: 1,
+			});
+		}, 180_000);
+	});
+
+	describe("termination that cannot be confirmed (the runner's test-only seam): nothing collected, nothing evaluated", () => {
+		const expectNothingHanded = (r: EndoProtectedTrialV2, attempt: string) => {
+			expect(r.agent.termination).toBe("unconfirmed");
+			expect(r.agent.scope?.ended).toBe("unconfirmed");
+			expect(r.changeset.baseline.status).toBe("pinned");
+			expect(r.changeset.collection).toEqual({
+				status: "not-collected",
+				changesetSha256: null,
+				summary: null,
+				refusals: [],
+				refusalsOmitted: 0,
+			});
+			expect(r.changeset.verification).toEqual({ status: "not-run", reason: null, candidateSha256: null });
+			expect(r.evaluation).toMatchObject({ status: "not-run", cases: null, outputSha256: null });
+			expect(r.invalidating).toContain("termination-unconfirmed");
+			expect(endoProtectedTrialOutcomeV0(r).outcome).toBe("attrition");
+			for (const d of ["changeset", "candidate", ".evaluation", "evaluation-scope.json"])
+				expect(existsSync(join(attempt, d)), d).toBe(false);
+		};
+
+		it("after a normal attempt: the sealed record says the agent's end was unconfirmed and nothing was handed on", async () => {
+			const out = fresh("run");
+			const spec = specWith({ honest: ALL_CHANGES(SOLUTION) });
+			await runProtectedExperimentV0({ spec, dir: out, unconfirmedTerminationForTests: true });
+			const r = recordOf(out, "honest");
+			expect(r.controller.finalized).toBe("normally");
+			expect(r.agent.status).toBe("completed");
+			expectNothingHanded(r, attemptOf(out, "honest"));
+			expect(r.invalidating).toEqual(["termination-unconfirmed"]);
+			const { cell, refused } = cellOf(out, "honest");
+			expect(refused).toEqual([]);
+			expect(cell).toMatchObject({ qualified: 0, passed: 0, attrition: { "termination-unconfirmed": 1 } });
+		});
+
+		it("on a resume after the controller died: finalized on resume with the agent's end unconfirmed, nothing collected", async () => {
+			const spec = specWith({
+				sleeper:
+					'import fs from "node:fs"; fs.writeFileSync("src/interval.mjs", "x"); setInterval(() => {}, 1000);',
+			});
+			const specFile = join(fresh("spec"), "spec.json");
+			writeFileSync(specFile, JSON.stringify(spec));
+			const out = fresh("run");
+			const controller = spawn(process.execPath, [CLI, "experiment", "protected-run", specFile, "--out", out], {
+				stdio: "ignore",
+			});
+			const started = join(attemptOf(out, "sleeper"), "agent-started.json");
+			for (let i = 0; i < 300 && !existsSync(started); i++) await new Promise((r) => setTimeout(r, 50));
+			expect(existsSync(started)).toBe(true);
+			controller.kill("SIGKILL");
+			await new Promise((r) => controller.on("close", r));
+			expect(await runProtectedExperimentV0({ spec, dir: out, unconfirmedTerminationForTests: true })).toMatchObject(
+				{
+					finalizedOnResume: 1,
+				},
+			);
+			const r = recordOf(out, "sleeper");
+			expect(r.controller.finalized).toBe("on-resume");
+			expect(r.agent.status).toBe("interrupted");
+			expectNothingHanded(r, attemptOf(out, "sleeper"));
+			expect(r.invalidating).toEqual(["controller-interrupted", "agent-interrupted", "termination-unconfirmed"]);
+			expect(cellOf(out, "sleeper").refused).toEqual([]);
+		}, 60_000);
 	});
 
 	it("fails closed on a staged record whose facts contradict each other, even sealed consistently", async () => {

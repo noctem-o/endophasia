@@ -6,6 +6,8 @@
 // only through its attempt's relay, its recording closed and summarized, the submission evaluated in a separate offline sandbox, and the
 // report reading every record again against the recording on disk. The agents are small node scripts: harness-neutral, and each does
 // exactly one thing the test is about (an honest agent, an adversary, one that never calls the model, one past the exchange bound).
+// The version 3 tests at the end (staged change-set submission through the same fake model and relay) live in this file so that their
+// runs never overlap the runtime-directory leftover checks here: vitest runs separate files concurrently.
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
@@ -32,13 +34,18 @@ import {
 	runProtectedExperimentV0,
 } from "../cli/experiment-protected.ts";
 import {
+	ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2,
+	ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2,
 	type EndoProtectedSpecV1,
+	type EndoProtectedSpecV3,
 	type EndoProtectedTrial,
 	type EndoProtectedTrialV0,
 	type EndoProtectedTrialV1,
+	type EndoProtectedTrialV3,
 	endoProtectedTrialOutcomeV0,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
+import { DEFAULT_ENDO_CHANGESET_LIMITS_V0, type EndoChangeSetLimitsV0 } from "../protocol/staged-changeset.ts";
 import { makePiAgentDirectoryV1, piExampleSpecV1 } from "../research/protected-eval/model-connected/pi-condition.ts";
 import { readEndoProtectedTrialFileV0, sealEndoProtectedTrialV0 } from "../runtime/contracts/protected-experiment.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
@@ -614,5 +621,315 @@ describe.runIf(REAL && PI_DIST.length > 0)(
 				await upstream.close();
 			}
 		});
+	},
+);
+
+// ---- version 3: staged change-set submission, model-connected (docs/designs/protected-staged-changeset.md) ----
+
+const digest = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
+const STAGED_WRONG = readFileSync(join(EXAMPLE, "evaluator", "negative", "src", "interval.mjs"), "utf8");
+const STAGED_FIXTURE: Record<string, string> = {
+	"README.md": "Implement mergeIntervals in src/interval.mjs.\n",
+	"package.json": '{ "name": "fixture", "private": true, "type": "module" }\n',
+	"src/interval.mjs": "export function mergeIntervals() { throw new Error('todo'); }\n",
+};
+const STAGED_LIMITS: EndoChangeSetLimitsV0 = {
+	maxFileBytes: 65_536,
+	maxTotalStagedBytes: 262_144,
+	maxWorkspaceBytes: 1_048_576,
+	maxWalkedEntries: 256,
+	maxChangedFiles: 32,
+	maxDepth: 8,
+};
+
+/** What every agent starts with: a way to ask the model through the bridge the environment names, and a solution to write. */
+const STAGED_PRELUDE = `
+import http from "node:http"; import fs from "node:fs";
+const origin = new URL(process.env.ENDO_MODEL_ORIGIN);
+const chat = () => JSON.stringify({ model: process.env.ENDO_MODEL_ID, stream: false, max_tokens: Number(process.env.ENDO_MODEL_MAX_COMPLETION_TOKENS), messages: [{ role: "user", content: "Say hello" }] });
+const ask = () => new Promise((resolve) => {
+	const data = chat();
+	const req = http.request({ host: origin.hostname, port: Number(origin.port), path: "/v1/chat/completions", method: "POST", agent: false,
+		headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data) } }, (res) => {
+		res.resume(); res.on("end", () => resolve(String(res.statusCode))); res.on("error", (e) => resolve(e.code || "error"));
+	});
+	req.on("error", (e) => resolve(e.code || "error"));
+	req.end(data);
+});
+const write = (content) => fs.writeFileSync("src/interval.mjs", content);
+const asked = [await ask(), await ask()]; console.log("ASKED", ...asked);
+`;
+const stagedWrite = (s: string) =>
+	`write(${JSON.stringify(s)}); fs.writeFileSync("NOTES.md", "how I solved it\\n"); fs.rmSync("README.md");`;
+
+function stagedSpecWith(
+	agents: Record<string, string>,
+	upstream: string,
+	limits: EndoChangeSetLimitsV0 = STAGED_LIMITS,
+): EndoProtectedSpecV3 {
+	const evaluatorDir = fresh("evaluator");
+	for (const part of ["reference", "negative"]) {
+		mkdirSync(join(evaluatorDir, part, "src"), { recursive: true });
+		writeFileSync(
+			join(evaluatorDir, part, "src", "interval.mjs"),
+			readFileSync(join(EXAMPLE, "evaluator", part, "src", "interval.mjs")),
+		);
+	}
+	writeFileSync(join(evaluatorDir, "evaluator.json"), readFileSync(join(EXAMPLE, "evaluator", "evaluator.json")));
+	const conditions = Object.entries(agents).map(([id, source]) => {
+		const dir = fresh(`agent-${id}`);
+		writeFileSync(join(dir, "agent.mjs"), STAGED_PRELUDE + source);
+		return { id, description: id, agent: { directory: dir, argv: ["/usr/bin/node", "/agent/agent.mjs"] } };
+	});
+	const read = readEndoProtectedSpecV0({
+		schemaVersion: "endo.protected-experiment-spec.v3",
+		id: "endo.experiment.staged-model-run-test",
+		description: "test",
+		seed: 7,
+		trials: 1,
+		limits: {
+			agentTimeoutMs: 20_000,
+			evaluationTimeoutMs: 20_000,
+			outputBytes: 1_048_576,
+			tmpfsBytes: 16_777_216,
+			maxFileBytes: 65_536,
+			maxTotalBytes: 262_144,
+			memoryMaxBytes: 512 * 1024 * 1024,
+			cpuQuotaPercent: 200,
+		},
+		runtime: { executables: ["/usr/bin/node"], aliases: [] },
+		tasks: [
+			{
+				id: "merge-intervals",
+				workspace: STAGED_FIXTURE,
+				submission: { mode: "staged-changeset", limits },
+				evaluator: {
+					file: join(evaluatorDir, "evaluator.json"),
+					sha256: digest(readFileSync(join(evaluatorDir, "evaluator.json"))),
+				},
+			},
+		],
+		conditions,
+		modelAccess: {
+			upstream,
+			model: MODEL,
+			routes: [{ method: "POST", path: "/v1/chat/completions" }],
+			maxRequestBytes: 256 * 1024,
+			maxTransferredBytes: 16 * 1024 * 1024,
+			maxConnections: 8,
+			maxTotalConnections: 64,
+			maxExchanges: 32,
+			maxCompletionTokens: 64,
+			minExchanges: 1,
+		},
+	});
+	if (!read.ok) throw new Error(read.message);
+	return read.value as EndoProtectedSpecV3;
+}
+const stagedAttemptOf = (out: string, condition: string) =>
+	join(out, "trials", "merge-intervals", condition, "0", "attempt-1");
+const stagedRecordOf = (out: string, condition: string): EndoProtectedTrialV3 => {
+	const r = readEndoProtectedTrialFileV0(join(stagedAttemptOf(out, condition), "record.json"));
+	if (!r.ok) throw new Error(r.reason);
+	expect(r.value.schemaVersion).toBe("endo.protected-trial.v3");
+	return r.value as EndoProtectedTrialV3;
+};
+const stagedCellOf = (out: string, condition: string) => {
+	const report = reportProtectedExperimentV0(out);
+	return { refused: report.refusedRecords, cell: report.cells.find((c) => c.condition === condition) };
+};
+/** Both exchanges went through the attempt's relay to the fake model, and were recorded completely. */
+const expectModelReached = (r: EndoProtectedTrialV3) => {
+	expect(r.preflight.status).toBe("established");
+	expect(r.isolation.requested.network).toBe("model-relay");
+	expect(r.network.relay).toMatchObject({ status: "ran", admitted: 2, recordingFailures: 0 });
+	expect(r.recording.status).toBe("complete");
+	expect(r.recording.exchanges.map((e) => [e.class, e.status, e.verified])).toEqual([
+		["answered", 200, true],
+		["answered", 200, true],
+	]);
+};
+
+describe.runIf(REAL)(
+	"staged change-set submission in a real model-connected (version 3) protected run (in this file, so its runs never overlap the leftover checks above)",
+	() => {
+		it("an agent that asks the model and then solves: collected, verified, evaluated from the rebuilt candidate, passed", async () => {
+			await withUpstream(async (upstream) => {
+				const before = runtimeLeftovers();
+				const out = fresh("run");
+				const spec = stagedSpecWith(
+					{ honest: stagedWrite(SOLUTION), wrong: stagedWrite(STAGED_WRONG) },
+					new URL(upstream.baseUrl).origin,
+				);
+				expect(await runProtectedExperimentV0({ spec, dir: out })).toMatchObject({
+					attempts: 2,
+					finalizedOnResume: 0,
+				});
+				expect(upstream.completionRequests()).toHaveLength(4);
+				const r = stagedRecordOf(out, "honest");
+				expectModelReached(r);
+				expect(r.agent).toMatchObject({ status: "completed", termination: "confirmed" });
+				expect(r.changeset.baseline).toMatchObject({ status: "pinned", files: 3 });
+				expect(r.changeset.collection).toMatchObject({ status: "collected", refusals: [], refusalsOmitted: 0 });
+				expect(r.changeset.collection.summary).toMatchObject({
+					baselineFiles: 3,
+					candidateFiles: 3,
+					unchangedFiles: 1,
+					addedFiles: 1,
+					modifiedFiles: 1,
+					deletedFiles: 1,
+				});
+				expect(r.changeset.verification).toMatchObject({ status: "verified", reason: null });
+				expect(r.changeset.verification.candidateSha256).toMatch(/^[0-9a-f]{64}$/);
+				expect(r.evaluation).toMatchObject({ status: "passed", cases: { total: 7, passed: 7 } });
+				expect(r.invalidating).toEqual([]);
+				expect(endoProtectedTrialOutcomeV0(r)).toEqual({ outcome: "passed", reason: null });
+				// What was evaluated is the candidate rebuilt from the pristine baseline plus the verified changes.
+				const candidate = join(stagedAttemptOf(out, "honest"), "candidate");
+				expect(readdirSync(candidate).sort()).toEqual(["NOTES.md", "package.json", "src"]);
+				expect(readFileSync(join(candidate, "src", "interval.mjs"), "utf8")).toBe(SOLUTION);
+				const wrong = stagedRecordOf(out, "wrong");
+				expectModelReached(wrong);
+				expect(wrong.changeset.verification.status).toBe("verified");
+				expect(wrong.evaluation.status).toBe("failed");
+				expect(endoProtectedTrialOutcomeV0(wrong).outcome).toBe("failed");
+				const { refused, cell } = stagedCellOf(out, "honest");
+				expect(refused).toEqual([]);
+				expect(cell).toMatchObject({ planned: 1, qualified: 1, passed: 1 });
+				expect(stagedCellOf(out, "wrong").cell).toMatchObject({ qualified: 1, passed: 0, failed: 1 });
+				expect(runtimeLeftovers()).toEqual(before);
+			});
+		}, 120_000);
+
+		it("what the collector refuses after a model-connected run fails closed as the agent's failure, recorded whole or explicitly bounded", async () => {
+			await withUpstream(async (upstream) => {
+				const PATH = ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2 + 3;
+				const LINKS = ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2 + 1;
+				const long = `${"a".repeat(100)}/${"b".repeat(100)}/${"c".repeat(PATH - 202)}`;
+				const out = fresh("run");
+				const spec = stagedSpecWith(
+					{
+						link: 'fs.rmSync("src/interval.mjs"); fs.symlinkSync("/etc/passwd", "src/interval.mjs");',
+						git: 'fs.mkdirSync(".git"); fs.writeFileSync(".git/config", "");',
+						long: `const p = ${JSON.stringify(long)}; fs.mkdirSync(p.slice(0, 201), { recursive: true }); fs.writeFileSync(p, "x");`,
+						links: `for (let i = 0; i < ${LINKS}; i++) fs.symlinkSync("/etc/passwd", "l" + String(i).padStart(5, "0"));`,
+					},
+					new URL(upstream.baseUrl).origin,
+					DEFAULT_ENDO_CHANGESET_LIMITS_V0,
+				);
+				expect(await runProtectedExperimentV0({ spec, dir: out })).toMatchObject({
+					attempts: 4,
+					finalizedOnResume: 0,
+				});
+				const reasons: Record<string, string> = {
+					link: "symbolic-link",
+					git: "git-metadata",
+					long: "unsafe-path",
+					links: "symbolic-link",
+				};
+				for (const [c, reason] of Object.entries(reasons)) {
+					const r = stagedRecordOf(out, c);
+					expectModelReached(r);
+					expect(r.controller.finalized, c).toBe("normally");
+					expect(r.agent, c).toMatchObject({ status: "completed", termination: "confirmed" });
+					expect(r.changeset.collection.status, c).toBe("refused");
+					expect(r.changeset.collection.refusals[0]?.reason, c).toBe(reason);
+					expect(r.changeset.verification.status, c).toBe("not-run");
+					expect(r.evaluation.status, c).toBe("not-run");
+					expect(r.invalidating, c).toEqual([]);
+					expect(existsSync(join(stagedAttemptOf(out, c), "changeset")), c).toBe(false);
+					expect(existsSync(join(stagedAttemptOf(out, c), "candidate")), c).toBe(false);
+					expect(endoProtectedTrialOutcomeV0(r), c).toEqual({ outcome: "failed", reason: `changeset-${reason}` });
+					expect(stagedCellOf(out, c).cell, c).toMatchObject({
+						qualified: 1,
+						failed: 1,
+						failedWithoutSubmission: 1,
+					});
+				}
+				expect(stagedRecordOf(out, "long").changeset.collection.refusals).toEqual([
+					{
+						path: long.slice(0, ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2),
+						reason: "unsafe-path",
+						truncated: { length: PATH, sha256: digest(long) },
+					},
+				]);
+				const links = stagedRecordOf(out, "links").changeset.collection;
+				expect(links.refusals).toHaveLength(ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2);
+				expect(links.refusalsOmitted).toBe(1);
+				expect(stagedCellOf(out, "link").refused).toEqual([]);
+			});
+		}, 180_000);
+
+		it("staged bytes replaced after collection: changeset-unverified attrition, never evaluated", async () => {
+			await withUpstream(async (upstream) => {
+				const out = fresh("run");
+				const spec = stagedSpecWith({ wrong: stagedWrite(STAGED_WRONG) }, new URL(upstream.baseUrl).origin);
+				await runProtectedExperimentV0({
+					spec,
+					dir: out,
+					onChangeSetCollected: (attempt) => {
+						const p = join(attempt, "changeset", "files", "src", "interval.mjs");
+						rmSync(p, { force: true });
+						writeFileSync(p, SOLUTION, { mode: 0o444 });
+					},
+				});
+				const r = stagedRecordOf(out, "wrong");
+				expectModelReached(r);
+				expect(r.changeset.collection.status).toBe("collected");
+				expect(r.changeset.verification).toEqual({
+					status: "failed",
+					reason: "staged-bytes-mismatch",
+					candidateSha256: null,
+				});
+				expect(r.evaluation.status).toBe("not-run");
+				expect(r.invalidating).toEqual(["changeset-unverified"]);
+				expect(existsSync(join(stagedAttemptOf(out, "wrong"), "candidate"))).toBe(false);
+				expect(endoProtectedTrialOutcomeV0(r)).toEqual({ outcome: "attrition", reason: "changeset-unverified" });
+			});
+		}, 120_000);
+
+		it("an agent whose workspace is not the pinned baseline is never started, and never reaches the model", async () => {
+			await withUpstream(async (upstream) => {
+				const out = fresh("run");
+				const spec = stagedSpecWith({ honest: stagedWrite(SOLUTION) }, new URL(upstream.baseUrl).origin);
+				await runProtectedExperimentV0({
+					spec,
+					dir: out,
+					onBeforeBaselinePinned: (attempt) => writeFileSync(join(attempt, "work", "README.md"), "planted\n"),
+				});
+				const r = stagedRecordOf(out, "honest");
+				expect(r.agent).toMatchObject({ status: "not-run", scope: null });
+				expect(r.changeset.baseline.status).toBe("mismatch");
+				expect(r.changeset.collection.status).toBe("not-collected");
+				expect(r.evaluation.status).toBe("not-run");
+				expect(r.invalidating).toContain("baseline-mismatch");
+				expect(upstream.completionRequests()).toHaveLength(0);
+			});
+		}, 120_000);
+
+		it("termination that cannot be confirmed (the runner's test-only seam): the model was reached, nothing collected or evaluated", async () => {
+			await withUpstream(async (upstream) => {
+				const out = fresh("run");
+				const spec = stagedSpecWith({ honest: stagedWrite(SOLUTION) }, new URL(upstream.baseUrl).origin);
+				await runProtectedExperimentV0({ spec, dir: out, unconfirmedTerminationForTests: true });
+				const r = stagedRecordOf(out, "honest");
+				expectModelReached(r);
+				expect(r.agent).toMatchObject({ status: "completed", termination: "unconfirmed" });
+				expect(r.agent.scope?.ended).toBe("unconfirmed");
+				expect(r.changeset.collection).toEqual({
+					status: "not-collected",
+					changesetSha256: null,
+					summary: null,
+					refusals: [],
+					refusalsOmitted: 0,
+				});
+				expect(r.changeset.verification.status).toBe("not-run");
+				expect(r.evaluation.status).toBe("not-run");
+				expect(r.invalidating).toEqual(["termination-unconfirmed"]);
+				for (const d of ["changeset", "candidate"])
+					expect(existsSync(join(stagedAttemptOf(out, "honest"), d)), d).toBe(false);
+				expect(endoProtectedTrialOutcomeV0(r)).toEqual({ outcome: "attrition", reason: "termination-unconfirmed" });
+			});
+		}, 120_000);
 	},
 );

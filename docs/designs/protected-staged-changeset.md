@@ -38,7 +38,7 @@ This is a deliberately small first step: the fixture is the task's own `workspac
 
 ## 4. Collection behind confirmed termination
 
-The existing gate decides: unless `agent.termination === "confirmed"` (the agent's systemd scope confirmed ended), nothing is collected and the record carries `collection: not-collected`; an interrupted attempt finalized on resume never collects. Only then does `collectStagedChangeSetV0(pin, work/, changeset/, limits)` run, unchanged. A collector refusal (link, special file, `.git`, a bound exceeded) is the agent's own failure (`changeset-<reason>`), except `changed-during-collection`, which is attrition as for fixed paths. The collecting path does no verification.
+The existing gate decides: unless `agent.termination === "confirmed"` (the agent's systemd scope confirmed ended), nothing is collected and the record carries `collection: not-collected`; an interrupted attempt finalized on resume never collects. An unprivileged host cannot make the user manager fail to confirm, so tests reach this branch through a test-only seam: `runProtectedExperimentV0({ unconfirmedTerminationForTests: true })` passes `unconfirmedEndForTests` to `runSandboxV0` for the agent's sandbox, and makes a resume report the agent's scope the same way. The scope is still stopped exactly as always; only the reported end is withheld as `unconfirmed`, so the seam can never grant confirmation. The CLI builds its options explicitly and never sets it, and a spec cannot name it. Only then does `collectStagedChangeSetV0(pin, work/, changeset/, limits)` run, unchanged. A collector refusal (link, special file, `.git`, a bound exceeded) is the agent's own failure (`changeset-<reason>`), except `changed-during-collection`, which is attrition as for fixed paths. The collecting path does no verification.
 
 ## 5. Verification in the evaluator step
 
@@ -61,9 +61,12 @@ Trial v2/v3 replace `submission` with:
 
 ```text
 changeset.baseline      { status: pinned | mismatch | not-pinned, sha256, files, totalBytes }
-changeset.collection    { status: collected | refused | not-collected, changesetSha256, summary, refusals }
+changeset.collection    { status: collected | refused | not-collected, changesetSha256, summary,
+                          refusals: [{ path, reason, truncated: null | { length, sha256 } }], refusalsOmitted }
 changeset.verification  { status: verified | failed | not-run, reason, candidateSha256 }
 ```
+
+**Refusals are bounded when the record is sealed, and the record says so.** A refusal's path is whatever the collector refused (an `unsafe-path` refusal is refused precisely because it is too long or malformed), and the number of refusals is bounded only by the walk, so no reader constant can match everything the collector can emit. `endoProtectedChangeSetRefusalsV2` (`runtime/contracts/protected-experiment.ts`) therefore lists the first `ENDO_PROTECTED_CHANGESET_REFUSALS_MAX_V2` (4096) refusals in the collector's order and records the rest as `refusalsOmitted` (0 when it lists them all), and cuts a path past `ENDO_PROTECTED_CHANGESET_REFUSAL_PATH_MAX_V2` (400) characters, never inside a surrogate pair, recording its full `length` and the SHA-256 of its UTF-8 bytes in `truncated` (`null` when whole). The reader accepts nothing past either bound, an omission only from a full list, and a cut only for a path that was longer than the bound and keeps the bound's length. Every refusal the collector can make seals as the agent's own refusal; before this, a 401-character path or a 4,097th refusal made `finish` throw, which aborted the run and left the attempt to be finalized on resume as controller attrition.
 
 The reader fails closed on contradictions, among them: an agent that ran on an unpinned baseline; a collection without confirmed termination; an evaluation result without a verified change set; a verified change set without a candidate digest; a summary that contradicts its counts or the pinned baseline; a missing staged-invalidating condition. The report re-derives each record's baseline from its spec and re-verifies a verified change set from the attempt's `changeset/` and `baseline/`, and checks the candidate digest; a mismatch is `record-refused`.
 

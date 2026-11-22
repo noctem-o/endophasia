@@ -239,7 +239,7 @@ export interface EndoObserveAxisSummaryV0 {
 }
 
 export interface EndoObserveAnalysisProvenanceV0 {
-	method: "pca-2d-jacobi";
+	method: "pca-2d-householder-ql";
 	revision: "v0";
 	basis: "DERIVED";
 	centering: "mean-centered";
@@ -836,7 +836,7 @@ export function validateEndoObserveRepresentationSceneV0(value: unknown): EndoOb
 	)
 		throw new TypeError("representation scene: analysis members");
 	if (
-		analysis.method !== "pca-2d-jacobi" ||
+		analysis.method !== "pca-2d-householder-ql" ||
 		analysis.revision !== "v0" ||
 		analysis.basis !== "DERIVED" ||
 		analysis.centering !== "mean-centered" ||

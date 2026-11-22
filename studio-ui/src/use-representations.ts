@@ -18,6 +18,7 @@ export interface RepresentationsState {
 export interface RepresentationsApi {
 	state: RepresentationsState;
 	refreshList(): void;
+	retryScene(): void;
 	selectArtifact(selector: string | null): void;
 	selectLayer(layer: number | "all"): void;
 }
@@ -54,7 +55,12 @@ export function useRepresentations(active: boolean): RepresentationsApi {
 			const prevSelected = latest.current.selectedSelector;
 			const stillReadable =
 				prevSelected !== null && artifacts.some((a) => a.selector === prevSelected && a.state === "readable");
-			if (!stillReadable) {
+			if (stillReadable) {
+				// If the retained selection has no loaded scene (e.g. after a transient 429 or network failure), retry it.
+				if (latest.current.scene === null || latest.current.scene.selector !== prevSelected) {
+					autoSelect = prevSelected;
+				}
+			} else {
 				autoSelect = artifacts.find((a) => a.state === "readable")?.selector ?? null;
 			}
 		}
@@ -106,6 +112,11 @@ export function useRepresentations(active: boolean): RepresentationsApi {
 
 	const refreshList = useCallback(() => void read({ kind: "list" }), [read]);
 
+	const retryScene = useCallback(() => {
+		const selector = latest.current.selectedSelector;
+		if (selector !== null) void read({ kind: "scene", selector });
+	}, [read]);
+
 	const selectArtifact = useCallback(
 		(selector: string | null) => {
 			setState((s) => ({ ...s, selectedSelector: selector, scene: null, problem: null }));
@@ -123,5 +134,5 @@ export function useRepresentations(active: boolean): RepresentationsApi {
 		[read],
 	);
 
-	return { state, refreshList, selectArtifact, selectLayer };
+	return { state, refreshList, retryScene, selectArtifact, selectLayer };
 }

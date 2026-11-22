@@ -33,6 +33,11 @@ import transformers
 from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.driver_protocol import KNOWN_FEATURES
 
+# Protocol bounds matching `ENDO_OBSERVE_REPRESENTATION_LIMITS_V0` in `protocol/observe-representation.ts`.
+MAX_POINTS = 512
+MAX_LAYERS = 128
+MAX_VECTOR_DIM = 8192
+
 
 def sha256_weight_files(model_id: str, revision: str | None) -> tuple[str | None, str | None]:
     """Compute a deterministic SHA-256 over cached safetensors/bin weight files and resolve commit revision."""
@@ -161,6 +166,15 @@ def main() -> None:
     kv_heads_raw = getattr(cfg, "n_key_value_heads", None)
     kv_heads = int(kv_heads_raw) if kv_heads_raw is not None else query_heads
     selected_layers = parse_layers(args.layers, n_layers)
+    if len(selected_layers) > MAX_LAYERS:
+        raise SystemExit(
+            f"error: {len(selected_layers)} selected layers exceed protocol maxLayers ({MAX_LAYERS}); "
+            "pass fewer layers via --layers"
+        )
+    if d_model < 2 or d_model > MAX_VECTOR_DIM:
+        raise SystemExit(
+            f"error: model d_model={d_model} is outside protocol vector bounds [2, {MAX_VECTOR_DIM}]"
+        )
 
     driver = getattr(bridge, "_driver", None)
     if driver is not None:
@@ -200,6 +214,14 @@ def main() -> None:
     str_tokens = bridge.to_str_tokens(tokens[0])
     token_ids = [int(t) for t in tokens[0].tolist()]
     seq_len = len(token_ids)
+    total_points = len(selected_layers) * seq_len
+    if total_points > MAX_POINTS:
+        max_tokens = MAX_POINTS // len(selected_layers)
+        raise SystemExit(
+            f"error: capture would emit {total_points} points ({len(selected_layers)} layers x {seq_len} tokens), "
+            f"exceeding endo.observe-representation-capture.v0 maxPoints={MAX_POINTS}. "
+            f"Shorten --prompt to at most {max_tokens} tokens or select fewer --layers."
+        )
 
     with torch.no_grad():
         logits, cache = bridge.run_with_cache(

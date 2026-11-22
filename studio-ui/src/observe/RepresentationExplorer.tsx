@@ -458,7 +458,7 @@ function ArtifactOverviewInspector({ scene }: { scene: EndoObserveRepresentation
 }
 
 export function RepresentationExplorer({ api }: { api: RepresentationsApi }): ReactElement {
-	const { state, refreshList, selectArtifact, selectLayer } = api;
+	const { state, refreshList, retryScene, selectArtifact, selectLayer } = api;
 	const [colorMode, setColorMode] = useState<RepresentationColorMode>("basis");
 	const [tokenQuery, setTokenQuery] = useState("");
 	const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
@@ -749,12 +749,33 @@ export function RepresentationExplorer({ api }: { api: RepresentationsApi }): Re
 			) : null}
 
 			{scene === null || plot === null ? (
-				<Panel resetKey="rep-none" id="rep-empty" title="Representation Explorer" subtitle="no readable capture">
+				<Panel
+					resetKey="rep-none"
+					id="rep-empty"
+					title="Representation Explorer"
+					subtitle={state.selectedSelector !== null ? "scene unavailable" : "no readable capture"}
+				>
 					<div className="rep-empty-body">
 						{state.reading ? (
 							<output className="loading">
 								<span className="spinner" aria-hidden="true" /> Projecting representation scene…
 							</output>
+						) : state.selectedSelector !== null ? (
+							<div>
+								<Note tone="warn">
+									The selected capture artifact could not be projected on the last attempt. Use Retry scene or
+									Refresh artifacts to try again.
+								</Note>
+								<button
+									type="button"
+									className="btn"
+									onClick={retryScene}
+									disabled={state.reading}
+									data-testid="rep-retry-scene"
+								>
+									Retry scene
+								</button>
+							</div>
 						) : (
 							<Note>
 								No valid representation capture files were found in this directory. Valid artifacts must satisfy{" "}

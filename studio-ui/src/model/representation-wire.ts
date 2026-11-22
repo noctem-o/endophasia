@@ -243,7 +243,7 @@ export function readRepresentationScene(v: unknown): EndoObserveRepresentationSc
 			selectedLayer: (l) => l === null || l === "all" || count(l),
 			analysis: (an) =>
 				shape(an, {
-					method: one("pca-2d-jacobi"),
+					method: one("pca-2d-householder-ql"),
 					revision: one("v0"),
 					basis: one("DERIVED"),
 					centering: one("mean-centered"),

@@ -285,6 +285,104 @@ describe("deterministic 2D PCA projection", () => {
 		// Layer 1 has a non-zero 3rd coordinate, so residual2dFraction must be > 0 (honest 2D omission accounting).
 		expect(first.points.every((pt) => (pt.derived.residual2dFraction ?? 0) > 0.01)).toBe(true);
 	});
+
+	it("preserves nonzero variance and exact geometry for small-magnitude vectors (scale invariance)", () => {
+		const unit = computePca2dV0([
+			[0, 0],
+			[1, 0],
+			[0, 1],
+		]);
+		const micro = computePca2dV0([
+			[0, 0],
+			[1e-6, 0],
+			[0, 1e-6],
+		]);
+		expect(micro.degenerate).toBe(false);
+		expect(micro.totalVariance).toBeCloseTo(4 / 9e12, 20);
+		expect(micro.explainedVarianceRatio[0]!).toBeCloseTo(unit.explainedVarianceRatio[0]!, 9);
+		expect(micro.explainedVarianceRatio[1]!).toBeCloseTo(unit.explainedVarianceRatio[1]!, 9);
+		expect(micro.varianceExplainedTotal!).toBeCloseTo(1, 9);
+		for (let i = 0; i < 3; i += 1) {
+			expect(micro.coords[i]![0]).toBeCloseTo(unit.coords[i]![0] * 1e-6, 15);
+			expect(micro.coords[i]![1]).toBeCloseTo(unit.coords[i]![1] * 1e-6, 15);
+			expect(micro.residual2dFractions[i]!).toBeCloseTo(0, 9);
+		}
+
+		// Also verify through the full scene projector (including observed stats).
+		const smallCapture = syntheticFixtureCapture({
+			dimensions: {
+				layers: { supported: false, basis: "UNAVAILABLE", reason: "No layer dimension." },
+				tokens: { supported: false, basis: "UNAVAILABLE", reason: "No token dimension." },
+			},
+			points: [
+				{
+					pointId: "s0",
+					sourceIndex: 0,
+					layer: null,
+					tokenIndex: null,
+					tokenId: null,
+					tokenText: null,
+					eventRef: null,
+					hookPoint: "pooled.small",
+					vector: [0, 0],
+					topNextToken: null,
+				},
+				{
+					pointId: "s1",
+					sourceIndex: 1,
+					layer: null,
+					tokenIndex: null,
+					tokenId: null,
+					tokenText: null,
+					eventRef: null,
+					hookPoint: "pooled.small",
+					vector: [1e-6, 0],
+					topNextToken: null,
+				},
+				{
+					pointId: "s2",
+					sourceIndex: 2,
+					layer: null,
+					tokenIndex: null,
+					tokenId: null,
+					tokenText: null,
+					eventRef: null,
+					hookPoint: "pooled.small",
+					vector: [0, 1e-6],
+					topNextToken: null,
+				},
+			],
+		});
+		const scene = projectEndoObserveRepresentationSceneV0({
+			capture: smallCapture,
+			selector: TEST_SELECTOR,
+			artifactSha256: TEST_SHA,
+		});
+		expect(scene.analysis.degenerate).toBe(false);
+		expect(scene.analysis.totalVariance).toBeGreaterThan(0);
+		expect(scene.analysis.axes[0].explainedVarianceRatio!).toBeCloseTo(0.75, 9);
+		expect(scene.analysis.axes[1].explainedVarianceRatio!).toBeCloseTo(0.25, 9);
+		expect(scene.points[1]!.observed.l2Norm).toBeCloseTo(1e-6, 15);
+	});
+
+	it("projects a worst-case 512 x 576 non-degenerate matrix well within interactive bounds", () => {
+		const n = 512;
+		const d = 576;
+		let seed = 123456789;
+		const nextRand = () => {
+			seed = (seed * 1664525 + 1013904223) >>> 0;
+			return seed / 0xffffffff - 0.5;
+		};
+		const vectors = Array.from({ length: n }, () => Array.from({ length: d }, () => nextRand()));
+		const start = performance.now();
+		const res = computePca2dV0(vectors);
+		const elapsedMs = performance.now() - start;
+		expect(res.degenerate).toBe(false);
+		expect(res.coords.length).toBe(n);
+		expect(res.eigenvalues[0]).toBeGreaterThan(res.eigenvalues[1]);
+		expect(res.eigenvalues[1]).toBeGreaterThan(0);
+		expect(elapsedMs).toBeLessThan(5_000);
+	});
 });
 
 describe("validation, epistemic boundaries and capability restrictions", () => {

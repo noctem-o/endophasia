@@ -5,11 +5,13 @@
 // Optionally writes review screenshots when ENDO_SHOTS_DIR is set.
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ObserveRepresentationObserverV0 } from "../adapters/observe-representation/observer.ts";
+import { readEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import {
 	ENDO_OBSERVE_REPRESENTATION_CAPTURE_SCHEMA_V0,
@@ -318,5 +320,83 @@ suite("Representation Explorer in headless Chromium", () => {
 		expect(await page.text("[data-testid=rep-absent]")).toContain("UNAVAILABLE");
 		expect(await page.eval<number>("document.querySelectorAll('[data-testid=rep-plot-svg]').length")).toBe(0);
 		expect(page.seen.problems).toEqual([]);
+	}, 60_000);
+
+	it("recovers from a transient scene fetch failure when the operator clicks Refresh artifacts", async () => {
+		const root = tempRoot();
+		ingestAll(root, lifecycleEvents("completes"));
+		seedRegistry(root);
+		const snapshot = readEndoCockpitSnapshotV0(root, { digestKey: OTHER_KEY });
+		const observer = new ObserveRepresentationObserverV0({
+			root: join(repo, "research/observe-geometry/examples"),
+			key: OTHER_KEY,
+		});
+		const index = observer.list();
+		const soleSelector = index.artifacts[0]!.selector;
+		const scene = observer.scene(soleSelector);
+
+		let sceneAttempts = 0;
+		const contentType = (name: string): string =>
+			name.endsWith(".js")
+				? "text/javascript; charset=utf-8"
+				: name.endsWith(".css")
+					? "text/css; charset=utf-8"
+					: name.endsWith(".svg")
+						? "image/svg+xml"
+						: name.endsWith(".woff2")
+							? "font/woff2"
+							: "text/html; charset=utf-8";
+
+		const standIn: Server = createServer((req, res) => {
+			const url = (req.url ?? "/").split("?")[0]!;
+			if (url === "/api/v0/snapshot") {
+				res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(snapshot));
+				return;
+			}
+			if (url === "/api/v0/observe/representations") {
+				res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(index));
+				return;
+			}
+			if (url === `/api/v0/observe/representation/${soleSelector}`) {
+				sceneAttempts += 1;
+				if (sceneAttempts === 1) {
+					res.writeHead(429, { "Content-Type": "application/json; charset=utf-8", "Retry-After": "1" }).end(
+						'{"error":"too-many-requests"}\n',
+					);
+					return;
+				}
+				res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(scene));
+				return;
+			}
+			const name = url === "/" ? "index.html" : url.replace(/^\/assets\//, "");
+			const body = ui[name];
+			if (body === undefined) res.writeHead(404).end();
+			else res.writeHead(200, { "Content-Type": contentType(name) }).end(body);
+		});
+		await new Promise<void>((resolve) => standIn.listen(0, "127.0.0.1", resolve));
+		const port = (standIn.address() as { port: number }).port;
+		try {
+			const page = await browser!.open(1280, 860);
+			tabs.push(page);
+			await page.goto(`http://127.0.0.1:${port}/`);
+			await page.settled();
+			await page.click("[data-testid=observe-tab-representations]");
+			await page.waitFor("document.querySelector('[data-testid=rep-problem]') !== null", 10_000);
+			expect(await page.text("[data-testid=rep-problem]")).toContain("pacing");
+			expect(await page.eval<number>("document.querySelectorAll('[data-testid=rep-retry-scene]').length")).toBe(1);
+			expect(sceneAttempts).toBe(1);
+
+			// Clicking Refresh artifacts must retry the missing scene even when the sole artifact stays selected.
+			await page.click("[data-testid=rep-refresh]");
+			await page.waitFor("document.querySelector('[data-testid=rep-plot-svg]') !== null", 10_000);
+			expect(sceneAttempts).toBe(2);
+			expect(
+				await page.eval<number>("document.querySelectorAll('[data-testid=rep-plot-svg] .rep-point').length"),
+			).toBe(17);
+		} finally {
+			const closed = new Promise<void>((resolve) => standIn.close(() => resolve()));
+			standIn.closeAllConnections();
+			await closed;
+		}
 	}, 60_000);
 });

@@ -16,7 +16,7 @@ endo.observe-representation-capture.v0  (protocol/observe-representation.ts)
         │  read-only, bounded, symlink-refusing scan; keyed opaque selectors
         ▼
 deterministic 2D PCA projection         (cockpit/projections/representation-scene.ts)
-        │  mean-centered Jacobi eigendecomposition + max-abs-positive sign canonicalization
+        │  scale-normalized mean-centered Householder tridiagonalization + implicit QL + max-abs-positive sign canonicalization
         ▼
 endo.observe-representation-scene.v0    (served via GET /<cap>/api/v0/observe/representation/<sel>)
         │  browser wire-gated (studio-ui/src/model/representation-wire.ts)

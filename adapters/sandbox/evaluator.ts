@@ -16,6 +16,12 @@ import {
 	type EndoProtectedTrialV0,
 	readEndoFunctionEvaluatorV0,
 } from "../../protocol/protected-experiment.ts";
+import {
+	type EndoChangeSetLimitsV0,
+	type EndoChangeSetVerifyFailureReasonV0,
+	type EndoWorkspaceBaselineV0,
+	isPlainChangeSetPathV0,
+} from "../../protocol/staged-changeset.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	buildSandboxProfileV0,
@@ -25,6 +31,7 @@ import {
 	runSandboxV0,
 } from "./bubblewrap.ts";
 import type { EndoContainmentV0 } from "./containment.ts";
+import { collectStagedChangeSetV0, reconstructStagedCandidateV0, verifyStagedChangeSetV0 } from "./staged-changeset.ts";
 import { exportSubmissionV0 } from "./submission.ts";
 
 /** The trusted driver. It is the evaluator's control logic; the submission is only ever the module it imports. */
@@ -61,11 +68,14 @@ export interface EndoLoadedEvaluatorV0 {
 	directory: string;
 }
 
-/** The evaluator definition, read from the operator's file and checked against the digest the spec pins. */
+/**
+ * The evaluator definition, read from the operator's file and checked against the digest the spec pins. `submission` is a fixed-path
+ * task's declared files (the entry must be one of them), or null for a staged task (the entry must be a plain change-set path).
+ */
 export function loadEvaluatorV0(
 	file: string,
 	pinned: string,
-	submission: readonly string[],
+	submission: readonly string[] | null,
 ): { ok: true; evaluator: EndoLoadedEvaluatorV0 } | { ok: false; detail: string } {
 	let bytes: Buffer;
 	try {
@@ -83,7 +93,7 @@ export function loadEvaluatorV0(
 	}
 	const read = readEndoFunctionEvaluatorV0(value);
 	if (!read.ok) return { ok: false, detail: read.message };
-	if (!submission.includes(read.value.entry))
+	if (submission === null ? !isPlainChangeSetPathV0(read.value.entry) : !submission.includes(read.value.entry))
 		return { ok: false, detail: "the evaluator's entry is not a submitted file" };
 	const real = realpathSync(file);
 	return { ok: true, evaluator: { definition: read.value, sha256, file: real, directory: dirname(real) } };
@@ -229,5 +239,120 @@ export async function qualifyEvaluatorV0(
 	const negative = await check("negative", d.negative);
 	if (negative.status !== "failed")
 		return { ok: false, detail: `the evaluator's negative did not fail (${negative.status})` };
+	return { ok: true, negative: "failed" };
+}
+
+// ---- staged change sets (docs/designs/protected-staged-changeset.md) ------------------------------------------------------------------
+
+/**
+ * What the controller hands the evaluator step for a staged attempt: the baseline pinned from the spec before the agent started (the
+ * complete record, never a digest alone), the trusted baseline tree it materialized, the staging directory the collector wrote, the change
+ * set's digest as the collector returned it, and the task's change-set limits. Nothing here comes from the agent's workspace.
+ */
+export interface EndoStagedHandoffV2 {
+	baseline: EndoWorkspaceBaselineV0;
+	baselineDir: string;
+	stagingDir: string;
+	changesetSha256: string;
+	limits: EndoChangeSetLimitsV0;
+}
+
+export type EndoStagedVerificationV2 =
+	| { status: "verified"; reason: null; candidateSha256: string }
+	| { status: "failed"; reason: EndoChangeSetVerifyFailureReasonV0; candidateSha256: null };
+
+const NOT_EVALUATED: EndoEvaluationV0 = { status: "not-run", cases: null, reason: null, outputSha256: null };
+
+/**
+ * The evaluator step for a staged attempt. The staging directory is verified independently of the collector that wrote it: against both
+ * digest pins, the complete baseline record (so an `added` path that collides with an unchanged baseline file is refused) and the trusted
+ * baseline tree. The candidate is then reconstructed in the new directory `candidateDir` from pristine baseline bytes plus the verified
+ * changes, and that tree, never the agent's workspace, is evaluated in its own sandbox. Anything that does not verify is not evaluated.
+ */
+export async function evaluateStagedChangeSetV2(
+	ctx: EndoEvaluatorContextV0,
+	evaluator: EndoLoadedEvaluatorV0,
+	handoff: EndoStagedHandoffV2,
+	candidateDir: string,
+	jobDir: string,
+	record: Pick<Parameters<typeof runSandboxV0>[3], "onScope" | "onLauncher"> = {},
+): Promise<{ verification: EndoStagedVerificationV2; evaluation: EndoEvaluationV0 }> {
+	const verified = verifyStagedChangeSetV0(
+		handoff.stagingDir,
+		{
+			expectedBaselineSha256: handoff.baseline.sha256,
+			expectedChangesetSha256: handoff.changesetSha256,
+			baseline: handoff.baseline,
+			baselineTree: handoff.baselineDir,
+		},
+		handoff.limits,
+	);
+	if (!verified.ok)
+		return {
+			verification: { status: "failed", reason: verified.reason, candidateSha256: null },
+			evaluation: NOT_EVALUATED,
+		};
+	const rebuilt = reconstructStagedCandidateV0(
+		verified.manifest,
+		handoff.baseline,
+		handoff.baselineDir,
+		handoff.stagingDir,
+		candidateDir,
+		handoff.limits,
+	);
+	if (!rebuilt.ok)
+		return {
+			verification: { status: "failed", reason: rebuilt.reason, candidateSha256: null },
+			evaluation: NOT_EVALUATED,
+		};
+	return {
+		verification: { status: "verified", reason: null, candidateSha256: rebuilt.candidate.sha256 },
+		evaluation: await evaluateV0(ctx, evaluator, candidateDir, jobDir, record),
+	};
+}
+
+/**
+ * Qualify an evaluator for a staged task through the same path a trial takes: its reference and its negative (each a complete candidate
+ * tree, relative to the definition's directory) are collected against the pinned baseline, verified, reconstructed and evaluated. The
+ * reference must verify and pass every case; the negative, when declared, must verify and fail. Anything else refuses the run.
+ */
+export async function qualifyStagedEvaluatorV2(
+	ctx: EndoEvaluatorContextV0,
+	evaluator: EndoLoadedEvaluatorV0,
+	baseline: EndoWorkspaceBaselineV0,
+	baselineDir: string,
+	limits: EndoChangeSetLimitsV0,
+	scratch: string,
+): Promise<{ ok: true; negative: "failed" | null } | { ok: false; detail: string }> {
+	const d = evaluator.definition;
+	mkdirSync(scratch, { recursive: true, mode: 0o700 });
+	const check = async (name: "reference" | "negative", relative: string): Promise<string> => {
+		const collected = collectStagedChangeSetV0(
+			baseline,
+			join(evaluator.directory, relative),
+			join(scratch, `${name}-changeset`),
+			limits,
+		);
+		if (collected.status !== "collected") return "not-collected";
+		const staged = await evaluateStagedChangeSetV2(
+			ctx,
+			evaluator,
+			{
+				baseline,
+				baselineDir,
+				stagingDir: collected.stagingDir,
+				changesetSha256: collected.manifest.changesetSha256,
+				limits,
+			},
+			join(scratch, `${name}-candidate`),
+			join(scratch, `${name}-job`),
+		);
+		return staged.verification.status === "verified" ? staged.evaluation.status : "unverified";
+	};
+	const reference = await check("reference", d.reference);
+	if (reference !== "passed") return { ok: false, detail: `the evaluator's reference did not pass (${reference})` };
+	if (d.negative === null) return { ok: true, negative: null };
+	const negative = await check("negative", d.negative);
+	if (negative !== "failed") return { ok: false, detail: `the evaluator's negative did not fail (${negative})` };
 	return { ok: true, negative: "failed" };
 }

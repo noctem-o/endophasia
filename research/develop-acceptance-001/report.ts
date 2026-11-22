@@ -6,7 +6,13 @@ import { ENDO_EVALUATOR_DRIVER_SHA256_V0, loadEvaluatorV0 } from "../../adapters
 import { successfulExchangeV0 } from "../../adapters/sandbox/model-evidence.ts";
 import { exportSubmissionV0 } from "../../adapters/sandbox/submission.ts";
 import { reportProtectedExperimentV0 } from "../../cli/experiment-protected.ts";
-import type { EndoProtectedRecordingV1 } from "../../protocol/protected-experiment.ts";
+import {
+	type EndoProtectedRecordingV1,
+	type EndoProtectedRunV0,
+	type EndoProtectedRunV1,
+	endoProtectedStagedV2,
+	endoProtectedTrialIsStagedV2,
+} from "../../protocol/protected-experiment.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	readEndoProtectedRunFileV0,
@@ -21,7 +27,8 @@ export function observedClass(modelAccess: boolean, recording: EndoProtectedReco
 export function acceptance(directory: string, pin: string) {
 	const run = readEndoProtectedRunFileV0(join(directory, "protected-run.json"));
 	if (!run.ok) throw new Error(run.reason);
-	const { spec, specSha256, plan } = run.value;
+	if (endoProtectedStagedV2(run.value.schemaVersion)) throw new Error("not the single-file acceptance plan");
+	const { spec, specSha256, plan } = run.value as EndoProtectedRunV0 | EndoProtectedRunV1;
 	if (pin !== specSha256) throw new Error("operator spec pin mismatch");
 	const task = spec.tasks[0]!;
 	const condition = spec.conditions[0]!;
@@ -44,7 +51,8 @@ export function acceptance(directory: string, pin: string) {
 		throw new Error(report.refusedRecords[0]?.reason ?? "missing or multiple attempts");
 	const attempt = join(directory, "trials", task.id, condition.id, "0", "attempt-1");
 	const read = readEndoProtectedTrialFileV0(join(attempt, "record.json"));
-	if (!read.ok) throw new Error(read.reason);
+	if (!read.ok || endoProtectedTrialIsStagedV2(read.value))
+		throw new Error(read.ok ? "not a fixed-path record" : read.reason);
 	const r = read.value;
 	const checks = loadEvaluatorV0(
 		fileURLToPath(new URL("./checks/evaluator.json", import.meta.url)),

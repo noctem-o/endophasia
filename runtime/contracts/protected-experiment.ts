@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import {
 	type EndoProtectedRun,
 	type EndoProtectedTrial,
+	type EndoProtectedTrialV0,
 	readEndoProtectedRunV0,
 	readEndoProtectedTrialV0,
 } from "../../protocol/protected-experiment.ts";
@@ -33,7 +34,7 @@ export function sealEndoProtectedTrialV0<T extends EndoProtectedTrial>(record: O
 	return sealed;
 }
 
-const manifestDigest = (files: EndoProtectedTrial["submission"]["files"]) =>
+const manifestDigest = (files: EndoProtectedTrialV0["submission"]["files"]) =>
 	sha256HexV0(canonicalEndoJsonV0(files.map((f) => ({ path: f.path, bytes: f.bytes, sha256: f.sha256 }))));
 
 /** A trial record value: its version's rules, then its digests. */
@@ -43,7 +44,7 @@ export function checkEndoProtectedTrialV0(value: unknown): EndoProtectedReadV0<E
 	const r = read.value;
 	if (endoProtectedTrialDigestV0(r) !== r.recordSha256)
 		return { ok: false, reason: "the record's digest does not match its content" };
-	if (r.submission.sha256 !== null && manifestDigest(r.submission.files) !== r.submission.sha256)
+	if ("submission" in r && r.submission.sha256 !== null && manifestDigest(r.submission.files) !== r.submission.sha256)
 		return { ok: false, reason: "the submission's digest does not match its manifest" };
 	return { ok: true, value: r };
 }

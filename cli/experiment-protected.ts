@@ -11,12 +11,20 @@
 // boundary is established and closed (its recording flushed) once the agent's scope has ended. Its records are endo.protected-trial.v1,
 // read again by the report against the recording itself (adapters/sandbox/model-evidence.ts). A version 0 spec runs as before.
 //
+// A version 2 (offline) or 3 (model-connected) spec submits staged change sets (docs/designs/protected-staged-changeset.md): the baseline
+// is pinned from the task's workspace before anything runs, the attempt's baseline/ and work/ trees are checked against it after the
+// preflight and before the agent starts, the whole difference is collected with collectStagedChangeSetV0 once the agent's termination is
+// confirmed, and the evaluator step verifies it against the complete baseline record and tree, reconstructs the candidate in a new
+// candidate/ directory and evaluates that. Its records are endo.protected-trial.v2 and v3. Versions 0 and 1 run exactly as before.
+//
 // Layout of a run directory:
 //   protected-run.json                                    endo.protected-run.v0: spec, seed, plan, isolation, profiles, evaluators
 //   trials/<task>/<condition>/<trial>/attempt-<n>/        one attempt: started.json, preflight.json, agent-started.json, agent.log,
 //                                                         work/ (the agent's workspace), submission/ (the trusted copy), record.json
 //                                                         model/ (v1: digest-key and store/, the relay's recording), relay.json,
 //                                                         model-ended.json
+//                                                         staged (v2/v3): baseline/ (pristine tree), baseline.json (the pin),
+//                                                         changeset/ (the collector's staging), candidate/ (what was evaluated)
 //   model-session.json                                    v1: the session's private directory (probe socket, bridge), for cleanup
 
 import { randomBytes, randomInt } from "node:crypto";
@@ -62,9 +70,11 @@ import { detectContainmentV0, type EndoContainmentV0, stopScopeV0 } from "../ada
 import {
 	ENDO_EVALUATOR_DRIVER_SHA256_V0,
 	type EndoLoadedEvaluatorV0,
+	evaluateStagedChangeSetV2,
 	evaluateV0,
 	loadEvaluatorV0,
 	qualifyEvaluatorV0,
+	qualifyStagedEvaluatorV2,
 } from "../adapters/sandbox/evaluator.ts";
 import {
 	type EndoModelExchangeSummaryV0,
@@ -81,25 +91,39 @@ import {
 	startModelRelayV0,
 } from "../adapters/sandbox/model-relay.ts";
 import { type EndoPreflightV0, preflightV0 } from "../adapters/sandbox/preflight.ts";
+import {
+	captureWorkspaceBaselineV0,
+	collectStagedChangeSetV0,
+	endoBaselineDigestV0,
+	endoStagedCandidateRecordV0,
+	verifyStagedChangeSetV0,
+} from "../adapters/sandbox/staged-changeset.ts";
 import { exportSubmissionV0 } from "../adapters/sandbox/submission.ts";
 import {
-	ENDO_PROTECTED_RUN_V1,
-	ENDO_PROTECTED_SPEC_V1,
-	ENDO_PROTECTED_TRIAL_V1,
+	ENDO_PROTECTED_RUN_OF_SPEC,
+	ENDO_PROTECTED_TRIAL_OF_RUN,
+	type EndoProtectedChangeSetV2,
 	type EndoProtectedModelAccessV1,
+	type EndoProtectedModelSpec,
+	type EndoProtectedModelTrial,
 	type EndoProtectedRecordingV1,
 	type EndoProtectedRelayV1,
 	type EndoProtectedRun,
 	type EndoProtectedSpec,
-	type EndoProtectedSpecV1,
+	type EndoProtectedStagedTaskV2,
 	type EndoProtectedTrial,
 	type EndoProtectedTrialV0,
-	type EndoProtectedTrialV1,
+	endoProtectedModelConnectedV0,
+	endoProtectedStagedV2,
+	endoProtectedTrialIsModelConnectedV0,
+	endoProtectedTrialIsStagedV2,
 	endoProtectedTrialOutcomeV0,
 	expectedInvalidating,
 	expectedInvalidatingV1,
+	expectedStagedInvalidatingV2,
 	readEndoProtectedSpecV0,
 } from "../protocol/protected-experiment.ts";
+import { ENDO_WORKSPACE_BASELINE_V0, type EndoWorkspaceBaselineV0 } from "../protocol/staged-changeset.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import {
@@ -141,6 +165,10 @@ export interface EndoProtectedRunOptionsV0 {
 	onAgentEnded?: (attemptDir: string) => void;
 	/** For tests only: a relay that fails to start (to show the attempt is recorded, and the agent never runs). Never reachable from the CLI. */
 	relayFailsForTests?: boolean;
+	/** For tests: called with a staged attempt's directory after its preflight, just before its trees are checked against the pin. */
+	onBeforeBaselinePinned?: (attemptDir: string) => void;
+	/** For tests: called with a staged attempt's directory once its change set is collected, before the evaluator step verifies it. */
+	onChangeSetCollected?: (attemptDir: string) => void;
 }
 
 export interface EndoProtectedRunSummaryV0 {
@@ -232,9 +260,43 @@ interface Prepared {
 	agents: Map<string, string>;
 	/** Per condition, the controller-private copy that is mounted (made once the run directory is locked). */
 	agentCopies: Map<string, string>;
-	/** A model-connected run's session resources; null for an offline (version 0) run. */
+	/** A model-connected run's session resources; null for an offline (version 0 or 2) run. */
 	model: PreparedModel | null;
+	/** Per staged task (versions 2 and 3), the baseline pinned from its workspace before anything ran; empty otherwise. */
+	baselines: Map<string, EndoWorkspaceBaselineV0>;
 }
+
+/**
+ * The baseline a staged task's workspace pins: computed from the spec's own contents, in memory, before any tree exists. Every file is
+ * written from these bytes, non-executable, so this record is what the attempt's baseline/ and work/ trees must be.
+ */
+export function endoProtectedStagedBaselineV2(workspace: Readonly<Record<string, string>>): EndoWorkspaceBaselineV0 {
+	const files = Object.keys(workspace)
+		.sort()
+		.map((path) => {
+			const bytes = Buffer.from(workspace[path] as string, "utf8");
+			return { path, bytes: bytes.length, sha256: sha256HexV0(bytes), executable: false };
+		});
+	return {
+		schemaVersion: ENDO_WORKSPACE_BASELINE_V0,
+		rootGitExcluded: false,
+		files,
+		totalBytes: files.reduce((n, f) => n + f.bytes, 0),
+		sha256: endoBaselineDigestV0(false, files),
+	};
+}
+
+/** Write a task's workspace into a new tree. A staged task's files are written non-executable (0o644, whatever the umask adds). */
+function writeWorkspace(root: string, workspace: Readonly<Record<string, string>>, staged: boolean): void {
+	mkdirSync(root, staged ? { mode: 0o700 } : undefined);
+	for (const [path, content] of Object.entries(workspace)) {
+		mkdirSync(dirname(join(root, path)), { recursive: true });
+		writeFileSync(join(root, path), content, staged ? { flag: "wx", mode: 0o644 } : { flag: "wx" });
+	}
+}
+
+const stagedTask = (t: EndoProtectedSpec["tasks"][number]): t is EndoProtectedStagedTaskV2 =>
+	!Array.isArray(t.submission);
 
 /**
  * The agent's profile for one attempt. Its digest depends on roles, not paths, so it is the same for every attempt of a condition. A
@@ -381,7 +443,7 @@ async function prepare(
 		);
 	const evaluators = new Map<string, EndoLoadedEvaluatorV0>();
 	for (const t of spec.tasks) {
-		const loaded = loadEvaluatorV0(t.evaluator.file, t.evaluator.sha256, t.submission);
+		const loaded = loadEvaluatorV0(t.evaluator.file, t.evaluator.sha256, stagedTask(t) ? null : t.submission);
 		if (!loaded.ok) throw new EndoProtectedRefusalV0(`task ${t.id}: ${loaded.detail}`);
 		evaluators.set(t.id, loaded.evaluator);
 	}
@@ -408,7 +470,11 @@ async function prepare(
 		}
 	}
 	// Last, once nothing else can refuse: a model-connected run's session resources (closed by the caller, whatever happens).
-	const model = spec.schemaVersion === ENDO_PROTECTED_SPEC_V1 ? await prepareModel(spec, runtime.files) : null;
+	const baselines = new Map<string, EndoWorkspaceBaselineV0>();
+	for (const t of spec.tasks) if (stagedTask(t)) baselines.set(t.id, endoProtectedStagedBaselineV2(t.workspace));
+	const model = endoProtectedModelConnectedV0(spec.schemaVersion)
+		? await prepareModel(spec as EndoProtectedModelSpec, runtime.files)
+		: null;
 	return {
 		bwrap: detected.bwrap,
 		runtime: runtime.files,
@@ -418,11 +484,15 @@ async function prepare(
 		agentCopies: new Map(),
 		containment: contained.containment,
 		model,
+		baselines,
 	};
 }
 
 /** A model-connected run's session resources (PreparedModel). Refuses, naming why, when the host cannot hold a private relay socket. */
-async function prepareModel(spec: EndoProtectedSpecV1, runtime: readonly EndoRuntimeFileV0[]): Promise<PreparedModel> {
+async function prepareModel(
+	spec: EndoProtectedModelSpec,
+	runtime: readonly EndoRuntimeFileV0[],
+): Promise<PreparedModel> {
 	// Each relay's socket lives in a new private directory under the user's runtime directory: private to this user, and short enough for a
 	// socket's path (107 bytes).
 	const runtimeDirectory = process.env.XDG_RUNTIME_DIR;
@@ -545,9 +615,9 @@ function recordBase(
 	profile: EndoSandboxProfileV0,
 	evaluator: EndoLoadedEvaluatorV0,
 ) {
-	const v1 = run.schemaVersion === ENDO_PROTECTED_RUN_V1;
+	const v1 = endoProtectedModelConnectedV0(run.schemaVersion);
 	return {
-		schemaVersion: v1 ? ENDO_PROTECTED_TRIAL_V1 : ("endo.protected-trial.v0" as const),
+		schemaVersion: ENDO_PROTECTED_TRIAL_OF_RUN[run.schemaVersion],
 		run: { id: run.spec.id, specSha256: run.specSha256, seed: run.seed },
 		trial: { ...entry, attempt, retryOf },
 		isolation: {
@@ -582,8 +652,8 @@ function recordBase(
 			...(v1
 				? {
 						limits: {
-							memoryMaxBytes: (run.spec as EndoProtectedSpecV1).limits.memoryMaxBytes,
-							cpuQuotaPercent: (run.spec as EndoProtectedSpecV1).limits.cpuQuotaPercent,
+							memoryMaxBytes: (run.spec as EndoProtectedModelSpec).limits.memoryMaxBytes,
+							cpuQuotaPercent: (run.spec as EndoProtectedModelSpec).limits.cpuQuotaPercent,
 						},
 					}
 				: {}),
@@ -604,17 +674,70 @@ type AgentFacts = Omit<EndoProtectedTrialV0["agent"], "scope"> & {
 	scope: { unit: string; established: boolean; ended: "confirmed" | "unconfirmed"; result?: string | null } | null;
 };
 
-/** Seal and write a record, deriving its invalidating conditions from its facts. A version 1 record needs its model facts. */
+/** What an attempt handed (or did not hand) the evaluator: a fixed-path submission (versions 0 and 1), or a change set (2 and 3). */
+type Handed = { submission: EndoProtectedTrialV0["submission"] } | { changeset: EndoProtectedChangeSetV2 };
+
+const NOT_COLLECTED_CHANGESET: EndoProtectedChangeSetV2["collection"] = {
+	status: "not-collected",
+	changesetSha256: null,
+	summary: null,
+	refusals: [],
+};
+const NOT_VERIFIED: EndoProtectedChangeSetV2["verification"] = {
+	status: "not-run",
+	reason: null,
+	candidateSha256: null,
+};
+
+/** A staged attempt's baseline facts: the pin, and whether the attempt's trees were found to be it. */
+const baselineFacts = (
+	pin: EndoWorkspaceBaselineV0,
+	status: EndoProtectedChangeSetV2["baseline"]["status"],
+): EndoProtectedChangeSetV2["baseline"] => ({
+	status,
+	sha256: pin.sha256,
+	files: pin.files.length,
+	totalBytes: pin.totalBytes,
+});
+
+/** Nothing handed to the evaluator: no submission, or (for a staged task, given its pin) no change set collected. */
+const nothingHanded = (
+	pin: EndoWorkspaceBaselineV0 | undefined,
+	status: EndoProtectedChangeSetV2["baseline"]["status"],
+): Handed =>
+	pin === undefined
+		? { submission: NOT_COLLECTED }
+		: {
+				changeset: {
+					baseline: baselineFacts(pin, status),
+					collection: NOT_COLLECTED_CHANGESET,
+					verification: NOT_VERIFIED,
+				},
+			};
+
+/** Seal and write a record, deriving its invalidating conditions from its facts. A model-connected record needs its model facts. */
 function finish(
 	path: string,
 	base: ReturnType<typeof recordBase>,
-	facts: Pick<EndoProtectedTrialV0, "preflight" | "submission" | "controller"> & {
-		agent: AgentFacts;
-		evaluation: Pick<EndoProtectedTrialV0["evaluation"], "status" | "cases" | "reason" | "outputSha256">;
-		model?: ModelFacts;
-	},
+	facts: Pick<EndoProtectedTrialV0, "preflight" | "controller"> &
+		Handed & {
+			agent: AgentFacts;
+			evaluation: Pick<EndoProtectedTrialV0["evaluation"], "status" | "cases" | "reason" | "outputSha256">;
+			model?: ModelFacts;
+		},
 ): EndoProtectedTrial {
 	const { evaluationIdentity, ...rest } = base;
+	const changeset = "changeset" in facts ? facts.changeset : undefined;
+	if (endoProtectedStagedV2(rest.schemaVersion) !== (changeset !== undefined))
+		throw new TypeError("a staged record carries a change set, and only a staged record does");
+	const handed: Pick<EndoProtectedTrialV0["submission"], "status" | "refusals"> =
+		changeset === undefined
+			? (facts as { submission: EndoProtectedTrialV0["submission"] }).submission
+			: {
+					status: changeset.collection.status,
+					refusals: changeset.collection.refusals as unknown as EndoProtectedTrialV0["submission"]["refusals"],
+				};
+	const staged = changeset === undefined ? [] : expectedStagedInvalidatingV2(changeset);
 	const status =
 		facts.preflight.status === "established"
 			? ("established" as const)
@@ -623,34 +746,39 @@ function finish(
 				: ("unavailable" as const);
 	const common = {
 		preflight: facts.preflight,
-		submission: facts.submission,
+		...(changeset === undefined
+			? { submission: (facts as { submission: EndoProtectedTrialV0["submission"] }).submission }
+			: { changeset }),
 		evaluation: { ...evaluationIdentity, ...facts.evaluation },
 		controller: facts.controller,
 		recordedAt: new Date().toISOString(),
 	};
 	const scope = facts.agent.scope;
 	let record: EndoProtectedTrial;
-	if (rest.schemaVersion === ENDO_PROTECTED_TRIAL_V1) {
+	if (endoProtectedModelConnectedV0(rest.schemaVersion)) {
 		const model = facts.model;
 		if (model === undefined) throw new TypeError("a model-connected record needs its model facts");
 		const agent = { ...facts.agent, scope: scope === null ? null : { ...scope, result: scope.result ?? null } };
 		const seal = (recording: EndoProtectedRecordingV1) =>
-			sealEndoProtectedTrialV0<EndoProtectedTrialV1>({
-				...(rest as unknown as Omit<EndoProtectedTrialV1, "recordSha256">),
+			sealEndoProtectedTrialV0<EndoProtectedTrial>({
+				...rest,
 				...common,
 				network: { mode: "model-relay", relay: model.relay, status },
 				agent,
 				recording,
-				invalidating: expectedInvalidatingV1(
-					facts.controller.finalized,
-					facts.preflight.status,
-					agent,
-					facts.submission,
-					facts.evaluation.status,
-					model.relay,
-					recording,
-				),
-			});
+				invalidating: [
+					...expectedInvalidatingV1(
+						facts.controller.finalized,
+						facts.preflight.status,
+						agent,
+						handed,
+						facts.evaluation.status,
+						model.relay,
+						recording,
+					),
+					...staged,
+				],
+			} as unknown as Omit<EndoProtectedTrial, "recordSha256">);
 		try {
 			record = seal(model.recording);
 		} catch (error) {
@@ -669,19 +797,22 @@ function finish(
 			...facts.agent,
 			scope: scope === null ? null : { unit: scope.unit, established: scope.established, ended: scope.ended },
 		};
-		record = sealEndoProtectedTrialV0<EndoProtectedTrialV0>({
-			...(rest as unknown as Omit<EndoProtectedTrialV0, "recordSha256">),
+		record = sealEndoProtectedTrialV0<EndoProtectedTrial>({
+			...rest,
 			...common,
 			network: { mode: "none", relay: null, status },
 			agent,
-			invalidating: expectedInvalidating(
-				facts.controller.finalized,
-				facts.preflight.status,
-				agent,
-				facts.submission,
-				facts.evaluation.status,
-			),
-		});
+			invalidating: [
+				...expectedInvalidating(
+					facts.controller.finalized,
+					facts.preflight.status,
+					agent,
+					handed,
+					facts.evaluation.status,
+				),
+				...staged,
+			],
+		} as unknown as Omit<EndoProtectedTrial, "recordSha256">);
 	}
 	writeJsonOnce(path, record);
 	return record;
@@ -827,10 +958,12 @@ async function finalizeOnResume(
 			scope,
 		};
 	}
+	// A staged attempt pinned its baseline (baseline.json) before its agent could start; nothing is collected on resume.
+	const pin = p.baselines.get(base.trial.task);
 	return finish(join(attemptDir, "record.json"), base, {
 		preflight,
 		agent,
-		submission: NOT_COLLECTED,
+		...nothingHanded(pin, existsSync(join(attemptDir, "baseline.json")) ? "pinned" : "not-pinned"),
 		evaluation: NOT_RUN,
 		controller: { finalized: "on-resume" },
 		...(model === undefined ? {} : { model }),
@@ -900,6 +1033,7 @@ async function runAttempt(
 	const work = join(attemptDir, "work");
 	const record = join(attemptDir, "record.json");
 	const required = p.model?.access.minExchanges ?? 0;
+	const pin = p.baselines.get(task.id);
 	const notRun: AgentFacts = {
 		status: "not-run",
 		exitCode: null,
@@ -922,11 +1056,28 @@ async function runAttempt(
 		return finish(record, base, {
 			preflight,
 			agent: notRun,
-			submission: NOT_COLLECTED,
+			...nothingHanded(pin, "not-pinned"),
 			evaluation: NOT_RUN,
 			controller: { finalized: "normally" },
 			...(p.model === null ? {} : { model: relayNotRun(p.model, "not-started", required) }),
 		});
+	// A staged attempt: its baseline tree and its workspace, captured again now that the boundary probe has run, must each be exactly the
+	// baseline pinned from the spec. Otherwise neither the relay nor the agent is started. The pin is then recorded, before the agent.
+	if (pin !== undefined) {
+		options.onBeforeBaselinePinned?.(attemptDir);
+		const limits = (task as EndoProtectedStagedTaskV2).submission.limits;
+		const trees = [join(attemptDir, "baseline"), work].map((tree) => captureWorkspaceBaselineV0(tree, limits));
+		if (trees.some((t) => !t.ok || t.baseline.sha256 !== pin.sha256))
+			return finish(record, base, {
+				preflight,
+				agent: notRun,
+				...nothingHanded(pin, "mismatch"),
+				evaluation: NOT_RUN,
+				controller: { finalized: "normally" },
+				...(p.model === null ? {} : { model: relayNotRun(p.model, "not-started", required) }),
+			});
+		writeJsonOnce(join(attemptDir, "baseline.json"), pin);
+	}
 	// A model-connected attempt: its own relay, started now that the boundary is established, recording into this attempt's own store
 	// under a new key. Failing to start it is recorded, and the agent never runs.
 	let relayed: Awaited<ReturnType<typeof startAttemptRelay>> | null = null;
@@ -938,7 +1089,7 @@ async function runAttempt(
 			return finish(record, base, {
 				preflight,
 				agent: notRun,
-				submission: NOT_COLLECTED,
+				...nothingHanded(pin, "pinned"),
 				evaluation: NOT_RUN,
 				controller: { finalized: "normally" },
 				model: relayNotRun(p.model, "failed-to-start", required),
@@ -971,11 +1122,11 @@ async function runAttempt(
 				timeoutMs: spec.limits.agentTimeoutMs,
 				outputBytes: spec.limits.outputBytes,
 				containment: p.containment,
-				...(spec.schemaVersion === ENDO_PROTECTED_SPEC_V1
+				...(endoProtectedModelConnectedV0(spec.schemaVersion)
 					? {
 							limits: {
-								memoryMaxBytes: spec.limits.memoryMaxBytes,
-								cpuQuotaPercent: spec.limits.cpuQuotaPercent,
+								memoryMaxBytes: (spec as EndoProtectedModelSpec).limits.memoryMaxBytes,
+								cpuQuotaPercent: (spec as EndoProtectedModelSpec).limits.cpuQuotaPercent,
 							},
 						}
 					: {}),
@@ -1023,12 +1174,21 @@ async function runAttempt(
 		}
 	}
 	const model = modelFacts === undefined ? {} : { model: modelFacts };
+	// Nothing is collected unless the agent's termination is confirmed: an unconfirmed or interrupted end is recorded as it is.
 	if (agent.termination !== "confirmed" || !started)
 		return finish(record, base, {
 			preflight,
 			agent,
-			submission: NOT_COLLECTED,
+			...nothingHanded(pin, "pinned"),
 			evaluation: NOT_RUN,
+			controller: { finalized: "normally" },
+			...model,
+		});
+	if (pin !== undefined)
+		return finish(record, base, {
+			preflight,
+			agent,
+			...(await collectAndEvaluateStaged(p, evaluator, task as EndoProtectedStagedTaskV2, pin, attemptDir, options)),
 			controller: { finalized: "normally" },
 			...model,
 		});
@@ -1038,7 +1198,7 @@ async function runAttempt(
 	let evaluation: Parameters<typeof finish>[2]["evaluation"];
 	let collectionFailed = false;
 	try {
-		submission = exportSubmissionV0(work, task.submission, spec.limits, join(attemptDir, "submission"));
+		submission = exportSubmissionV0(work, task.submission as string[], spec.limits, join(attemptDir, "submission"));
 	} catch {
 		// Collection maps the errors an agent can cause (access, missing, links) to refusals itself; anything that still throws is the
 		// controller's (its staging copy, the host's I/O): attrition, never counted as the agent's failure.
@@ -1083,6 +1243,84 @@ async function runAttempt(
 		controller: { finalized: "normally" },
 		...model,
 	});
+}
+
+/**
+ * A staged attempt after its agent's termination was confirmed. The collector compares the workspace with the pin and stages the whole
+ * difference within the task's limits (no verification here). The evaluator step then verifies the staging directory independently,
+ * against the collector's digest, the complete pinned record and the attempt's pristine baseline tree, reconstructs the candidate in a new
+ * candidate/ directory and evaluates that tree. Nothing the agent left can stop the controller: what still throws is the controller's,
+ * recorded as an evaluation that could not run.
+ */
+async function collectAndEvaluateStaged(
+	p: Prepared,
+	evaluator: EndoLoadedEvaluatorV0,
+	task: EndoProtectedStagedTaskV2,
+	pin: EndoWorkspaceBaselineV0,
+	attemptDir: string,
+	options: EndoProtectedRunOptionsV0,
+): Promise<{ changeset: EndoProtectedChangeSetV2; evaluation: Parameters<typeof finish>[2]["evaluation"] }> {
+	const work = join(attemptDir, "work");
+	const stagingDir = join(attemptDir, "changeset");
+	const limits = task.submission.limits;
+	let collection: EndoProtectedChangeSetV2["collection"] = NOT_COLLECTED_CHANGESET;
+	let changesetSha256: string | null = null;
+	let collectionFailed = false;
+	try {
+		const collected = collectStagedChangeSetV0(pin, work, stagingDir, limits);
+		if (collected.status === "collected") {
+			changesetSha256 = collected.manifest.changesetSha256;
+			collection = {
+				status: "collected",
+				changesetSha256,
+				summary: collected.manifest.summary,
+				refusals: [],
+			};
+		} else collection = { status: "refused", changesetSha256: null, summary: null, refusals: collected.refusals };
+	} catch {
+		collectionFailed = true;
+	}
+	restoreOwnerAccess(work);
+	options.onChangeSetCollected?.(attemptDir);
+	let verification = NOT_VERIFIED;
+	let evaluation: Parameters<typeof finish>[2]["evaluation"] = NOT_RUN;
+	try {
+		if (collectionFailed)
+			evaluation = {
+				status: "could-not-run",
+				cases: null,
+				reason: "the controller failed while collecting",
+				outputSha256: null,
+			};
+		else if (changesetSha256 !== null) {
+			const staged = await evaluateStagedChangeSetV2(
+				{
+					bwrap: p.bwrap,
+					containment: p.containment,
+					runtime: p.runtime,
+					node: p.node,
+					limits: options.spec.limits,
+				},
+				evaluator,
+				{ baseline: pin, baselineDir: join(attemptDir, "baseline"), stagingDir, changesetSha256, limits },
+				join(attemptDir, "candidate"),
+				join(attemptDir, ".evaluation"),
+				scopeRecorder(attemptDir, "evaluation"),
+			);
+			verification = staged.verification;
+			evaluation = staged.evaluation;
+		}
+	} catch {
+		evaluation = {
+			status: "could-not-run",
+			cases: null,
+			reason: "the controller failed while evaluating",
+			outputSha256: null,
+		};
+	} finally {
+		rmSync(join(attemptDir, ".evaluation"), { recursive: true, force: true });
+	}
+	return { changeset: { baseline: baselineFacts(pin, "pinned"), collection, verification }, evaluation };
 }
 
 /**
@@ -1203,12 +1441,39 @@ async function runPrepared(
 		try {
 			for (const t of spec.tasks) {
 				const ev = p.evaluators.get(t.id)!;
-				const q = await qualifyEvaluatorV0(
-					{ bwrap: p.bwrap, containment: p.containment, runtime: p.runtime, node: p.node, limits: spec.limits },
-					ev,
-					t.submission,
-					join(scratch, t.id),
-				);
+				const ctx = {
+					bwrap: p.bwrap,
+					containment: p.containment,
+					runtime: p.runtime,
+					node: p.node,
+					limits: spec.limits,
+				};
+				const pin = p.baselines.get(t.id);
+				let q: Awaited<ReturnType<typeof qualifyEvaluatorV0>>;
+				if (stagedTask(t) && pin !== undefined) {
+					// The workspace must materialize as exactly its pin, within the task's own limits (a tree too big to walk is refused here,
+					// before any trial); the reference and negative then go through the same staged path as a trial.
+					const baselineDir = join(scratch, t.id, "baseline");
+					mkdirSync(join(scratch, t.id), { recursive: true, mode: 0o700 });
+					writeWorkspace(baselineDir, t.workspace, true);
+					const captured = captureWorkspaceBaselineV0(baselineDir, t.submission.limits);
+					if (!captured.ok)
+						throw new EndoProtectedRefusalV0(
+							`task ${t.id}: the workspace does not fit its change-set limits (${captured.refusals[0]?.reason})`,
+						);
+					if (captured.baseline.sha256 !== pin.sha256)
+						throw new EndoProtectedRefusalV0(
+							`task ${t.id}: the workspace did not materialize as its pinned baseline`,
+						);
+					q = await qualifyStagedEvaluatorV2(
+						ctx,
+						ev,
+						pin,
+						baselineDir,
+						t.submission.limits,
+						join(scratch, t.id, "staged"),
+					);
+				} else q = await qualifyEvaluatorV0(ctx, ev, t.submission as string[], join(scratch, t.id));
 				if (!q.ok) throw new EndoProtectedRefusalV0(`task ${t.id}: ${q.detail}`);
 				out.push({
 					task: t.id,
@@ -1273,7 +1538,7 @@ async function runPrepared(
 			if (!read.ok) throw new EndoProtectedRefusalV0(`the existing run record is not readable: ${read.reason}`);
 			run = read.value;
 			// A run resumes only as the version it began as: an offline run is never continued as a model-connected one, nor the reverse.
-			if ((run.schemaVersion === ENDO_PROTECTED_RUN_V1) !== (spec.schemaVersion === ENDO_PROTECTED_SPEC_V1))
+			if (run.schemaVersion !== ENDO_PROTECTED_RUN_OF_SPEC[spec.schemaVersion])
 				throw new EndoProtectedRefusalV0(
 					`the run directory holds a ${run.schemaVersion} run; a ${spec.schemaVersion} spec cannot resume it`,
 				);
@@ -1299,8 +1564,7 @@ async function runPrepared(
 			const seed = spec.seed ?? randomInt(0, 0x100000000);
 			const evaluators = await qualify();
 			run = {
-				schemaVersion:
-					spec.schemaVersion === ENDO_PROTECTED_SPEC_V1 ? ENDO_PROTECTED_RUN_V1 : "endo.protected-run.v0",
+				schemaVersion: ENDO_PROTECTED_RUN_OF_SPEC[spec.schemaVersion],
 				runner: ENDO_PROTECTED_RUNNER_V0,
 				spec,
 				specSha256,
@@ -1393,11 +1657,12 @@ async function runPrepared(
 			if (existsSync(attemptDir)) throw new EndoProtectedRefusalV0(`${attemptDir} exists: refusing to reuse it`);
 			renameSync(aside, attemptDir);
 			const work = join(attemptDir, "work");
-			mkdirSync(work);
-			for (const [path, content] of Object.entries(task.workspace)) {
-				mkdirSync(dirname(join(work, path)), { recursive: true });
-				writeFileSync(join(work, path), content, { flag: "wx" });
+			// A staged task's pristine baseline tree is written beside the workspace, from the same spec bytes, and never mounted.
+			if (stagedTask(task)) {
+				writeWorkspace(join(attemptDir, "baseline"), task.workspace, true);
+				for (const path of Object.keys(task.workspace)) chmodSync(join(attemptDir, "baseline", path), 0o444);
 			}
+			writeWorkspace(work, task.workspace, stagedTask(task));
 			const profile = agentProfile(p, spec, condition, work, unsafe);
 			const base = recordBase(run, entry, attempt, retryOf, profile, evaluator);
 			await runAttempt(p, run, entry, attemptDir, base, profile, options);
@@ -1521,8 +1786,8 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 	if (!read.ok) throw new EndoProtectedRefusalV0(`the run record is not readable: ${read.reason}`);
 	const run = read.value;
 	// A model-connected run's records are read against the policy its spec declares, never against the one a record names.
-	const v1 = run.schemaVersion === ENDO_PROTECTED_RUN_V1;
-	const declared = v1 ? endoProtectedRelayPolicyV1((run.spec as EndoProtectedSpecV1).modelAccess) : null;
+	const v1 = endoProtectedModelConnectedV0(run.schemaVersion);
+	const declared = v1 ? endoProtectedRelayPolicyV1((run.spec as EndoProtectedModelSpec).modelAccess) : null;
 	const declaredSha256 = declared === null ? null : modelRelayPolicyDigestV0(declared);
 	const refusedRecords: EndoProtectedReportV0["refusedRecords"] = [];
 	const cells = new Map<string, EndoProtectedReportV0["cells"][number]>();
@@ -1576,7 +1841,7 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 			const ev = run.evaluators.find((x) => x.task === entry.task);
 			const problem =
 				// Each record of the run's own version only: an offline record is never read as a model-connected one, nor the reverse.
-				(v.schemaVersion === ENDO_PROTECTED_TRIAL_V1) !== v1
+				v.schemaVersion !== ENDO_PROTECTED_TRIAL_OF_RUN[run.schemaVersion]
 					? "the record's version is not the run's"
 					: v.trial.position !== entry.position ||
 							v.trial.task !== entry.task ||
@@ -1600,15 +1865,24 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 												? "the attempt does not retry the attempt before it"
 												: n > 1 && (previous === null || !retryable(previous))
 													? "the attempt retries one that may not be retried (its agent ran, or its record is unreadable)"
-													: v.schemaVersion === ENDO_PROTECTED_TRIAL_V1
-														? modelEvidenceProblem(
-																v,
-																join(trialDir, `attempt-${n}`),
-																run.spec as EndoProtectedSpecV1,
-																declared as EndoModelRelayPolicyV0,
-																declaredSha256 as string,
-															)
-														: null;
+													: ((endoProtectedTrialIsModelConnectedV0(v)
+															? modelEvidenceProblem(
+																	v,
+																	join(trialDir, `attempt-${n}`),
+																	run.spec as EndoProtectedModelSpec,
+																	declared as EndoModelRelayPolicyV0,
+																	declaredSha256 as string,
+																)
+															: null) ??
+														(endoProtectedTrialIsStagedV2(v)
+															? stagedEvidenceProblem(
+																	v,
+																	join(trialDir, `attempt-${n}`),
+																	run.spec.tasks.find(
+																		(t) => t.id === entry.task,
+																	) as EndoProtectedStagedTaskV2,
+																)
+															: null));
 			if (problem !== null) {
 				refusedRecords.push({ path: rel, reason: problem });
 				continue;
@@ -1633,7 +1907,7 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 			}
 		}
 	}
-	const access = v1 ? (run.spec as EndoProtectedSpecV1).modelAccess : null;
+	const access = v1 ? (run.spec as EndoProtectedModelSpec).modelAccess : null;
 	return {
 		schemaVersion: v1 ? "endo.protected-report.v1" : "endo.protected-report.v0",
 		run: { id: run.spec.id, specSha256: run.specSha256, seed: run.seed, isolation: run.isolation },
@@ -1660,6 +1934,12 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
 						"model-connected: a refused request is the agent's doing and does not invalidate a trial; a failed relay, an incomplete recording or a model server's failure on a forwarded request is attrition",
 					]
 				: []),
+			...(endoProtectedStagedV2(run.schemaVersion)
+				? [
+						"staged: each record's baseline is derived again from its spec's workspace, and a change set it says verified is verified again from the attempt's staging directory and baseline tree; a record that does not match is refused (record-refused attrition)",
+						"staged: a change set the collector refused (a link, a special file, .git, a bound exceeded) is the agent's failure (failedWithoutSubmission); a baseline mismatch before the agent started, or a collected change set that does not verify, is attrition and is never evaluated",
+					]
+				: []),
 		],
 		cells: [...cells.values()],
 		refusedRecords,
@@ -1673,9 +1953,9 @@ export function reportProtectedExperimentV0(directory: string): EndoProtectedRep
  * (verifyModelEvidenceV0). Nothing the record concludes is taken on its word.
  */
 function modelEvidenceProblem(
-	v: EndoProtectedTrialV1,
+	v: EndoProtectedModelTrial,
 	attemptDir: string,
-	spec: EndoProtectedSpecV1,
+	spec: EndoProtectedModelSpec,
 	declared: EndoModelRelayPolicyV0,
 	declaredSha256: string,
 ): string | null {
@@ -1703,6 +1983,40 @@ function modelEvidenceProblem(
 		recorded: v.recording,
 		admitted: v.network.relay.admitted,
 	});
+}
+
+/**
+ * Why a staged attempt's record does not match its own evidence, or null. Its baseline must be the one its spec's workspace pins (derived
+ * again here, never read from the attempt); and when it says its change set verified, the staging directory on disk must still verify
+ * against the record's digest, the complete pinned record and the attempt's baseline tree, with the record's summary, and the candidate it
+ * names must be the tree that change set and baseline imply.
+ */
+function stagedEvidenceProblem(
+	v: Extract<EndoProtectedTrial, { changeset: unknown }>,
+	attemptDir: string,
+	task: EndoProtectedStagedTaskV2,
+): string | null {
+	const pin = endoProtectedStagedBaselineV2(task.workspace);
+	const b = v.changeset.baseline;
+	if (b.sha256 !== pin.sha256 || b.files !== pin.files.length || b.totalBytes !== pin.totalBytes)
+		return "the record's baseline is not the one its spec's workspace pins";
+	if (v.changeset.verification.status !== "verified") return null;
+	const verified = verifyStagedChangeSetV0(
+		join(attemptDir, "changeset"),
+		{
+			expectedBaselineSha256: pin.sha256,
+			expectedChangesetSha256: v.changeset.collection.changesetSha256 as string,
+			baseline: pin,
+			baselineTree: join(attemptDir, "baseline"),
+		},
+		task.submission.limits,
+	);
+	if (!verified.ok) return `the attempt's change set does not verify against its record (${verified.reason})`;
+	if (canonicalEndoJsonV0(verified.manifest.summary) !== canonicalEndoJsonV0(v.changeset.collection.summary))
+		return "the record's change-set summary is not its manifest's";
+	if (endoStagedCandidateRecordV0(verified.manifest, pin).sha256 !== v.changeset.verification.candidateSha256)
+		return "the record's candidate is not the tree its change set and baseline imply";
+	return null;
 }
 
 // ---- commands ---------------------------------------------------------------------------------------------------------------------------------

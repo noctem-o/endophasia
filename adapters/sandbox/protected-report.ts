@@ -150,7 +150,12 @@ type BoundedReadResult =
 
 /** Descriptor-based bounded read of a single plain file without following symlinks. */
 function readPlainFileBounded(path: string, maxBytes: number): BoundedReadResult {
-	const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+	let before: ReturnType<typeof lstatSync> | undefined;
+	try {
+		before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+	} catch {
+		return { ok: false, code: "unreadable" };
+	}
 	if (before === undefined) return { ok: false, code: "missing" };
 	if (before.isSymbolicLink()) return { ok: false, code: "symlink" };
 	if (!before.isFile()) return { ok: false, code: "not-file" };
@@ -192,7 +197,12 @@ function plainDirChain(base: string, segments: readonly string[]): "ok" | "missi
 	let current = base;
 	for (const seg of segments) {
 		current = join(current, seg);
-		const st = lstatSync(current, { throwIfNoEntry: false });
+		let st: ReturnType<typeof lstatSync> | undefined;
+		try {
+			st = lstatSync(current, { throwIfNoEntry: false });
+		} catch {
+			return "unsafe";
+		}
 		if (st === undefined) return "missing";
 		if (st.isSymbolicLink() || !st.isDirectory()) return "unsafe";
 	}

@@ -487,4 +487,36 @@ describe("EVOLVE-INSPECT-001: security boundaries, symlink rejection, HTTP guard
 		expect(detail!.refusedRecords[0]!.reason).toMatch(/not a regular file|unusable/i);
 		expect(JSON.stringify(detail)).not.toContain(runDir);
 	});
+
+	it("treats an inaccessible attempt directory as a refused record without invalidating sibling trials", () => {
+		if (process.getuid?.() === 0) return; // root bypasses mode 0o000
+		const runDir = freshDir("inaccessible-attempt-dir");
+		createOfflineRichRunV0(runDir);
+		const attemptDir = join(runDir, "trials", "calc-fix", "baseline", "0", "attempt-1");
+		chmodSync(attemptDir, 0o000);
+		try {
+			const cliReport = reportProtectedExperimentV0(runDir);
+			expect(cliReport.refusedRecords.some((r) => r.path.includes("0/attempt-1/record.json"))).toBe(true);
+
+			const observer = new ProtectedExperimentObserverV0({ root: runDir, key: OTHER_KEY });
+			const index = observer.list();
+			expect(index.runs).toHaveLength(1);
+			expect(index.runs[0]!.state).toBe("readable");
+
+			const detail = observer.detail(index.runs[0]!.selector);
+			expect(detail).not.toBeNull();
+			const trial0 = detail!.trials.find((t) => t.position === 0)!;
+			expect(trial0.outcome).toBe("refused");
+			expect(trial0.outcomeReason).toMatch(/not readable/i);
+			expect(cliReport.cells[0]!.attrition["record-refused"]).toBeGreaterThanOrEqual(1);
+			// Readable sibling trials remain intact.
+			const trial1 = detail!.trials.find((t) => t.position === 1)!;
+			expect(trial1.outcome).toBe("failed");
+			const trial2 = detail!.trials.find((t) => t.position === 2)!;
+			expect(trial2.outcome).toBe("passed");
+			expect(JSON.stringify(detail)).not.toContain(runDir);
+		} finally {
+			chmodSync(attemptDir, 0o700);
+		}
+	});
 });

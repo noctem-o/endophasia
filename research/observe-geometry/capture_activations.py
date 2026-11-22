@@ -34,6 +34,7 @@ from transformer_lens.model_bridge import TransformerBridge
 from transformer_lens.model_bridge.driver_protocol import KNOWN_FEATURES
 
 # Protocol bounds matching `ENDO_OBSERVE_REPRESENTATION_LIMITS_V0` in `protocol/observe-representation.ts`.
+MAX_FILE_BYTES = 16 * 1024 * 1024
 MAX_POINTS = 512
 MAX_LAYERS = 128
 MAX_VECTOR_DIM = 8192
@@ -376,12 +377,19 @@ def main() -> None:
         "interpretations": [],
     }
 
+    encoded = (json.dumps(artifact_doc, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(encoded) > MAX_FILE_BYTES:
+        raise SystemExit(
+            f"error: serialized capture is {len(encoded):,} bytes, exceeding Studio's "
+            f"maxFileBytes={MAX_FILE_BYTES:,} (16 MiB). Reduce --layers or shorten --prompt."
+        )
+
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(artifact_doc, separators=(",", ":")) + "\n", encoding="utf-8")
+    out_path.write_bytes(encoded)
     print(
-        f"Captured {len(points)} points ({len(selected_layers)} layers x {seq_len} tokens, d_model={d_model}) "
-        f"from {args.model} via TransformerBridge {tl_version} -> {out_path}"
+        f"Captured {len(points)} points ({len(selected_layers)} layers x {seq_len} tokens, d_model={d_model}, "
+        f"{len(encoded):,} bytes) from {args.model} via TransformerBridge {tl_version} -> {out_path}"
     )
 
 

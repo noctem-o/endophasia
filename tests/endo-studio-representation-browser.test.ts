@@ -322,7 +322,7 @@ suite("Representation Explorer in headless Chromium", () => {
 		expect(page.seen.problems).toEqual([]);
 	}, 60_000);
 
-	it("recovers from a transient scene fetch failure when the operator clicks Refresh artifacts", async () => {
+	it("recovers from transient initial list and scene fetch failures via explicit retry/refresh actions", async () => {
 		const root = tempRoot();
 		ingestAll(root, lifecycleEvents("completes"));
 		seedRegistry(root);
@@ -335,6 +335,7 @@ suite("Representation Explorer in headless Chromium", () => {
 		const soleSelector = index.artifacts[0]!.selector;
 		const scene = observer.scene(soleSelector);
 
+		let listAttempts = 0;
 		let sceneAttempts = 0;
 		const contentType = (name: string): string =>
 			name.endsWith(".js")
@@ -354,6 +355,13 @@ suite("Representation Explorer in headless Chromium", () => {
 				return;
 			}
 			if (url === "/api/v0/observe/representations") {
+				listAttempts += 1;
+				if (listAttempts === 1) {
+					res.writeHead(429, { "Content-Type": "application/json; charset=utf-8", "Retry-After": "1" }).end(
+						'{"error":"too-many-requests"}\n',
+					);
+					return;
+				}
 				res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" }).end(JSON.stringify(index));
 				return;
 			}
@@ -381,9 +389,17 @@ suite("Representation Explorer in headless Chromium", () => {
 			await page.goto(`http://127.0.0.1:${port}/`);
 			await page.settled();
 			await page.click("[data-testid=observe-tab-representations]");
-			await page.waitFor("document.querySelector('[data-testid=rep-problem]') !== null", 10_000);
+			// First list request fails with 429: explicit Retry artifacts button recovers the initial read.
+			await page.waitFor("document.querySelector('[data-testid=rep-retry-list]') !== null", 10_000);
 			expect(await page.text("[data-testid=rep-problem]")).toContain("pacing");
-			expect(await page.eval<number>("document.querySelectorAll('[data-testid=rep-retry-scene]').length")).toBe(1);
+			expect(listAttempts).toBe(1);
+			expect(sceneAttempts).toBe(0);
+
+			// Retry list succeeds, then first scene request fails with 429: Retry scene button appears.
+			await page.click("[data-testid=rep-retry-list]");
+			await page.waitFor("document.querySelector('[data-testid=rep-retry-scene]') !== null", 10_000);
+			expect(await page.text("[data-testid=rep-problem]")).toContain("pacing");
+			expect(listAttempts).toBe(2);
 			expect(sceneAttempts).toBe(1);
 
 			// Clicking Refresh artifacts must retry the missing scene even when the sole artifact stays selected.

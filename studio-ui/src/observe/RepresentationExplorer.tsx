@@ -585,9 +585,29 @@ export function RepresentationExplorer({ api }: { api: RepresentationsApi }): Re
 						<span className="spinner" aria-hidden="true" /> Reading recorded representation captures…
 					</output>
 				) : (
-					<Note tone={state.problem === null ? "info" : "error"}>
-						{state.problem ?? "Representation captures have not been read yet."}
-					</Note>
+					<Panel
+						resetKey="rep-unread"
+						id="rep-unread"
+						title="Representation Explorer"
+						subtitle={state.problem === null ? "not yet read" : "read failed"}
+						tools={
+							<button
+								type="button"
+								className="btn"
+								onClick={refreshList}
+								disabled={state.reading}
+								data-testid="rep-retry-list"
+							>
+								{state.problem === null ? "Read artifacts" : "Retry artifacts"}
+							</button>
+						}
+					>
+						<div className="rep-empty-body">
+							<Note tone={state.problem === null ? "info" : "error"} testid="rep-problem">
+								{state.problem ?? "Representation captures have not been read yet."}
+							</Note>
+						</div>
+					</Panel>
 				)}
 			</div>
 		);

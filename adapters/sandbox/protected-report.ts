@@ -92,10 +92,18 @@ export interface InspectProtectedExperimentOptionsV0 {
 	maxRunFileBytes?: number;
 	maxTrialFileBytes?: number;
 	maxAttemptsPerTrial?: number;
+	maxCaptureLogBytes?: number;
+	maxCaptureBlobBytes?: number;
+	maxCaptureTotalBytes?: number;
+	maxCaptureBlobs?: number;
 }
 
 const DEFAULT_MAX_RUN_FILE_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_TRIAL_FILE_BYTES = 16 * 1024 * 1024;
+const DEFAULT_MAX_CAPTURE_LOG_BYTES = 64 * 1024 * 1024;
+const DEFAULT_MAX_CAPTURE_BLOB_BYTES = 32 * 1024 * 1024;
+const DEFAULT_MAX_CAPTURE_TOTAL_BYTES = 128 * 1024 * 1024;
+const DEFAULT_MAX_CAPTURE_BLOBS = 4096;
 const MAX_DIGEST_KEY_BYTES = 4096;
 
 /** The relay policy a spec's model access declares (adapters/sandbox/model-relay.ts). Its digest is what each record must name. */
@@ -231,12 +239,96 @@ function readAttemptKeySafe(attemptDir: string) {
  * attempt's key, must be the one the record summarizes, with every forwarded request one the declared policy admits
  * (verifyModelEvidenceV0). Nothing the record concludes is taken on its word.
  */
+interface CaptureStoreBoundsV0 {
+	maxLogBytes: number;
+	maxBlobBytes: number;
+	maxTotalBytes: number;
+	maxBlobs: number;
+}
+
+/**
+ * Check a single file nonblockingly without following a final symlink: must be absent (when optional) or a plain regular file
+ * within `maxBytes`. Prevents FIFOs, devices, symlinks, or oversized files from blocking or exhausting memory during inspection.
+ */
+function checkPlainRegularFileNonBlocking(
+	path: string,
+	maxBytes: number,
+	allowMissing: boolean,
+): { ok: true; size: number } | { ok: false; reason: string } {
+	let fd: number;
+	try {
+		fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0));
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		if (allowMissing && code === "ENOENT") return { ok: true, size: 0 };
+		if (code === "ELOOP") return { ok: false, reason: "symbolic link" };
+		return { ok: false, reason: "unreadable" };
+	}
+	try {
+		const st = fstatSync(fd);
+		if (!st.isFile()) return { ok: false, reason: "not a regular file" };
+		if (st.size > maxBytes) return { ok: false, reason: "exceeds size bound" };
+		return { ok: true, size: st.size };
+	} catch {
+		return { ok: false, reason: "unreadable" };
+	} finally {
+		closeSync(fd);
+	}
+}
+
+/**
+ * Validate nested capture-store directories and regular files nonblockingly and within byte/count bounds before handing the
+ * store to `verifyModelEvidenceV0`.
+ */
+function checkModelCaptureStoreSafe(storeDir: string, keyId: string, bounds: CaptureStoreBoundsV0): string | null {
+	const captureState = plainDirChain(storeDir, ["capture"]);
+	if (captureState === "missing") return null;
+	if (captureState !== "ok") return "the attempt's model capture directory is not a plain directory";
+
+	const eventsState = plainDirChain(storeDir, ["capture", "events"]);
+	if (eventsState === "unsafe") return "the attempt's model capture events directory is not a plain directory";
+	if (eventsState === "ok") {
+		const logCheck = checkPlainRegularFileNonBlocking(
+			join(storeDir, "capture", "events", "events.log"),
+			bounds.maxLogBytes,
+			true,
+		);
+		if (!logCheck.ok) return `the attempt's model capture log is unusable (${logCheck.reason})`;
+	}
+
+	const blobsState = plainDirChain(storeDir, ["capture", "blobs"]);
+	if (blobsState === "unsafe") return "the attempt's model capture blobs directory is not a plain directory";
+	if (blobsState === "ok") {
+		const domainState = plainDirChain(storeDir, ["capture", "blobs", keyId]);
+		if (domainState === "unsafe") return "the attempt's model capture blob domain is not a plain directory";
+		if (domainState === "ok") {
+			const domainDir = join(storeDir, "capture", "blobs", keyId);
+			let entries: string[];
+			try {
+				entries = readdirSync(domainDir);
+			} catch {
+				return "the attempt's model capture blobs directory is not readable";
+			}
+			if (entries.length > bounds.maxBlobs) return "the attempt's model capture exceeds the blob count bound";
+			let totalBytes = 0;
+			for (const name of entries) {
+				const check = checkPlainRegularFileNonBlocking(join(domainDir, name), bounds.maxBlobBytes, false);
+				if (!check.ok) return `the attempt's model capture blob is unusable (${check.reason})`;
+				totalBytes += check.size;
+				if (totalBytes > bounds.maxTotalBytes) return "the attempt's model capture exceeds the total byte bound";
+			}
+		}
+	}
+	return null;
+}
+
 function modelEvidenceProblem(
 	v: EndoProtectedModelTrial,
 	attemptDir: string,
 	spec: EndoProtectedModelSpec,
 	declared: EndoModelRelayPolicyV0,
 	declaredSha256: string,
+	captureBounds: CaptureStoreBoundsV0,
 ): string | null {
 	if (v.network.relay.policySha256 !== declaredSha256)
 		return "the record's relay enforced another policy than the run declares";
@@ -257,9 +349,12 @@ function modelEvidenceProblem(
 	if (plainDirChain(attemptDir, ["model", "store"]) !== "ok") {
 		return "the attempt's model recording store is not a plain directory";
 	}
+	const storeDir = join(attemptDir, "model", "store");
+	const captureProblem = checkModelCaptureStoreSafe(storeDir, key.keyId, captureBounds);
+	if (captureProblem !== null) return captureProblem;
 	try {
 		return verifyModelEvidenceV0({
-			store: join(attemptDir, "model", "store"),
+			store: storeDir,
 			key,
 			policy: declared,
 			recorded: v.recording,
@@ -323,6 +418,12 @@ export function inspectProtectedExperimentV0(
 	const maxRunBytes = options.maxRunFileBytes ?? DEFAULT_MAX_RUN_FILE_BYTES;
 	const maxTrialBytes = options.maxTrialFileBytes ?? DEFAULT_MAX_TRIAL_FILE_BYTES;
 	const maxAttempts = options.maxAttemptsPerTrial;
+	const captureBounds: CaptureStoreBoundsV0 = {
+		maxLogBytes: options.maxCaptureLogBytes ?? DEFAULT_MAX_CAPTURE_LOG_BYTES,
+		maxBlobBytes: options.maxCaptureBlobBytes ?? DEFAULT_MAX_CAPTURE_BLOB_BYTES,
+		maxTotalBytes: options.maxCaptureTotalBytes ?? DEFAULT_MAX_CAPTURE_TOTAL_BYTES,
+		maxBlobs: options.maxCaptureBlobs ?? DEFAULT_MAX_CAPTURE_BLOBS,
+	};
 	const runFileRead = readPlainFileBounded(join(dir, "protected-run.json"), maxRunBytes);
 	if (!runFileRead.ok) {
 		const detail =
@@ -544,6 +645,7 @@ export function inspectProtectedExperimentV0(
 																	run.spec as EndoProtectedModelSpec,
 																	declared as EndoModelRelayPolicyV0,
 																	declaredSha256 as string,
+																	captureBounds,
 																)
 															: null) ??
 														(endoProtectedTrialIsStagedV2(v)

@@ -23,6 +23,7 @@ import {
 	type EndoProtectedRun,
 	endoProtectedModelConnectedV0,
 	endoProtectedStagedV2,
+	endoProtectedSuccessfulExchangesV1,
 	endoProtectedTrialIsModelConnectedV0,
 	endoProtectedTrialIsStagedV2,
 } from "../../protocol/protected-experiment.ts";
@@ -90,7 +91,12 @@ type BoundedReadV0 =
 	| { ok: false; state: "too-large" | "unreadable"; reason: string };
 
 function readRunFileBounded(path: string, maxBytes: number): BoundedReadV0 {
-	const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+	let before: ReturnType<typeof lstatSync> | undefined;
+	try {
+		before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+	} catch {
+		return { ok: false, state: "unreadable", reason: "protected-run.json could not be inspected." };
+	}
 	if (before === undefined || before.isSymbolicLink() || !before.isFile()) {
 		return { ok: false, state: "unreadable", reason: "protected-run.json is not a plain regular file." };
 	}
@@ -181,6 +187,27 @@ function sanitizeText(text: string, maxLen = 240): string {
 	return cleaned.length <= maxLen ? cleaned : `${cleaned.slice(0, maxLen - 1)}…`;
 }
 
+/**
+ * Sanitize verification refusal, outcome, and error messages for the browser projection boundary: strips control
+ * characters and redacts any host root or absolute filesystem path so damaged recordings can never leak host paths.
+ */
+function sanitizeReason(text: string, root: string, maxLen = 240): string {
+	let cleaned = text.replace(/[\r\n\t]+/g, " ").trim();
+	if (cleaned.startsWith("the recording does not load:")) {
+		cleaned = "the recording does not load (capture store missing, unreadable, or incomplete)";
+	}
+	if (root.length > 1) {
+		const normalizedRoot = root.split(sep).join("/");
+		cleaned = cleaned.split(root).join("<redacted-path>");
+		if (normalizedRoot !== root) cleaned = cleaned.split(normalizedRoot).join("<redacted-path>");
+	}
+	// Redact any remaining absolute POSIX paths (e.g. /tmp/..., /home/...) or Windows drive paths (C:\...).
+	cleaned = cleaned
+		.replace(/(^|[\s'"`(,:])\/(?:[^\s'"`()[\],;:]+\/)+[^\s'"`()[\],;:]*/g, "$1<redacted-path>")
+		.replace(/(^|[\s'"`(,:])[A-Za-z]:\\[^\s'"`()[\],;:]+/g, "$1<redacted-path>");
+	return sanitizeText(cleaned, maxLen);
+}
+
 function experimentTypeOf(runSchemaVersion: EndoProtectedRun["schemaVersion"]): EndoEvolveExperimentTypeV0 {
 	const model = endoProtectedModelConnectedV0(runSchemaVersion);
 	const staged = endoProtectedStagedV2(runSchemaVersion);
@@ -229,14 +256,14 @@ function availabilityOf(counts: EndoEvolveRunCountsV0): EndoEvolveEvidenceAvaila
 	return "complete";
 }
 
-function projectAttempt(a: EndoProtectedInspectedAttemptV0): EndoEvolveProtectedAttemptViewV0 {
+function projectAttempt(a: EndoProtectedInspectedAttemptV0, root: string): EndoEvolveProtectedAttemptViewV0 {
 	const v = a.record;
 	if (v === null) {
 		return {
 			attempt: a.attempt,
 			retryOf: null,
 			recordStatus: a.status,
-			refusalReason: a.refusalReason === null ? null : sanitizeText(a.refusalReason),
+			refusalReason: a.refusalReason === null ? null : sanitizeReason(a.refusalReason, root),
 			trialSchemaVersion: null,
 			recordSha256: null,
 			recordedAt: null,
@@ -281,7 +308,7 @@ function projectAttempt(a: EndoProtectedInspectedAttemptV0): EndoEvolveProtected
 	}
 	let modelRecording: EndoEvolveProtectedModelRecordingProvenanceV0 | null = null;
 	if (endoProtectedTrialIsModelConnectedV0(v)) {
-		const answeredVerified = v.recording.exchanges.filter((e) => e.class === "answered" && e.verified).length;
+		const answeredVerified = endoProtectedSuccessfulExchangesV1(v);
 		const refusedRequests =
 			v.network.relay.refusals === null
 				? null
@@ -316,7 +343,7 @@ function projectAttempt(a: EndoProtectedInspectedAttemptV0): EndoEvolveProtected
 			status: v.evaluation.status,
 			cases:
 				v.evaluation.cases === null ? null : { total: v.evaluation.cases.total, passed: v.evaluation.cases.passed },
-			reason: v.evaluation.reason === null ? null : sanitizeText(v.evaluation.reason),
+			reason: v.evaluation.reason === null ? null : sanitizeReason(v.evaluation.reason, root),
 			definitionSha256: v.evaluation.definitionSha256,
 			driverSha256: v.evaluation.driverSha256,
 			outputSha256: v.evaluation.outputSha256,
@@ -361,7 +388,13 @@ export class ProtectedExperimentObserverV0 implements EndoEvolveProtectedExperim
 		const visit = (dir: string, depth: number): void => {
 			// Check if this directory itself holds protected-run.json.
 			const runFile = join(dir, "protected-run.json");
-			const runStat = lstatSync(runFile, { throwIfNoEntry: false });
+			let runStat: ReturnType<typeof lstatSync> | undefined;
+			try {
+				runStat = lstatSync(runFile, { throwIfNoEntry: false });
+			} catch {
+				skipped.unreadable += 1;
+				return;
+			}
 			if (runStat !== undefined) {
 				if (candidates.length >= ENDO_EVOLVE_EXPERIMENT_LIMITS_V0.maxRuns) {
 					skipped.overLimit += 1;
@@ -387,7 +420,13 @@ export class ProtectedExperimentObserverV0 implements EndoEvolveProtectedExperim
 				}
 				scannedEntries += 1;
 				const child = join(dir, name);
-				const st = lstatSync(child, { throwIfNoEntry: false });
+				let st: ReturnType<typeof lstatSync> | undefined;
+				try {
+					st = lstatSync(child, { throwIfNoEntry: false });
+				} catch {
+					skipped.unreadable += 1;
+					continue;
+				}
 				if (st === undefined) continue;
 				if (st.isSymbolicLink()) {
 					skipped.links += 1;
@@ -494,11 +533,15 @@ export class ProtectedExperimentObserverV0 implements EndoEvolveProtectedExperim
 				maxRunFileBytes: ENDO_EVOLVE_EXPERIMENT_LIMITS_V0.maxRunFileBytes,
 				maxTrialFileBytes: ENDO_EVOLVE_EXPERIMENT_LIMITS_V0.maxTrialFileBytes,
 				maxAttemptsPerTrial: ENDO_EVOLVE_EXPERIMENT_LIMITS_V0.maxAttemptsPerTrial,
+				maxCaptureLogBytes: 16 * 1024 * 1024,
+				maxCaptureBlobBytes: 16 * 1024 * 1024,
+				maxCaptureTotalBytes: 64 * 1024 * 1024,
+				maxCaptureBlobs: 2048,
 			});
 		} catch (error) {
 			const reason =
 				error instanceof EndoProtectedRefusalV0
-					? sanitizeText(error.message)
+					? sanitizeReason(error.message, this.#root)
 					: "Protected experiment records failed independent validation.";
 			return {
 				summary: {
@@ -571,21 +614,21 @@ export class ProtectedExperimentObserverV0 implements EndoEvolveProtectedExperim
 
 			const refusedLimit = ENDO_EVOLVE_EXPERIMENT_LIMITS_V0.maxRefusedRecords;
 			const refusedRecords = report.refusedRecords.slice(0, refusedLimit).map((r) => ({
-				path: sanitizeText(r.path, 200),
-				reason: sanitizeText(r.reason, 240),
+				path: sanitizeReason(r.path, this.#root, 200),
+				reason: sanitizeReason(r.reason, this.#root, 240),
 			}));
 			const refusedRecordsOmitted = Math.max(0, report.refusedRecords.length - refusedLimit);
 
 			const trialLimit = ENDO_EVOLVE_EXPERIMENT_LIMITS_V0.maxTrials;
 			const projectedTrials: EndoEvolveProtectedTrialViewV0[] = trials.slice(0, trialLimit).map((t) => {
-				const attempts = t.attempts.map(projectAttempt);
+				const attempts = t.attempts.map((attempt) => projectAttempt(attempt, this.#root));
 				return {
 					position: t.position,
 					task: t.task,
 					condition: t.condition,
 					trial: t.trial,
 					outcome: t.outcome,
-					outcomeReason: t.outcomeReason === null ? null : sanitizeText(t.outcomeReason),
+					outcomeReason: t.outcomeReason === null ? null : sanitizeReason(t.outcomeReason, this.#root),
 					attemptCount: attempts.length,
 					retryCount: t.retries,
 					finalAttempt: attempts.at(-1) ?? null,

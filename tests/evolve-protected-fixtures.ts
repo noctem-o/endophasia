@@ -253,7 +253,12 @@ export function createOfflineRichRunV0(dir: string, id = "endo.experiment.offlin
  * - pos 0: verified pass (2 answered verified exchanges >= minExchanges 1)
  * - pos 1: failedBelowMinimumExchanges (0 exchanges, even though evaluator passed)
  */
-export function createModelConnectedRunV1(dir: string, id = "endo.experiment.model-v1"): EndoProtectedRunV1 {
+export function createModelConnectedRunV1(
+	dir: string,
+	id = "endo.experiment.model-v1",
+	options: { responseStatus?: number } = {},
+): EndoProtectedRunV1 {
+	const responseStatus = options.responseStatus ?? 200;
 	const modelAccess: EndoProtectedModelAccessV1 = {
 		upstream: "http://127.0.0.1:8091",
 		model: "synthetic-local-model",
@@ -339,7 +344,7 @@ export function createModelConnectedRunV1(dir: string, id = "endo.experiment.mod
 				}),
 			);
 			const resWire = Buffer.from(
-				`HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ choices: [{ message: { content: "ok" } }] })}`,
+				`HTTP/1.1 ${responseStatus} ${responseStatus === 200 ? "OK" : "Error"}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify({ choices: [{ message: { content: "ok" } }] })}`,
 			);
 			const reqRef = log.keep(reqBody);
 			const resRef = log.keep(resWire);
@@ -354,7 +359,7 @@ export function createModelConnectedRunV1(dir: string, id = "endo.experiment.mod
 			});
 			log.record("capture.exchange-ended", {
 				exchange: i,
-				status: 200,
+				status: responseStatus,
 				wire: { ...resRef } as unknown as Record<string, never>,
 				wireBytes: resRef.bytes,
 				chunks: [{ offsetMs: 1, bytes: resRef.bytes }],

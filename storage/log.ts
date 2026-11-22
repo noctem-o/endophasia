@@ -30,7 +30,17 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { closeSync, fsyncSync, openSync, readFileSync, renameSync, statSync, writeSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	fstatSync,
+	fsyncSync,
+	openSync,
+	readFileSync,
+	renameSync,
+	statSync,
+	writeSync,
+} from "node:fs";
 import { dirname } from "node:path";
 
 const DIGEST_LENGTH = 32;
@@ -184,14 +194,32 @@ export class EndoLogUnreadableErrorV0 extends TypeError {
 	}
 }
 
-/** The bytes of the log file; none when it does not exist; an EndoLogUnreadableErrorV0 when it exists and cannot be read. */
+/**
+ * The bytes of the log file; none when it does not exist; an EndoLogUnreadableErrorV0 when it exists and cannot be read.
+ * Opens nonblocking without following a final symlink and verifies a regular file via fstat so a FIFO, socket, or device
+ * never blocks synchronous readers.
+ */
 function readLogBytes(path: string): Buffer {
+	const flags = constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0);
+	let fd: number;
 	try {
-		return readFileSync(path);
+		fd = openSync(path, flags);
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
 		if (code === "ENOENT") return Buffer.alloc(0);
 		throw new EndoLogUnreadableErrorV0(code ?? "unknown error");
+	}
+	try {
+		const st = fstatSync(fd);
+		if (st.isDirectory()) throw new EndoLogUnreadableErrorV0("EISDIR");
+		if (!st.isFile()) throw new EndoLogUnreadableErrorV0("ENOTREG");
+		return readFileSync(fd);
+	} catch (error) {
+		if (error instanceof EndoLogUnreadableErrorV0) throw error;
+		const code = (error as NodeJS.ErrnoException).code;
+		throw new EndoLogUnreadableErrorV0(code ?? "unknown error");
+	} finally {
+		closeSync(fd);
 	}
 }
 

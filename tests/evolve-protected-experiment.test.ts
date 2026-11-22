@@ -1,8 +1,10 @@
 // EVOLVE-INSPECT-001: Deterministic report-correctness, parity, and security regression tests
 // for the read-only Protected Experiment Inspector (observer, HTTP routes, host containment, CLI args, wire gate).
 
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+	chmodSync,
 	mkdirSync,
 	mkdtempSync,
 	readdirSync,
@@ -392,5 +394,97 @@ describe("EVOLVE-INSPECT-001: security boundaries, symlink rejection, HTTP guard
 				},
 			}),
 		).rejects.toThrow(/inside the protected runs directory/);
+	});
+
+	it("redacts host paths from verification refusal reasons when a capture store is damaged", () => {
+		const runDir = freshDir("damaged-capture-redaction");
+		createModelConnectedRunV1(runDir);
+		// Remove capture dir so verifyModelEvidenceV0 / loadEndoCassetteV0 raises an error referencing storeRoot.
+		rmSync(join(runDir, "trials", "model-task", "effort-low", "0", "attempt-1", "model", "store", "capture"), {
+			recursive: true,
+			force: true,
+		});
+
+		const observer = new ProtectedExperimentObserverV0({ root: runDir, key: OTHER_KEY });
+		const index = observer.list();
+		expect(index.runs).toHaveLength(1);
+		const detail = observer.detail(index.runs[0]!.selector);
+		expect(detail).not.toBeNull();
+		expect(detail!.refusedRecords.length).toBeGreaterThan(0);
+
+		const wire = JSON.stringify(detail);
+		expect(wire).not.toContain(runDir);
+		expect(wire).not.toContain(rootBase);
+		expect(wire).not.toContain("damaged-capture-redaction");
+		expect(validateEndoEvolveProtectedExperimentDetailV0(detail)).not.toBeNull();
+	});
+
+	it("skips inaccessible subdirectories without aborting sibling run discovery or detail reads", () => {
+		if (process.getuid?.() === 0) return; // root bypasses mode 0o000
+		const collection = freshDir("inaccessible-sibling");
+		createOfflineRichRunV0(join(collection, "readable-run"));
+		const locked = join(collection, "locked-subdir");
+		mkdirSync(locked, { recursive: true });
+		chmodSync(locked, 0o000);
+		try {
+			const observer = new ProtectedExperimentObserverV0({ root: collection, key: OTHER_KEY });
+			const index = observer.list();
+			expect(index.runs).toHaveLength(1);
+			expect(index.runs[0]!.label).toBe("readable-run");
+			expect(index.skipped.unreadable).toBeGreaterThanOrEqual(1);
+			const detail = observer.detail(index.runs[0]!.selector);
+			expect(detail).not.toBeNull();
+			expect(detail!.label).toBe("readable-run");
+		} finally {
+			chmodSync(locked, 0o700);
+		}
+	});
+
+	it("counts only 2xx verified responses toward required model exchanges", () => {
+		const runDir = freshDir("model-http-500");
+		createModelConnectedRunV1(runDir, "endo.experiment.model-500", { responseStatus: 500 });
+
+		const observer = new ProtectedExperimentObserverV0({ root: runDir, key: OTHER_KEY });
+		const index = observer.list();
+		const detail = observer.detail(index.runs[0]!.selector);
+		expect(detail).not.toBeNull();
+
+		const trial0 = detail!.trials.find((t) => t.position === 0)!;
+		expect(trial0.outcome).toBe("failed");
+		expect(trial0.outcomeReason).toBe("model-exchanges-below-minimum");
+		expect(trial0.finalAttempt?.modelRecording?.required).toBe(1);
+		expect(trial0.finalAttempt?.modelRecording?.totalExchanges).toBe(2);
+		expect(trial0.finalAttempt?.modelRecording?.answeredVerified).toBe(0);
+	});
+
+	it("rejects FIFO special files in nested capture logs without blocking synchronous inspection", () => {
+		if (process.platform === "win32") return;
+		const runDir = freshDir("fifo-capture-log");
+		createModelConnectedRunV1(runDir);
+		const logPath = join(
+			runDir,
+			"trials",
+			"model-task",
+			"effort-low",
+			"0",
+			"attempt-1",
+			"model",
+			"store",
+			"capture",
+			"events",
+			"events.log",
+		);
+		rmSync(logPath, { force: true });
+		const fifo = spawnSync("mkfifo", [logPath]);
+		if (fifo.status !== 0) return;
+
+		const observer = new ProtectedExperimentObserverV0({ root: runDir, key: OTHER_KEY });
+		const index = observer.list();
+		expect(index.runs).toHaveLength(1);
+		const detail = observer.detail(index.runs[0]!.selector);
+		expect(detail).not.toBeNull();
+		expect(detail!.refusedRecords.length).toBeGreaterThan(0);
+		expect(detail!.refusedRecords[0]!.reason).toMatch(/not a regular file|unusable/i);
+		expect(JSON.stringify(detail)).not.toContain(runDir);
 	});
 });

@@ -544,3 +544,28 @@ and all are caught.
    is not supported; Pi 1.5.0 does not.
 5. **The runtime set:** declared per spec, with aliases, and part of the profile digest.
 6. **Real-model tests:** opt-in, on the operator's workstation only, bounded (§9.8).
+
+### 9.10 Governed initial runtime capability disclosure (opt-in, PI-RUNTIME-CONSISTENCY-001)
+
+Pi's default system prompt advertises shell commands (`find`, `rg`, `etc.`) that `PI_RUNTIME_V1` does not mount. An opt-in,
+controller-owned generator (`adapters/sandbox/runtime-prompt.ts`, wired into `research/protected-eval/model-connected/pi-condition.ts`
+via `capabilityConsistentPrompt: true` or `--capability-consistent-prompt`) derives `/agent/system-prompt.txt` and its pin manifest
+`/agent/runtime-prompt.json` strictly from `spec.runtime` (`executables` and `aliases`) and the declared Pi tool list, without reading
+workspace files or changing sandbox permissions:
+
+- **Authority & pinning:** `/agent/system-prompt.txt`, `/agent/runtime-prompt.json`, and `/agent/launch.mjs` live inside the read-only,
+  tree-digested `/agent` mount (part of `profileSha256`, so substituting prompt bytes refuses resume). The opt-in launcher passes
+  `--system-prompt /agent/system-prompt.txt --tools <pin.piTools> --no-approve --no-context-files --no-extensions --no-mcp --no-skills
+  --no-prompt-templates --offline`, preventing workspace `.pi/SYSTEM.md`, `.pi/APPEND_SYSTEM.md`, or `AGENTS.md` from overriding the
+  authoritative prompt.
+- **Fail-closed verification:** `buildRuntimeCapabilityPromptV0` refuses incomplete or unsupported runtime specs instead of falling back
+  to Pi's default prompt; `verifyPiAgentRuntimePromptPinV1` checks the directory against `spec.runtime` before spec generation; and the
+  opt-in launcher re-checks `system-prompt.txt`'s digest, `cwd`, and `/usr/bin` contents inside the sandbox before spawning Pi (refusing
+  a runtime mismatch with 0 model exchanges).
+- **Backward compatibility:** when opt-in is disabled (the default), `makePiAgentDirectoryV1`, `piExampleSpecV1`, and all v0–v3 spec,
+  run, and trial record formats are unchanged.
+- **Explicit non-claims:** this establishes **initial system-prompt consistency only**, not session-wide instruction consistency. In
+  particular, pinned Pi 1.6.0's `read` tool (`dist/core/tools/read.js:250`) still dynamically emits
+  `Use bash: sed -n '<N>p' <path> | head -c 51200` when reading a file with a single line longer than 50 KB, even though `sed` is absent
+  from `PI_RUNTIME_V1` (recorded by diagnostic test in `tests/protected-runtime-prompt.test.ts`). This change makes no claim of improved
+  model speed, reliability, or additional host-isolation guarantees.

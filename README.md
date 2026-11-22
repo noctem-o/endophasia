@@ -4,7 +4,7 @@
 
 <br>
 
-<h1>E N D O P H A S I A</h1>
+<h1>endophasia</h1>
 
 <p><strong>Work with agents. Inspect the evidence. Test what changes.</strong></p>
 
@@ -32,8 +32,8 @@ for checking what coding agents actually did, and keeping the record for every c
 
 <br>
 
-<img src="docs/images/develop-verify-ledger-1440.png" alt="Endophasia Develop workbench in Instrument mode showing the acceptance ledger against HEAD beside Git working-tree changes" width="100%">
-<p><sub><strong>Instrument</strong> — an attempt's acceptance ledger against <code>HEAD</code> beside the live Git tree. Checks are observed; acceptance stays yours.</sub></p>
+<img src="docs/images/readme-hero-field-storm-1440.png" alt="Endophasia Develop workbench in Field mode with Storm atmosphere, Course gauges, folded reasoning, expanded Pi tool-call inspection, and live Git changes" width="100%">
+<p><sub><strong>Field (Storm)</strong> — live <em>Course</em> gauges, folded model-provided reasoning, inspectable tool calls with explicit safe-preview &amp; provenance labels, Git tree changes and terminal-gated Strict mode (synthetic fixture; weather is scenery).</sub></p>
 
 </div>
 
@@ -66,7 +66,7 @@ The command exited `0`, so its receipt records what ran. The plan stated what it
 | Develop | Observe & Compare | Experiment |
 | :--- | :--- | :--- |
 | Frame tasks, attempts and verification plans before work starts. Approve live [Pi](https://github.com/earendil-works/pi) dispatches on your terminal, run your own checks, and read one ledger of what holds at `HEAD`. | Record Pi sessions, cold-import DeepSeek Harness runs, read Oh My Pi metadata in place, diff trajectories layer by layer, and explore offline activation captures without inventing missing signals. | Replay sessions against fixed model cassettes, or run untrusted agents inside verified Bubblewrap sandboxes with staged multi-file change sets and hidden evaluators. |
-| [Quick start](#quick-start) · [How DEVELOP works](#how-develop-works) | [Browser instrument](#endophasia-web) · [Representation Explorer](docs/designs/observe-representation-explorer.md) | [Protected runs](docs/protected-experiments.md) · [Studies](research/README.md) |
+| [Quick start](#quick-start) · [How DEVELOP works](#how-develop-works) | [Browser instrument](#endophasia-web) · [Representation Explorer](docs/designs/observe-representation-explorer.md) | [Protected runs](docs/protected-experiments.md) · [Research index](docs/research-index.md) |
 
 Pi is the reference runtime and the only live integration today; Pi still owns its execution loop.
 
@@ -362,9 +362,9 @@ The browser interface — **Endophasia Web**, served locally under the `endo` CL
 <table>
   <tr>
     <td width="50%" valign="top">
-      <img src="docs/images/atmosphere-conversation-storm-strike-1440.png" alt="Develop workbench in Field mode with Storm atmosphere, Course gauges, folded reasoning, and Git changes">
+      <img src="docs/images/readme-instrument-ledger-1440.png" alt="Develop workbench in Instrument mode showing the six-stage Course rail, acceptance ledger against HEAD, Mode Strict bar, and Git changes">
       <br>
-      <sub><strong>Field, Course &amp; Atmospheres</strong> — live <em>Run</em> and <em>Request</em> gauges, folded or explicitly <em>withheld</em> model reasoning, and optional weather atmospheres (<em>"weather is scenery and shows nothing about the session"</em>).</sub>
+      <sub><strong>Instrument &amp; Acceptance Ledger</strong> — six-stage <em>Course</em> rail (<code>Brief · Assent · Send · Run · Check · Judge</code>), per-criterion ledger against <code>HEAD</code>, and live Git changes. Checks are observed; acceptance stays yours.</sub>
     </td>
     <td width="50%" valign="top">
       <img src="docs/images/observe-representation-explorer-1440.png" alt="Observe Representation Explorer showing 2D PCA projection of SmolLM2 residual stream with Observed, Derived, Interpreted, and Unavailable badges">
@@ -530,7 +530,7 @@ The research programme separates how **model**, **harness**, **tools** and **env
 | [Isolated acceptance & trust](research/develop-acceptance-001/README.md) | Real Pi 1.5.2 + local Ornith inside verified sandbox scored 5/5 on hidden evaluator; tamper/timeout fixtures failed closed; QEMU guest verification ([TRUST-004](research/develop-verify-trust-004/PROTOCOL.md)) | Linux Arch host; host same-uid writer remains outside reader authority |
 | [Counterfactual replay feasibility](research/counterfactual-replay/COUNTERFACTUAL-REPLAY-001.md) | Replay missed at exchange 2 on file mtimes; 4 live runs from identical first requests took 4 paths to the same answer | Distributional attribution only; no causal trace claims |
 
-Full catalog of live studies, designs and limits: [research/README.md](research/README.md), [docs/thread-results-summary.md](docs/thread-results-summary.md) and [research/DATA.md](research/DATA.md).
+Full catalog of studies, designs and limits: [research/README.md](research/README.md), [docs/research-index.md](docs/research-index.md) (protected-experiment & reasoning programme), [docs/thread-results-summary.md](docs/thread-results-summary.md) and [research/DATA.md](research/DATA.md).
 
 <a id="roadmap"></a>
 ### Delivery direction
@@ -558,7 +558,7 @@ Full catalog of live studies, designs and limits: [research/README.md](research/
 | Browser & contract internals | [Observation bridge & Compare API](docs/cockpit.md) · [Frontend architecture](docs/studio-ui-architecture.md) · [Session surface](docs/develop-session-surface.md) · [Schema compatibility](docs/schema-compatibility.md) · [Deadbolt contract](docs/deadbolt-intervention-contract.md) · [Migration ledger](docs/migration-ledger.md) |
 | Initial-state research APIs | [Checkpoint candidate](docs/checkpoint-candidate.md) · [Scratch materialization](docs/checkpoint-materialization.md) · [Sibling set](docs/initial-branch-set.md) · [Initial-child execution](docs/initial-child-execution.md) · [Continuation](docs/initial-continuation.md) |
 | Adapter & status records | [Detailed status](docs/status.md) · [Thread summary](docs/thread-results-summary.md) · [Pi inventory](docs/pi-attach-inventory.md) · [Pi audit](docs/pi-attach-audit.md) · [Pi 1.4.0 upgrade](docs/pi-1.4.0-upgrade.md) · [DSH study](docs/dsh-native-attachment.md) · [DSH importer](docs/dsh-native-importer.md) · [ACP v1](docs/acp-v1-slice.md) · [ACP v2 study](docs/acp-v2-study.md) |
-| Research & vision | [Studies](research/README.md) · [Vision](docs/vision.md) · [Observe/Verify](docs/observe.md) · [Evolve](docs/evolve.md) · [Roadmap](docs/roadmap.md) |
+| Research & vision | [Studies](research/README.md) · [Protected-experiment index](docs/research-index.md) · [Vision](docs/vision.md) · [Observe/Verify](docs/observe.md) · [Evolve](docs/evolve.md) · [Roadmap](docs/roadmap.md) |
 
 Neighbouring projects keep separate authorities: [Magpie](https://github.com/noctem-o/magpie) (claims, evidence and derived standing), [Deadbolt](https://github.com/noctem-o/deadbolt) (authorising consequential actions), [Cogitator](https://github.com/noctem-o/cogitator) (sealed run records) and [Buzz](https://github.com/noctem-o/buzz-prime) (shared workspace for people and agents). A record in one never grants authority in another. The earlier Pi-fork codebase is archived at [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
 

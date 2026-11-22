@@ -529,12 +529,16 @@ describe("harness neutrality of `endo workspace open`", () => {
 		expect(pi).toEqual(["adapters/pi/lifecycle.ts", "adapters/pi/mapping.ts", "adapters/pi/trajectory.ts"]);
 		const studio = closure(["cli/studio.ts", "cockpit-http/host.ts"]);
 		for (const f of pi) expect(studio.has(f)).toBe(true);
-		// OMP: only its read-only saved-session observer, reached through Studio's own module (never run by this command).
-		for (const f of reached.values()) if (f.startsWith("adapters/omp/")) expect(studio.has(f)).toBe(true);
-		// An allow-list of adapter directories: Git (read-only observation), the recorded-evidence projections Studio reads (Pi, DSH), and
-		// OMP's read-only saved-session observer. A new adapter (a harness, a provider, a proxy) in this closure fails here.
+		// OMP and observe-representation: only read-only file observers, reached through Studio's own module (never run by this command).
+		for (const f of reached.values())
+			if (f.startsWith("adapters/omp/") || f.startsWith("adapters/observe-representation/"))
+				expect(studio.has(f)).toBe(true);
+		// An allow-list of adapter directories: Git (read-only observation), the recorded-evidence projections Studio reads (Pi, DSH),
+		// OMP's read-only saved-session observer, and Observe's read-only representation observer. A new adapter (a harness, a provider, a proxy) fails here.
 		const adapters = new Set([...reached].filter((f) => f.startsWith("adapters/")).map((f) => f.split("/")[1]));
-		expect([...adapters].filter((d) => !["git", "pi", "dsh-native", "omp"].includes(d!))).toEqual([]);
+		expect(
+			[...adapters].filter((d) => !["git", "pi", "dsh-native", "omp", "observe-representation"].includes(d!)),
+		).toEqual([]);
 		for (const f of reached) {
 			expect(f).not.toMatch(/^adapters\/(rpc-jsonl|acp)\//);
 			expect(f).not.toMatch(/^cli\/(harness|workbench|steer|experiment|replay)\.ts$/);

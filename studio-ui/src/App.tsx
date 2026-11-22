@@ -21,6 +21,7 @@ import { useDevelop } from "./use-develop.ts";
 import { useObserve } from "./use-observe.ts";
 import { useOmp } from "./use-omp.ts";
 import { useProject } from "./use-project.ts";
+import { useRepresentations } from "./use-representations.ts";
 import { useWorkbench } from "./use-workbench.ts";
 import { useWorkspace } from "./use-workspace.ts";
 
@@ -44,6 +45,8 @@ export function App(): ReactElement {
 	const [workspace, setWorkspace] = useState<(typeof WORKSPACES)[number]["id"]>(() =>
 		document.documentElement.dataset.start === "develop" ? "develop" : "observe",
 	);
+	const [observeView, setObserveView] = useState<"timeline" | "representations">("timeline");
+	const representations = useRepresentations(workspace === "observe" && observeView === "representations");
 	// How DEVELOP is drawn: Instrument (the default) or Field. Only the drawing differs; every hook above and below is the same, so a
 	// switch keeps the draft, the selection and the file being read. Memory only (the page keeps no storage): a reload is Instrument.
 	const [appearance, setAppearance] = useState<"instrument" | "field">("instrument");
@@ -122,6 +125,7 @@ export function App(): ReactElement {
 		if (observeBlocked !== null) return;
 		observe.dispatch({ type: "set-filters", filters: { ...NO_FILTERS, session: row.session } });
 		if (attachment !== null) observe.dispatch({ type: "want-attachment", name: attachment });
+		setObserveView("timeline");
 		setWorkspace("observe");
 		// One explicit read, starting just before the session's first event; Observe shows its own window and may need paging.
 		observe.goTo(Math.max(0, row.firstStorageSequence - 1));
@@ -131,6 +135,7 @@ export function App(): ReactElement {
 		if (observeBlocked !== null) return;
 		if (alias !== null) observe.dispatch({ type: "set-filters", filters: { ...NO_FILTERS, session: alias } });
 		if (attachment !== null) observe.dispatch({ type: "want-attachment", name: attachment });
+		setObserveView("timeline");
 		setWorkspace("observe");
 		// One explicit read of a window that contains the live session (its recorded row, else the latest window), never the old window.
 		const start = liveObserveStart(
@@ -166,7 +171,7 @@ export function App(): ReactElement {
 		const key = (event: KeyboardEvent) => {
 			// Not while the inspector dialog is open: the page behind it is inert, and so are its shortcuts.
 			if (document.querySelector("dialog[open]") !== null) return;
-			if (workspace !== "observe") return;
+			if (workspace !== "observe" || observeView !== "timeline") return;
 			if (event.key !== "r" || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
 			const target = event.target as HTMLElement | null;
 			if (target !== null && ["INPUT", "SELECT", "TEXTAREA"].includes(target.tagName)) return;
@@ -174,7 +179,7 @@ export function App(): ReactElement {
 		};
 		document.addEventListener("keydown", key);
 		return () => document.removeEventListener("keydown", key);
-	}, [observe.refresh, workspace]);
+	}, [observe.refresh, workspace, observeView]);
 
 	const attention = (() => {
 		if (state.loaded === null) return [];
@@ -301,7 +306,12 @@ export function App(): ReactElement {
 			<main id="main" data-studio-ui="ready">
 				<PanelBoundary resetKey={`${workspace}:${state.attempts}`}>
 					{workspace === "observe" ? (
-						<ObserveWorkspace observe={observe} />
+						<ObserveWorkspace
+							observe={observe}
+							view={observeView}
+							onViewChange={setObserveView}
+							representations={representations}
+						/>
 					) : workspace === "compare" ? (
 						<>
 							{compareNotice === null ? null : <Note tone="warn">{compareNotice}</Note>}

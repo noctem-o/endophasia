@@ -94,6 +94,8 @@ describe("the frontend's source", () => {
 				"model/labels.ts",
 				"model/detail.ts",
 				"model/observe.ts",
+				"model/representation.ts",
+				"model/representation-wire.ts",
 				"model/reply.ts",
 				"model/state.ts",
 				"model/timeline.ts",
@@ -105,6 +107,7 @@ describe("the frontend's source", () => {
 				"observe/Inspector.tsx",
 				"observe/ObserveWorkspace.tsx",
 				"observe/Overview.tsx",
+				"observe/RepresentationExplorer.tsx",
 				"observe/Side.tsx",
 				"observe/Unavailable.tsx",
 				"studio.css",
@@ -114,6 +117,7 @@ describe("the frontend's source", () => {
 				"ui/use-narrow.ts",
 				"ui/use-reveal.ts",
 				"use-observe.ts",
+				"use-representations.ts",
 			].sort(),
 		);
 	});
@@ -211,7 +215,11 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(21);
+		expect(api.match(/\/api\//g)?.length).toBe(23);
+		// Representation Explorer (OBSERVE-GEOMETRY-001): two fixed GET routes, gated by opaque selector and explicit layer grammar.
+		expect(api).toContain("./api/v0/observe/representations");
+		expect(api).toMatch(/\.\/api\/v0\/observe\/representation\/\$\{request\.selector\}/);
+		expect(api).toMatch(/if \(!representationSelector\(request\.selector\)\)/);
 		// Oh My Pi's saved sessions: two fixed GET routes, the second named only by an opaque selector the list gave, gated first.
 		expect(api).toContain("./api/v0/develop/omp/sessions");
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
@@ -397,6 +405,17 @@ describe("the frontend's source", () => {
 			if (name !== "api.ts" && name !== "use-omp.ts") expect(text, name).not.toMatch(/fetchOmp/);
 		// The OMP views import no api and no workbench command: they read the hook's state and call its read functions.
 		expect(sources["develop/Omp.tsx"]).not.toMatch(
+			/from "\.\.\/api\.ts"|use-workbench|propose|intervene|\.prompt\b|fetch/,
+		);
+		// The representation explorer hook: no timer, one automatic read (at first entry into Representation Explorer, never on Observe Timeline open).
+		const repHook = sources["use-representations.ts"]!;
+		expect(repHook).not.toMatch(/setTimeout|setInterval|requestAnimationFrame/);
+		expect(repHook.match(/entered\.current = true;/g)?.length).toBe(1);
+		for (const [name, text] of Object.entries(sources))
+			if (name !== "api.ts" && name !== "use-representations.ts")
+				expect(text, name).not.toMatch(/fetchRepresentations/);
+		// The Representation Explorer UI imports no api or workbench commands and never fabricates data.
+		expect(sources["observe/RepresentationExplorer.tsx"]).not.toMatch(
 			/from "\.\.\/api\.ts"|use-workbench|propose|intervene|\.prompt\b|fetch/,
 		);
 		// Only the hook starts a read; a component calls what the hook returns.

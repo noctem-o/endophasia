@@ -750,6 +750,9 @@ describe("contract validators", () => {
 			// An observation of Oh My Pi's saved files beside the store, never read from it (protocol/omp-observation.ts).
 			"endo.develop-omp-sessions.v0",
 			"endo.develop-omp-session.v0",
+			// Representation Explorer projections (protocol/observe-representation.ts).
+			"endo.observe-representations.v0",
+			"endo.observe-representation-scene.v0",
 		]);
 	});
 

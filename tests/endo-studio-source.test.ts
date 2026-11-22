@@ -29,9 +29,16 @@ describe("what loads when", () => {
 		expect(staticImports(studio).sort()).toEqual(
 			["./help.ts", "./root-args.ts", "node:fs", "node:path", "node:url"].sort(),
 		);
-		// The OMP observer is loaded only when `--omp-sessions` names a directory, after the host and the arguments were checked.
-		expect(dynamicImports(studio)).toEqual(["../cockpit-http/host.ts", "../adapters/omp/observer.ts"]);
+		// The OMP and Representation Explorer observers are loaded lazily after the host and the arguments were checked.
+		expect(dynamicImports(studio)).toEqual([
+			"../cockpit-http/host.ts",
+			"../adapters/omp/observer.ts",
+			"../adapters/observe-representation/observer.ts",
+		]);
 		expect(code(studio).indexOf('import("../adapters/omp/observer.ts")')).toBeGreaterThan(
+			code(studio).indexOf("parseEndoStudioArgsV0(argv)"),
+		);
+		expect(code(studio).indexOf('import("../adapters/observe-representation/observer.ts")')).toBeGreaterThan(
 			code(studio).indexOf("parseEndoStudioArgsV0(argv)"),
 		);
 		const body = code(studio);

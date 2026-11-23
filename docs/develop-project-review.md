@@ -11,8 +11,9 @@ describes; this feature neither widens nor routes around them.
 
 ## 1. What the operator gets
 
-- **A worktree bar**, one line above the run strip: repository, launch subdirectory, branch (or detached HEAD, or unborn branch), the
-  short commit, and what changed counted **per area** (`3 staged · 5 unstaged · 2 untracked`; a conflicted count only when above zero).
+- **A worktree bar**, the line after the run strip (beside it where the column is wide; DEVELOP-UI-DENSITY-001): repository, launch
+  subdirectory, branch (or detached HEAD, or unborn branch), and what changed counted **per area**; the short commit and the time of the
+  read are in Context's Worktree block, with the same per-area counts (`3 staged · 5 unstaged · 2 untracked`; a conflicted count only when above zero).
   The counts are never summed: staged, unstaged and untracked are different comparisons.
 - **A Changes view**, a tab beside Conversation: the diff of one file, unified, with its comparison named (HEAD → index, index → working
   tree, or an untracked file shown as all-added), previous and next file, and the way back. The run strip (with STOP) and the composer

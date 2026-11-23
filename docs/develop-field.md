@@ -140,7 +140,7 @@ and resting, because a moving or blue field would claim the report is current.
 | `develop/Reasoning.tsx` (new) | The trace disclosure, the preference control, and `useReasoningView` (memory only: the preference and the traces opened by hand). |
 | `model/reasoning.ts` (new) | Pure display rules: keys that carry a trace from the snapshot to the completed message, folding, clamping, the head's words. |
 | `develop/Live.tsx` | A message's parts in order; turns memoised by item; the message being written; the scroller's reading-position rules. |
-| `develop/DevelopWorkspace.tsx` | The field's state on the root (`data-motion`, `data-texture`, `data-attention`) for the horizon; the dock and its button (Field only). |
+| `develop/DevelopWorkspace.tsx` | The field's state on the root (`data-motion`, `data-texture`, `data-attention`) for the horizon; the dock and its button. The dock's state is shared with Instrument's **Hide context** (one column, one state). |
 | `develop/FieldCanvas.tsx` | Ink ramps (resting, reported, amber) instead of one ink; a stronger base. Nothing else. |
 | `studio.css` | The night survey section; shared reasoning styles; one more keyframe (the horizon), run only while flowing and only without reduced motion. |
 | `App.tsx` | Holds the reasoning view beside `appearance`. |
@@ -226,7 +226,7 @@ screenshots of both appearances at 390 px, 1180, 1366, 1440 and 2560.
    judged, and it reported the reader at the bottom. A hidden scroller is no longer judged; a browser test fails without the fix.
 
 What was kept after review:
-- STOP's explanatory sentence wraps under it when it supersedes a waiting steer. STOP is still the first, filled control in the strip.
+- STOP's explanatory sentence wraps under it when it supersedes a waiting steer. STOP is last in the run line. It is no longer filled: since DEVELOP-UI-DENSITY-001 it is the same graphite control as in Instrument ([develop-workbench.md](develop-workbench.md) §16), found by its words, its stop mark and its place rather than by being the brightest thing on the screen.
 - The beacon outranks the dashed texture while the broker is unreachable and a request waits: the request waits whatever the
   connection.
 

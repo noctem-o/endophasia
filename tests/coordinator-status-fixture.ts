@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
+import { readEndoCoordinatorStatusV0 } from "../adapters/develop/coordinator-status.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
@@ -16,6 +17,7 @@ import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { receiptAt, seedAttention, taskIn } from "./studio-attention-fixtures.ts";
 
 const roots: string[] = [];
 
@@ -61,6 +63,80 @@ function event(
 }
 
 export const COORDINATOR_FIXTURE_SESSION_V0 = "endo.session.pi.disk-0001";
+
+export async function buildMissionBoardFixtureV0() {
+	const root = coordinatorTempDirV0("endo-board-store-");
+	const repo = coordinatorTempDirV0("endo-board-project-");
+	const empty = coordinatorTempDirV0("endo-board-empty-");
+	const now = Date.UTC(2026, 10, 23, 12);
+	git(repo, ["init", "-q", "-b", "main"]);
+	const tasks = new DevelopTasksStoreV0(root);
+	const project = tasks.registerProject({ name: "Parser instrumentation", path: repo, observedGitRoot: repo });
+	const emptyProject = tasks.registerProject({ name: "New research project", path: empty, observedGitRoot: null });
+	if (!project.ok || !emptyProject.ok) throw new Error("project registration refused");
+	const { id } = project.value;
+	const head = { commit: "c".repeat(40), commonDir: join(repo, ".git"), worktree: repo, clean: true };
+	const seeded = seedAttention(root, id, head);
+	taskIn(root, id, "<img src=x onerror=window.boardInjected=true>", "open");
+	const task = new DevelopAttemptsServiceV0(tasks, new DevelopAttemptsStoreV0(root));
+	const receiptStore = new DevelopReceiptsStoreV0(root);
+	const addFailed = (title: string, commit: string) => {
+		const taskId = taskIn(root, id, title, "review");
+		const made = task.prepare(id, taskId, { objective: "Check parser behavior" });
+		if (!made.ok) throw new Error("attempt refused");
+		const receipt = receiptAt({ ...head, commit }, made.value.id, id, now - 600_000, {
+			execution: { kind: "exited", code: 1 },
+		});
+		if (receiptStore.write(receipt) !== "created") throw new Error("receipt refused");
+	};
+	addFailed("Stream partial tokens", head.commit);
+	addFailed("Retain source offsets", "f".repeat(40));
+	const file = tasks.read();
+	if (!file.ok) throw new Error("tasks refused");
+	const events = createEndoDurableEventStoreV0(root);
+	for (const [i, [sid, offset, taskId]] of [
+		["endo.session.pi.board-active", 120_000, seeded.tasks.regressed],
+		["endo.session.pi.board-stale", 3_600_000, seeded.tasks.decide],
+		["endo.session.pi.board-unknown", 30_000, undefined],
+	].entries()) {
+		if (typeof sid !== "string" || typeof offset !== "number") throw new Error("bad session fixture");
+		const started = event(i * 2 + 1, "lifecycle.session-started", sid, now - offset, {
+			runtime: "pi",
+			runtimeSessionId: sid,
+			instance: sid,
+			unavailable: [],
+		});
+		events.ingest({ ...started, source: "runtime-fact", kind: "harness.attached" });
+		events.ingest({
+			...started,
+			id: `endo.event.${(i * 2 + 2).toString(16).padStart(32, "0")}`,
+			sequence: i * 2 + 2,
+			derivedFrom: [started.id],
+		});
+		if (typeof taskId !== "string") continue;
+		const saved = file.file.tasks.find((candidate) => candidate.id === taskId);
+		if (
+			saved === undefined ||
+			!tasks.linkSession(id, taskId, saved.revision, {
+				source: "pi-live",
+				sessionId: sid,
+				attachment: "fixture",
+				launchId: "f".repeat(16),
+				linkedBy: "operator",
+				via: "workbench",
+			}).ok
+		)
+			throw new Error("link refused");
+	}
+	events.close();
+	const status = await readEndoCoordinatorStatusV0({
+		root,
+		projects: [id, emptyProject.value.id],
+		now: () => now,
+		current: async (directory) => (directory === repo ? head : null),
+	});
+	return { root, repo, projectId: id, status };
+}
 
 export async function buildCoordinatorStoreV0(options: { checkArgv?: string[]; repeatWithFailure?: boolean } = {}) {
 	const root = coordinatorTempDirV0("endo-coord-store-");

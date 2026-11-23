@@ -10,10 +10,6 @@ const NEEDS: Record<string, { what: string; needs: string }> = {
 		what: "Hardware is a planned workspace for inspecting physical and device-level execution targets, measurements and environment boundaries.",
 		needs: "It is not implemented yet. It needs explicit device, host and measurement contracts that separate observed hardware facts from declared targets.",
 	},
-	coordinator: {
-		what: "Coordinator is a planned cross-workspace supervisory agent: configurable models, agent identities, permissions, budgets and assignments, eventually coordinating agents such as Codex, Claude, Gemini and Pi across Develop, Research and Hardware.",
-		needs: "Coordination is not implemented yet. Nothing here dispatches agents, grants permissions, tracks budgets or exercises authority across workspaces.",
-	},
 };
 
 export default function Unavailable({ workspace, label }: { workspace: string; label: string }): ReactElement {

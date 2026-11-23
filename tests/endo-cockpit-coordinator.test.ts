@@ -36,7 +36,7 @@ describe.skipIf(!haveGit)("paired Coordinator read", () => {
 		});
 		const grant = (paired.body as { grant: string }).grant;
 		const get = (route: string) => send(server, `${base}/${route}`, { headers: { "X-Endo-Grant": grant } });
-		return { root, projectId, tasks, host, server, base, get };
+		return { root, repo, projectId, tasks, host, server, base, get };
 	}
 
 	it("keeps the existing workspace route response identical across a Coordinator read", async () => {
@@ -71,6 +71,18 @@ describe.skipIf(!haveGit)("paired Coordinator read", () => {
 		expect([response.status, JSON.parse(response.body)]).toEqual([401, { error: "grant-required" }]);
 	});
 
+	it("refuses a previously readable project when its launch directory disappears", async () => {
+		const { get, repo } = await open();
+		expect((await get("workspace/coordinator")).status).toBe(200);
+		renameSync(repo, `${repo}-moved`);
+		try {
+			const response = await get("workspace/coordinator");
+			expect([response.status, JSON.parse(response.body)]).toEqual([403, { error: "forbidden" }]);
+		} finally {
+			renameSync(`${repo}-moved`, repo);
+		}
+	});
+
 	it("reports incomplete receipt evidence with a gap when the read budget is exhausted", async () => {
 		const { root, projectId } = await open();
 		const status = validateEndoCoordinatorStatusV0(
@@ -93,3 +105,5 @@ describe.skipIf(!haveGit)("paired Coordinator read", () => {
 		expect(status.findings.map(({ code }) => code)).toContain("event-log-unavailable");
 	});
 });
+
+import { renameSync } from "node:fs";

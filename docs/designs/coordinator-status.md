@@ -1,6 +1,6 @@
 # COORDINATOR-STATUS-001: read-only, evidence-aware Coordinator status (+ OpenClaw tool)
 
-*   **Status:** implemented on `feat/coordinator-status-001` (draft PR). Read-only projection `endo.coordinator-status.v0`, CLI `endo coordinator status`, and an OpenClaw tool plugin (`integrations/openclaw-endophasia-status`) exposing `endophasia_status`.
+*   **Status:** read-only projection `endo.coordinator-status.v0`, CLI `endo coordinator status`, and an OpenClaw tool plugin (`integrations/openclaw-endophasia-status`) exposing `endophasia_status`; the [Studio Mission Board](coordinator-board.md) reads the same projection through a paired workspace host.
 *   **Builds on:** projects and tasks ([../develop-tasks.md](../develop-tasks.md)), work attempts and send authorisations ([develop-attempt-execution.md](develop-attempt-execution.md)), verification receipts and the attention projection ([develop-attention.md](develop-attention.md)), the canonical session lifecycle (`protocol/session-lifecycle.ts`, `protocol/session-overview.ts`), and the evidence bridge ([develop-evidence-bridge.md](develop-evidence-bridge.md)).
 *   **Scope:** one projection, one CLI entry point, one OpenClaw plugin, tests and this note. No Mission Board UI, no assignment, no multi-agent execution, no new execution or authorisation capability, no change to the verifier trust boundary or the protected-path census.
 

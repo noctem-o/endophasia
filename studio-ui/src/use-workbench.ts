@@ -17,7 +17,7 @@ const nonce = (): string => crypto.randomUUID();
 // seven pages). A read that still finds more after them reads again at once, as long as it made progress.
 const MAX_PAGES = 8;
 
-export function useWorkbench(active: boolean) {
+export function useWorkbench(active: boolean, discoverHost = false) {
 	const [state, dispatch] = useReducer(reduceWorkbench, undefined, initialWorkbench);
 	const latest = useRef(state);
 	latest.current = state;
@@ -90,6 +90,7 @@ export function useWorkbench(active: boolean) {
 		try {
 			const status = await send({ kind: "status" });
 			if (
+				shown.current &&
 				since === generation.current.current &&
 				status.kind === "status" &&
 				status.record.paired &&
@@ -123,11 +124,12 @@ export function useWorkbench(active: boolean) {
 		// also discovers a workbench whose first status failed, and resumes Follow or a waiting prompt's check. Nothing keeps polling while
 		// the workspace is not shown, and a server known to have no workbench is not asked again.
 		if (active && latest.current.availability !== "absent") void read();
+		else if (discoverHost && latest.current.availability === "unknown") void read();
 		if (!active) {
 			if (timer.current !== null) clearTimeout(timer.current);
 			timer.current = null;
 		}
-	}, [active, read]);
+	}, [active, discoverHost, read]);
 	useEffect(
 		() => () => {
 			if (timer.current !== null) clearTimeout(timer.current);

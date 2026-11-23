@@ -1441,7 +1441,7 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 				ids: buttons.map((b) => b.dataset.workspace ?? ""),
 				labels: buttons.map((b) => (b.textContent ?? "").trim()),
 				hasLater: (document.querySelector("nav.workspaces")?.textContent ?? "").includes("later"),
-				planned: ["research", "hardware", "coordinator"].map((id) => {
+				planned: ["research", "hardware"].map((id) => {
 					const b = document.querySelector("button[data-workspace=" + id + "]");
 					return {
 						id,
@@ -1476,26 +1476,15 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 				title: "Hardware — planned workspace (not yet functional)",
 				planned: "true",
 			},
-			{
-				id: "coordinator",
-				ariaLabel: "Coordinator — planned workspace",
-				title: "Coordinator — planned workspace (not yet functional)",
-				planned: "true",
-			},
 		]);
 
-		for (const name of ["research", "hardware", "coordinator"] as const) {
+		for (const name of ["research", "hardware"] as const) {
 			await page.click(`button[data-workspace=${name}]`);
 			await page.waitFor(`document.querySelector("[data-testid=unavailable-${name}]")`, 5000);
 			const said = await text(page, `[data-testid=unavailable-${name}]`);
 			expect(said).toMatch(/Planned workspace/);
 			expect(said).toMatch(/is not available yet/);
 			expect(said).toMatch(/This workspace shows nothing read from a store/);
-			if (name === "coordinator") {
-				expect(said).toMatch(/supervisory agent/i);
-				expect(said).toMatch(/Codex, Claude, Gemini and Pi/);
-				expect(said).toMatch(/Coordination is not implemented yet/);
-			}
 			expect(await count(page, "tr[data-seq]")).toBe(0);
 			expect(
 				await page.eval(`document.querySelector("button[data-workspace=${name}]").getAttribute("aria-current")`),
@@ -1508,7 +1497,7 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		await page.press("Tab");
 		expect(await page.eval<string>(`document.activeElement?.dataset?.workspace ?? ""`)).toBe("coordinator");
 		await page.press("Enter");
-		await page.waitFor(`document.querySelector("[data-testid=unavailable-coordinator]")`, 5000);
+		await page.waitFor(`document.querySelector("[data-testid=coordinator-workspace][data-state=unsupported]")`, 5000);
 
 		// Responsive bar never overflows horizontally across desktop, tablet and narrow mobile viewports
 		for (const [w, h] of [
@@ -1534,10 +1523,11 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		const page = await open(`${server.baseUrl}/`);
 		await page.click("#timeline tr[data-seq='5'] button.seq");
 		await page.click("button[data-workspace=coordinator]");
-		await page.waitFor(`document.querySelector("[data-testid=unavailable-coordinator]")`, 5000);
+		await page.waitFor(`document.querySelector("[data-testid=coordinator-workspace][data-state=unsupported]")`, 5000);
 		for (const url of page.seen.requests) expect(url.startsWith(`${server.origin}/`), url).toBe(true);
 		const mine = page.seen.requests.filter((url) => url.startsWith(server.origin));
-		const allowed = /\/(assets\/[A-Za-z0-9._-]+|api\/v0\/snapshot\?afterSequence=0&limit=100)$|\/$/;
+		const allowed =
+			/\/(assets\/[A-Za-z0-9._-]+|api\/v0\/snapshot\?afterSequence=0&limit=100|api\/v0\/workbench\/status)$|\/$/;
 		for (const url of mine) expect(url.replace(server.baseUrl, "/"), url).toMatch(allowed);
 		expect(snapshotRequests(page)).toBe(1);
 	});

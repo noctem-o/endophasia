@@ -1,8 +1,9 @@
-// Studio shell: read-only Observe, Compare, Develop and Evolve workspaces with persistent, separate request state.
-// Research, Hardware and Coordinator remain explicit planned placeholders.
+// Studio shell with separate request state for Observe, Compare, Develop, Evolve and Coordinator.
+// Research and Hardware remain explicit planned placeholders.
 import { Fragment, lazy, type ReactElement, Suspense, useEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../protocol/cockpit-develop.ts";
 import { CompareWorkspace } from "./compare/CompareWorkspace.tsx";
+import { CoordinatorWorkspace } from "./coordinator/CoordinatorWorkspace.tsx";
 import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
 import { useReasoningView } from "./develop/Reasoning.tsx";
 import { EvolveWorkspace } from "./evolve/EvolveWorkspace.tsx";
@@ -38,7 +39,7 @@ const WORKSPACES = [
 	{ id: "evolve", label: "Evolve", ready: true, separated: false },
 	{ id: "research", label: "Research", ready: false, separated: false },
 	{ id: "hardware", label: "Hardware", ready: false, separated: false },
-	{ id: "coordinator", label: "Coordinator", ready: false, separated: true },
+	{ id: "coordinator", label: "Coordinator", ready: true, separated: true },
 ] as const;
 
 export function App(): ReactElement {
@@ -62,7 +63,7 @@ export function App(): ReactElement {
 	const develop = useDevelop(workspace === "develop");
 	const evolve = useEvolve(workspace === "evolve");
 	const omp = useOmp(workspace === "develop");
-	const workbench = useWorkbench(workspace === "develop");
+	const workbench = useWorkbench(workspace === "develop", workspace === "coordinator");
 	const workbenchOn = workbench.state.availability === "available";
 	// Words only (DEVELOP-UX-002): what the broker last said this page holds. The broker decides what any request is authorised by.
 	const heldControl = workbench.state.status?.sessionControl;
@@ -242,14 +243,16 @@ export function App(): ReactElement {
 					))}
 				</nav>
 				<span className="spacer" />
-				{workspace === "develop" ? (
+				{workspace === "develop" || workspace === "coordinator" ? (
 					<fieldset className="appearance" data-testid="appearance">
-						<legend className="sr-only">Develop appearance</legend>
+						<legend className="sr-only">
+							{workspace === "develop" ? "Develop appearance" : "Coordinator appearance"}
+						</legend>
 						{(["instrument", "field"] as const).map((a) => (
 							<label key={a} className="appearance-option" data-selected={appearance === a}>
 								<input
 									type="radio"
-									name="develop-appearance"
+									name={`${workspace}-appearance`}
 									value={a}
 									checked={appearance === a}
 									onChange={() => setAppearance(a)}
@@ -264,13 +267,15 @@ export function App(): ReactElement {
 					className="readonly"
 					data-testid="authority-chip"
 					title={
-						workbenchOn
-							? controlHeld
-								? "This server is a workbench, and this page holds session control: the requests it covers are sent without a terminal approval, for a limited time, to one session, and are recorded as authorised by the session grant. Everything else is approved in the attached terminal."
-								: "This server is a workbench. The page can read and, once paired, ask for a prompt; only the operator in the attached terminal can approve one. It changes no store and runs no command itself."
-							: workspaceHost
-								? "This server is a workspace host. Once paired, the page can read the project's tasks and evidence and change task metadata. It runs no agent and no command, and cannot prompt, steer or stop anything."
-								: "This page only reads. It cannot change a store, steer a runtime or start anything."
+						workspace === "coordinator"
+							? "Coordinator can read the paired workspace's recorded status. It cannot change a task, session, check, approval or grant."
+							: workbenchOn
+								? controlHeld
+									? "This server is a workbench, and this page holds session control: the requests it covers are sent without a terminal approval, for a limited time, to one session, and are recorded as authorised by the session grant. Everything else is approved in the attached terminal."
+									: "This server is a workbench. The page can read and, once paired, ask for a prompt; only the operator in the attached terminal can approve one. It changes no store and runs no command itself."
+								: workspaceHost
+									? "This server is a workspace host. Once paired, the page can read the project's tasks and evidence and change task metadata. It runs no agent and no command, and cannot prompt, steer or stop anything."
+									: "This page only reads. It cannot change a store, steer a runtime or start anything."
 					}
 				>
 					<svg width="11" height="11" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
@@ -286,18 +291,24 @@ export function App(): ReactElement {
 						/>
 						<path d="M4 5.4V4a2 2 0 0 1 4 0v1.4" fill="none" stroke="currentColor" strokeWidth="1.2" />
 					</svg>
-					{workbenchOn || workspaceHost
-						? `${workspaceHost ? "Workspace" : "Workbench"} · ${workbench.state.grant === null ? "not paired" : controlHeld ? "paired · session control on" : "paired"}`
-						: "Read-only"}
+					{workspace === "coordinator"
+						? workspaceHost && workbench.state.grant !== null
+							? "Paired · read-only"
+							: "Read-only"
+						: workbenchOn || workspaceHost
+							? `${workspaceHost ? "Workspace" : "Workbench"} · ${workbench.state.grant === null ? "not paired" : controlHeld ? "paired · session control on" : "paired"}`
+							: "Read-only"}
 				</span>
 				<span id="read-status" className="read-status" aria-live="polite">
-					{workspace === "observe"
-						? readStatusText(state)
-						: workbenchOn
-							? "Live workbench"
-							: workspaceHost
-								? "Workspace · no agent attached"
-								: "Read-only workspace"}
+					{workspace === "coordinator"
+						? "Workspace records"
+						: workspace === "observe"
+							? readStatusText(state)
+							: workbenchOn
+								? "Live workbench"
+								: workspaceHost
+									? "Workspace · no agent attached"
+									: "Read-only workspace"}
 				</span>
 				{workspace === "observe" ? (
 					<button
@@ -352,6 +363,19 @@ export function App(): ReactElement {
 						/>
 					) : workspace === "evolve" ? (
 						<EvolveWorkspace evolve={evolve} />
+					) : workspace === "coordinator" ? (
+						<CoordinatorWorkspace
+							key={launchId}
+							workbench={workbench.state}
+							onGrantRequired={workbench.unpair}
+							onHostRefresh={workbench.refresh}
+							onDevelop={() => setWorkspace("develop")}
+							appearance={appearance}
+							atmosphere={atmosphere}
+							paused={fieldPaused}
+							onPause={setFieldPaused}
+							onAtmosphere={setAtmosphere}
+						/>
 					) : (
 						<Suspense fallback={<output>Loading…</output>}>
 							<Unavailable

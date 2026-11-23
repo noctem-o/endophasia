@@ -1187,6 +1187,7 @@ export function LiveConversation({
 	workspace,
 	reasoning,
 	leading,
+	trailing,
 	arrival,
 	beacon,
 }: {
@@ -1198,6 +1199,8 @@ export function LiveConversation({
 	reasoning: ReasoningView;
 	/** Shown at the start of the header: the sessions toggle at the widths where the list is a drawer. */
 	leading?: ReactElement;
+	/** Shown at the end of the header's tools: the control that hides or shows the context column, where there is one. */
+	trailing?: ReactElement;
 	/** Field appearance: shown in place of the empty conversation (the ledger). */
 	arrival?: ReactNode;
 	/** Field appearance: a line under the run strip while something waits for the terminal. Text only, never a control. */
@@ -1293,39 +1296,50 @@ export function LiveConversation({
 						>
 							{state.busy ? "Reading…" : "Read session"}
 						</button>
+						{trailing}
 					</div>
 				</header>
-				<WorktreeBar
-					api={project}
-					paired={paired}
-					connected={connected}
-					// With no Git context AND no project, there is nothing for the bar to say (as before): no bar at all.
-					leading={
-						workspace.state.availability === "absent" && !changesOffered ? null : (
-							<TaskCluster
-								workspace={workspace}
-								git={project.state.project}
-								onDetails={() => project.setView("task")}
-							/>
-						)
-					}
-				/>
-				<div className="run-strip" data-testid="run-strip" data-connection={connection}>
-					<ConnectionGlyph state={connection} />
-					<span
-						className="mono strip-session"
-						data-testid="run-strip-session"
-						title="The session this conversation belongs to"
-					>
-						{state.status?.session == null ? "session not identified yet" : shortSession(state.status.session)}
-					</span>
-					<span aria-live="polite" data-testid="run-strip-words">
-						{words}
-					</span>
-					<span className="dim small">
-						{state.statusAt === null ? "" : `read ${clock(state.statusAt)} (browser clock)`}
-					</span>
-					<StopControl wb={wb} />
+				{/* The head of the work: the session, read from the broker, with STOP; then the worktree, read with Git. Two sources, two
+				    segments, each with its own currency mark: side by side where the column is wide, one under the other where it is not.
+				    The times of the last reads, the revision and the paths are in Context. */}
+				<div className="session-head">
+					<div className="run-strip" data-testid="run-strip" data-connection={connection}>
+						<span
+							className="strip-identity"
+							title={
+								state.statusAt === null
+									? "The session this conversation belongs to. Its status has not been read yet."
+									: `The session this conversation belongs to. Status as of the last read, ${clock(state.statusAt)} (browser clock).`
+							}
+						>
+							<ConnectionGlyph state={connection} />
+							<span className="mono strip-session" data-testid="run-strip-session">
+								{state.status?.session == null
+									? "session not identified yet"
+									: shortSession(state.status.session)}
+							</span>
+							<span aria-live="polite" data-testid="run-strip-words">
+								{words}
+							</span>
+						</span>
+						<StopControl wb={wb} />
+					</div>
+					<WorktreeBar
+						api={project}
+						paired={paired}
+						connected={connected}
+						compact
+						// With no Git context AND no project, there is nothing for the bar to say (as before): no bar at all.
+						leading={
+							workspace.state.availability === "absent" && !changesOffered ? null : (
+								<TaskCluster
+									workspace={workspace}
+									git={project.state.project}
+									onDetails={() => project.setView("task")}
+								/>
+							)
+						}
+					/>
 				</div>
 				<NextStepStrip wb={wb} workspace={workspace} view={view} onTask={() => project.setView("task")} />
 				{beacon}

@@ -54,10 +54,16 @@ export function WorktreeBar({
 	connected,
 	leading,
 	basis = "the directory Pi was launched in",
+	compact = false,
 }: {
 	api: ProjectApi;
 	paired: boolean;
 	connected: boolean;
+	/**
+	 * The head of a live session's work: the time of the last read and the revision are left to the bar's title and the context column,
+	 * and the refresh button says "Refresh" (its whole name is still "Refresh worktree").
+	 */
+	compact?: boolean;
 	/** What directory the worktree is read from, in words (a workspace host reads the project's registered directory). */
 	basis?: string;
 	/** The project and task cluster that shares this row (develop/Tasks.tsx). It is not a Git fact and is not read from Git. */
@@ -83,7 +89,14 @@ export function WorktreeBar({
 			onClick={api.refresh}
 			title="Read the worktree again with Git. Nothing else is read until you ask."
 		>
-			{reading ? "Reading…" : view.kind === "unread" ? "Read worktree" : "Refresh worktree"}
+			{reading ? (
+				"Reading…"
+			) : (
+				<>
+					{view.kind === "unread" ? "Read" : "Refresh"}
+					<span className={compact ? "sr-only" : undefined}> worktree</span>
+				</>
+			)}
 		</button>
 	);
 	let body: ReactElement;
@@ -132,7 +145,7 @@ export function WorktreeBar({
 								<span className="dim"> (no commit yet)</span>
 							</>
 						)}
-						{head?.oid ? <span className="mono dim"> {shortOid(head.oid)}</span> : null}
+						{head?.oid && !compact ? <span className="mono dim"> {shortOid(head.oid)}</span> : null}
 					</span>
 					<span data-testid="project-counts" className="wt-counts">
 						{unknown ? (
@@ -165,12 +178,12 @@ export function WorktreeBar({
 			data-testid="project-header"
 			data-state={view.kind}
 			data-current={current ? "yes" : "no"}
-			title={`${basis.charAt(0).toUpperCase()}${basis.slice(1)} (configured), read with Git. A worktree is a place, not a session.`}
+			title={`${basis.charAt(0).toUpperCase()}${basis.slice(1)} (configured), read with Git${project === null ? "" : ` at ${clock(project.capturedAtMs)} (broker clock)`}. A worktree is a place, not a session.`}
 		>
 			{leading}
 			<span className="wt-main">{body}</span>
 			<span className="wt-tail">
-				{project === null ? null : (
+				{project === null || compact ? null : (
 					<span className="dim small" data-testid="project-read-at">
 						read {clock(project.capturedAtMs)} (broker clock)
 					</span>

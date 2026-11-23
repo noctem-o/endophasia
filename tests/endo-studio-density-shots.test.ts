@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { WorkbenchBrokerV0 } from "../adapters/pi/workbench.ts";
+import type { RpcEventV0 } from "../adapters/rpc-jsonl/rpc-connection.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
 import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
 import { removeTempRoots } from "./cockpit-fixtures.ts";
@@ -102,7 +103,7 @@ async function open(
 	appearance: Appearance,
 	width: number,
 	height: number,
-	options: { running?: boolean; clean?: boolean; session?: string } = {},
+	options: { running?: boolean; clean?: boolean; session?: string; conversation?: RpcEventV0[] } = {},
 ) {
 	const session = new FakeSession();
 	session.runActive = options.running ?? true;
@@ -117,7 +118,7 @@ async function open(
 		project: new GitProjectInspectorV0({ cwd: options.clean ? commitedRepo() : demoRepo(), minRefreshMs: 0 }),
 	});
 	const server = await serve(developStore(), { ui, workbench: broker, readBudget: { duty: 1, burstMs: 1e6 } });
-	for (const event of SYNTHETIC_CONVERSATION) session.live_(event);
+	for (const event of options.conversation ?? SYNTHETIC_CONVERSATION) session.live_(event);
 	const page = await browser.open(width, height);
 	tabs.push(page);
 	await page.goto(`${server.baseUrl}/`);
@@ -145,6 +146,27 @@ async function open(
 	await toBottom(page);
 	return { session, broker, server, page, approval };
 }
+
+/** The README hero's conversation: the synthetic one, its last turn's tool calls carrying the arguments and outputs Pi reports. */
+const call = (id: string, toolName: string, args: Record<string, unknown>, output: string): RpcEventV0[] => [
+	{ type: "tool_execution_start", record: { toolCallId: id, toolName, args } },
+	{
+		type: "tool_execution_end",
+		record: { toolCallId: id, toolName, isError: false, result: { content: [{ type: "text", text: output }] } },
+	},
+];
+const HERO_CONVERSATION: RpcEventV0[] = [
+	...SYNTHETIC_CONVERSATION.slice(0, -2),
+	...call(
+		"h1",
+		"read",
+		{ path: "src/parser/lexer.ts", offset: 42, limit: 60 },
+		"export function lexString(state: LexState) {",
+	),
+	...call("h2", "edit", { path: "src/parser/lexer.ts" }, "Edited src/parser/lexer.ts"),
+	...call("h3", "bash", { command: "npm test -- tests/parser.test.ts" }, "15 passed"),
+	...call("h4", "bash", { command: "git status --short" }, " M src/parser/lexer.ts"),
+];
 
 const LONG_DRAFT = Array.from(
 	{ length: 14 },
@@ -202,4 +224,24 @@ describe.runIf(out !== "" && executable !== null && haveGit)("DEVELOP density (s
 			await shot(page, `${a}-unreachable-1440`);
 		}, 120_000);
 	}
+	// The README hero (docs/images/readme-hero-field-storm-1440.png): Field at 1440x900 with Storm chosen, a run open, the Course
+	// gauges, folded reasoning, the last turn's tool calls unfolded with the first one opened, and the worktree's changes in Context.
+	it("field: README hero, Storm, a run open, a tool call opened", async () => {
+		const { page } = await open("field", 1440, 900, { conversation: HERO_CONVERSATION });
+		await page.eval(
+			"(() => { const e = document.querySelector('[data-testid=atmosphere]'); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(e, 'storm'); e.dispatchEvent(new Event('change', { bubbles: true })); })()",
+		);
+		await page.waitFor(
+			"document.querySelector('#develop-workspace').dataset.atmosphere === 'storm' && document.querySelector('.weather-rain') !== null && document.querySelector('.weather-rain').dataset.state !== 'loading'",
+		);
+		await page.eval(
+			"(() => { const group = [...document.querySelectorAll('details.turn-body')].findLast((d) => /tool calls/.test(d.querySelector('summary')?.textContent ?? '')); group.querySelector('summary').click(); group.dataset.hero = 'tools'; })()",
+		);
+		await page.waitFor("document.querySelector('[data-hero=tools] .tool-disclosure')");
+		await page.eval("document.querySelector('[data-hero=tools] .tool-disclosure summary').click()");
+		await page.waitFor("document.querySelector('[data-hero=tools] .tool-disclosure[open] dl')");
+		await toBottom(page);
+		await new Promise((r) => setTimeout(r, 2500));
+		await shot(page, "readme-hero-field-storm-1440");
+	}, 120_000);
 });

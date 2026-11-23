@@ -180,6 +180,9 @@ async function buildPositiveFixture(
 		withAuth?: boolean;
 		runEndKind?: "lifecycle.run-completed" | "lifecycle.run-failed" | "lifecycle.interrupted" | "none" | "no-reply";
 		withBoundObservations?: boolean;
+		withAfterRun?: boolean;
+		withOperatorObserveAfter?: boolean;
+		extraFileBeforeAfterRun?: { path: string; bytes: Uint8Array };
 		afterRunTrigger?: "run-settled" | "workbench-closing";
 		withPassingCheck?: boolean;
 		taskStatus?: "open" | "in-progress" | "review" | "done";
@@ -372,8 +375,11 @@ async function buildPositiveFixture(
 
 	// Simulate the fix being written to the working tree and observed at run-end, then committed cleanly.
 	writeFileSync(join(repo, "calc.mjs"), "const [a, b] = process.argv.slice(2).map(Number);\nconsole.log(a + b);\n");
+	if (options.extraFileBeforeAfterRun !== undefined) {
+		writeFileSync(join(repo, options.extraFileBeforeAfterRun.path), options.extraFileBeforeAfterRun.bytes);
+	}
 
-	if (options.withBoundObservations !== false) {
+	if (options.withBoundObservations !== false && options.withAfterRun !== false) {
 		const after = await observationsService.take(repo, { within: true });
 		const recAfter = observationsService.record(attemptId, {
 			point: "after-run",
@@ -384,7 +390,12 @@ async function buildPositiveFixture(
 		if (!recAfter.ok) throw new Error(`record after-run failed: ${recAfter.code}`);
 	}
 
-	git(repo, ["add", "calc.mjs"]);
+	if (options.withOperatorObserveAfter) {
+		const opObs = await observationsService.observeForOperator(attemptId, repo);
+		if (!opObs.ok) throw new Error(`observeForOperator failed: ${opObs.code}`);
+	}
+
+	git(repo, ["add", "-A"]);
 	git(repo, ["commit", "-qm", "fix calc addition"]);
 	const fixedCommit = git(repo, ["rev-parse", "HEAD"]);
 
@@ -1048,6 +1059,70 @@ describe("DEVELOP-EVIDENCE-BRIDGE-001", () => {
 		if (!rNoObs.ok) return;
 		expect(rNoObs.bridge.findings.map((f) => f.code)).toContain("provenance-missing");
 		expect(rNoObs.bridge.review.suggestedOutcome).toBe("incomplete-evidence");
+	});
+
+	it("keeps send-and-operator observations partial/operator-declared and incomplete until a bound after-run observation exists", async () => {
+		const fx = await buildPositiveFixture({
+			withBoundObservations: true,
+			withAfterRun: false,
+			withOperatorObserveAfter: true,
+			withPassingCheck: true,
+		});
+		const res = await readDevelopEvidenceBridgeV0({
+			root: fx.root,
+			attemptId: fx.attemptId,
+			cwd: fx.repo,
+		});
+		expect(res.ok).toBe(true);
+		if (!res.ok) return;
+		const b = res.bridge;
+		expect(b.candidate.workingTree.source).toBe("operator-declared");
+		expect(b.candidate.workingTree.basis).toBe("send-and-operator");
+		expect(b.candidate.workingTree.notes).toContain("no-after-run");
+		expect(b.findings.map((f) => f.code)).toContain("provenance-run-end-not-observed");
+		const runToTree = b.transitions.find((t) => t.id === "run-to-working-tree-state");
+		expect(runToTree).toMatchObject({
+			status: "partial",
+			basis: "operator-declared",
+			missingRecord: "develop-observation-after-run",
+		});
+		const candToVer = b.transitions.find((t) => t.id === "candidate-to-verification");
+		expect(candToVer).toMatchObject({
+			status: "partial",
+			basis: "operator-declared",
+		});
+		expect(candToVer?.evidence).not.toContain("equals the bound run-end observation");
+		expect(b.review.suggestedOutcome).toBe("incomplete-evidence");
+	});
+
+	it("treats uncomparable or incomplete run-end content comparisons as incomplete evidence, never ready-for-operator-review", async () => {
+		// 17 MiB file exceeds the 16 MiB per-file observer limit -> after-run is incomplete -> comparisons return not-compared/incomplete.
+		const oversized = Buffer.alloc(17 * 1024 * 1024, 0x61);
+		const fx = await buildPositiveFixture({
+			extraFileBeforeAfterRun: { path: "large.bin", bytes: oversized },
+			withPassingCheck: true,
+		});
+		const res = await readDevelopEvidenceBridgeV0({
+			root: fx.root,
+			attemptId: fx.attemptId,
+			cwd: fx.repo,
+		});
+		expect(res.ok).toBe(true);
+		if (!res.ok) return;
+		const b = res.bridge;
+		expect(b.candidate.workingTree.basis).toBe("send-and-run");
+		expect(b.candidate.workingTree.afterToNow?.comparison.relation).toBe("not-compared");
+		expect(b.candidate.workingTree.checkedCommits[0]?.comparison.relation).toBe("not-compared");
+		expect(b.findings.map((f) => f.code)).toContain("provenance-comparison-incomplete");
+		const runToTree = b.transitions.find((t) => t.id === "run-to-working-tree-state");
+		expect(runToTree?.status).toBe("partial");
+		const candToVer = b.transitions.find((t) => t.id === "candidate-to-verification");
+		expect(candToVer).toMatchObject({
+			status: "partial",
+			basis: "operator-declared",
+		});
+		expect(candToVer?.evidence).toContain("could not be compared");
+		expect(b.review.suggestedOutcome).toBe("incomplete-evidence");
 	});
 
 	it("negative 7: detects contradictory records across authorization, observations, checked commit, protected seal, and task status", async () => {

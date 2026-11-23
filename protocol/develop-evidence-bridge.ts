@@ -93,6 +93,7 @@ export const ENDO_EVIDENCE_BRIDGE_FINDING_CODES_V0 = [
 	"provenance-other-send-observations",
 	"provenance-run-end-not-observed",
 	"provenance-overlaps",
+	"provenance-comparison-incomplete",
 	"checked-commit-differs-from-observed-run-end",
 	"working-tree-changed-since-observation",
 	"receipts-unreadable",

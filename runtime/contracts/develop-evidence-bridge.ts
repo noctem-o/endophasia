@@ -180,11 +180,15 @@ const FINDING_META: Readonly<
 	},
 	"provenance-run-end-not-observed": {
 		severity: "gap",
-		text: "The last working-tree observation was recorded while the workbench closed with the run still open, not after the run settled.",
+		text: "No settled controller-bound run-end observation was recorded (the after-run observation is missing or was recorded while the workbench closed with the run still open).",
 	},
 	"provenance-overlaps": {
 		severity: "gap",
 		text: "Another attempt recorded working-tree observations in the same working tree inside this attempt's execution frame.",
+	},
+	"provenance-comparison-incomplete": {
+		severity: "gap",
+		text: "Content equality between the bound run-end observation and the current or checked HEAD could not be verified (incomplete observation, uncomparable state, or missing checked-commit comparison).",
 	},
 	"checked-commit-differs-from-observed-run-end": {
 		severity: "contradiction",
@@ -297,19 +301,48 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 		codes.add("run-interrupted-or-unconfirmed");
 	}
 
+	// Independent passing verification at clean HEAD?
+	const cleanHead = evidence.checks.current?.clean === true;
+	const hasAnyPassingReceiptAtCleanHead =
+		cleanHead &&
+		evidence.checks.state === "ready" &&
+		evidence.checks.latest.some(
+			(c) => c.relation === "at-head" && (c.plannedBehaviour ? false : c.outcome === "passed"),
+		);
+	const planAllPassed =
+		evidence.verification !== null &&
+		evidence.verification.checks.length > 0 &&
+		evidence.verification.checks.every((c) => c.state === "passed");
+	const hasIndependentPassAtHead =
+		cleanHead &&
+		evidence.checks.state === "ready" &&
+		(evidence.verification !== null
+			? planAllPassed
+			: hasAnyPassingReceiptAtCleanHead &&
+				!evidence.checks.latest.some((c) => AT_HEAD.has(c.relation) && c.outcome !== "passed"));
+
 	// Provenance / working-tree observations
-	const hasBoundFrame =
+	// Only `send-and-run` and `run-only` carry a controller-bound `after-run` endpoint; `send-and-operator` and `send-only`
+	// lack a bound run-end observation (the endpoint of `send-and-operator` is an unbound operator `endo attempt observe`).
+	const endObs = prov.end === null ? null : (prov.observations.find((o) => o.id === prov.end) ?? null);
+	const hasBoundRunEnd =
 		prov.state === "observed" &&
-		(prov.basis === "send-and-run" || prov.basis === "send-and-operator" || prov.basis === "run-only");
+		(prov.basis === "send-and-run" || prov.basis === "run-only") &&
+		endObs !== null &&
+		endObs.point === "after-run" &&
+		endObs.bound === "this-send" &&
+		endObs.state === "observed";
+	const hasSendStartOnly =
+		prov.state === "observed" && (prov.basis === "send-and-operator" || prov.basis === "send-only");
 	if (prov.state === "unreadable") {
 		codes.add("provenance-unreadable");
-	} else if (prov.state === "none" || !hasBoundFrame) {
+	} else if (prov.state === "none" || (!hasBoundRunEnd && !hasSendStartOnly)) {
 		codes.add("provenance-missing");
 	}
 	if (prov.notes.includes("other-send-observations")) {
 		codes.add("provenance-other-send-observations");
 	}
-	if (prov.notes.includes("run-end-not-observed")) {
+	if (prov.notes.includes("run-end-not-observed") || prov.notes.includes("no-after-run") || hasSendStartOnly) {
 		codes.add("provenance-run-end-not-observed");
 	}
 	if (prov.overlaps.length > 0) {
@@ -319,12 +352,27 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 		codes.add("working-tree-changed-since-observation");
 	}
 
-	// Does the current HEAD commit (where receipts ran) match the observed run-end working tree?
+	// Does the current HEAD commit (where receipts ran) match the observed bound run-end working tree?
 	const currentHeadCommit = evidence.checks.current?.commit ?? null;
 	const checkedAtHead =
 		currentHeadCommit === null ? null : (prov.checked.find((c) => c.commit === currentHeadCommit) ?? null);
-	if (checkedAtHead !== null && checkedAtHead.comparison.relation === "different") {
+	if (hasBoundRunEnd && checkedAtHead !== null && checkedAtHead.comparison.relation === "different") {
 		codes.add("checked-commit-differs-from-observed-run-end");
+	}
+	const checkedMatchesBoundRunEnd =
+		hasBoundRunEnd &&
+		!prov.notes.includes("run-end-not-observed") &&
+		endObs.complete &&
+		checkedAtHead !== null &&
+		checkedAtHead.comparison.relation === "same";
+	if (
+		hasBoundRunEnd &&
+		(!endObs.complete ||
+			prov.now?.comparison.relation === "not-compared" ||
+			checkedAtHead?.comparison.relation === "not-compared" ||
+			(hasIndependentPassAtHead && checkedAtHead === null))
+	) {
+		codes.add("provenance-comparison-incomplete");
 	}
 
 	// Protected-experiment findings (kept strictly separate from ordinary receipts and never fabricated as linked!)
@@ -360,26 +408,6 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 		}
 	}
 
-	// Independent passing verification at clean HEAD?
-	const cleanHead = evidence.checks.current?.clean === true;
-	const hasAnyPassingReceiptAtCleanHead =
-		cleanHead &&
-		evidence.checks.state === "ready" &&
-		evidence.checks.latest.some(
-			(c) => c.relation === "at-head" && (c.plannedBehaviour ? false : c.outcome === "passed"),
-		);
-	const planAllPassed =
-		evidence.verification !== null &&
-		evidence.verification.checks.length > 0 &&
-		evidence.verification.checks.every((c) => c.state === "passed");
-	const hasIndependentPassAtHead =
-		cleanHead &&
-		evidence.checks.state === "ready" &&
-		(evidence.verification !== null
-			? planAllPassed
-			: hasAnyPassingReceiptAtCleanHead &&
-				!evidence.checks.latest.some((c) => AT_HEAD.has(c.relation) && c.outcome !== "passed"));
-
 	const hasAgentReportedPassOrCompletion = exec?.run === "completed" || input.report.outcome?.kind === "reported";
 	if (hasAgentReportedPassOrCompletion && !hasIndependentPassAtHead) {
 		codes.add("agent-report-unsupported-by-independent-evidence");
@@ -400,7 +428,6 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 	}));
 
 	// ---- Explicit transition table: Task -> Attempt -> Authorization -> Dispatch -> Run -> Candidate -> Verification -> Operator decision ----
-	const endObs = prov.end === null ? null : (prov.observations.find((o) => o.id === prov.end) ?? null);
 	const transitions: EndoEvidenceBridgeTransitionV0[] = [
 		// 1. Task -> Attempt
 		input.task === null
@@ -595,7 +622,7 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 					evidence: "develop/observations/<attempt>/ could not be read.",
 					missingRecord: null,
 				}
-			: prov.notes.includes("other-send-observations") && !hasBoundFrame
+			: prov.notes.includes("other-send-observations") && !hasBoundRunEnd && !hasSendStartOnly
 				? {
 						id: "run-to-working-tree-state",
 						label: "Run -> Observed Working-Tree State",
@@ -605,26 +632,47 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 							"Recorded observations name a different send binding than this attempt's authorisation and were excluded.",
 						missingRecord: null,
 					}
-				: hasBoundFrame
+				: hasBoundRunEnd
 					? {
 							id: "run-to-working-tree-state",
 							label: "Run -> Observed Working-Tree State",
-							status: prov.notes.includes("run-end-not-observed") ? "partial" : "established",
+							status:
+								prov.notes.includes("run-end-not-observed") || !endObs.complete ? "partial" : "established",
 							basis: "controller-observed",
-							evidence: `Controller observations (${prov.basis}, end=${prov.end ?? "none"}) bound to exact proposalId/authorizationEventId. Records Git blob hashes only — not reconstructable candidate bytes and not authorship.`,
+							evidence: !endObs.complete
+								? `Controller observations (${prov.basis}, end=${prov.end ?? "none"}) are bound to exact proposalId/authorizationEventId, but the run-end observation is incomplete (content cannot be fully compared).`
+								: `Controller observations (${prov.basis}, end=${prov.end ?? "none"}) bound to exact proposalId/authorizationEventId. Records Git blob hashes only — not reconstructable candidate bytes and not authorship.`,
 							missingRecord: null,
 						}
-					: {
-							id: "run-to-working-tree-state",
-							label: "Run -> Observed Working-Tree State",
-							status: "unestablished",
-							basis: prov.state === "observed" ? "operator-declared" : "missing",
-							evidence:
-								prov.state === "observed"
-									? `Only operator-taken observations (${prov.basis ?? "none"}) exist; none is bound to a governed send/run.`
-									: "No working-tree observation is recorded for this attempt.",
-							missingRecord: "develop-observation-send-bound",
-						},
+					: prov.basis === "send-and-operator"
+						? {
+								id: "run-to-working-tree-state",
+								label: "Run -> Observed Working-Tree State",
+								status: "partial",
+								basis: "operator-declared",
+								evidence: `Before-send observation (start=${prov.start ?? "none"}) is bound to this send, but no bound after-run observation exists; endpoint (end=${prov.end ?? "none"}) is an unbound operator observation, not controller-observed run-end evidence.`,
+								missingRecord: "develop-observation-after-run",
+							}
+						: prov.basis === "send-only"
+							? {
+									id: "run-to-working-tree-state",
+									label: "Run -> Observed Working-Tree State",
+									status: "partial",
+									basis: "controller-observed",
+									evidence: `Only a before-send observation (start=${prov.start ?? "none"}) is bound to this send; no bound after-run observation was recorded.`,
+									missingRecord: "develop-observation-after-run",
+								}
+							: {
+									id: "run-to-working-tree-state",
+									label: "Run -> Observed Working-Tree State",
+									status: "unestablished",
+									basis: prov.state === "observed" ? "operator-declared" : "missing",
+									evidence:
+										prov.state === "observed"
+											? `Only operator-taken observations (${prov.basis ?? "none"}) exist; none is bound to a governed send/run.`
+											: "No working-tree observation is recorded for this attempt.",
+									missingRecord: "develop-observation-send-bound",
+								},
 
 		// 6. Attempt -> Reconstructable Candidate (staged changeset / protected experiment)
 		!pe.supplied
@@ -668,7 +716,7 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 					evidence: "Ordinary verification receipts directory could not be read.",
 					missingRecord: null,
 				}
-			: checkedAtHead !== null && checkedAtHead.comparison.relation === "different"
+			: hasBoundRunEnd && checkedAtHead !== null && checkedAtHead.comparison.relation === "different"
 				? {
 						id: "candidate-to-verification",
 						label: "Candidate -> Verification / Receipt",
@@ -681,12 +729,19 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 					? {
 							id: "candidate-to-verification",
 							label: "Candidate -> Verification / Receipt",
-							status: checkedAtHead?.comparison.relation === "same" ? "established" : "partial",
-							basis: checkedAtHead?.comparison.relation === "same" ? "controller-observed" : "operator-declared",
-							evidence:
-								checkedAtHead?.comparison.relation === "same"
-									? `Ordinary receipts pass at clean HEAD ${currentHeadCommit?.slice(0, 12)}, whose Git tree content equals the bound run-end observation (ignored files excluded; receipt-to-attempt link is operator-declared).`
-									: `Ordinary receipts pass at clean HEAD ${currentHeadCommit?.slice(0, 12)} (operator-declared attempt link; no bound run-end observation confirms content equality).`,
+							status: checkedMatchesBoundRunEnd ? "established" : "partial",
+							basis: checkedMatchesBoundRunEnd ? "controller-observed" : "operator-declared",
+							evidence: checkedMatchesBoundRunEnd
+								? `Ordinary receipts pass at clean HEAD ${currentHeadCommit?.slice(0, 12)}, whose Git tree content equals the bound run-end observation (ignored files excluded; receipt-to-attempt link is operator-declared).`
+								: hasBoundRunEnd &&
+										checkedAtHead !== null &&
+										checkedAtHead.comparison.relation === "not-compared"
+									? `Ordinary receipts pass at clean HEAD ${currentHeadCommit?.slice(0, 12)}, but content equality with the bound run-end observation could not be compared (${endoComparisonWordsV0(checkedAtHead.comparison)}).`
+									: hasBoundRunEnd && checkedAtHead === null
+										? `Ordinary receipts pass at clean HEAD ${currentHeadCommit?.slice(0, 12)}, but no content comparison with the bound run-end observation is available for this commit.`
+										: prov.basis === "send-and-operator"
+											? `Ordinary receipts pass at clean HEAD ${currentHeadCommit?.slice(0, 12)} (operator-declared attempt link; only an unbound operator observation exists, with no bound run-end observation to confirm content equality).`
+											: `Ordinary receipts pass at clean HEAD ${currentHeadCommit?.slice(0, 12)} (operator-declared attempt link; no settled bound run-end observation confirms content equality).`,
 							missingRecord: null,
 						}
 					: evidence.checks.receipts > 0
@@ -778,6 +833,7 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 		codes.has("provenance-missing") ||
 		codes.has("provenance-run-end-not-observed") ||
 		codes.has("provenance-overlaps") ||
+		codes.has("provenance-comparison-incomplete") ||
 		codes.has("task-unavailable") ||
 		codes.has("protected-attempt-association-unestablished") ||
 		codes.has("protected-execution-unconfirmed-or-interrupted") ||
@@ -915,9 +971,9 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 				source:
 					prov.state === "unreadable"
 						? "unavailable"
-						: hasBoundFrame
+						: hasBoundRunEnd || prov.basis === "send-only"
 							? "controller-observed"
-							: prov.state === "observed"
+							: prov.basis === "send-and-operator" || prov.basis === "operator"
 								? "operator-declared"
 								: "none",
 				provenanceState: prov.state,

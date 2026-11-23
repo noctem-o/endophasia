@@ -3419,8 +3419,17 @@ body:has(.develop[data-appearance="field"]) main {
 	flex-direction: column;
 }
 
+body:has(.develop[data-appearance="field"][data-fill="true"]) main {
+	padding-top: 8px;
+	padding-bottom: 4px;
+}
+
 .develop[data-appearance="field"] {
 	flex: 1;
+}
+
+.develop[data-appearance="field"][data-fill="true"] {
+	gap: 4px;
 }
 
 .develop[data-appearance="field"] > .field-legend {
@@ -3430,7 +3439,9 @@ body:has(.develop[data-appearance="field"]) main {
 body:has(.develop[data-appearance="field"]) .topbar {
 	position: relative;
 	z-index: 2;
-	background: rgba(3, 4, 5, 0.92);
+	min-height: 36px;
+	padding-block: 4px;
+	background: rgba(3, 4, 5, 0.9);
 	border-image: none;
 	border-bottom-color: rgba(206, 218, 238, 0.07);
 }
@@ -3633,16 +3644,15 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	padding: 6px 2px;
 }
 
-/* The reading surface: the conversation and the diff sit on one calm slab, and the text keeps a measure. */
+/* The reading surface: the conversation and the diff sit on one calm clearing, and the text keeps a measure.
+   Narrower shoulders around the reading measure let the atmosphere breathe at the edges of a 1440 px desktop. */
 .develop[data-appearance="field"] .develop-live {
-	/* A clearing, not a card: black under the reading measure and a margin either side of it, and the terrain through the rest. On a wide
-	   screen that is most of the surface, so the field is seen where nothing is read. */
 	background: linear-gradient(
 		90deg,
-		rgba(4, 5, 6, 0.36) 0%,
-		rgba(4, 5, 6, 0.97) max(4%, calc(50% - var(--f-measure) / 2 - 12rem)),
-		rgba(4, 5, 6, 0.97) min(96%, calc(50% + var(--f-measure) / 2 + 12rem)),
-		rgba(4, 5, 6, 0.36) 100%
+		rgba(4, 5, 6, 0.34) 0%,
+		rgba(4, 5, 6, 0.94) max(4%, calc(50% - var(--f-measure) / 2 - 3.5rem)),
+		rgba(4, 5, 6, 0.94) min(96%, calc(50% + var(--f-measure) / 2 + 3.5rem)),
+		rgba(4, 5, 6, 0.34) 100%
 	);
 	border-color: var(--f-hair);
 	box-shadow:
@@ -3653,9 +3663,22 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 		border-color 500ms ease;
 }
 
+.develop[data-appearance="field"][data-atmosphere="rain"] .develop-live,
+.develop[data-appearance="field"][data-atmosphere="storm"] .develop-live {
+	background: linear-gradient(
+		90deg,
+		rgba(4, 5, 6, 0.42) 0%,
+		rgba(4, 5, 6, 0.87) max(4%, calc(50% - var(--f-measure) / 2 - 3rem)),
+		rgba(4, 5, 6, 0.87) min(96%, calc(50% + var(--f-measure) / 2 + 3rem)),
+		rgba(4, 5, 6, 0.42) 100%
+	);
+	border-color: rgba(196, 214, 240, 0.095);
+}
+
 .develop[data-appearance="field"] .live-head {
 	border-bottom: 0;
-	padding: 10px 18px 4px;
+	padding: 6px 16px 2px;
+	gap: 4px 10px;
 }
 
 .develop[data-appearance="field"] .view-tab {
@@ -3663,17 +3686,37 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	font-weight: 400;
 	font-size: 10.5px;
 	letter-spacing: 0.18em;
-	padding: 4px 2px;
-	margin-right: 14px;
+	padding: 3px 2px;
+	margin-right: 12px;
 	border-bottom-width: 1px;
+}
+
+.develop[data-appearance="field"] .session-head {
+	border-bottom: 1px solid var(--f-hair);
 }
 
 .develop[data-appearance="field"] .worktree-bar {
 	background: transparent;
-	border-bottom-color: var(--f-hair);
-	padding: 4px 18px 8px;
-	font-size: 11.5px;
+	border-bottom-color: transparent;
+	padding: 4px 14px 6px;
+	gap: 4px 8px;
+	font-size: 11px;
 	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .session-head > .worktree-bar {
+	flex: 0 1 auto;
+	border-left-color: var(--f-hair);
+	justify-content: flex-end;
+}
+
+.develop[data-appearance="field"] .session-head > .worktree-bar .wt-main {
+	gap: 2px 8px;
+}
+
+.develop[data-appearance="field"] .worktree-bar .btn {
+	padding: 1px 9px;
+	font-size: 11px;
 }
 
 .develop[data-appearance="field"] .wt-repo {
@@ -3682,19 +3725,25 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 
 .develop[data-appearance="field"] .develop-live .run-strip {
 	position: relative;
-	gap: 6px 14px;
-	padding: 8px 22px 10px;
+	flex: 1 1 auto;
+	gap: 4px 10px;
+	padding: 4px 14px 6px 16px;
 	border-bottom-color: transparent;
-	font-size: 12.5px;
+	font-size: 12px;
 	color: var(--f-ink-2);
 }
 
 .develop[data-appearance="field"] .strip-session {
 	font-family: var(--sans);
 	font-weight: 600;
-	font-size: 16px;
+	font-size: 13.5px;
+	max-width: 24ch;
 	letter-spacing: -0.01em;
 	color: var(--f-ink-1);
+}
+
+.develop[data-appearance="field"] .stop-short {
+	font-size: 10.5px;
 }
 
 /* The horizon: one line under the run strip, carrying the field's state where the eye already is. Still is a hairline; drift is a
@@ -3703,9 +3752,9 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 .develop[data-appearance="field"] .develop-live .run-strip::after {
 	content: "";
 	position: absolute;
-	left: 22px;
-	right: 22px;
-	bottom: 0;
+	left: 16px;
+	right: 10px;
+	bottom: -1px;
 	height: 1px;
 	background: var(--f-hair-2);
 	transition:
@@ -3750,12 +3799,12 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 
 /* STOP keeps its place (last in the strip), its stop mark and its weight; its ground is the shared graphite stop below, not a lamp. */
 .develop[data-appearance="field"] [data-testid="stop"]:not(:disabled) {
-	padding: 4px 14px 4px 11px;
+	padding: 3px 12px 3px 10px;
 }
 
 .develop[data-appearance="field"] .live-scroll {
-	padding: 22px 18px 18px;
-	mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 10px), transparent 100%);
+	padding: 14px 18px 12px;
+	mask-image: linear-gradient(to bottom, transparent 0, #000 14px, #000 calc(100% - 8px), transparent 100%);
 }
 
 .develop[data-appearance="field"] .live-scroll > *,
@@ -4028,11 +4077,44 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	flex: none;
 }
 
-/* The composer: one plate docked under the reading measure. */
+/* Authority in Field: aligned cleanly to the reading measure directly above the composer rather than a full-width horizontal band. */
+.develop[data-appearance="field"] .develop-live .authority {
+	max-width: var(--f-measure);
+	width: calc(100% - 44px);
+	margin: 2px auto 0;
+	padding: 0 2px;
+	border-left: 0;
+	font-size: 11px;
+	color: var(--f-ink-3);
+}
+
+.develop[data-appearance="field"] .develop-live .authority:not([data-requested="strict"])[data-effective="strict"],
+.develop[data-appearance="field"] .develop-live .authority[data-control="held"] {
+	border-left: 2px solid var(--attention);
+	padding-left: 8px;
+	margin-bottom: 2px;
+}
+
+.develop[data-appearance="field"] .develop-live .authority .authority-line {
+	gap: 3px 8px;
+	margin: 0;
+}
+
+.develop[data-appearance="field"] .develop-live .authority [data-testid="authority-mode"] {
+	font-size: 10px;
+	padding: 0 7px;
+	border-radius: 999px;
+	border-color: var(--f-hair-2);
+	background: rgba(206, 218, 238, 0.04);
+	color: var(--f-ink-2);
+}
+
+/* The composer: one compact, calm plate docked under the reading measure. */
 .develop[data-appearance="field"] .develop-live .composer {
-	background: linear-gradient(180deg, rgba(4, 5, 6, 0), rgba(4, 5, 6, 0.97) 30%);
+	background: linear-gradient(180deg, rgba(4, 5, 6, 0), rgba(4, 5, 6, 0.9) 38%);
 	border-top: 0;
-	padding: 10px 22px 18px;
+	padding: 4px 22px 10px;
+	gap: 5px;
 }
 
 .develop[data-appearance="field"] .develop-live .composer[data-mode] {
@@ -4040,12 +4122,13 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 }
 
 .develop[data-appearance="field"] .composer textarea {
-	background: var(--f-slab-2);
+	background: rgba(12, 14, 17, 0.86);
 	border: 1px solid var(--f-hair-2);
-	border-radius: 12px;
-	padding: 11px 14px;
-	font-size: 14.5px;
-	line-height: 1.55;
+	border-radius: 10px;
+	min-height: 2.35em;
+	padding: 7px 13px;
+	font-size: 14px;
+	line-height: 1.5;
 	transition: border-color 160ms ease;
 }
 
@@ -4136,7 +4219,15 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 
 /* The margins: context and inspector read as notes beside the work. */
 .develop[data-appearance="field"] .develop-inspector.panel {
-	background: rgba(4, 5, 6, 0.84);
+	background: rgba(4, 5, 6, 0.82);
+}
+
+.develop[data-appearance="field"][data-atmosphere="rain"] .develop-inspector.panel,
+.develop[data-appearance="field"][data-atmosphere="storm"] .develop-inspector.panel,
+.develop[data-appearance="field"][data-atmosphere="rain"] .develop-course,
+.develop[data-appearance="field"][data-atmosphere="storm"] .develop-course {
+	background: rgba(4, 5, 6, 0.72);
+	border-color: rgba(196, 214, 240, 0.095);
 }
 
 .develop[data-appearance="field"] .change-row {
@@ -4346,14 +4437,14 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 .field-legend {
 	position: sticky;
 	bottom: 0;
-	background: linear-gradient(to top, rgba(10, 11, 13, 0.94) 60%, rgba(10, 11, 13, 0));
+	background: linear-gradient(to top, rgba(3, 4, 5, 0.72) 40%, rgba(3, 4, 5, 0));
 	display: flex;
 	align-items: center;
-	gap: 12px;
-	min-height: 30px;
-	padding: 5px 4px 0;
+	gap: 10px;
+	min-height: 24px;
+	padding: 2px 6px 1px;
 	font-family: var(--mono);
-	font-size: 10.5px;
+	font-size: 10px;
 	color: var(--f-ink-3);
 }
 

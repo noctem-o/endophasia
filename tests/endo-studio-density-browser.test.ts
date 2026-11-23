@@ -414,3 +414,36 @@ suite("hiding Context in Instrument", () => {
 		expect(await shown(page, "[data-testid=context-toggle]")).toBe(false);
 	});
 });
+
+suite("Field vertical breathing room", () => {
+	it("places the session and worktree on one head line at 1440 px, aligns authority to the composer measure, and gives the conversation >600 px", async () => {
+		const { page } = await open(1440, 900, { field: true });
+		const run = await box(page, "[data-testid=run-strip]");
+		const tree = await box(page, "[data-testid=project-header]");
+		expect(run).not.toBeNull();
+		expect(tree).not.toBeNull();
+		expect(Math.abs((run?.top ?? 0) - (tree?.top ?? 100))).toBeLessThan(2);
+		expect(tree?.left ?? 0).toBeGreaterThanOrEqual((run?.right ?? 0) - 2);
+
+		const live = await box(page, "#develop-live");
+		const view = await box(page, "#develop-view-conversation");
+		expect((view?.top ?? 0) - (live?.top ?? 0)).toBeLessThanOrEqual(84);
+
+		const authority = await box(page, "[data-testid=authority]");
+		const composer = await box(page, "[data-testid=composer]");
+		expect(authority).not.toBeNull();
+		expect(composer).not.toBeNull();
+		expect(Math.abs((authority?.width ?? 0) - (composer?.width ?? 0))).toBeLessThanOrEqual(24);
+		expect(Math.abs((authority?.left ?? 0) - (composer?.left ?? 0))).toBeLessThanOrEqual(12);
+
+		const scrollerHeight = await page.eval<number>(
+			"document.querySelector('#develop-view-conversation .live-scroll').clientHeight",
+		);
+		expect(scrollerHeight).toBeGreaterThanOrEqual(600);
+		expect(
+			await page.eval<boolean>(
+				"document.documentElement.scrollWidth <= innerWidth && document.documentElement.scrollHeight <= innerHeight + 1",
+			),
+		).toBe(true);
+	});
+});

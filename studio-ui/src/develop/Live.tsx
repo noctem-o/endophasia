@@ -934,47 +934,13 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 				void send();
 			}}
 		>
-			<div className="composer-top">
-				<fieldset className="modes">
-					<legend>Send as</legend>
-					{MODES.map((m) => (
-						<label
-							key={m.id}
-							className="mode"
-							data-mode={m.id}
-							data-selected={mode === m.id}
-							data-offered={wb.state.status?.offers[m.id]?.offered === true ? "yes" : "no"}
-							title={m.gist}
-						>
-							<input
-								type="radio"
-								name={`${id}-mode`}
-								value={m.id}
-								checked={mode === m.id}
-								onChange={() => setMode(m.id)}
-								data-testid={`mode-${m.id}`}
-							/>
-							<span className="mode-name">{m.label}</span> <span className="dim">· {m.gist}</span>
-						</label>
-					))}
-				</fieldset>
-				<button
-					type="submit"
-					className="btn"
-					data-testid="send"
-					data-covered={covered ? "yes" : "no"}
-					disabled={!ok}
-				>
-					{covered ? "Send" : "Request"} {mode}
-				</button>
-			</div>
 			<label htmlFor={id} className="sr-only">
 				{label}
 			</label>
 			<textarea
 				id={id}
 				ref={field}
-				rows={3}
+				rows={2}
 				value={draft}
 				aria-describedby={`${id}-hint`}
 				data-testid="composer"
@@ -1001,14 +967,50 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 					{terminalCommandWords(asCommand)}
 				</p>
 			)}
-			<p
-				className="dim small composer-hint"
-				id={`${id}-hint`}
-				data-testid="composer-hint"
-				title={offer.offered ? hint : (offer.reason ?? "")}
-			>
-				{offer.offered ? hint : (offer.reason ?? "")}
-			</p>
+			{/* One row under the field: what to send it as, what that does and who approves it, and the button. The hint is two lines
+			    here and whole while the composer has focus; it is also the field's description. */}
+			<div className="composer-bar">
+				<fieldset className="modes">
+					<legend className="sr-only">Send as</legend>
+					{MODES.map((m) => (
+						<label
+							key={m.id}
+							className="mode"
+							data-mode={m.id}
+							data-selected={mode === m.id}
+							data-offered={wb.state.status?.offers[m.id]?.offered === true ? "yes" : "no"}
+							title={m.gist}
+						>
+							<input
+								type="radio"
+								name={`${id}-mode`}
+								value={m.id}
+								checked={mode === m.id}
+								onChange={() => setMode(m.id)}
+								data-testid={`mode-${m.id}`}
+							/>
+							<span className="mode-name">{m.label}</span> <span className="dim">· {m.gist}</span>
+						</label>
+					))}
+				</fieldset>
+				<p
+					className="dim small composer-hint"
+					id={`${id}-hint`}
+					data-testid="composer-hint"
+					title={offer.offered ? hint : (offer.reason ?? "")}
+				>
+					{offer.offered ? hint : (offer.reason ?? "")}
+				</p>
+				<button
+					type="submit"
+					className="btn"
+					data-testid="send"
+					data-covered={covered ? "yes" : "no"}
+					disabled={!ok}
+				>
+					{covered ? "Send" : "Request"} {mode}
+				</button>
+			</div>
 		</form>
 	);
 }

@@ -3121,14 +3121,38 @@ table.fields thead th {
 	max-width: 100%;
 }
 
-/* The composer is one compact block docked under the work: the mode choice and the request button share a row, the field is two lines and
-   grows with what is typed, and the hint is one line (its whole sentence is the field's description). */
-.composer-top {
+/* The composer is one compact block docked under the work: the field first, two lines that grow with what is typed; then one row with
+   the mode, what that mode does and who approves it (two lines, whole while the composer has focus; it is also the field's description),
+   and the request button. */
+.composer-bar {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	justify-content: space-between;
-	gap: 6px 12px;
+	gap: 4px 12px;
+}
+
+.composer-bar .modes {
+	flex: none;
+	gap: 4px 6px;
+}
+
+.composer-bar .composer-hint {
+	flex: 1 1 16rem;
+	min-width: 0;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	line-height: 1.4;
+}
+
+.composer:focus-within .composer-bar .composer-hint {
+	display: block;
+	-webkit-line-clamp: unset;
+	line-clamp: none;
+}
+
+.composer-bar [data-testid="send"] {
+	flex: none;
+	margin-left: auto;
 }
 
 /* A mode's description is its tooltip (the hint line says the rest); a selected mode that cannot be requested now reads as unavailable. */
@@ -3140,10 +3164,6 @@ table.fields thead th {
 	border-style: dashed;
 	border-color: var(--line-strong);
 	color: var(--fg-3);
-}
-
-.modes legend {
-	display: none;
 }
 
 @media (max-width: 1023.98px) {

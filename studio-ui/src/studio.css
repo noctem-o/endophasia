@@ -3638,30 +3638,9 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	box-shadow: none;
 }
 
-/* STOP stays the most visible control while a run is open: a filled button with a stop mark, last in the strip. */
+/* STOP keeps its place (last in the strip), its stop mark and its weight; its ground is the shared graphite stop below, not a lamp. */
 .develop[data-appearance="field"] [data-testid="stop"]:not(:disabled) {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 5px 15px 5px 12px;
-	background: var(--f-ink-1);
-	border-color: var(--f-ink-1);
-	color: #050607;
-	font-weight: 600;
-	box-shadow: 0 0 0 4px rgba(239, 235, 227, 0.06);
-}
-
-.develop[data-appearance="field"] [data-testid="stop"]:not(:disabled)::before {
-	content: "";
-	width: 8px;
-	height: 8px;
-	border-radius: 1.5px;
-	background: currentColor;
-}
-
-.develop[data-appearance="field"] [data-testid="stop"]:hover:not(:disabled) {
-	background: #ffffff;
-	color: #050607;
+	padding: 4px 14px 4px 11px;
 }
 
 .develop[data-appearance="field"] .live-scroll {
@@ -6635,9 +6614,48 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	border-bottom-color: var(--attention);
 }
 
-.develop[data-appearance="instrument"] .develop-live .stop-control .btn:not(:disabled) {
-	border-color: var(--fg-3);
+/* --- STOP, in both appearances ------------------------------------------------------------------------------------------------------
+   Found by its words, its place (last in the run line) and a stop mark, not by luminance: on an OLED panel a near-white fill was the
+   brightest thing on the screen (Field's filled pill, #efebe3). Graphite ground, a border that reads against both the strip and the
+   button (≥ 4.5:1), light-grey text (10.6:1), a restrained hover and press, no glow. Focus is the page's ivory ring, held off the border.
+   Scoped to the stop button: every other button keeps its own treatment. Disabled keeps the shared disabled look. */
+.develop .develop-live [data-testid="stop"] {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	font-weight: 600;
+}
+
+.develop .develop-live [data-testid="stop"]:not(:disabled) {
+	background: #1d2027;
+	border-color: #8b8880;
+	color: #d4d0c6;
+	box-shadow: none;
+}
+
+.develop .develop-live [data-testid="stop"]:not(:disabled)::before {
+	content: "";
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 1px;
+	background: currentColor;
+}
+
+.develop .develop-live [data-testid="stop"]:hover:not(:disabled) {
+	background: #272b34;
+	border-color: #a8a49b;
 	color: var(--fg-1);
+}
+
+.develop .develop-live [data-testid="stop"]:active:not(:disabled) {
+	background: #15171c;
+	border-color: #8b8880;
+}
+
+.develop .develop-live [data-testid="stop"]:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: 2px;
 }
 
 /* --- the conversation --------------------------------------------------------------------------------------------------------------

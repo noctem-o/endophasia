@@ -4527,8 +4527,47 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 }
 
 /* The two buttons that open the drawer and the dock: quiet, in the conversation's header, with their state on them. */
-.dock-toggle {
+.dock-toggle,
+.context-toggle {
 	display: none;
+}
+
+/* Instrument: the Context column can be hidden for the conversation, from the end of the conversation's header (outside the column, so
+   focus is never left in something that is no longer drawn). With a rail, the column's width goes to the conversation and the course
+   stays above the sessions. Where the sessions are a drawer the course is in the right-hand column and is its only place: it stays, and
+   only the context under it goes. Below 1024 px the context is a stage of its own and nothing here applies. */
+@media (min-width: 1024px) and (min-height: 540px) {
+	.develop[data-appearance="instrument"][data-fill="true"] .context-toggle {
+		display: inline-flex;
+	}
+	.develop[data-appearance="instrument"][data-fill="true"] .context-toggle[aria-expanded="false"] {
+		border-color: var(--fg-4);
+		color: var(--fg-1);
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] #develop-context {
+		display: none;
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid[data-course] {
+		grid-template-columns: clamp(240px, 18vw, 340px) minmax(0, 1fr);
+		grid-template-areas:
+			"course activity"
+			"nav activity";
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid > .develop-activity {
+		border-right: 0;
+	}
+}
+
+@media (min-width: 1024px) and (max-width: 1359.98px) and (min-height: 540px) {
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid[data-course] {
+		grid-template-columns: minmax(0, 1fr) 300px;
+		grid-template-areas:
+			"activity course"
+			"activity .";
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid > .develop-course {
+		border-left: 1px solid var(--line);
+	}
 }
 
 .develop[data-appearance="field"] .sessions-toggle[aria-expanded="true"],

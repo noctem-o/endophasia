@@ -66,7 +66,7 @@ export const ENDO_COORDINATOR_PHASE_OF_STATUS_V0: Readonly<Record<EndoDevelopTas
 	});
 
 export const ENDO_COORDINATOR_VERIFICATION_STATES_V0 = [
-	"passing-at-head",
+	"incomplete",
 	"failing",
 	"inconclusive",
 	"not-current",
@@ -93,6 +93,7 @@ export const ENDO_COORDINATOR_GAP_CODES_V0 = [
 	"attention-unavailable",
 	"attempt-records-missing",
 	"receipt-records-missing",
+	"receipt-history-unverifiable",
 ] as const;
 export type EndoCoordinatorGapCodeV0 = (typeof ENDO_COORDINATOR_GAP_CODES_V0)[number];
 
@@ -234,7 +235,7 @@ export interface EndoCoordinatorSessionV0 {
 	 */
 	observation: "active" | "last-observed";
 	recordedState: EndoSessionOverviewV0["state"];
-	stateBasis: "controller-observed";
+	stateBasis: EndoCoordinatorBasisV0;
 	freshness: EndoCoordinatorFreshnessV0;
 	firstEventAtMs: number;
 	lastEventAtMs: number;
@@ -495,11 +496,11 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 				fail(`${w} is failing without a failed check at the current HEAD`);
 			if (vState === "inconclusive" && !current.some((r) => r.outcome === "inconclusive"))
 				fail(`${w} is inconclusive without an inconclusive check at the current HEAD`);
-			if (vState === "passing-at-head") {
-				if (head === null || head.clean !== true) fail(`${w} passes at HEAD without a clean observed HEAD`);
-				if (results.length === 0 || !results.every((r) => r.fresh && r.outcome === "passed"))
-					fail(`${w} passes at HEAD while a listed check is not a current pass`);
-			}
+			if (
+				vState === "incomplete" &&
+				(v.incomplete !== true || vFresh.state !== "incomplete" || !gaps.includes("receipt-history-unverifiable"))
+			)
+				fail(`${w} must qualify unverifiable receipt history as incomplete`);
 			if ((vState === "failing" || vState === "inconclusive") && head === null)
 				fail(`${w} is ${vState} at a HEAD that was not observed`);
 			if (vState === "not-current" && vFresh.state === "fresh") fail(`${w} is not-current but fresh`);
@@ -532,6 +533,7 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 			["not-observed", "idle", "running", "interrupted", "detached"] as const,
 			`${w}.recordedState`,
 		);
+		oneOf(x.stateBasis, ENDO_COORDINATOR_BASES_V0, `${w}.stateBasis`);
 		const last = num(x.lastEventAtMs, `${w}.lastEventAtMs`);
 		const fr = freshness(x.freshness, `${w}.freshness`, readAtMs);
 		if (observation === "active") {

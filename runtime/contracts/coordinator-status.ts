@@ -525,7 +525,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					const moreNotPassing = tv.more.notPassing + tv.morePlanned.notPassing;
 					const moreNotCurrent = tv.more.notCurrent + tv.morePlanned.notCurrent;
 					const moreAll = tv.more.commands + tv.morePlanned.checks;
-					const incomplete = tv.unreadable + tv.skipped + tv.problems + tv.records > 0 || view?.truncated === true;
+
 					const current = head === null ? [] : all.filter((r) => r.current);
 					const historicalFailure = all.some((r) => !r.current && r.severity === 0);
 					const ran = all.filter((r) => r.result.outcome !== "not-run");
@@ -545,13 +545,24 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 												all.every((r) => r.current && r.result.outcome === "passed") &&
 												moreNotCurrent === 0 &&
 												moreNotPassing === 0
-											? "passing-at-head"
+											? "incomplete"
 											: "not-current";
+					const incomplete =
+						state === "incomplete" ||
+						tv.unreadable + tv.skipped + tv.problems + tv.records > 0 ||
+						view?.truncated === true;
 					const vFreshness =
 						head === null
 							? notFresh("unavailable", "HEAD could not be observed, so no check reads as current")
 							: incomplete
-								? notFresh("incomplete", "some of its receipt or attempt files were not read", headAt, readAtMs)
+								? notFresh(
+										"incomplete",
+										state === "incomplete"
+											? "the receipt store cannot establish which receipts are missing"
+											: "some of its receipt or attempt files were not read",
+										headAt,
+										readAtMs,
+									)
 								: state === "not-current"
 									? notFresh(
 											"stale",
@@ -573,6 +584,11 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 						results: all.slice(0, ENDO_COORDINATOR_LIMITS_V0.maxResultsPerTask).map((r) => r.result),
 						moreResults: Math.max(0, all.length - ENDO_COORDINATOR_LIMITS_V0.maxResultsPerTask) + moreAll,
 					};
+					if (state === "incomplete")
+						gaps.push({
+							code: "receipt-history-unverifiable",
+							text: "The checks shown passed at this HEAD, but the store has no independent record of which receipts should exist. A surviving pass does not establish that a later receipt was retained or that the task passed.",
+						});
 					if (head === null)
 						gaps.push({
 							code: "head-unavailable",
@@ -621,12 +637,12 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 							code: "attempt-records-unusable",
 							text: `${tv.records} of its attempt record file(s) are not usable.`,
 						});
-					if (latest?.state === "reported" && state !== "passing-at-head")
+					if (latest?.state === "reported" && !current.some((r) => r.result.outcome === "passed"))
 						gaps.push({
 							code: "report-recorded-unverified",
 							text: "The operator recorded a report for its latest attempt (operator-declared; what the report claims is not read by this status), and no current passing check at a clean HEAD is recorded.",
 						});
-					if (t.status === "review" && state !== "passing-at-head")
+					if (t.status === "review" && !current.some((r) => r.result.outcome === "passed"))
 						gaps.push({
 							code: "review-without-passing-check",
 							text: "It awaits review without a passing check at the current clean HEAD.",
@@ -678,7 +694,10 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 	const futureEvents = new Map<string, number>();
 	const basisOf = endoCoordinatorBasisResolverV0(log.state === "unavailable" ? [] : log.events);
 	for (const [sessionId, events] of sessionEvents) {
-		const overview = reduceEndoSessionOverviewV0(events);
+		let stateBasis: EndoCoordinatorBasisV0 = "unclassified";
+		const overview = reduceEndoSessionOverviewV0(events, (event) => {
+			stateBasis = basisOf(event);
+		});
 		const allTimes = events.map((e) => Date.parse(e.at)).filter((n) => Number.isFinite(n));
 		// A time after the read is not evidence of recency: it is left out of freshness, and the session is not reported active from it.
 		const future = allTimes.filter((n) => n > readAtMs).length;
@@ -725,7 +744,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 			runtimeSessionId: overview.session.status === "reported" ? overview.session.value.runtimeSessionId : null,
 			observation,
 			recordedState: overview.state,
-			stateBasis: "controller-observed",
+			stateBasis,
 			freshness: sessionFreshness,
 			firstEventAtMs,
 			lastEventAtMs,
@@ -892,7 +911,7 @@ export function renderEndoCoordinatorStatusV0(status: EndoCoordinatorStatusV0): 
 	if (status.sessions.length === 0) out.push("  sessions  none listed");
 	for (const s of status.sessions)
 		out.push(
-			`  session   [${s.observation}] ${s.sessionId} recorded ${s.recordedState} [${s.freshness.state}] last event ${iso(s.lastEventAtMs)} (${age(s.freshness.ageMs)}); last run ${s.lastRun === null ? "none" : `${s.lastRun.outcome} [${s.lastRun.basis}]`}; association ${s.association}`,
+			`  session   [${s.observation}] ${s.sessionId} recorded ${s.recordedState} (${s.stateBasis}) [${s.freshness.state}] last event ${iso(s.lastEventAtMs)} (${age(s.freshness.ageMs)}); last run ${s.lastRun === null ? "none" : `${s.lastRun.outcome} [${s.lastRun.basis}]`}; association ${s.association}`,
 		);
 	const u = status.unlistedSessions;
 	if (u.unknownRelationship + u.outOfScope > 0)

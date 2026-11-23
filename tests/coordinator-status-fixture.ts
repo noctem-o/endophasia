@@ -62,11 +62,17 @@ function event(
 
 export const COORDINATOR_FIXTURE_SESSION_V0 = "endo.session.pi.disk-0001";
 
-export async function buildCoordinatorStoreV0(options: { checkArgv?: string[] } = {}) {
+export async function buildCoordinatorStoreV0(options: { checkArgv?: string[]; repeatWithFailure?: boolean } = {}) {
 	const root = coordinatorTempDirV0("endo-coord-store-");
 	const repo = coordinatorTempDirV0("endo-coord-repo-");
 	git(repo, ["init", "-q", "-b", "main"]);
-	writeFileSync(join(repo, "ok.mjs"), "process.exit(0);\n");
+	const flag = join(root, "test-check-failure");
+	writeFileSync(
+		join(repo, "ok.mjs"),
+		options.repeatWithFailure
+			? `import { existsSync } from "node:fs"; process.exit(existsSync(${JSON.stringify(flag)}) ? 1 : 0);\n`
+			: "process.exit(0);\n",
+	);
 	git(repo, ["add", "ok.mjs"]);
 	git(repo, ["commit", "-qm", "initial"]);
 	const tasks = new DevelopTasksStoreV0(root);
@@ -92,6 +98,23 @@ export async function buildCoordinatorStoreV0(options: { checkArgv?: string[] } 
 	if (!plan.ok) throw new Error(plan.code);
 	const ran = await receipts.run(plan.plan, { stdout: sink(), stderr: sink() });
 	if (ran.written !== "created" || ran.receipt.outcome !== "passed") throw new Error("check did not pass");
+	let failedReceiptPath: string | undefined;
+	if (options.repeatWithFailure) {
+		writeFileSync(flag, "");
+		const repeated = await receipts.plan(prepared.value.id, {
+			argv: options.checkArgv ?? ["node", "ok.mjs"],
+			cwd: repo,
+		});
+		if (!repeated.ok) throw new Error(repeated.code);
+		const failed = await receipts.run(repeated.plan, { stdout: sink(), stderr: sink() });
+		if (
+			failed.written !== "created" ||
+			failed.receipt.outcome !== "failed" ||
+			failed.receipt.revision.commit !== ran.receipt.revision.commit
+		)
+			throw new Error("repeat did not record a failure at the same HEAD");
+		failedReceiptPath = join(root, "develop", "receipts", prepared.value.id, `${failed.receipt.id}.json`);
+	}
 	let rev = added.value.revision;
 	for (const to of ["in-progress", "review"] as const) {
 		const moved = tasks.setStatus(proj.value.id, added.value.id, rev, to, null);
@@ -111,5 +134,5 @@ export async function buildCoordinatorStoreV0(options: { checkArgv?: string[] } 
 	);
 	events.ingest(event(2, "lifecycle.run-started", sid, now - 30_000, { instance: "inst-1" }));
 	events.close();
-	return { root, repo, projectId: proj.value.id, taskId: added.value.id, revision: rev };
+	return { root, repo, projectId: proj.value.id, taskId: added.value.id, revision: rev, failedReceiptPath };
 }

@@ -10,6 +10,7 @@ import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { readEndoCoordinatorStatusV0 } from "../adapters/develop/coordinator-status.ts";
 import {
 	ENDO_COORDINATOR_STATUS_SCHEMA_V0,
 	type EndoCoordinatorStatusV0,
@@ -278,14 +279,14 @@ describe("coordinator status projection", () => {
 		for (const t of p.tasks) expect(t.statusSource).toBe("operator-declared");
 
 		const review = taskOf(s, T_REVIEW);
-		expect(review.verification.state).toBe("passing-at-head");
-		expect(review.verification.freshness.state).toBe("fresh");
+		expect(review.verification.state).toBe("incomplete");
+		expect(review.verification.freshness.state).toBe("incomplete");
 		expect(review.verification.results[0]).toMatchObject({
 			relation: "at-head",
 			freshness: "fresh",
 			basis: "controller-observed",
 		});
-		expect(review.gaps).toEqual([]);
+		expect(review.gaps.map((g) => g.code)).toEqual(["receipt-history-unverifiable"]);
 		expect(review.association).toBe("unknown");
 
 		const done = taskOf(s, T_DONE);
@@ -305,7 +306,12 @@ describe("coordinator status projection", () => {
 
 		expect(s.sessions).toHaveLength(1);
 		const live = s.sessions[0]!;
-		expect(live).toMatchObject({ observation: "active", recordedState: "running", association: "explicit" });
+		expect(live).toMatchObject({
+			observation: "active",
+			recordedState: "running",
+			stateBasis: "agent-reported",
+			association: "explicit",
+		});
 		expect(live.freshness.state).toBe("fresh");
 		expect(live.openRun).toEqual({ turns: 0, basis: "agent-reported" });
 		const basisOf = Object.fromEntries(live.activity.map((a) => [a.kind, a.basis]));
@@ -635,6 +641,7 @@ describe("coordinator status projection", () => {
 		});
 		const session = s.sessions.find((x) => x.sessionId === sid)!;
 		expect(session.openRun).toEqual({ turns: 0, basis: "controller-observed" });
+		expect(session.stateBasis).toBe("controller-observed");
 	});
 
 	it("the validator refuses what would mislead: active without fresh evidence, a phase not the operator's, another version", () => {
@@ -816,9 +823,9 @@ describe("coordinator status: review findings (ENDO-28 review)", () => {
 		).toThrow(/failing without a failed check at the current HEAD/);
 		expect(
 			doctor((s) => {
-				s.projects[0]!.head = { commit: HEAD, clean: false };
+				taskOf(s, T_REVIEW).gaps = [];
 			}),
-		).toThrow(/passes at HEAD without a clean observed HEAD/);
+		).toThrow(/must qualify unverifiable receipt history/);
 
 		const stale = endoCoordinatorStatusV0({
 			...baseline(),
@@ -866,6 +873,22 @@ describe("coordinator status: review findings (ENDO-28 review)", () => {
 afterEach(cleanCoordinatorFixturesV0);
 
 describe("endo coordinator status on disk", () => {
+	it("is byte-identical for the same on-disk records, HEAD and read time", async () => {
+		const f = await buildCoordinatorStoreV0({ repeatWithFailure: true });
+		const now = Date.now();
+		const read = async () =>
+			JSON.stringify(
+				await readEndoCoordinatorStatusV0({
+					root: f.root,
+					projects: [f.projectId],
+					now: () => now,
+				}),
+			);
+		const first = await read();
+		expect(taskOf(validateEndoCoordinatorStatusV0(JSON.parse(first)), f.taskId).verification.state).toBe("failing");
+		for (let i = 0; i < 3; i += 1) expect(await read()).toBe(first);
+	});
+
 	it.each(["attempts", "receipts"] as const)(
 		"reports missing %s in a populated store without claiming readiness",
 		async (component) => {
@@ -879,7 +902,7 @@ describe("endo coordinator status on disk", () => {
 				expect(run.status, run.stderr).toBe(0);
 				return validateEndoCoordinatorStatusV0(JSON.parse(run.stdout).coordinatorStatus);
 			};
-			expect(taskOf(read(), f.taskId).verification.state).toBe("passing-at-head");
+			expect(taskOf(read(), f.taskId).verification.state).toBe("incomplete");
 			rmSync(join(f.root, "develop", component), { recursive: true });
 			const status = read();
 			const code = component === "attempts" ? "attempt-records-missing" : "receipt-records-missing";
@@ -922,7 +945,7 @@ describe("endo coordinator status on disk", () => {
 		const status = validateEndoCoordinatorStatusV0(JSON.parse(run.stdout).coordinatorStatus);
 		const t = status.projects[0]!.tasks[0]!;
 		expect(t).toMatchObject({ taskId: f.taskId, phase: "awaiting-review", association: "unknown" });
-		expect(t.verification.state).toBe("passing-at-head");
+		expect(t.verification.state).toBe("incomplete");
 		expect(status.sessions).toEqual([]);
 		expect(status.unlistedSessions).toEqual({ unknownRelationship: 1, unknownActive: 1, outOfScope: 0 });
 		expect(run.stderr).toContain("coordinator status endo.coordinator-status.v0");

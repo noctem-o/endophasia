@@ -31,7 +31,10 @@ function reported(value: unknown): EndoReportedV0<string> | null {
 const NOT_YET_OBSERVED = "no termination has been observed for this run";
 
 /** Reduce recorded events to the overview of the session they record. */
-export function reduceEndoSessionOverviewV0(events: readonly EndoEventV0[]): EndoSessionOverviewV0 {
+export function reduceEndoSessionOverviewV0(
+	events: readonly EndoEventV0[],
+	onStateEvidence?: (event: EndoEventV0) => void,
+): EndoSessionOverviewV0 {
 	const overview: EndoSessionOverviewV0 = {
 		schemaVersion: "endo.session-overview.v0",
 		consistency: "replayed",
@@ -110,6 +113,7 @@ export function reduceEndoSessionOverviewV0(events: readonly EndoEventV0[]): End
 				}
 				overview.run = null;
 				overview.state = "idle";
+				onStateEvidence?.(event);
 				break;
 			}
 			case "lifecycle.run-started":
@@ -120,6 +124,7 @@ export function reduceEndoSessionOverviewV0(events: readonly EndoEventV0[]): End
 					stop: { requested: false, accepted: false, termination: endoUnavailableV0(NOT_YET_OBSERVED) },
 				};
 				overview.state = "running";
+				onStateEvidence?.(event);
 				break;
 			case "lifecycle.turn-started":
 				if (overview.run === null) {
@@ -140,19 +145,23 @@ export function reduceEndoSessionOverviewV0(events: readonly EndoEventV0[]): End
 			case "lifecycle.run-completed":
 				endRun("completed", payload, null);
 				overview.state = "idle";
+				onStateEvidence?.(event);
 				break;
 			case "lifecycle.run-failed":
 				endRun("failed", payload, (payload.cause ?? null) as JsonValueV0);
 				overview.state = "idle";
+				onStateEvidence?.(event);
 				break;
 			case "lifecycle.run-aborted":
 				if (overview.run !== null) overview.run.stop.termination = endoReportedV0("aborted");
 				endRun("aborted", payload, null);
 				overview.state = "idle";
+				onStateEvidence?.(event);
 				break;
 			case "lifecycle.run-unclassified":
 				endRun("unclassified", payload, null);
 				overview.state = "idle";
+				onStateEvidence?.(event);
 				break;
 			case "lifecycle.stop-requested":
 				overview.counts.stopsRequested += 1;
@@ -175,12 +184,14 @@ export function reduceEndoSessionOverviewV0(events: readonly EndoEventV0[]): End
 					endRun("interrupted", { turns: payload.turns, stopRequested: payload.stopRequested }, cause);
 				} else overview.run = null;
 				overview.state = "interrupted";
+				onStateEvidence?.(event);
 				break;
 			}
 			case "lifecycle.detached":
 				if (overview.run !== null) anomaly(event, "a detach recorded while a run is open");
 				overview.run = null;
 				overview.state = "detached";
+				onStateEvidence?.(event);
 				break;
 			case "lifecycle.compacted":
 				overview.counts.compactions += 1;

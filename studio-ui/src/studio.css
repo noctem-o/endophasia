@@ -2764,20 +2764,50 @@ table.fields thead th {
 	margin-top: 10px;
 }
 
+.change-selected {
+	margin: 8px 0 0;
+	padding: 4px 0 0 8px;
+	border-left: 2px solid var(--select);
+	overflow-wrap: anywhere;
+}
+
+.change-selected .btn {
+	margin-left: 4px;
+	padding-inline: 4px;
+}
+
+/* The worktree's counts in the context column: one line each, never one total. */
+.area-counts {
+	display: grid;
+	gap: 1px;
+	margin: 6px 0 0;
+	font-size: 12.5px;
+}
+
+.area-count {
+	display: inline-block;
+	min-width: 3ch;
+	text-align: right;
+	color: var(--fg-1);
+}
+
+.area-counts [data-area="conflicted"] {
+	color: var(--attention);
+}
+
 .changes-block[data-stale="yes"] .changes-list {
 	opacity: 0.78;
 }
 
+/* One line a file: the name has the room it needs first, its folder takes what is left (cut, whole in the title), the counts last. */
 .change-row {
 	display: grid;
-	grid-template-columns: 1.6em minmax(0, 1fr) auto;
-	grid-template-areas:
-		"letter name delta"
-		". dir dir";
+	grid-template-columns: 1.6em minmax(3ch, max-content) minmax(0, 1fr) auto;
+	grid-template-areas: "letter name dir delta";
 	align-items: baseline;
 	gap: 0 6px;
 	width: 100%;
-	padding: 3px 6px 3px 4px;
+	padding: 2px 6px 2px 4px;
 	border: 0;
 	border-left: 2px solid transparent;
 	background: none;

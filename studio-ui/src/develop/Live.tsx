@@ -62,7 +62,7 @@ import type { ProjectApi } from "../use-project.ts";
 import type { useWorkbench } from "../use-workbench.ts";
 import type { WorkspaceApi } from "../use-workspace.ts";
 import { AttemptRequest } from "./AttemptRequest.tsx";
-import { ChangesList, DiffView, projectView, WorktreeBar } from "./Changes.tsx";
+import { ChangesList, DiffView, projectView, WorktreeBar, WorktreeOverview } from "./Changes.tsx";
 import { GrowContext, ReasoningBlock, ReasoningPreference, type ReasoningView, ReflowContext } from "./Reasoning.tsx";
 import { SurfaceTag, SurfaceView } from "./Surface.tsx";
 import { ProjectBlock, TaskCluster, TaskPanel } from "./Tasks.tsx";
@@ -1440,8 +1440,6 @@ export function LiveContext({
 			className="develop-inspector"
 			resetKey={status?.launchId ?? "none"}
 		>
-			<ChangesList api={project} paired={paired} connected={connected} />
-			<ProjectBlock workspace={workspace} git={project.state.project} />
 			<section className="block" data-testid="context-worktree">
 				<h3>Worktree</h3>
 				{repo === null ? (
@@ -1455,24 +1453,12 @@ export function LiveContext({
 									: "Not read yet. Nothing is known about where the session works."}
 					</p>
 				) : (
-					<dl className="facts">
-						<div className="fact">
-							<dt>basis</dt>
-							<dd className="dim">configured: the directory Pi was launched in, read with Git</dd>
-						</div>
-						<div className="fact">
-							<dt>worktree</dt>
-							<dd className="mono path" title={repo.root}>
-								{repo.root}
-							</dd>
-						</div>
-						{repo.cwdRelative === "" ? null : (
-							<div className="fact">
-								<dt>launched in</dt>
-								<dd className="mono">{repo.cwdRelative}</dd>
-							</div>
-						)}
-					</dl>
+					<WorktreeOverview
+						api={project}
+						paired={paired}
+						connected={connected}
+						basis="the directory Pi was launched in"
+					/>
 				)}
 				{shown === null || shown.worktrees.length < 2 ? null : (
 					<details className="more" data-testid="other-worktrees">
@@ -1499,6 +1485,8 @@ export function LiveContext({
 					</details>
 				)}
 			</section>
+			<ChangesList api={project} paired={paired} connected={connected} />
+			<ProjectBlock workspace={workspace} git={project.state.project} />
 			<section className="block">
 				<h3>Session</h3>
 				<dl className="facts">
@@ -1514,6 +1502,21 @@ export function LiveContext({
 						<dt>session</dt>
 						<dd className="mono">
 							{status?.session === null || status === null ? "not identified yet" : shortSession(status.session)}
+						</dd>
+					</div>
+					<div className="fact">
+						<dt>status read</dt>
+						<dd data-testid="context-status-read">
+							{wb.state.statusAt === null ? (
+								<span className="dim">not yet</span>
+							) : (
+								<>
+									{clock(wb.state.statusAt)} <span className="dim">(browser clock)</span>
+									{wb.state.unreachable ? (
+										<span className="dim"> · the broker has not answered since</span>
+									) : null}
+								</>
+							)}
 						</dd>
 					</div>
 				</dl>

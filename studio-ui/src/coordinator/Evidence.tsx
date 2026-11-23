@@ -8,8 +8,7 @@ import type {
 	EndoCoordinatorTaskV0,
 	EndoCoordinatorVerificationStateV0,
 } from "../../../protocol/coordinator-status.ts";
-import { ENDO_DEVELOP_ATTEMPT_LABELS_V0 } from "../../../protocol/develop-attempts.ts";
-import { ENDO_RECEIPT_RELATION_LABELS_V0 } from "../../../protocol/develop-receipts.ts";
+import { ATTEMPT_LABELS, RECEIPT_RELATION_LABELS } from "../model/attempts-wire.ts";
 import { ConditionGlyph, ProvGlyph } from "../ui/marks.tsx";
 import { RESULT_LABELS } from "./read.ts";
 
@@ -129,7 +128,7 @@ function CheckReceipts({ verification }: { verification: EndoCoordinatorTaskV0["
 							<p>
 								{result.relation === null
 									? "No recorded revision relation"
-									: ENDO_RECEIPT_RELATION_LABELS_V0[result.relation]}
+									: RECEIPT_RELATION_LABELS[result.relation]}
 							</p>
 							<p className="coordinator-muted">
 								Attempt <code>{result.attemptId}</code>
@@ -190,7 +189,7 @@ export function TaskCard({
 							? attemptsReady
 								? "No recorded attempt"
 								: "Attempt evidence unknown"
-							: ENDO_DEVELOP_ATTEMPT_LABELS_V0[latest.state]}
+							: ATTEMPT_LABELS[latest.state]}
 					</span>
 					<span>
 						{association === "explicit"
@@ -227,7 +226,7 @@ export function TaskCard({
 							<p>
 								<code>{latest.id}</code>
 								<br />
-								{ENDO_DEVELOP_ATTEMPT_LABELS_V0[latest.state]} ·{" "}
+								{ATTEMPT_LABELS[latest.state]} ·{" "}
 								{latest.sendAuthorized
 									? "Send authorization recorded"
 									: "No send authorization recorded in this attempt"}

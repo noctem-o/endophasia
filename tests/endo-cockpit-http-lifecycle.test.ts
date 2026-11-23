@@ -173,12 +173,14 @@ describe("source boundary", () => {
 		);
 	const code = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
 
-	it("the transport imports only its comparison bridge, cockpit/index.ts and HTTP infrastructure", () => {
+	it("the transport imports only its read bridges, paired Coordinator host and HTTP infrastructure", () => {
 		expect(specifiers(read("cockpit-http/server.ts")).sort()).toEqual(
 			[
 				"./candidates.ts",
 				"./comparison.ts",
 				"./develop.ts",
+				"./workspace-host.ts",
+				"../adapters/git/revision-observer.ts",
 				"../protocol/workbench-http.ts",
 				// The OMP, Representation Explorer and Protected Experiment closed records and observer interfaces: the server reads no file itself.
 				"../protocol/observe-representation.ts",

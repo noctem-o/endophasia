@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { type CoordinatorReply, fetchCoordinator } from "./read.ts";
+import { fetchCoordinator } from "../api.ts";
+import type { CoordinatorReply } from "./read.ts";
 
 export function useCoordinator(grant: string | null, launchId: string | null, onGrantRequired: () => void) {
 	const [refreshes, setRefreshes] = useState(0);

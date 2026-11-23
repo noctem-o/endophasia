@@ -4,8 +4,7 @@ import {
 	type EndoCoordinatorStatusV0,
 	validateEndoCoordinatorStatusV0,
 } from "../../../protocol/coordinator-status.ts";
-import { ENDO_DEVELOP_ATTEMPT_LABELS_V0 } from "../../../protocol/develop-attempts.ts";
-import { ENDO_RECEIPT_RELATION_LABELS_V0 } from "../../../protocol/develop-receipts.ts";
+import { ATTEMPT_LABELS, RECEIPT_RELATION_LABELS } from "../model/attempts-wire.ts";
 
 export const ATTENTION_LABELS = {
 	"awaiting-your-review": "Awaits your review",
@@ -80,7 +79,7 @@ function displayFieldsValid(status: EndoCoordinatorStatusV0): boolean {
 						(task.attempts.count === 0) === (latest === null) &&
 						(latest === null ||
 							(text(latest.id) &&
-								hasLabel(ENDO_DEVELOP_ATTEMPT_LABELS_V0, latest.state) &&
+								hasLabel(ATTEMPT_LABELS, latest.state) &&
 								latest.stateBasis === "operator-declared" &&
 								typeof latest.sendAuthorized === "boolean")) &&
 						typeof task.verification.incomplete === "boolean" &&
@@ -90,7 +89,7 @@ function displayFieldsValid(status: EndoCoordinatorStatusV0): boolean {
 							(result) =>
 								text(result.command) &&
 								hasLabel(RESULT_LABELS, result.outcome) &&
-								(result.relation === null || hasLabel(ENDO_RECEIPT_RELATION_LABELS_V0, result.relation)) &&
+								(result.relation === null || hasLabel(RECEIPT_RELATION_LABELS, result.relation)) &&
 								(result.relation !== "at-head" || project.head?.clean === true) &&
 								(result.reading === "planned" || result.reading === "unplanned") &&
 								text(result.attemptId) &&
@@ -131,33 +130,3 @@ export type CoordinatorProblem =
 export type CoordinatorReply =
 	| { kind: "status"; status: EndoCoordinatorStatusV0 }
 	| { kind: "failure"; problem: CoordinatorProblem };
-
-export async function fetchCoordinator(grant: string, cancel: AbortSignal): Promise<CoordinatorReply> {
-	const timeout = AbortSignal.timeout(60_000);
-	try {
-		const response = await fetch(new URL("./api/v0/workbench/workspace/coordinator", document.baseURI), {
-			method: "GET",
-			credentials: "omit",
-			referrerPolicy: "no-referrer",
-			redirect: "error",
-			cache: "no-store",
-			headers: { "X-Endo-Grant": grant },
-			signal: AbortSignal.any([cancel, timeout]),
-		});
-		if (response.status === 401) return { kind: "failure", problem: "grant-required" };
-		if (response.status === 403) return { kind: "failure", problem: "forbidden" };
-		if (response.status === 404) return { kind: "failure", problem: "not-found" };
-		if (response.status === 429) return { kind: "failure", problem: "too-many-requests" };
-		if (response.status !== 200) return { kind: "failure", problem: "unavailable" };
-		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? ""))
-			return { kind: "failure", problem: "invalid" };
-		try {
-			const record = readCoordinatorStatus(await response.json());
-			return record === null ? { kind: "failure", problem: "invalid" } : { kind: "status", status: record };
-		} catch {
-			return { kind: "failure", problem: timeout.aborted ? "timeout" : "invalid" };
-		}
-	} catch {
-		return { kind: "failure", problem: timeout.aborted ? "timeout" : "unreachable" };
-	}
-}

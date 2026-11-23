@@ -41,6 +41,10 @@ describe("the frontend's source", () => {
 				"model/course.ts",
 				"compare/CompareWorkspace.tsx",
 				"compare/Comparison.tsx",
+				"coordinator/CoordinatorWorkspace.tsx",
+				"coordinator/Evidence.tsx",
+				"coordinator/read.ts",
+				"coordinator/use-coordinator.ts",
 				"use-compare.ts",
 				"use-develop.ts",
 				"use-evolve.ts",
@@ -125,13 +129,25 @@ describe("the frontend's source", () => {
 		);
 	});
 
-	it("imports its own modules, React, and the protocol only as types: nothing of the protocol or the bridge runs in the browser", () => {
+	it("imports protocol types and only the pure Coordinator schema at runtime", () => {
+		const coordinatorProtocol = code(
+			readFileSync(new URL("../protocol/coordinator-status.ts", import.meta.url), "utf8"),
+		);
+		expect(specifiers(coordinatorProtocol).every(({ typeOnly }) => typeOnly)).toBe(true);
+		expect(coordinatorProtocol).not.toMatch(/\b(import\(|require\(|fetch\(|process\.\w|Date\.now\(|Math\.random\()/);
 		for (const [name, text] of Object.entries(sources)) {
 			for (const { typeOnly, specifier } of specifiers(text)) {
 				if (specifier.startsWith("./") || specifier.startsWith("../")) {
 					if (/protocol\//.test(specifier)) {
 						expect(specifier, `${name}: ${specifier}`).toMatch(/^(\.\.\/)+protocol\/[a-z-]+\.ts$/);
-						expect(typeOnly, `${name}: ${specifier} must be a type import`).toBe(true);
+						if (!typeOnly) {
+							expect(specifier).toBe("../../../protocol/coordinator-status.ts");
+							expect([
+								"coordinator/CoordinatorWorkspace.tsx",
+								"coordinator/Evidence.tsx",
+								"coordinator/read.ts",
+							]).toContain(name);
+						}
 					} else if (/cockpit-ui\//.test(specifier)) {
 						// the pure modules shared with the page this replaces: labels, model, reply (see model/contract.ts)
 						expect(name, specifier).toBe("model/contract.ts");
@@ -209,7 +225,7 @@ describe("the frontend's source", () => {
 		expect(styled).toEqual(["observe/Overview.tsx"]);
 	});
 
-	it("uses fetch in exactly one place, relative to the page, the exact Observe, Compare and Develop routes, with no credentials, no referrer and no redirect", () => {
+	it("uses fetch in exactly one module, relative to the page, on closed routes with no credentials, referrer or redirect", () => {
 		const users = Object.entries(sources)
 			.filter(([, text]) => /\bfetch\(/.test(text))
 			.map(([name]) => name);
@@ -218,7 +234,7 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(25);
+		expect(api.match(/\/api\//g)?.length).toBe(26);
 		// Evolve Protected Experiment Inspector (EVOLVE-INSPECT-001): two fixed GET routes, gated by opaque selector, zero write routes.
 		expect(api).toContain("./api/v0/evolve/experiments");
 		expect(api).toMatch(/\.\/api\/v0\/evolve\/experiment\/\$\{request\.selector\}/);
@@ -233,7 +249,19 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/if \(!ompSelector\(request\.selector\)\)/);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(14);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(15);
+		const coordinator = api.slice(api.indexOf("export async function fetchCoordinator"));
+		expect(coordinator).toMatch(/new URL\("\.\/api\/v0\/workbench\/workspace\/coordinator", document\.baseURI\)/);
+		expect(coordinator).toMatch(/method: "GET"/);
+		expect(coordinator).toMatch(/headers: \{ "X-Endo-Grant": grant \}/);
+		expect(coordinator).not.toMatch(/body:|method: "POST"/);
+		for (const pattern of [
+			/credentials: "omit"/,
+			/referrerPolicy: "no-referrer"/,
+			/redirect: "error"/,
+			/cache: "no-store"/,
+		])
+			expect(coordinator).toMatch(pattern);
 		// DEVELOP-UX-002: the one new route can only REDUCE what the page may do, and its body is empty. No route, member or header of the
 		// page's names a mode, a scope or a lifetime; the replay nonce is the only member added to a request.
 		expect(api).toContain('route = "./api/v0/workbench/session-control/revoke";\n\t\tbody = "{}";');

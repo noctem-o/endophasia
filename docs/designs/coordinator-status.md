@@ -1,0 +1,147 @@
+# COORDINATOR-STATUS-001: read-only, evidence-aware Coordinator status (+ OpenClaw tool)
+
+*   **Status:** implemented on `feat/coordinator-status-001` (draft PR). Read-only projection `endo.coordinator-status.v0`, CLI `endo coordinator status`, and an OpenClaw tool plugin (`integrations/openclaw-endophasia-status`) exposing `endophasia_status`.
+*   **Builds on:** projects and tasks ([../develop-tasks.md](../develop-tasks.md)), work attempts and send authorisations ([develop-attempt-execution.md](develop-attempt-execution.md)), verification receipts and the attention projection ([develop-attention.md](develop-attention.md)), the canonical session lifecycle (`protocol/session-lifecycle.ts`, `protocol/session-overview.ts`), and the evidence bridge ([develop-evidence-bridge.md](develop-evidence-bridge.md)).
+*   **Scope:** one projection, one CLI entry point, one OpenClaw plugin, tests and this note. No Mission Board UI, no assignment, no multi-agent execution, no new execution or authorisation capability, no change to the verifier trust boundary or the protected-path census.
+
+## 1. Source of truth
+
+The status is a **projection computed at the read and never stored**. Its only sources are records that already exist in one store root:
+
+| Section | Source records | Standing |
+| :--- | :--- | :--- |
+| Projects, tasks, phases | `develop/tasks.json` (`DevelopTasksStoreV0.read`) | **operator-declared**. The phase is the operator's status renamed (`review` → `awaiting-review`, `done` → `completed`); nothing else moves a task. |
+| Attempts | `develop/attempts/*.json` (`DevelopAttemptsStoreV0.read`) | operator-declared (`reported` is a statement, never verification) |
+| Verification results | the attention projection `endoDevelopAttentionViewV0` over `develop/receipts/`, compared with each project's HEAD observed once with the read-only Git observer | **controller-observed host checks**, with each result's relation to HEAD |
+| Sessions | `events/events.log` opened `{ readOnly: true }`, grouped by `coordinates.sessionId`, each reduced by `reduceEndoSessionOverviewV0` | recorded state is controller-observed; each activity item carries its own basis |
+| Session ↔ task links | task `sessions[]` references (operator-linked) and attempt `.authorized.json` records (send-authorised, controller-observed) | explicit only |
+
+OpenClaw is a **conversation surface over this projection**, not a second source of truth: the plugin holds no state, caches nothing, and every answer is a fresh read validated against `validateEndoCoordinatorStatusV0`.
+
+## 2. The five distinctions, structurally
+
+1.  **Active vs last-observed.** `sessions[].observation` is `active` only when the session's own record says it is attached (`idle` or `running`), its newest event is younger than `staleAfterMs` (default 10 min, `--stale-after`), and the log was read whole. Otherwise `last-observed`. A record that still says `running` but went quiet raises `session-recorded-open-but-stale`. The validator refuses `active` without fresh evidence.
+2.  **Agent-reported vs controller-observed.** Every activity item and every last run carries `basis`. `harness.*`, `workbench.*`, `control.*` and the lifecycle interpretations of attachment, operator stop request, interruption and process exit are `controller-observed`; the runtime's own events and the lifecycle interpretations of runs, turns, stop acknowledgements and compactions are `agent-reported`; any other kind is `unclassified`, never promoted.
+3.  **In progress vs awaiting review vs completed.** `phase` is fixed by `ENDO_COORDINATOR_PHASE_OF_STATUS_V0`; the validator refuses a phase that does not follow the operator's status. Completed tasks are not re-verified (`verification.state: "not-read"`, gap `completed-not-reverified`).
+4.  **Verification results vs unresolved evidence gaps.** `verification.results[]` (each with `relation` and `freshness`) is kept apart from `gaps[]` (closed codes: `no-check-recorded`, `checks-not-current`, `no-check-at-current-head`, `receipts-unreadable`, `agent-report-unverified`, `review-without-passing-check`, …).
+5.  **Explicit association vs unknown relationship.** `association` is `explicit` only when a record names both task and session; otherwise `unknown`. Never derived from names, prompt text or timestamps (tested with a look-alike session id started at the task's update time). The validator refuses `explicit` without links.
+
+And every section carries `freshness: { state: fresh | stale | unavailable | incomplete, observedAtMs, ageMs, reason }`.
+
+Contradictions are findings, never silent overrides: `status-contradicts-verification` (in review while a check fails), `agent-report-contradicts-verification` (a reported result against a failing controller-observed check), `session-lifecycle-anomalies`, `session-link-not-in-log`.
+
+## 3. Interface
+
+```text
+endo coordinator status [<root> | --root dir] [--project <id>]... [--stale-after <seconds>] [--quiet]
+```
+
+One canonical JSON document on stdout (`{ "coordinatorStatus": … }`) and the operator text on stderr (suppressed by `--quiet`), like `endo attempt bridge`. With `--project`, only those projects are read; sessions of unknown relationship and sessions linked only to other projects are **counted** (`unlistedSessions`), not listed, so a scoped reader learns nothing about other projects' sessions.
+
+Text (fixture store):
+
+```text
+coordinator status endo.coordinator-status.v0 read 2026-11-23T11:25:44.678Z (read-only; grants nothing; decisions are yours)
+  sources   tasks=ready/fresh attempts=ready/fresh events=ready/fresh
+  project   endo.project.0af2786c834823ef5315281ad7428aad Disk Demo [fresh] HEAD 18fe697cc1e8
+    task    [awaiting-review; operator-declared] endo.task.43ecae8d… Make ok.mjs succeed — verification passing-at-head [fresh]; attempts 1 (latest prepared); sessions unknown
+  session   [active] endo.session.pi.disk-0001 recorded running [fresh] last event 2026-11-23T11:25:14.319Z (30s ago); last run none; association unknown
+  attention [awaiting-your-review] Task endo.task.43ecae8d… awaits your review (verification: passing-at-head).
+  not established:
+    - That a session is alive now: there is no read-only liveness probe, …
+```
+
+JSON (same read, abbreviated):
+
+```json
+{
+  "schemaVersion": "endo.coordinator-status.v0",
+  "staleAfterMs": 600000,
+  "authority": { "kind": "read-only-projection", "grants": "none", "writes": "none", "decisionAuthority": "operator-only" },
+  "scope": { "requested": null, "projects": ["endo.project.0af2786c…"], "unknown": [] },
+  "sources": { "tasks": { "state": "ready", "freshness": { "state": "fresh", "ageMs": 0 } }, "attempts": { … }, "events": { … } },
+  "projects": [{
+    "id": "endo.project.0af2786c…", "head": { "commit": "18fe697c…", "clean": true }, "freshness": { "state": "fresh" },
+    "counts": { "awaiting-review": 1, "in-progress": 0, "blocked": 0, "open": 0, "completed": 0 },
+    "tasks": [{
+      "taskId": "endo.task.43ecae8d…", "status": "review", "phase": "awaiting-review", "statusSource": "operator-declared",
+      "attempts": { "count": 1, "latest": { "state": "prepared", "stateBasis": "operator-declared", "sendAuthorized": false } },
+      "verification": { "state": "passing-at-head", "basis": "controller-observed-host-check", "incomplete": false,
+        "freshness": { "state": "fresh" },
+        "results": [{ "command": "node ok.mjs", "outcome": "passed", "relation": "at-head", "freshness": "fresh", "basis": "controller-observed" }] },
+      "gaps": [], "sessions": [], "association": "unknown"
+    }]
+  }],
+  "sessions": [{
+    "sessionId": "endo.session.pi.disk-0001", "observation": "active", "recordedState": "running", "stateBasis": "controller-observed",
+    "freshness": { "state": "fresh", "ageMs": 30359 },
+    "openRun": { "turns": 0, "basis": "agent-reported" }, "lastRun": null,
+    "activity": [
+      { "kind": "lifecycle.run-started", "basis": "agent-reported" },
+      { "kind": "lifecycle.session-started", "basis": "controller-observed" }
+    ],
+    "association": "unknown", "links": []
+  }],
+  "unlistedSessions": { "unknownRelationship": 0, "outOfScope": 0, "active": 0 },
+  "attention": [{ "kind": "awaiting-your-review", "subject": "endo.task.43ecae8d…", "text": "…" }],
+  "findings": [],
+  "notEstablished": ["…"]
+}
+```
+
+## 4. Read-only guarantee and how it is proven
+
+The adapter (`adapters/develop/coordinator-status.ts`) opens the event log read-only, reads the task and attempt files without locks, and observes HEAD with `GitRevisionObserverV0` (`--no-optional-locks`, `GIT_OPTIONAL_LOCKS=0`: no index refresh). It never connects to `<root>/control/endpoint.sock`, which is a command channel.
+
+Proof (`tests/coordinator-status.test.ts`, `tests/openclaw-endophasia-status.test.ts`): a recursive manifest (path, mode, mtime, size, sha256) of the store **and** the project repository including `.git/` is identical before and after the real CLI runs as a subprocess, and after the plugin runs it end to end (with and without the sandbox). The negative control runs `endo task status` against the same store and shows the manifest changes on `develop/tasks.json`, so the proof is not vacuous. On the host, the same comparison was repeated against the operator's real store and project repository (§6).
+
+## 5. OpenClaw integration
+
+### What is installed on `archlinux` (measured 2026-11-23)
+
+*   `openclaw` 2026.10.5 (`1b58cb9`), npm global at `~/.local/lib/node_modules/openclaw`, CLI `~/.local/bin/openclaw`.
+*   Gateway: systemd user unit `openclaw-gateway.service`, **enabled and running** (MainPID 825 since 2026-11-22 00:12; its thread name is `node-MainThread`, which is why `ps -eo comm=` does not show `openclaw`). Listens on `127.0.0.1:18789` and `[::1]:18789` (`gateway.bind: loopback`, `auth.mode: token`), plus `127.0.0.1:45327`, which a `tailscale serve` route-owner worker (pid 3547) publishes to the tailnet (`gateway.tailscale.mode: serve`).
+*   Config shape (keys only, no values read out): messaging-capable plugins enabled (`whatsapp`, `x`, `a2a`; channel `a2a` configured), `tools.profile: full`, two enabled cron jobs (a model heartbeat and "Memory Dreaming Promotion"). No existing Endophasia integration (no mention in the config or `~/.openclaw/extensions`).
+*   The plugin API this version supports for tool-only plugins: `defineToolPlugin` from `openclaw/plugin-sdk/tool-plugin` (first exported in 2026.5.17), TypeBox schemas, generated `openclaw.plugin.json` with `contracts.tools` and `toolMetadata.<tool>.optional`.
+
+### The plugin
+
+`integrations/openclaw-endophasia-status/` — `src/plugin.ts` (definition, SDK injected), `src/status-reader.ts` (config validation, command, run, validation, summary), `src/index.ts` (binds the real SDK), `build.mjs` (esbuild bundle; the repository's protocol validator is bundled so the plugin validates with the same code that defines the schema).
+
+*   One tool, `endophasia_status`, declared `optional: true` (OpenClaw sends it to a model only after the operator allowlists it). One parameter: `project` (a configured label or id). Anything else is refused before any process runs.
+*   It runs exactly `<node> <entry> coordinator status --quiet --root <storeRoot> --stale-after <n> --project <id>…`, built from operator config only, via `execFile` (no shell), with `PATH`/`HOME`/`LANG` only (the gateway's provider credentials never reach the child), a timeout (default 20 s, max 60 s, SIGKILL) and a 4 MiB stdout bound.
+*   **Default sandbox `bwrap`:** `--unshare-all` (no network), `--ro-bind / /` (the whole filesystem read-only), `--die-with-parent --new-session --clearenv`, and an empty tmpfs over `~/.openclaw`, `~/.pi`, `~/.ssh`, `~/.gnupg`, `~/.config/Capy`. A probe inside it gets `EROFS` on write, sees the masked store empty and has no host interface; the same probe outside writes and reads (test-controlled). `sandbox: "none"` is an explicit opt-out.
+*   Answers carry `summary` (plain language, each claim qualified), `provenance` and the validated `coordinatorStatus`. Task titles are the operator's private words and are replaced by `[not disclosed]` unless `disclose.taskTitles: true`. An Endophasia-side failure is `availability: "unavailable"` with a closed reason and an instruction not to infer anything.
+*   It cannot reach terminal control: the only command it can run is the status read; it never touches the control socket, the workbench, `endo attempt`, or `endo steer`.
+
+### Compatibility findings
+
+| Check | Result | Evidence |
+| :--- | :--- | :--- |
+| `openclaw plugins build --entry ./dist/index.js` | wrote `openclaw.plugin.json` (`contracts.tools: ["endophasia_status"]`, `toolMetadata.endophasia_status.optional: true`) | host run, live config hash unchanged |
+| `openclaw plugins validate --entry ./dist/index.js` | `Plugin endophasia-status is valid.` | host run |
+| Real loader, isolated instance (`HOME`, `OPENCLAW_STATE_DIR`, `OPENCLAW_CONFIG_PATH` all scratch; `plugins.load.paths`) | `status: loaded`, `toolNames: ["endophasia_status"]`, config schema accepted; trust `record-missing` (a path-loaded plugin has no install record) | `openclaw plugins inspect endophasia-status --runtime --json` |
+| Real SDK wrapper | the built bundle, bound to the installed `defineToolPlugin`, registered via its own `register(api)` and invoked through the concrete `execute(toolCallId, params, signal)` against the operator's real store (bwrap and none) | §6 |
+| Natural-language turn through a model | **not run**: needs a model. The local llama.cpp endpoint (`127.0.0.1:8090`) was not listening on 2026-11-23; starting a managed one, or using the gateway's cloud providers (stored credentials, spend), is outside this task's authority | — |
+| Install into the live gateway | **not done, by design**: it would change `~/.openclaw/openclaw.json` / extensions | — |
+
+## 6. Local evidence on `archlinux` (measured, 2026-11-23)
+
+Against the operator's real store (`~/.local/share/endophasia/store`: one project, one open task, one prepared attempt, one Pi session last recorded `detached` on 2026-11-15):
+
+*   `endo coordinator status` and the plugin (both sandboxes) answered: project `webpage-test` HEAD `dc942b286dcb` clean; 1 open task, verification `failing` [fresh]; attention `verification-failing`; 0 active sessions; the one session in the store is `last-observed`, `stale` (8 days), relationship unknown. A `project: "--root /"` request was refused without running anything.
+*   Store and project repository (`.git` included) manifest hashes identical before and after every read; live OpenClaw surfaces (`openclaw.json`, gateway unit, `~/.openclaw/extensions`, user units, crontab, user timers) identical; TCP listeners identical; gateway still MainPID 825.
+
+## 7. Before remote messaging and scheduled summaries are safe
+
+1.  **A dedicated, tool-restricted agent.** The live config runs `tools.profile: full`; an agent that can call `endophasia_status` there can also run shell. The Coordinator should be an agent whose tool allowlist is `endophasia_status` alone, so a messaging-reachable conversation cannot reach `exec`.
+2.  **Recipient scoping.** WhatsApp, X and A2A are enabled and the gateway is published on the tailnet (`tailscale serve`). Before any channel can ask, decide which senders may (owner-only), and keep `disclose.taskTitles` off for anything that leaves the host.
+3.  **Run the plugin under the gateway's real service context.** The bwrap sandbox was proven as the operator's uid in a shell; confirm it starts inside the systemd unit's context (unit hardening can forbid user namespaces), and keep `sandbox: "none"` an explicit, recorded exception if it does not.
+4.  **A real model turn.** With George's llama.cpp running, `openclaw agent exec --config <scratch> --model <local>` with only `endophasia_status` allowed would show the natural-language answer end to end without touching live config.
+5.  **Liveness.** `active` is freshness-bounded inference from records. A real liveness signal needs a read-only probe the controller publishes (not the control socket), which is new design work.
+6.  **Scheduled briefing (next experiment, not activated).** One OpenClaw cron job delivering a summary to the owner only, after 1–3 are settled.
+7.  **Signed records.** Everything read is an unsigned same-uid file; a remote reader inherits that limit.
+
+## 8. What did not change
+
+No execution, authorisation, provenance or verification semantics changed. No existing file's behaviour changed except the CLI dispatch table and help text (one new `coordinator` family). The protected verifier trust boundary, H0 status and the protected-path census are untouched.

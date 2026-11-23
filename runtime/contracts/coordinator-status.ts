@@ -443,6 +443,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					const moreAll = tv.more.commands + tv.morePlanned.checks;
 					const incomplete = tv.unreadable + tv.skipped + tv.problems + tv.records > 0 || view?.truncated === true;
 					const triages = all.map((r) => r.triage);
+					const ran = all.filter((r) => r.result.outcome !== "not-run");
 					const state: EndoCoordinatorVerificationStateV0 =
 						head === null && all.length > 0
 							? triages.includes("failed")
@@ -454,7 +455,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 									? "inconclusive"
 									: moreNotPassing > 0
 										? "failing"
-										: all.length + moreAll === 0
+										: ran.length + moreAll === 0
 											? "no-checks"
 											: triages.every((x) => x === "passed") && moreNotCurrent === 0
 												? "passing-at-head"

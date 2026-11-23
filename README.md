@@ -382,7 +382,7 @@ The browser interface — **Endophasia Web**, served locally under the `endo` CL
 
 - **Instrument & Field.** **Instrument** is DEVELOP's crisp default sheet. **Field** is an OLED-oriented night-survey appearance with **Focus** mode and selectable **Atmospheres** (`None`, `Contours`, `Rain`, `Storm`). Weather is pure scenery: its renderer receives zero session state.
 - **Course.** Above the session rail, **Course** draws two gauges (`Run`, `Request`) and — when a task has a prepared attempt — six record-backed stages (`Brief · Assent · Send · Run · Check · Judge`). It visualises what the page holds; it is never a workflow engine or verifier ([docs/develop-course.md](docs/develop-course.md)).
-- **Not yet shipped.** `endo web`, a native desktop app, live serving-time activation capture, governed experiment execution from Evolve, embedded terminals and live control of non-Pi harnesses remain future directions. **Capabilities** stays an explicit placeholder.
+- **Not yet shipped.** `endo web`, a native desktop app, live serving-time activation capture, governed experiment execution from Evolve, embedded terminals and live control of non-Pi harnesses remain future directions. **Research**, **Hardware** and **Coordinator** stay explicit planned placeholders.
 
 <details>
 <summary><strong>Access, privacy and retention boundaries</strong></summary>

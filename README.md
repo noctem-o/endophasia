@@ -32,7 +32,7 @@ for checking what coding agents actually did, and keeping the record for every c
 
 <br>
 
-<img src="docs/images/readme-hero-field-storm-1440.png" alt="Endophasia Develop workbench in Field mode with Storm atmosphere: one compact head with the session, a graphite Request stop and the worktree; folded model-provided reasoning; four Pi tool calls, the first opened to its reported arguments; Course gauges; and a Context column that leads with the worktree's staged, unstaged and untracked counts above the changed files" width="100%">
+<img src="docs/images/readme-hero-field-storm-1440.png" alt="Endophasia Develop workbench in Field mode with Storm atmosphere: single-line session and worktree head with a graphite Request stop; folded model-provided reasoning; four Pi tool calls with the first opened to its reported arguments; measure-aligned Strict mode caption above a compact composer; Course gauges; and a Context column leading with staged, unstaged and untracked counts above changed files" width="100%">
 <p><sub><strong>Field (Storm)</strong> — live <em>Course</em> gauges, folded model-provided reasoning, inspectable tool calls with explicit safe-preview &amp; provenance labels, Git tree changes and terminal-gated Strict mode (synthetic fixture; weather is scenery).</sub></p>
 
 </div>
@@ -382,7 +382,7 @@ The browser interface — **Endophasia Web**, served locally under the `endo` CL
 
 - **Instrument & Field.** **Instrument** is DEVELOP's crisp default sheet. **Field** is an OLED-oriented night-survey appearance with **Focus** mode and selectable **Atmospheres** (`None`, `Contours`, `Rain`, `Storm`). Weather is pure scenery: its renderer receives zero session state.
 - **Course.** Above the session rail, **Course** draws two gauges (`Run`, `Request`) and — when a task has a prepared attempt — six record-backed stages (`Brief · Assent · Send · Run · Check · Judge`). It visualises what the page holds; it is never a workflow engine or verifier ([docs/develop-course.md](docs/develop-course.md)).
-- **Not yet shipped.** `endo web`, a native desktop app, live serving-time activation capture, governed experiment execution from Evolve, embedded terminals and live control of non-Pi harnesses remain future directions. **Capabilities** stays an explicit placeholder.
+- **Not yet shipped.** `endo web`, a native desktop app, live serving-time activation capture, governed experiment execution from Evolve, embedded terminals and live control of non-Pi harnesses remain future directions. **Research**, **Hardware** and **Coordinator** stay explicit planned placeholders.
 
 <details>
 <summary><strong>Access, privacy and retention boundaries</strong></summary>
@@ -551,7 +551,7 @@ Full catalog of studies, designs and limits: [research/README.md](research/READM
 | Need | Start here |
 | :--- | :--- |
 | Install & browser usage | [Installation](docs/install.md) · [Studio & workbench](docs/studio.md) · [Changelog](CHANGELOG.md) |
-| Run the DEVELOP loop | [Projects & tasks](docs/develop-tasks.md) · [Attempts](docs/designs/develop-work-attempts.md) · [Receipts](docs/designs/develop-verification-receipts.md) · [Plans & ledger](docs/designs/develop-verification-plans.md) · [Behavioural checks](docs/designs/develop-behavioural-checks.md) · [Provenance](docs/designs/develop-candidate-provenance.md) · [Attempt evidence](docs/designs/develop-attempt-evidence.md) |
+| Run the DEVELOP loop | [Projects & tasks](docs/develop-tasks.md) · [Attempts](docs/designs/develop-work-attempts.md) · [Receipts](docs/designs/develop-verification-receipts.md) · [Plans & ledger](docs/designs/develop-verification-plans.md) · [Behavioural checks](docs/designs/develop-behavioural-checks.md) · [Provenance](docs/designs/develop-candidate-provenance.md) · [Attempt evidence](docs/designs/develop-attempt-evidence.md) · [Evidence bridge](docs/designs/develop-evidence-bridge.md) |
 | Work with a live agent | [Live workbench](docs/develop-workbench.md) · [Sending an attempt](docs/designs/develop-attempt-workbench.md) · [Private activity](docs/private-activity.md) · [Reasoning & privacy](docs/develop-reasoning.md) · [Git review](docs/develop-project-review.md) · [Process containment](docs/live-process-containment.md) · [Course](docs/develop-course.md) · [Field](docs/develop-field.md) · [Atmospheres](docs/develop-atmospheres.md) |
 | Workspace without an agent | [Workspace host](docs/designs/workspace-host.md) · [Attention overview](docs/designs/develop-attention.md) · [Workspace service](docs/develop-workspace-service.md) · [OMP observer](docs/develop-omp-observer.md) |
 | Observe, replay & compare | [Attachment](docs/attachment.md) · [Replay](docs/replay.md) · [Trajectories](docs/trajectory.md) · [Representation Explorer](docs/designs/observe-representation-explorer.md) · [Experiments](docs/experiments.md) · [Steering](docs/steering.md) |

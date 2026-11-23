@@ -11,7 +11,17 @@
 // those steps: that is why collection runs only after the agent's processes are confirmed gone, when no sandboxed process can write.
 
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync } from "node:fs";
+import {
+	chmodSync,
+	closeSync,
+	constants,
+	fstatSync,
+	lstatSync,
+	mkdirSync,
+	openSync,
+	readdirSync,
+	readSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import type { EndoProtectedRefusalV0, EndoProtectedTrialV0 } from "../../protocol/protected-experiment.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -176,4 +186,133 @@ export function exportSubmissionV0(
 	}
 	// The files are read-only; the directories stay the controller's to remove. The evaluator mounts the whole copy read-only.
 	return { status: "collected", files, sha256: endoSubmissionDigestV0(files), refusals: [] };
+}
+
+export type EndoFixedSubmissionVerifyResultV0 =
+	| { ok: true; files: EndoSubmissionV0["files"]; sha256: string }
+	| {
+			ok: false;
+			reason: "invalid-submission-dir" | "unexpected-entry" | "staged-bytes-mismatch" | "refused";
+			detail: string;
+	  };
+
+/**
+ * Strictly read-only verification of a fixed-path submission directory on disk: verifies every declared file without following symlinks,
+ * refuses unexpected extra entries, hashes file bytes in memory (writing zero files or temp directories), and checks the canonical
+ * manifest SHA-256 against `expectedSha256`.
+ */
+export function verifyFixedSubmissionV0(
+	submissionDir: string,
+	expectedPaths: readonly string[],
+	expectedSha256: string,
+	limits: EndoSubmissionLimitsV0,
+): EndoFixedSubmissionVerifyResultV0 {
+	let rootStat: ReturnType<typeof lstatSync> | undefined;
+	try {
+		rootStat = lstatSync(submissionDir, { throwIfNoEntry: false });
+	} catch {
+		return { ok: false, reason: "invalid-submission-dir", detail: "submission directory is not readable" };
+	}
+	if (rootStat === undefined || rootStat.isSymbolicLink() || !rootStat.isDirectory())
+		return { ok: false, reason: "invalid-submission-dir", detail: "submission path is not a plain directory" };
+
+	const sortedExpected = [...new Set(expectedPaths)].sort();
+	for (const p of sortedExpected) {
+		if (!PLAIN.test(p)) return { ok: false, reason: "refused", detail: `unsafe declared path ${p}` };
+	}
+
+	// Derive the exact allowed directory prefixes and normalized filesystem file paths from declared paths so deeply
+	// nested valid submissions and repeated-separator spellings (e.g. `a//b.txt`, accepted by PLAIN and exportSubmissionV0)
+	// verify cleanly while preserving original declared spellings for the manifest digest.
+	const expectedFsFileSet = new Set<string>();
+	const expectedDirs = new Set<string>();
+	for (const p of sortedExpected) {
+		if (p.endsWith("/")) return { ok: false, reason: "refused", detail: `unsafe declared path ${p}` };
+		const parts = p.split("/").filter((seg) => seg.length > 0);
+		if (parts.length === 0) return { ok: false, reason: "refused", detail: `unsafe declared path ${p}` };
+		expectedFsFileSet.add(parts.join("/"));
+		for (let i = 1; i < parts.length; i += 1) {
+			expectedDirs.add(parts.slice(0, i).join("/"));
+		}
+	}
+	const sortedExpectedFs = [...expectedFsFileSet].sort();
+
+	// Enumerate actual entries under submissionDir (refusing symlinks, special files, empty/extra entries).
+	const foundFiles: string[] = [];
+	const maxEntries = expectedDirs.size + expectedFsFileSet.size;
+	let visited = 0;
+	const walk = (dir: string, prefix: string): string | null => {
+		let names: string[];
+		try {
+			names = readdirSync(dir).sort();
+		} catch {
+			return "submission directory is not readable";
+		}
+		if (prefix !== "" && names.length === 0) return `unexpected empty directory ${prefix}`;
+		for (const name of names) {
+			visited += 1;
+			if (visited > maxEntries) return "submission directory exceeds entry bound";
+			const rel = prefix === "" ? name : `${prefix}/${name}`;
+			const full = join(dir, name);
+			let st: ReturnType<typeof lstatSync> | undefined;
+			try {
+				st = lstatSync(full, { throwIfNoEntry: false });
+			} catch {
+				return `unreadable entry ${rel}`;
+			}
+			if (st === undefined) return `entry vanished ${rel}`;
+			if (st.isSymbolicLink()) return `symbolic link in submission: ${rel}`;
+			if (st.isDirectory()) {
+				if (!expectedDirs.has(rel)) return `unexpected directory in submission: ${rel}`;
+				const err = walk(full, rel);
+				if (err !== null) return err;
+			} else if (st.isFile()) {
+				if (!expectedFsFileSet.has(rel)) return `unexpected file in submission: ${rel}`;
+				foundFiles.push(rel);
+			} else {
+				return `non-regular entry in submission: ${rel}`;
+			}
+		}
+		return null;
+	};
+	const walkProblem = walk(submissionDir, "");
+	if (walkProblem !== null) return { ok: false, reason: "unexpected-entry", detail: walkProblem };
+
+	foundFiles.sort();
+	if (foundFiles.length !== sortedExpectedFs.length || foundFiles.some((p, i) => p !== sortedExpectedFs[i])) {
+		return {
+			ok: false,
+			reason: "unexpected-entry",
+			detail: "submission directory entries do not match the declared submission paths",
+		};
+	}
+
+	const files: EndoSubmissionV0["files"] = [];
+	let total = 0;
+	for (const path of sortedExpected) {
+		let got: Buffer | EndoProtectedRefusalV0;
+		try {
+			got = readExactly(path, submissionDir, limits.maxFileBytes, {});
+		} catch (error) {
+			if (!agentCaused((error as NodeJS.ErrnoException).code)) throw error;
+			got = "unreadable";
+		}
+		if (typeof got === "string") {
+			return { ok: false, reason: "refused", detail: `${path}: ${got}` };
+		}
+		total += got.length;
+		if (total > limits.maxTotalBytes) {
+			return { ok: false, reason: "refused", detail: `${path}: total-too-large` };
+		}
+		files.push({ path, bytes: got.length, sha256: createHash("sha256").update(got).digest("hex") });
+	}
+	const sha256 = endoSubmissionDigestV0(files);
+	if (sha256 !== expectedSha256) {
+		return {
+			ok: false,
+			reason: "staged-bytes-mismatch",
+			detail: "submission bytes on disk do not match the recorded submission digest",
+		};
+	}
+	return { ok: true, files, sha256 };
 }

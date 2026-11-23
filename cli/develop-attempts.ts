@@ -22,6 +22,7 @@
 
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { runCheckV0 } from "../adapters/develop/check-runner.ts";
+import { readDevelopEvidenceBridgeV0 } from "../adapters/develop/evidence-bridge.ts";
 import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import { ENDO_ATTEMPT_RUN_LABELS_V0, ENDO_ATTEMPT_SEND_LABELS_V0 } from "../protocol/develop-attempt-execution.ts";
@@ -49,6 +50,7 @@ import {
 	type DevelopAttemptsResultV0,
 	DevelopAttemptsServiceV0,
 } from "../runtime/contracts/develop-attempts.ts";
+import { renderEndoDevelopEvidenceBridgeV0 } from "../runtime/contracts/develop-evidence-bridge.ts";
 import { renderEndoProvenanceV0 } from "../runtime/contracts/develop-observations.ts";
 import {
 	type DevelopCheckRefusalV0,
@@ -64,7 +66,7 @@ import { flagsOf } from "./develop-tasks.ts";
 import { endoVersionV0 } from "./help.ts";
 
 const USAGE =
-	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] [--keep-output] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>] | endo attempt observe ... --attempt <id> [--cwd <dir>] | endo attempt provenance ... --attempt <id> [--cwd <dir>]";
+	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] [--keep-output] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>] | endo attempt bridge ... --attempt <id> [--cwd <dir>] [--protected-run <dir> [--spec-pin <sha256>] [--trial <task>/<condition>/<trial>]] | endo attempt observe ... --attempt <id> [--cwd <dir>] | endo attempt provenance ... --attempt <id> [--cwd <dir>]";
 
 const REFUSALS: Readonly<Record<DevelopAttemptsRefusalV0, string>> = {
 	"not-found": "no such project, task (in that project) or attempt in this store",
@@ -713,6 +715,37 @@ async function provenance(argv: readonly string[]): Promise<void> {
 	process.stderr.write(renderEndoProvenanceV0(view));
 }
 
+/**
+ * `bridge`: read-only end-to-end evidence bridge for one governed DEVELOP attempt (docs/designs/develop-evidence-bridge.md).
+ * Traces Task -> Attempt -> Authorization -> Dispatch -> Run -> Candidate -> Verification -> Operator decision without inventing
+ * missing relations, writing any files, changing any status, applying candidate bytes, or running any evaluator.
+ */
+async function bridge(argv: readonly string[]): Promise<void> {
+	const { root, flags } = flagsOf(argv, ["--attempt", "--cwd", "--protected-run", "--spec-pin", "--trial"], USAGE);
+	const attemptId = attemptOf(flags);
+	const protectedRunDir = flags.get("--protected-run");
+	const specPin = flags.get("--spec-pin");
+	const trial = flags.get("--trial");
+	if (protectedRunDir === undefined && (specPin !== undefined || trial !== undefined)) {
+		throw new TypeError("--spec-pin and --trial require --protected-run <dir>");
+	}
+	const result = await readDevelopEvidenceBridgeV0({
+		root,
+		attemptId,
+		...(flags.get("--cwd") === undefined ? {} : { cwd: flags.get("--cwd") }),
+		...(protectedRunDir === undefined ? {} : { protectedRunDir }),
+		...(specPin === undefined ? {} : { specPin }),
+		...(trial === undefined ? {} : { trial }),
+		version: endoVersionV0(),
+	});
+	if (!result.ok) {
+		const why = result.reason === undefined ? "" : ` (${result.reason})`;
+		throw new Error(`${REFUSALS[result.code] ?? result.code}${why}`);
+	}
+	print({ bridge: result.bridge });
+	process.stderr.write(renderEndoDevelopEvidenceBridgeV0(result.bridge));
+}
+
 export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
 	prepare,
 	brief,
@@ -725,6 +758,7 @@ export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => vo
 	receipts,
 	receipt,
 	evidence,
+	bridge,
 	observe,
 	provenance,
 };

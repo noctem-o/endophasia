@@ -1421,18 +1421,107 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		const page = await open(`${server.baseUrl}/`);
 		await page.click("#timeline tr[data-seq='5'] button.seq");
 		const reads = snapshotRequests(page);
-		for (const name of ["capabilities"]) {
+
+		const nav = await page.eval<{
+			ids: string[];
+			labels: string[];
+			hasLater: boolean;
+			planned: { id: string; ariaLabel: string | null; title: string | null; planned: string | null }[];
+			dividerBeforeCoordinator: boolean;
+			dividerAriaHidden: string | null;
+			readyColor: string;
+			plannedColor: string;
+		}>(`(() => {
+			const buttons = [...document.querySelectorAll("nav.workspaces button")];
+			const divider = document.querySelector("[data-testid=workspace-divider-coordinator]");
+			const coordinator = document.querySelector("button[data-workspace=coordinator]");
+			const compare = document.querySelector("button[data-workspace=compare]");
+			const research = document.querySelector("button[data-workspace=research]");
+			return {
+				ids: buttons.map((b) => b.dataset.workspace ?? ""),
+				labels: buttons.map((b) => (b.textContent ?? "").trim()),
+				hasLater: (document.querySelector("nav.workspaces")?.textContent ?? "").includes("later"),
+				planned: ["research", "hardware", "coordinator"].map((id) => {
+					const b = document.querySelector("button[data-workspace=" + id + "]");
+					return {
+						id,
+						ariaLabel: b?.getAttribute("aria-label") ?? null,
+						title: b?.getAttribute("title") ?? null,
+						planned: b?.getAttribute("data-planned") ?? null,
+					};
+				}),
+				dividerBeforeCoordinator: Boolean(divider && divider.nextElementSibling === coordinator),
+				dividerAriaHidden: divider?.getAttribute("aria-hidden") ?? null,
+				readyColor: getComputedStyle(compare).color,
+				plannedColor: getComputedStyle(research).color,
+			};
+		})()`);
+
+		expect(nav.ids).toEqual(["observe", "compare", "develop", "evolve", "research", "hardware", "coordinator"]);
+		expect(nav.labels).toEqual(["Observe", "Compare", "Develop", "Evolve", "Research", "Hardware", "Coordinator"]);
+		expect(nav.hasLater).toBe(false);
+		expect(nav.dividerBeforeCoordinator).toBe(true);
+		expect(nav.dividerAriaHidden).toBe("true");
+		expect(nav.plannedColor).not.toBe(nav.readyColor);
+		expect(nav.planned).toEqual([
+			{
+				id: "research",
+				ariaLabel: "Research — planned workspace",
+				title: "Research — planned workspace (not yet functional)",
+				planned: "true",
+			},
+			{
+				id: "hardware",
+				ariaLabel: "Hardware — planned workspace",
+				title: "Hardware — planned workspace (not yet functional)",
+				planned: "true",
+			},
+			{
+				id: "coordinator",
+				ariaLabel: "Coordinator — planned workspace",
+				title: "Coordinator — planned workspace (not yet functional)",
+				planned: "true",
+			},
+		]);
+
+		for (const name of ["research", "hardware", "coordinator"] as const) {
 			await page.click(`button[data-workspace=${name}]`);
 			await page.waitFor(`document.querySelector("[data-testid=unavailable-${name}]")`, 5000);
 			const said = await text(page, `[data-testid=unavailable-${name}]`);
+			expect(said).toMatch(/Planned workspace/);
 			expect(said).toMatch(/is not available yet/);
 			expect(said).toMatch(/This workspace shows nothing read from a store/);
+			if (name === "coordinator") {
+				expect(said).toMatch(/supervisory agent/i);
+				expect(said).toMatch(/Codex, Claude, Gemini and Pi/);
+				expect(said).toMatch(/Coordination is not implemented yet/);
+			}
 			expect(await count(page, "tr[data-seq]")).toBe(0);
 			expect(
 				await page.eval(`document.querySelector("button[data-workspace=${name}]").getAttribute("aria-current")`),
 			).toBe("page");
 		}
 		expect(page.seen.requests.some((url) => /\/assets\/Unavailable-[A-Za-z0-9]+\.js$/.test(url))).toBe(true);
+
+		// Keyboard navigation stays clean and skips the decorative divider
+		await page.eval(`document.querySelector("button[data-workspace=hardware]").focus()`);
+		await page.press("Tab");
+		expect(await page.eval<string>(`document.activeElement?.dataset?.workspace ?? ""`)).toBe("coordinator");
+		await page.press("Enter");
+		await page.waitFor(`document.querySelector("[data-testid=unavailable-coordinator]")`, 5000);
+
+		// Responsive bar never overflows horizontally across desktop, tablet and narrow mobile viewports
+		for (const [w, h] of [
+			[1440, 900],
+			[1024, 768],
+			[390, 844],
+		] as const) {
+			await page.resize(w, h);
+			const overflow = await page.eval<boolean>(`document.documentElement.scrollWidth > window.innerWidth`);
+			expect(overflow, `no horizontal overflow at ${w}x${h}`).toBe(false);
+		}
+		await page.resize(1440, 900);
+
 		await page.click("button[data-workspace=observe]");
 		// The read, the selection and the window are where they were: switching workspace reads nothing.
 		expect(await text(page, "#inspector")).toContain("Event at position 5");
@@ -1444,8 +1533,8 @@ suite("the narrow inspector, the keyboard, the overview, and the workspaces not 
 		const server = await serve(populated(), { ui });
 		const page = await open(`${server.baseUrl}/`);
 		await page.click("#timeline tr[data-seq='5'] button.seq");
-		await page.click("button[data-workspace=capabilities]");
-		await page.waitFor(`document.querySelector("[data-testid=unavailable-capabilities]")`, 5000);
+		await page.click("button[data-workspace=coordinator]");
+		await page.waitFor(`document.querySelector("[data-testid=unavailable-coordinator]")`, 5000);
 		for (const url of page.seen.requests) expect(url.startsWith(`${server.origin}/`), url).toBe(true);
 		const mine = page.seen.requests.filter((url) => url.startsWith(server.origin));
 		const allowed = /\/(assets\/[A-Za-z0-9._-]+|api\/v0\/snapshot\?afterSequence=0&limit=100)$|\/$/;

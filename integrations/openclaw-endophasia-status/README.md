@@ -54,7 +54,9 @@ that for you.
 It runs one fixed command built from this config: no shell, a scrubbed environment, a timeout, an output bound, and always inside
 bubblewrap. If bubblewrap is missing or cannot start, the answer is `unavailable` and endo never runs. The sandbox has no network and an
 empty root. It gets read-only binds of only `/usr` and a few `/etc` files, the node binary, endo's code, the store's `develop/` and
-`events/`, and the requested projects' roots and their Git directories. Your home directory, the gateway's credential stores, the store's
+`events/`, and the requested projects' roots. Use standalone checkouts: Git pointer files, symlinked `.git` paths, and `.git/commondir`
+entries are refused before launch as `unavailable` (`project-git-layout-refused`). The launcher never mounts a path supplied by Git metadata.
+Your home directory, the gateway's credential stores, the store's
 control socket and other projects are not mounted. The answer is validated (labels re-derived, scope reconciled with the request) and trimmed
 to what a status answer needs (see `disclose.detail`). It cannot move a task, prompt or launch an agent, approve anything, or reach
 Endophasia's control socket.

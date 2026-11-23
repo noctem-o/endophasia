@@ -205,12 +205,7 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 		const host = {
 			exists: (p: string) => p === "/opt/endo/package.json" || p === "/opt/endo/node_modules",
 			link: (p: string) => (p === "/lib" ? "usr/lib" : p === "/bin" ? "usr/bin" : null),
-			text: (p: string) =>
-				p === "/repo/alpha/.git"
-					? "gitdir: /repo/main/.git/worktrees/alpha\n"
-					: p.endsWith("/commondir")
-						? "../..\n"
-						: null,
+			kind: () => "missing" as const,
 			real: (p: string) => p,
 		};
 		const c = validateEndophasiaStatusConfigV0(
@@ -239,8 +234,6 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 			"/etc/nsswitch.conf",
 			"/home/op/.local/share/endophasia/store/develop",
 			"/home/op/.local/share/endophasia/store/events",
-			"/repo/main/.git/worktrees/alpha",
-			"/repo/main/.git",
 		]);
 		expect(a.join(" ")).toContain("--symlink usr/bin /bin");
 		// No whole-host bind, no writable bind, no network, nothing of the home directory or the store's control socket.
@@ -248,6 +241,28 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 			/--ro-bind \/ \/|--bind |--share-net|\/home\/op\/\.openclaw|\/store\/control|\/repo\/other/,
 		);
 		expect(a.slice(a.indexOf("--") + 1, a.indexOf("--") + 3)).toEqual(["/usr/bin/node", "/opt/endo/cli/index.ts"]);
+	});
+
+	it("refuses a linked worktree before launch instead of mounting its external Git directory", async () => {
+		const f = await buildCoordinatorStoreV0();
+		const linked = coordinatorTempDirV0("endo-coord-linked-");
+		const added = spawnSync("git", ["worktree", "add", "--detach", linked, "HEAD"], {
+			cwd: f.repo,
+			encoding: "utf8",
+		});
+		expect(added.status, added.stderr).toBe(0);
+		const { calls, run } = recorder();
+		const out = await mockedOpenClaw(run).tool.execute(
+			{},
+			config({ storeRoot: f.root, projects: [{ id: f.projectId, root: linked }] }),
+			{},
+		);
+		expect(out).toMatchObject({
+			availability: "unavailable",
+			summary: expect.stringContaining("project-git-layout-refused"),
+		});
+		expect(JSON.stringify(out)).not.toContain(f.repo);
+		expect(calls).toEqual([]);
 	});
 
 	it("refuses a config whose project has no absolute root, or the filesystem root", async () => {

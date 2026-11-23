@@ -4,15 +4,14 @@
 // operator's plugin config: the model chooses at most which permitted project to ask about, never a path, a flag or a command. No shell,
 // a scrubbed environment (the gateway's provider credentials never reach the child), a timeout, an output bound, and always a
 // bubblewrap sandbox: no network, an empty root, and read-only binds of exactly what the read needs (the system's /usr, the node
-// binary, endo's own code, the store's develop/ and events/ directories, and the requested projects' roots with their Git
-// directories). The home directory, the gateway's credential stores, the store's control socket and every other path are not mounted.
+// binary, endo's own code, the store's develop/ and events/ directories, and the requested projects' roots).
 // There is no unsandboxed mode: if bubblewrap is missing or cannot start, the read is `unavailable` and endo never runs. What comes back is
 // validated against the protocol's own validator before anything is relayed; another schema version is refused, not guessed at.
 //
 // This module has no OpenClaw or TypeBox import, so it is tested directly (tests/openclaw-endophasia-status.test.ts).
 
 import { execFile } from "node:child_process";
-import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { type EndoCoordinatorStatusV0, validateEndoCoordinatorStatusV0 } from "../../../protocol/coordinator-status.ts";
 
@@ -127,20 +126,16 @@ export interface EndophasiaHostViewV0 {
 	exists(path: string): boolean;
 	/** The symlink target of `path`, or null if it is not a symlink. */
 	link(path: string): string | null;
-	/** A small text file's contents, or null. */
-	text(path: string): string | null;
+	kind(path: string): "directory" | "other" | "missing";
 	real(path: string): string;
 }
 
 export const realHostViewV0: EndophasiaHostViewV0 = {
 	exists: existsSync,
 	link: (path) => (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ? readlinkSync(path) : null),
-	text: (path) => {
-		try {
-			return readFileSync(path, "utf8").slice(0, 4096);
-		} catch {
-			return null;
-		}
+	kind: (path) => {
+		const stat = lstatSync(path, { throwIfNoEntry: false });
+		return stat === undefined ? "missing" : stat.isDirectory() ? "directory" : "other";
 	},
 	real: (path) => {
 		try {
@@ -151,15 +146,7 @@ export const realHostViewV0: EndophasiaHostViewV0 = {
 	},
 };
 
-/** A project's Git directories outside its working tree: a linked worktree's gitdir and the common directory it points at. */
-function gitDirsOutside(root: string, host: EndophasiaHostViewV0): string[] {
-	const dotGit = host.text(join(root, ".git"));
-	const match = dotGit === null ? null : /^gitdir: (.+)$/m.exec(dotGit);
-	if (match === null) return [];
-	const gitdir = resolve(root, (match[1] as string).trim());
-	const common = host.text(join(gitdir, "commondir"));
-	return common === null ? [gitdir] : [gitdir, resolve(gitdir, common.trim())];
-}
+class ProjectGitLayoutError extends Error {}
 
 /** endo's own code: the nearest ancestor of the entry with a package.json and node_modules, else the entry's directory. */
 function codeRootOf(entry: string, host: EndophasiaHostViewV0): string {
@@ -197,6 +184,16 @@ export function endophasiaStatusCommandV0(
 	});
 	const node = host.real(config.endo.node);
 	const roots = config.projects.filter((p) => projectIds.includes(p.id)).map((p) => p.root);
+	for (const root of roots) {
+		const git = join(root, ".git");
+		const kind = host.kind(git);
+		if (
+			host.real(root) === "/" ||
+			kind === "other" ||
+			(kind === "directory" && host.kind(join(git, "commondir")) !== "missing")
+		)
+			throw new ProjectGitLayoutError();
+	}
 	return {
 		file: config.bwrapPath ?? "/usr/bin/bwrap",
 		args: [
@@ -211,7 +208,7 @@ export function endophasiaStatusCommandV0(
 			...(node.startsWith("/usr/") ? [] : ro(dirname(dirname(node)))),
 			...ro(codeRootOf(config.endo.entry, host)),
 			...STORE_DIRS.flatMap((d) => roTry(join(config.storeRoot, d))),
-			...roots.flatMap((root) => [...ro(root), ...gitDirsOutside(root, host).flatMap(roTry)]),
+			...roots.flatMap(ro),
 			"--dev",
 			"/dev",
 			"--proc",
@@ -232,7 +229,14 @@ export type EndophasiaStatusReadV0 =
 	| { availability: "available"; status: EndoCoordinatorStatusV0; durationMs: number }
 	| {
 			availability: "unavailable";
-			reason: "spawn-failed" | "timed-out" | "output-too-large" | "exited-nonzero" | "not-json" | "invalid-status";
+			reason:
+				| "project-git-layout-refused"
+				| "spawn-failed"
+				| "timed-out"
+				| "output-too-large"
+				| "exited-nonzero"
+				| "not-json"
+				| "invalid-status";
 			detail: string;
 			durationMs: number;
 	  };
@@ -287,7 +291,20 @@ export async function readEndophasiaStatusV0(
 ): Promise<EndophasiaStatusReadV0> {
 	const now = options.now ?? Date.now;
 	const started = now();
-	const command = endophasiaStatusCommandV0(config, projectIds, options.host);
+	let command: EndophasiaCommandV0;
+	try {
+		command = endophasiaStatusCommandV0(config, projectIds, options.host);
+	} catch (error) {
+		return {
+			availability: "unavailable",
+			reason: error instanceof ProjectGitLayoutError ? "project-git-layout-refused" : "spawn-failed",
+			detail:
+				error instanceof ProjectGitLayoutError
+					? "Git metadata indirection is unsupported; only a project with its Git directory inside its configured root can be read"
+					: "sandbox paths could not be checked",
+			durationMs: now() - started,
+		};
+	}
 	const ran = await (options.run ?? execEndophasiaV0)(command, {
 		timeoutMs: config.timeoutMs ?? ENDOPHASIA_STATUS_LIMITS_V0.defaultTimeoutMs,
 		maxBytes: ENDOPHASIA_STATUS_LIMITS_V0.maxStdoutBytes,

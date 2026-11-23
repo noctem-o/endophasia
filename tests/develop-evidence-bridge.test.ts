@@ -1311,5 +1311,27 @@ describe("DEVELOP-EVIDENCE-BRIDGE-001", () => {
 		const tampered = verifyFixedSubmissionV0(submissionDir, declaredPaths, exported.sha256, limits);
 		expect(tampered.ok).toBe(false);
 		if (!tampered.ok) expect(tampered.reason).toBe("unexpected-entry");
+
+		// Repeated-separator paths (e.g. `a//b.txt`) accepted by exportSubmissionV0 verify cleanly while preserving manifest spelling.
+		const dupWs = freshDir("endo-bridge-dupsep-ws-");
+		const dupSub = join(freshDir("endo-bridge-dupsep-sub-"), "submission");
+		const dupDeclared = ["a//b.txt", "c///d//e.txt"];
+		mkdirSync(join(dupWs, "a"), { recursive: true });
+		mkdirSync(join(dupWs, "c", "d"), { recursive: true });
+		writeFileSync(join(dupWs, "a", "b.txt"), "hello\n");
+		writeFileSync(join(dupWs, "c", "d", "e.txt"), "world\n");
+		const dupExported = exportSubmissionV0(dupWs, dupDeclared, limits, dupSub);
+		expect(dupExported.status).toBe("collected");
+		expect(dupExported.sha256).not.toBeNull();
+		if (dupExported.status !== "collected" || dupExported.sha256 === null) return;
+		const dupVerified = verifyFixedSubmissionV0(dupSub, dupDeclared, dupExported.sha256, limits);
+		expect(dupVerified).toMatchObject({
+			ok: true,
+			sha256: dupExported.sha256,
+			files: dupExported.files,
+		});
+		if (dupVerified.ok) {
+			expect(dupVerified.files.map((f) => f.path)).toEqual(["a//b.txt", "c///d//e.txt"]);
+		}
 	});
 });

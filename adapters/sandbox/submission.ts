@@ -221,20 +221,25 @@ export function verifyFixedSubmissionV0(
 		if (!PLAIN.test(p)) return { ok: false, reason: "refused", detail: `unsafe declared path ${p}` };
 	}
 
-	// Derive the exact allowed directory prefixes and files from declared paths so deeply nested valid submissions are
-	// accepted while any unexpected entry or subtree is rejected immediately.
-	const expectedFileSet = new Set(sortedExpected);
+	// Derive the exact allowed directory prefixes and normalized filesystem file paths from declared paths so deeply
+	// nested valid submissions and repeated-separator spellings (e.g. `a//b.txt`, accepted by PLAIN and exportSubmissionV0)
+	// verify cleanly while preserving original declared spellings for the manifest digest.
+	const expectedFsFileSet = new Set<string>();
 	const expectedDirs = new Set<string>();
 	for (const p of sortedExpected) {
-		const parts = p.split("/");
+		if (p.endsWith("/")) return { ok: false, reason: "refused", detail: `unsafe declared path ${p}` };
+		const parts = p.split("/").filter((seg) => seg.length > 0);
+		if (parts.length === 0) return { ok: false, reason: "refused", detail: `unsafe declared path ${p}` };
+		expectedFsFileSet.add(parts.join("/"));
 		for (let i = 1; i < parts.length; i += 1) {
 			expectedDirs.add(parts.slice(0, i).join("/"));
 		}
 	}
+	const sortedExpectedFs = [...expectedFsFileSet].sort();
 
 	// Enumerate actual entries under submissionDir (refusing symlinks, special files, empty/extra entries).
 	const foundFiles: string[] = [];
-	const maxEntries = expectedDirs.size + expectedFileSet.size;
+	const maxEntries = expectedDirs.size + expectedFsFileSet.size;
 	let visited = 0;
 	const walk = (dir: string, prefix: string): string | null => {
 		let names: string[];
@@ -262,7 +267,7 @@ export function verifyFixedSubmissionV0(
 				const err = walk(full, rel);
 				if (err !== null) return err;
 			} else if (st.isFile()) {
-				if (!expectedFileSet.has(rel)) return `unexpected file in submission: ${rel}`;
+				if (!expectedFsFileSet.has(rel)) return `unexpected file in submission: ${rel}`;
 				foundFiles.push(rel);
 			} else {
 				return `non-regular entry in submission: ${rel}`;
@@ -274,7 +279,7 @@ export function verifyFixedSubmissionV0(
 	if (walkProblem !== null) return { ok: false, reason: "unexpected-entry", detail: walkProblem };
 
 	foundFiles.sort();
-	if (foundFiles.length !== sortedExpected.length || foundFiles.some((p, i) => p !== sortedExpected[i])) {
+	if (foundFiles.length !== sortedExpectedFs.length || foundFiles.some((p, i) => p !== sortedExpectedFs[i])) {
 		return {
 			ok: false,
 			reason: "unexpected-entry",

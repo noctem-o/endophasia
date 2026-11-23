@@ -132,6 +132,13 @@ const shown = (page: Page, selector: string) =>
 /** WCAG relative luminance and contrast, from computed rgb() strings. */
 const COLOUR =
 	"const lum = (s) => { const [r, g, b] = s.match(/\\d+(\\.\\d+)?/g).slice(0, 3).map(Number).map((v) => v / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }; const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };";
+/** The stop's border pixel against the pixels painted just outside it (left, right, above) and its fill, from a PNG of the page. */
+const PAINTED = (png: string) =>
+	"(async () => { " +
+	COLOUR +
+	" const b = document.querySelector('[data-testid=stop]').getBoundingClientRect(); const raw = atob('" +
+	png +
+	"'); const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0)); const img = await createImageBitmap(new Blob([bytes], { type: 'image/png' })); const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d'); x.drawImage(img, 0, 0); const px = (X, Y) => { const d = x.getImageData(Math.round(X), Math.round(Y), 1, 1).data; return 'rgb(' + d[0] + ', ' + d[1] + ', ' + d[2] + ')'; }; const y = b.top + b.height / 2; const border = px(b.left + b.width / 2, b.top + 0.5); const around = [px(b.left - 4, y), px(b.right + 4, y), px(b.left + 20, b.top - 3), px(b.left + b.width / 2, b.top - 3), px(b.right - 20, b.top - 3)]; return { outside: around.map((o) => ratio(border, o)), fill: ratio(border, px(b.left + b.width / 2, b.top + 4)) }; })()";
 
 suite("the head of the work", () => {
 	it("keeps the session and the worktree as two elements on fewer lines, with the read times in Context", async () => {
@@ -218,14 +225,23 @@ suite("STOP on a dark screen", () => {
 				": a graphite control with readable text, a visible border and a focus ring, never a lamp",
 			async () => {
 				const { page } = await open(1440, 900, { field });
-				const look = await page.eval<{ text: number; border: number; fill: number; words: string }>(
+				// Measure the settled colours, not a frame of the button's colour transition (it runs when the stop becomes enabled).
+				const settled = "document.querySelector('[data-testid=stop]').getAnimations().length === 0";
+				await page.waitFor(settled);
+				const look = await page.eval<{ text: number; fill: number; words: string }>(
 					"(() => { " +
 						COLOUR +
-						" const b = document.querySelector('[data-testid=stop]'); const s = getComputedStyle(b); const strip = getComputedStyle(document.querySelector('[data-testid=run-strip]')).backgroundColor; const ground = strip === 'rgba(0, 0, 0, 0)' ? s.backgroundColor : strip; return { text: ratio(s.color, s.backgroundColor), border: ratio(s.borderTopColor, ground.startsWith('rgba') ? 'rgb(14, 16, 20)' : ground), fill: lum(s.backgroundColor), words: b.textContent }; })()",
+						" const b = document.querySelector('[data-testid=stop]'); const s = getComputedStyle(b); return { text: ratio(s.color, s.backgroundColor), fill: lum(s.backgroundColor), words: b.textContent }; })()",
 				);
 				expect(look.words).toBe("Request stop");
 				expect(look.text).toBeGreaterThanOrEqual(7);
-				expect(look.border).toBeGreaterThanOrEqual(3);
+				// The border against what is painted on either side of it, read back from a screenshot: Field's strip is transparent, so
+				// its ground is whatever the field draws there, not a computed colour.
+				const painted = await page.eval<{ outside: number[]; fill: number }>(
+					PAINTED((await page.screenshot()).toString("base64")),
+				);
+				expect(Math.min(...painted.outside)).toBeGreaterThanOrEqual(3);
+				expect(painted.fill).toBeGreaterThanOrEqual(3);
 				// The old Field pill was #efebe3 (relative luminance 0.83). Graphite is under 0.03.
 				expect(look.fill).toBeLessThan(0.03);
 				await page.eval("document.querySelector('[data-testid=stop]').focus({ focusVisible: true })");
@@ -234,6 +250,7 @@ suite("STOP on a dark screen", () => {
 				);
 				expect(ring).toBe("solid 2px");
 				await page.hover("[data-testid=stop]");
+				await page.waitFor(settled);
 				const hover = await page.eval<number>(
 					"(() => { " +
 						COLOUR +

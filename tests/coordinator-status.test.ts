@@ -5,15 +5,10 @@
 // subprocess, and proves the read wrote nothing by comparing content-hash manifests of the store and the repository (.git included)
 // before and after; a write command run against the same manifests is the negative control showing the manifest does see writes.
 
-import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { Writable } from "node:stream";
+import { spawnSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { runCheckV0 } from "../adapters/develop/check-runner.ts";
-import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import {
 	ENDO_COORDINATOR_STATUS_SCHEMA_V0,
 	type EndoCoordinatorStatusV0,
@@ -33,12 +28,11 @@ import {
 	endoCoordinatorStatusV0,
 	renderEndoCoordinatorStatusV0,
 } from "../runtime/contracts/coordinator-status.ts";
-import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
-import { DevelopReceiptsServiceV0 } from "../runtime/contracts/develop-receipts.ts";
-import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
-import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
-import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
-import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import {
+	buildCoordinatorStoreV0,
+	cleanCoordinatorFixturesV0,
+	coordinatorTempDirV0,
+} from "./coordinator-status-fixture.ts";
 import { manifestOf } from "./read-only-manifest.ts";
 
 const CLI = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
@@ -588,72 +582,11 @@ describe("coordinator status projection", () => {
 
 // ---- on disk: the real CLI, and proof that a read writes nothing ------------------------------------------------------------------
 
-const roots: string[] = [];
-afterEach(() => {
-	for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true });
-});
-const freshDir = (prefix: string) => {
-	const d = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-	roots.push(d);
-	return d;
-};
-const gitEnv = {
-	...process.env,
-	GIT_AUTHOR_NAME: "Test Operator",
-	GIT_AUTHOR_EMAIL: "operator@example.test",
-	GIT_COMMITTER_NAME: "Test Operator",
-	GIT_COMMITTER_EMAIL: "operator@example.test",
-};
-const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", env: gitEnv }).trim();
-const sink = () => new Writable({ write: (_c, _e, cb) => cb() });
-
-async function buildStore() {
-	const root = freshDir("endo-coord-store-");
-	const repo = freshDir("endo-coord-repo-");
-	git(repo, ["init", "-q", "-b", "main"]);
-	writeFileSync(join(repo, "ok.mjs"), "process.exit(0);\n");
-	git(repo, ["add", "ok.mjs"]);
-	git(repo, ["commit", "-qm", "initial"]);
-	const tasks = new DevelopTasksStoreV0(root);
-	const attempts = new DevelopAttemptsStoreV0(root);
-	const proj = tasks.registerProject({ name: "Disk Demo", path: repo, observedGitRoot: repo });
-	if (!proj.ok) throw new Error(proj.code);
-	const added = tasks.createTask(proj.value.id, {
-		title: "Make ok.mjs succeed",
-		description: "",
-		acceptance: "exits 0",
-	});
-	if (!added.ok) throw new Error(added.code);
-	const prepared = new DevelopAttemptsServiceV0(tasks, attempts).prepare(proj.value.id, added.value.id, {
-		objective: "Keep it passing",
-	});
-	if (!prepared.ok) throw new Error(prepared.code);
-	const receipts = new DevelopReceiptsServiceV0(tasks, attempts, new DevelopReceiptsStoreV0(root), {
-		observe: (directory, opts) => new GitRevisionObserverV0().observe(directory, opts),
-		run: runCheckV0,
-		version: "0.1.0-test",
-	});
-	const plan = await receipts.plan(prepared.value.id, { argv: ["node", "ok.mjs"], cwd: repo });
-	if (!plan.ok) throw new Error(plan.code);
-	const ran = await receipts.run(plan.plan, { stdout: sink(), stderr: sink() });
-	if (ran.written !== "created" || ran.receipt.outcome !== "passed") throw new Error("check did not pass");
-	let rev = added.value.revision;
-	for (const to of ["in-progress", "review"] as const) {
-		const moved = tasks.setStatus(proj.value.id, added.value.id, rev, to, null);
-		if (!moved.ok) throw new Error(moved.code);
-		rev = moved.value.revision;
-	}
-	const events = createEndoDurableEventStoreV0(root);
-	const now = Date.now();
-	events.ingest(started("endo.session.pi.disk-0001", now - 60_000));
-	events.ingest(ev("lifecycle.run-started", "endo.session.pi.disk-0001", now - 30_000, { instance: "inst-1" }));
-	events.close();
-	return { root, repo, projectId: proj.value.id, taskId: added.value.id, revision: rev };
-}
+afterEach(cleanCoordinatorFixturesV0);
 
 describe("endo coordinator status on disk", () => {
 	it("prints a valid status and writes nothing: store and repository manifests (.git included) are identical", async () => {
-		const f = await buildStore();
+		const f = await buildCoordinatorStoreV0();
 		const before = { store: manifestOf(f.root), repo: manifestOf(f.repo) };
 		const run = spawnSync(
 			process.execPath,
@@ -684,7 +617,7 @@ describe("endo coordinator status on disk", () => {
 	});
 
 	it("negative control: the same manifests do see a write (an operator status move) — the proof above is not vacuous", async () => {
-		const f = await buildStore();
+		const f = await buildCoordinatorStoreV0();
 		const before = manifestOf(f.root);
 		const moved = spawnSync(
 			process.execPath,
@@ -714,7 +647,7 @@ describe("endo coordinator status on disk", () => {
 	});
 
 	it("refuses a bad --stale-after and an unknown flag without reading", () => {
-		const root = freshDir("endo-coord-empty-");
+		const root = coordinatorTempDirV0("endo-coord-empty-");
 		const bad = spawnSync(process.execPath, [CLI, "coordinator", "status", root, "--stale-after", "0"], {
 			encoding: "utf8",
 		});

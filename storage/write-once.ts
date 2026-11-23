@@ -19,6 +19,7 @@ import {
 	linkSync,
 	lstatSync,
 	mkdirSync,
+	opendirSync,
 	openSync,
 	readdirSync,
 	readSync,
@@ -31,6 +32,20 @@ import { writeExactSyncV0 } from "./log.ts";
 export const WRITE_ONCE_TEMPORARY_V0 = /^\.tmp-[0-9]+-[0-9a-f]{12}$/;
 
 export type WriteOnceReadProblemV0 = "unsafe-path" | "too-large" | "malformed" | "io";
+
+export function readDirectoryNamesAtMostV0(path: string, limit: number): string[] | null {
+	const dir = opendirSync(path, { bufferSize: 1 });
+	try {
+		const names: string[] = [];
+		for (let next = dir.readSync(); next !== null; next = dir.readSync()) {
+			if (names.length === limit) return null;
+			names.push(next.name);
+		}
+		return names.sort();
+	} finally {
+		dir.closeSync();
+	}
+}
 
 const errno = (error: unknown): string | undefined => (error as NodeJS.ErrnoException | undefined)?.code;
 
@@ -81,6 +96,7 @@ export function ensureDirectoriesSyncV0(dirs: readonly string[]): boolean {
 export function readBoundedJsonSyncV0(
 	path: string,
 	limit: number,
+	reserve?: (bytes: number) => boolean,
 ): { ok: true; value: unknown } | { ok: false; reason: WriteOnceReadProblemV0 } {
 	try {
 		const entry = lstatSync(path);
@@ -92,6 +108,7 @@ export function readBoundedJsonSyncV0(
 			const opened = fstatSync(fd);
 			if (!opened.isFile()) return { ok: false, reason: "unsafe-path" };
 			if (opened.size > limit) return { ok: false, reason: "too-large" };
+			if (reserve !== undefined && !reserve(opened.size)) return { ok: false, reason: "too-large" };
 			bytes = Buffer.alloc(opened.size);
 			let at = 0;
 			while (at < bytes.length) {

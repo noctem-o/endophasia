@@ -1,0 +1,95 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { readEndoCoordinatorStatusV0 } from "../adapters/develop/coordinator-status.ts";
+import { EndoCockpitCoordinatorV0 } from "../cockpit-http/coordinator.ts";
+import { EndoWorkspaceHostV0 } from "../cockpit-http/workspace-host.ts";
+import { validateEndoCoordinatorStatusV0 } from "../protocol/coordinator-status.ts";
+import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
+import { capabilityOf, send, serve, stopServers } from "./cockpit-http-fixtures.ts";
+import { buildCoordinatorStoreV0, cleanCoordinatorFixturesV0 } from "./coordinator-status-fixture.ts";
+import { haveGit } from "./git-fixtures.ts";
+
+afterEach(async () => {
+	vi.restoreAllMocks();
+	await stopServers();
+	cleanCoordinatorFixturesV0();
+});
+
+describe.skipIf(!haveGit)("paired Coordinator read", () => {
+	async function open() {
+		const { root, repo, projectId } = await buildCoordinatorStoreV0({
+			checkArgv: ["node", "ok.mjs", "fixture-private-arg"],
+		});
+		const tasks = new DevelopTasksStoreV0(root);
+		const service = new DevelopWorkspaceServiceV0(tasks);
+		const host = new EndoWorkspaceHostV0({
+			open: (facts) => service.forLaunch({ projectId, launchDirectory: repo }, facts),
+		});
+		const server = await serve(root, { workbench: host });
+		const base = `${capabilityOf(server)}/api/v0/workbench`;
+		const paired = await host.handle({
+			method: "POST",
+			route: ["pair"],
+			grant: null,
+			query: "",
+			body: { code: host.issuePairingCode().code },
+		});
+		const grant = (paired.body as { grant: string }).grant;
+		const get = (route: string) => send(server, `${base}/${route}`, { headers: { "X-Endo-Grant": grant } });
+		return { root, projectId, tasks, host, server, base, get };
+	}
+
+	it("keeps the existing workspace route response identical across a Coordinator read", async () => {
+		const { get, server, base, projectId } = await open();
+		expect((await send(server, `${base}/workspace/coordinator`)).status).toBe(401);
+		expect((await get("workspace/coordinator?project=other")).status).toBe(400);
+		const before = await get("workspace");
+		expect(before.status).toBe(200);
+		const result = await get("workspace/coordinator");
+		expect(result.status).toBe(200);
+		expect(result.body).not.toContain("fixture-private-arg");
+		const status = validateEndoCoordinatorStatusV0(JSON.parse(result.body));
+		expect(status.scope.requested).toEqual([projectId]);
+		expect(status.sessions).toEqual([]);
+		expect(status.unlistedSessions.unknownRelationship).toBe(1);
+		expect((await get("workspace")).body).toBe(before.body);
+	});
+
+	it("refuses data when the grant is lost between the read and the response", async () => {
+		const { get, host } = await open();
+		const read = EndoCockpitCoordinatorV0.prototype.read;
+		vi.spyOn(EndoCockpitCoordinatorV0.prototype, "read").mockImplementation(async function (
+			this: EndoCockpitCoordinatorV0,
+			...args
+		) {
+			const answer = await read.apply(this, args);
+			expect(answer.status).toBe(200);
+			host.revoke();
+			return answer;
+		});
+		const response = await get("workspace/coordinator");
+		expect([response.status, JSON.parse(response.body)]).toEqual([401, { error: "grant-required" }]);
+	});
+
+	it("reports incomplete receipt evidence with a gap when the read budget is exhausted", async () => {
+		const { root, projectId } = await open();
+		const status = validateEndoCoordinatorStatusV0(
+			await readEndoCoordinatorStatusV0({
+				root,
+				projects: [projectId],
+				budget: {
+					eventsBytes: 1,
+					attemptEntries: 16,
+					attemptBytes: 1024 * 1024,
+					receiptFiles: 16,
+					receiptBytes: 1,
+				},
+			}),
+		);
+		const task = status.projects[0]?.tasks[0];
+		expect(task?.verification).toMatchObject({ incomplete: true, freshness: { state: "incomplete" }, results: [] });
+		expect(task?.gaps.map(({ code }) => code)).toContain("receipts-skipped-at-limit");
+		expect(status.sources.events.state).toBe("unavailable");
+		expect(status.findings.map(({ code }) => code)).toContain("event-log-unavailable");
+	});
+});

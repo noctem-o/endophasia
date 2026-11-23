@@ -28,6 +28,7 @@ import {
 	EndoWorkspaceRoutesV0,
 	endoProjectRouteV0,
 } from "../runtime/contracts/workspace-routes.ts";
+import { EndoCockpitCoordinatorV0, type EndoCoordinatorHeadV0 } from "./coordinator.ts";
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const refuse = (status: number, error: string) => ({ status, body: { error } });
@@ -54,6 +55,7 @@ export class EndoWorkspaceHostV0 implements EndoCockpitWorkbenchV0 {
 	readonly #routes: EndoWorkspaceRoutesV0;
 	readonly #pairing: EndoPairingV0;
 	readonly #project: EndoProjectSourceV0 | undefined;
+	readonly #coordinator = new EndoCockpitCoordinatorV0();
 	#closed = false;
 
 	constructor(options: EndoWorkspaceHostOptionsV0) {
@@ -101,7 +103,10 @@ export class EndoWorkspaceHostV0 implements EndoCockpitWorkbenchV0 {
 		};
 	}
 
-	async handle(request: EndoCockpitWorkbenchRequestV0): Promise<{ status: number; body: unknown }> {
+	async handle(
+		request: EndoCockpitWorkbenchRequestV0,
+		coordinator?: { root: string; observe: EndoCoordinatorHeadV0 },
+	): Promise<{ status: number; body: unknown }> {
 		const [a, b] = request.route;
 		if (a === "status" && b === undefined && request.method === "GET" && request.query === "")
 			return { status: 200, body: this.#status() };
@@ -109,7 +114,21 @@ export class EndoWorkspaceHostV0 implements EndoCockpitWorkbenchV0 {
 			return this.#pairing.pair(isRecord(request.body) ? request.body.code : undefined);
 		if (!this.#pairing.granted(request.grant)) return refuse(401, "grant-required");
 		let answer: { status: number; body: unknown } | null = null;
-		if (a === "workspace")
+		if (a === "workspace" && b === "coordinator" && request.route.length === 2 && coordinator !== undefined) {
+			if (request.method !== "GET" || request.query !== "") return refuse(400, "bad-request");
+			const project = this.#routes.view().project;
+			if (project?.launch !== "same") return refuse(403, "forbidden");
+			answer = await this.#coordinator.read(coordinator.root, project, coordinator.observe);
+			if (!this.#pairing.granted(request.grant)) return refuse(401, "grant-required");
+			const current = this.#routes.view().project;
+			if (
+				current?.launch !== "same" ||
+				current.id !== project.id ||
+				current.path !== project.path ||
+				current.observedGitRoot !== project.observedGitRoot
+			)
+				return refuse(403, "forbidden");
+		} else if (a === "workspace")
 			answer = await this.#routes.route(request.route, request.method, request.query, request.body);
 		else if (a === "project")
 			answer = await endoProjectRouteV0(this.#project, request.route, request.method, request.query);

@@ -80,7 +80,7 @@ export function createEndoDurableEventStoreV0(
 	const readOnly = options.readOnly === true;
 	const eventsDir = `${root}/events`;
 	if (!readOnly) mkdirSync(eventsDir, { recursive: true });
-	const log = createEndoFrameLogV0(`${eventsDir}/events.log`, { readOnly });
+	const log = createEndoFrameLogV0(`${eventsDir}/events.log`, { ...options, readOnly });
 	const read = log.read();
 	const { frames } = read;
 

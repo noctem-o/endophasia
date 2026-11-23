@@ -86,7 +86,8 @@ export const ENDO_COORDINATOR_GAP_CODES_V0 = [
 	"receipts-skipped-at-limit",
 	"receipt-files-unusable",
 	"attempt-records-unusable",
-	"agent-report-unverified",
+	"report-recorded-unverified",
+	"earlier-failure-not-current",
 	"review-without-passing-check",
 	"completed-not-reverified",
 	"attention-unavailable",
@@ -102,7 +103,7 @@ export const ENDO_COORDINATOR_FINDING_CODES_V0 = [
 	"project-not-permitted-or-unknown",
 	"project-head-unavailable",
 	"status-contradicts-verification",
-	"agent-report-contradicts-verification",
+	"event-time-in-future",
 	"session-recorded-open-but-stale",
 	"session-lifecycle-anomalies",
 	"session-link-not-in-log",
@@ -233,7 +234,7 @@ export interface EndoCoordinatorSessionV0 {
 	freshness: EndoCoordinatorFreshnessV0;
 	firstEventAtMs: number;
 	lastEventAtMs: number;
-	openRun: null | { turns: number; basis: "agent-reported" };
+	openRun: null | { turns: number; basis: EndoCoordinatorBasisV0 };
 	lastRun: null | { outcome: EndoRunOutcomeV0; turns: number; basis: EndoCoordinatorBasisV0 };
 	activity: EndoCoordinatorActivityV0[];
 	moreActivity: number;
@@ -306,8 +307,12 @@ export interface EndoCoordinatorStatusV0 {
 	projects: EndoCoordinatorProjectV0[];
 	/** Sessions explicitly linked to a task in scope, plus (unscoped reads only) sessions with an unknown relationship. */
 	sessions: EndoCoordinatorSessionV0[];
-	/** Sessions in the log not listed above, counted only: unknown relationship in a scoped read, or linked only to tasks out of scope. */
-	unlistedSessions: { unknownRelationship: number; outOfScope: number; active: number };
+	/**
+	 * Sessions in the log not listed above, counted only. `unknownRelationship` / `unknownActive`: sessions no record links to any task
+	 * (a scoped read does not list them). `outOfScope`: sessions linked only to tasks of projects not asked for; their activity is not
+	 * reported, so a scoped read says nothing about another project's sessions beyond that count.
+	 */
+	unlistedSessions: { unknownRelationship: number; unknownActive: number; outOfScope: number };
 	attention: EndoCoordinatorAttentionV0[];
 	findings: EndoCoordinatorFindingV0[];
 	notEstablished: readonly string[];
@@ -335,119 +340,212 @@ const numOrNull = (v: unknown, what: string): void => {
 	if (v !== null) num(v, what);
 };
 
-function freshness(v: unknown, what: string): void {
+const ACTIVE_STATES = ["idle", "running"];
+
+/** Shape, and the arithmetic every freshness label rests on: observed no later than the read, and age = read - observed. */
+function freshness(v: unknown, what: string, readAtMs: number): Obj {
 	const f = obj(v, what);
-	oneOf(f.state, ENDO_COORDINATOR_FRESHNESS_V0, `${what}.state`);
+	const state = oneOf(f.state, ENDO_COORDINATOR_FRESHNESS_V0, `${what}.state`);
 	numOrNull(f.observedAtMs, `${what}.observedAtMs`);
 	numOrNull(f.ageMs, `${what}.ageMs`);
 	if (f.reason !== null) str(f.reason, `${what}.reason`);
+	if (f.observedAtMs === null) {
+		if (f.ageMs !== null) fail(`${what}.ageMs without observedAtMs`);
+		if (state === "fresh") fail(`${what} is fresh without an observation time`);
+		return f;
+	}
+	if ((f.observedAtMs as number) > readAtMs) fail(`${what} was observed after the read`);
+	if (f.ageMs !== readAtMs - (f.observedAtMs as number)) fail(`${what}.ageMs is not readAtMs - observedAtMs`);
+	if (state !== "fresh" && f.reason === null) fail(`${what} is ${state} without a reason`);
+	return f;
 }
 
-function link(v: unknown, what: string): void {
+function link(v: unknown, what: string): Obj {
 	const l = obj(v, what);
 	str(l.taskId, `${what}.taskId`);
 	str(l.sessionId, `${what}.sessionId`);
 	oneOf(l.via, ["operator-linked", "send-authorized"] as const, `${what}.via`);
 	oneOf(l.basis, ["operator-declared", "controller-observed"] as const, `${what}.basis`);
 	oneOf(l.inLog, ["yes", "no", "unknown", "not-applicable"] as const, `${what}.inLog`);
+	return l;
 }
 
+const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
+	a.length === b.length && [...a].sort().join("\u0000") === [...b].sort().join("\u0000");
+
 /**
- * Check that a value is a coordinator status of this version, with every closed vocabulary closed. A consumer (the OpenClaw plugin)
- * calls it on what the CLI printed before relaying anything, and refuses another version rather than guessing at its meaning.
+ * Check that a value is a coordinator status of this version, with every closed vocabulary closed, AND that its labels follow from
+ * what it states: freshness ages are recomputed from the read time, `active` and `fresh` are re-derived from the staleness window and
+ * the event log's completeness, verification states are checked against the results and HEAD they rest on, the returned scope is
+ * reconciled with the request, and an unavailable or partial source must carry its finding. A consumer (the OpenClaw plugin) calls it
+ * on what the CLI printed before relaying anything, and refuses another version rather than guessing at its meaning.
  */
 export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinatorStatusV0 {
 	const s = obj(value, "status");
 	if (s.schemaVersion !== ENDO_COORDINATOR_STATUS_SCHEMA_V0)
 		fail(`schemaVersion is not ${ENDO_COORDINATOR_STATUS_SCHEMA_V0}`);
-	num(s.readAtMs, "readAtMs");
-	num(s.staleAfterMs, "staleAfterMs");
+	const readAtMs = num(s.readAtMs, "readAtMs");
+	const staleAfterMs = num(s.staleAfterMs, "staleAfterMs");
+	if (
+		staleAfterMs < ENDO_COORDINATOR_LIMITS_V0.minStaleAfterMs ||
+		staleAfterMs > ENDO_COORDINATOR_LIMITS_V0.maxStaleAfterMs
+	)
+		fail("staleAfterMs is out of bounds");
 	const authority = obj(s.authority, "authority");
 	if (authority.kind !== "read-only-projection" || authority.grants !== "none" || authority.writes !== "none")
 		fail("authority is not a read-only projection that grants nothing");
-	const scope = obj(s.scope, "scope");
-	if (scope.requested !== null)
-		arr(scope.requested, "scope.requested").forEach((p, i) => {
-			str(p, `scope.requested[${i}]`);
-		});
-	arr(scope.projects, "scope.projects").forEach((p, i) => {
-		str(p, `scope.projects[${i}]`);
+
+	const findings = arr(s.findings, "findings").map((fv, fi) => {
+		const f = obj(fv, `findings[${fi}]`);
+		const code = oneOf(f.code, ENDO_COORDINATOR_FINDING_CODES_V0, `findings[${fi}].code`);
+		oneOf(f.severity, ENDO_COORDINATOR_SEVERITIES_V0, `findings[${fi}].severity`);
+		if (f.subject !== null) str(f.subject, `findings[${fi}].subject`);
+		return { code, subject: f.subject as string | null };
 	});
-	arr(scope.unknown, "scope.unknown").forEach((p, i) => {
-		str(p, `scope.unknown[${i}]`);
-	});
+	const hasFinding = (code: EndoCoordinatorFindingCodeV0, subject?: string) =>
+		findings.some((f) => f.code === code && (subject === undefined || f.subject === subject));
+
 	const sources = obj(s.sources, "sources");
+	const sourceState: Record<string, string> = {};
+	const sourceFinding: Record<string, Partial<Record<string, EndoCoordinatorFindingCodeV0>>> = {
+		tasks: { unavailable: "tasks-unavailable" },
+		attempts: { unavailable: "attempts-unavailable", partial: "attempt-records-unusable" },
+		events: { unavailable: "event-log-unavailable", partial: "event-log-incomplete" },
+	};
 	for (const key of ["tasks", "attempts", "events"] as const) {
 		const src = obj(sources[key], `sources.${key}`);
-		oneOf(src.state, ["ready", "partial", "missing", "unavailable"] as const, `sources.${key}.state`);
-		freshness(src.freshness, `sources.${key}.freshness`);
+		const state = oneOf(src.state, ["ready", "partial", "missing", "unavailable"] as const, `sources.${key}.state`);
+		const fr = freshness(src.freshness, `sources.${key}.freshness`, readAtMs);
+		const expected =
+			state === "ready" || state === "missing" ? "fresh" : state === "partial" ? "incomplete" : "unavailable";
+		if (fr.state !== expected) fail(`sources.${key} is ${state} but its freshness is ${String(fr.state)}`);
+		const needed = sourceFinding[key]?.[state];
+		if (needed !== undefined && !hasFinding(needed)) fail(`sources.${key} is ${state} without its ${needed} finding`);
+		sourceState[key] = state;
 	}
-	arr(s.projects, "projects").forEach((pv, pi) => {
+
+	const scope = obj(s.scope, "scope");
+	const requested =
+		scope.requested === null
+			? null
+			: arr(scope.requested, "scope.requested").map((p, i) => str(p, `scope.requested[${i}]`));
+	const scopeProjects = arr(scope.projects, "scope.projects").map((p, i) => str(p, `scope.projects[${i}]`));
+	const unknown = arr(scope.unknown, "scope.unknown").map((p, i) => str(p, `scope.unknown[${i}]`));
+	const projectValues = arr(s.projects, "projects");
+	const projectIds = projectValues.map((pv, pi) => str(obj(pv, `projects[${pi}]`).id, `projects[${pi}].id`));
+	if (!sameSet(projectIds, scopeProjects)) fail("projects do not match scope.projects");
+	if (requested !== null) {
+		if (!projectIds.every((id) => requested.includes(id))) fail("a project outside the requested scope is reported");
+		if (!unknown.every((id) => requested.includes(id))) fail("scope.unknown names a project that was not requested");
+		if (sourceState.tasks === "ready" && !sameSet([...new Set(requested)], [...projectIds, ...unknown]))
+			fail("the requested scope is neither reported nor declared unknown");
+	} else if (unknown.length > 0) fail("scope.unknown is set for an unscoped read");
+	for (const id of unknown)
+		if (!hasFinding("project-not-permitted-or-unknown", id)) fail(`unknown project ${id} has no finding`);
+	if (sourceState.tasks !== "ready" && projectIds.length > 0) fail("projects are reported without a usable task file");
+
+	const taskIds = new Set<string>();
+	projectValues.forEach((pv, pi) => {
 		const p = obj(pv, `projects[${pi}]`);
-		str(p.id, `projects[${pi}].id`);
-		freshness(p.freshness, `projects[${pi}].freshness`);
+		freshness(p.freshness, `projects[${pi}].freshness`, readAtMs);
+		const head = p.head === null ? null : obj(p.head, `projects[${pi}].head`);
 		arr(p.tasks, `projects[${pi}].tasks`).forEach((tv, ti) => {
 			const w = `projects[${pi}].tasks[${ti}]`;
 			const t = obj(tv, w);
-			str(t.taskId, `${w}.taskId`);
+			const taskId = str(t.taskId, `${w}.taskId`);
+			taskIds.add(taskId);
+			if (t.projectId !== p.id) fail(`${w} belongs to another project`);
 			const phase = oneOf(t.phase, ENDO_COORDINATOR_PHASES_V0, `${w}.phase`);
 			if (t.statusSource !== "operator-declared") fail(`${w}.statusSource is not operator-declared`);
 			const status = str(t.status, `${w}.status`);
 			if ((ENDO_COORDINATOR_PHASE_OF_STATUS_V0 as Record<string, string>)[status] !== phase)
 				fail(`${w}.phase does not follow the operator's status`);
+			const gaps = arr(t.gaps, `${w}.gaps`).map((gv, gi) =>
+				oneOf(obj(gv, `${w}.gaps[${gi}]`).code, ENDO_COORDINATOR_GAP_CODES_V0, `${w}.gaps[${gi}].code`),
+			);
 			const v = obj(t.verification, `${w}.verification`);
-			oneOf(v.state, ENDO_COORDINATOR_VERIFICATION_STATES_V0, `${w}.verification.state`);
-			freshness(v.freshness, `${w}.verification.freshness`);
-			arr(v.results, `${w}.verification.results`).forEach((rv, ri) => {
+			const vState = oneOf(v.state, ENDO_COORDINATOR_VERIFICATION_STATES_V0, `${w}.verification.state`);
+			const vFresh = freshness(v.freshness, `${w}.verification.freshness`, readAtMs);
+			const results = arr(v.results, `${w}.verification.results`).map((rv, ri) => {
 				const r = obj(rv, `${w}.verification.results[${ri}]`);
-				oneOf(r.freshness, ENDO_COORDINATOR_FRESHNESS_V0, `${w}.verification.results[${ri}].freshness`);
+				const fr = oneOf(r.freshness, ENDO_COORDINATOR_FRESHNESS_V0, `${w}.verification.results[${ri}].freshness`);
 				if (r.basis !== "controller-observed") fail(`${w}.verification.results[${ri}].basis`);
+				if ((fr === "fresh") !== (r.relation === "at-head"))
+					fail(`${w}.verification.results[${ri}] freshness does not follow its relation to HEAD`);
+				return { fresh: fr === "fresh", outcome: r.outcome };
 			});
-			arr(t.gaps, `${w}.gaps`).forEach((gv, gi) => {
-				oneOf(obj(gv, `${w}.gaps[${gi}]`).code, ENDO_COORDINATOR_GAP_CODES_V0, `${w}.gaps[${gi}].code`);
-			});
-			const links = arr(t.sessions, `${w}.sessions`);
-			links.forEach((lv, li) => {
-				link(lv, `${w}.sessions[${li}]`);
-			});
+			if (v.incomplete === true && vFresh.state === "fresh") fail(`${w}.verification is incomplete but fresh`);
+			if (status === "done") {
+				if (vState !== "not-read") fail(`${w} is completed but its verification is not marked not-read`);
+				if (!gaps.includes("completed-not-reverified")) fail(`${w} is completed without completed-not-reverified`);
+			}
+			const current = results.filter((r) => r.fresh);
+			if (vState === "failing" && !current.some((r) => r.outcome === "failed" || r.outcome === "mixed"))
+				fail(`${w} is failing without a failed check at the current HEAD`);
+			if (vState === "inconclusive" && !current.some((r) => r.outcome === "inconclusive"))
+				fail(`${w} is inconclusive without an inconclusive check at the current HEAD`);
+			if (vState === "passing-at-head") {
+				if (head === null || head.clean !== true) fail(`${w} passes at HEAD without a clean observed HEAD`);
+				if (results.length === 0 || !results.every((r) => r.fresh && r.outcome === "passed"))
+					fail(`${w} passes at HEAD while a listed check is not a current pass`);
+			}
+			if ((vState === "failing" || vState === "inconclusive") && head === null)
+				fail(`${w} is ${vState} at a HEAD that was not observed`);
+			if (vState === "not-current" && vFresh.state === "fresh") fail(`${w} is not-current but fresh`);
+			if (vState === "not-current" && !gaps.includes("checks-not-current"))
+				fail(`${w} is not-current without its gap`);
+			const links = arr(t.sessions, `${w}.sessions`).map((lv, li) => link(lv, `${w}.sessions[${li}]`));
+			if (links.some((l) => l.taskId !== taskId)) fail(`${w}.sessions names another task`);
 			const association = oneOf(t.association, ENDO_COORDINATOR_ASSOCIATIONS_V0, `${w}.association`);
 			if ((association === "explicit") !== links.length > 0) fail(`${w}.association does not match its links`);
 		});
 	});
-	arr(s.sessions, "sessions").forEach((sv, si) => {
+
+	const sessions = arr(s.sessions, "sessions");
+	if (sourceState.events === "unavailable" && sessions.length > 0) fail("sessions are reported without an event log");
+	sessions.forEach((sv, si) => {
 		const w = `sessions[${si}]`;
 		const x = obj(sv, w);
 		str(x.sessionId, `${w}.sessionId`);
 		const observation = oneOf(x.observation, ["active", "last-observed"] as const, `${w}.observation`);
-		oneOf(
+		const recorded = oneOf(
 			x.recordedState,
 			["not-observed", "idle", "running", "interrupted", "detached"] as const,
 			`${w}.recordedState`,
 		);
-		freshness(x.freshness, `${w}.freshness`);
-		if (observation === "active" && obj(x.freshness, `${w}.freshness`).state !== "fresh")
-			fail(`${w} is active without fresh evidence`);
+		const last = num(x.lastEventAtMs, `${w}.lastEventAtMs`);
+		const fr = freshness(x.freshness, `${w}.freshness`, readAtMs);
+		if (observation === "active") {
+			if (fr.state !== "fresh") fail(`${w} is active without fresh evidence`);
+			if (!ACTIVE_STATES.includes(recorded)) fail(`${w} is active but recorded ${recorded}`);
+		}
+		if (fr.state === "fresh" || fr.state === "stale") {
+			if (fr.observedAtMs !== last) fail(`${w}.freshness is not taken from its newest event`);
+			const stale = (fr.ageMs as number) > staleAfterMs;
+			if (fr.state === "fresh" && stale) fail(`${w} is fresh but older than the staleness window`);
+			if (fr.state === "stale" && !stale) fail(`${w} is stale but within the staleness window`);
+		}
+		if (fr.state === "fresh" && sourceState.events !== "ready")
+			fail(`${w} is fresh from an event log not read whole`);
 		arr(x.activity, `${w}.activity`).forEach((av, ai) => {
 			oneOf(obj(av, `${w}.activity[${ai}]`).basis, ENDO_COORDINATOR_BASES_V0, `${w}.activity[${ai}].basis`);
 		});
-		const links = arr(x.links, `${w}.links`);
-		links.forEach((lv, li) => {
-			link(lv, `${w}.links[${li}]`);
-		});
+		const links = arr(x.links, `${w}.links`).map((lv, li) => link(lv, `${w}.links[${li}]`));
+		if (links.some((l) => l.sessionId !== x.sessionId)) fail(`${w}.links names another session`);
+		if (links.some((l) => !taskIds.has(l.taskId as string)))
+			fail(`${w}.links names a task outside the reported scope`);
 		const association = oneOf(x.association, ENDO_COORDINATOR_ASSOCIATIONS_V0, `${w}.association`);
 		if ((association === "explicit") !== links.length > 0) fail(`${w}.association does not match its links`);
+		if (association === "unknown" && requested !== null)
+			fail(`${w}: a scoped read lists a session of unknown relationship`);
 	});
 	const unlisted = obj(s.unlistedSessions, "unlistedSessions");
-	num(unlisted.unknownRelationship, "unlistedSessions.unknownRelationship");
+	const unknownCount = num(unlisted.unknownRelationship, "unlistedSessions.unknownRelationship");
+	const unknownActive = num(unlisted.unknownActive, "unlistedSessions.unknownActive");
 	num(unlisted.outOfScope, "unlistedSessions.outOfScope");
-	num(unlisted.active, "unlistedSessions.active");
+	if (unknownActive > unknownCount) fail("more unknown sessions are active than exist");
 	arr(s.attention, "attention").forEach((av, ai) => {
 		str(obj(av, `attention[${ai}]`).text, `attention[${ai}].text`);
-	});
-	arr(s.findings, "findings").forEach((fv, fi) => {
-		const f = obj(fv, `findings[${fi}]`);
-		oneOf(f.code, ENDO_COORDINATOR_FINDING_CODES_V0, `findings[${fi}].code`);
-		oneOf(f.severity, ENDO_COORDINATOR_SEVERITIES_V0, `findings[${fi}].severity`);
 	});
 	arr(s.notEstablished, "notEstablished").forEach((n, i) => {
 		str(n, `notEstablished[${i}]`);

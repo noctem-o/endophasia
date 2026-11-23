@@ -62,7 +62,7 @@ function event(
 
 export const COORDINATOR_FIXTURE_SESSION_V0 = "endo.session.pi.disk-0001";
 
-export async function buildCoordinatorStoreV0() {
+export async function buildCoordinatorStoreV0(options: { checkArgv?: string[] } = {}) {
 	const root = coordinatorTempDirV0("endo-coord-store-");
 	const repo = coordinatorTempDirV0("endo-coord-repo-");
 	git(repo, ["init", "-q", "-b", "main"]);
@@ -88,7 +88,7 @@ export async function buildCoordinatorStoreV0() {
 		run: runCheckV0,
 		version: "0.1.0-test",
 	});
-	const plan = await receipts.plan(prepared.value.id, { argv: ["node", "ok.mjs"], cwd: repo });
+	const plan = await receipts.plan(prepared.value.id, { argv: options.checkArgv ?? ["node", "ok.mjs"], cwd: repo });
 	if (!plan.ok) throw new Error(plan.code);
 	const ran = await receipts.run(plan.plan, { stdout: sink(), stderr: sink() });
 	if (ran.written !== "created" || ran.receipt.outcome !== "passed") throw new Error("check did not pass");

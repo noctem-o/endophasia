@@ -24,7 +24,7 @@ import type { EndoDevelopTaskStatusV0 } from "../protocol/develop-tasks.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import {
 	type EndoCoordinatorInputsV0,
-	endoCoordinatorBasisOfKindV0,
+	endoCoordinatorBasisResolverV0,
 	endoCoordinatorStatusV0,
 	renderEndoCoordinatorStatusV0,
 } from "../runtime/contracts/coordinator-status.ts";
@@ -104,7 +104,13 @@ function attemptEntry(id: string, taskId: string, outcome: "reported" | "abandon
 }
 
 let seq = 0;
-function ev(kind: string, sessionId: string, atMs: number, payload: Record<string, unknown> = {}): EndoEventV0 {
+function ev(
+	kind: string,
+	sessionId: string,
+	atMs: number,
+	payload: Record<string, unknown> = {},
+	derivedFrom: string[] = [],
+): EndoEventV0 {
 	seq += 1;
 	return {
 		schemaVersion: "endo.event.v0",
@@ -115,18 +121,37 @@ function ev(kind: string, sessionId: string, atMs: number, payload: Record<strin
 		at: new Date(atMs).toISOString(),
 		coordinates: { sessionId },
 		producer: "endo.test",
-		derivedFrom: [],
+		derivedFrom,
 		payload: payload as never,
 	};
 }
 
-const started = (sessionId: string, atMs: number) =>
-	ev("lifecycle.session-started", sessionId, atMs, {
-		runtime: "pi",
-		runtimeSessionId: sessionId.split(".").at(-1),
-		instance: "inst-1",
-		unavailable: [],
-	});
+const started = (sessionId: string, atMs: number, derivedFrom: string[] = []) =>
+	ev(
+		"lifecycle.session-started",
+		sessionId,
+		atMs,
+		{
+			runtime: "pi",
+			runtimeSessionId: sessionId.split(".").at(-1),
+			instance: "inst-1",
+			unavailable: [],
+		},
+		derivedFrom,
+	);
+
+/** A Pi-shaped live session: the controller saw the attachment, the runtime reported agent_start, then a turn. */
+function liveSession(sessionId: string, atMs: number): EndoEventV0[] {
+	const attached = ev("harness.attached", sessionId, atMs - 6_000);
+	const agentStart = ev("agent.agent-start", sessionId, atMs + MIN - 6_000);
+	return [
+		attached,
+		started(sessionId, atMs, [attached.id]),
+		agentStart,
+		ev("lifecycle.run-started", sessionId, atMs + MIN, { instance: "inst-1" }, [agentStart.id]),
+		ev("agent.turn-started", sessionId, atMs + 2 * MIN),
+	];
+}
 
 function planned(
 	attemptId: string,
@@ -220,14 +245,7 @@ function baseline(over: Partial<EndoCoordinatorInputsV0> = {}): EndoCoordinatorI
 			problems: [],
 			authorizedProposalIds: [],
 		} as never,
-		events: {
-			state: "complete",
-			events: [
-				started(S_LIVE, NOW - 4 * MIN),
-				ev("lifecycle.run-started", S_LIVE, NOW - 3 * MIN, { instance: "inst-1" }),
-				ev("agent.turn-started", S_LIVE, NOW - 2 * MIN),
-			],
-		},
+		events: { state: "complete", events: liveSession(S_LIVE, NOW - 4 * MIN) },
 		attention: new Map([
 			[
 				P,
@@ -291,11 +309,13 @@ describe("coordinator status projection", () => {
 		expect(live.openRun).toEqual({ turns: 0, basis: "agent-reported" });
 		const basisOf = Object.fromEntries(live.activity.map((a) => [a.kind, a.basis]));
 		expect(basisOf).toEqual({
-			"agent.turn-started": "agent-reported",
-			"lifecycle.run-started": "agent-reported",
+			"harness.attached": "controller-observed",
 			"lifecycle.session-started": "controller-observed",
+			"agent.agent-start": "agent-reported",
+			"lifecycle.run-started": "agent-reported",
+			"agent.turn-started": "agent-reported",
 		});
-		expect(live.counts).toMatchObject({ events: 3, agentReported: 2, controllerObserved: 1 });
+		expect(live.counts).toMatchObject({ events: 5, agentReported: 3, controllerObserved: 2 });
 		expect(s.attention.map((a) => a.kind)).toEqual(["awaiting-your-review"]);
 		expect(s.findings).toEqual([]);
 		expect(renderEndoCoordinatorStatusV0(s)).toContain("[active] endo.session.pi.live-0001");
@@ -339,11 +359,11 @@ describe("coordinator status projection", () => {
 		expect(review.gaps.map((g) => g.code)).toEqual([
 			"checks-not-current",
 			"no-check-at-current-head",
-			"agent-report-unverified",
+			"report-recorded-unverified",
 			"review-without-passing-check",
 		]);
-		// A stale pass and a reported result are not a contradiction, only unverified.
-		expect(codes(s)).not.toContain("agent-report-contradicts-verification");
+		// A stale pass and a recorded report are not a contradiction, only unverified.
+		expect(s.findings.filter((f) => f.severity === "contradiction")).toEqual([]);
 		expect(s.attention.map((a) => a.kind)).toContain("evidence-stale");
 	});
 
@@ -386,7 +406,7 @@ describe("coordinator status projection", () => {
 		expect(codes(s)).toEqual(expect.arrayContaining(["event-log-incomplete", "attempt-records-unusable"]));
 	});
 
-	it("contradictory: review and a reported result against a failing check, lifecycle anomalies, a link the log never saw", () => {
+	it("contradictory: review against a failing check, lifecycle anomalies, a link the log never saw", () => {
 		const b = baseline();
 		const s = endoCoordinatorStatusV0({
 			...b,
@@ -421,9 +441,10 @@ describe("coordinator status projection", () => {
 		expect(taskOf(s, T_REVIEW).verification.state).toBe("failing");
 		expect(s.findings.filter((f) => f.severity === "contradiction").map((f) => f.code)).toEqual([
 			"status-contradicts-verification",
-			"agent-report-contradicts-verification",
 			"session-lifecycle-anomalies",
 		]);
+		// A recorded report plus a failing check is not a contradiction: the report record does not say what result was claimed.
+		expect(taskOf(s, T_REVIEW).gaps.map((g) => g.code)).toContain("report-recorded-unverified");
 		expect(s.findings.find((f) => f.code === "session-link-not-in-log")).toMatchObject({
 			severity: "integrity",
 			subject: T_REVIEW,
@@ -505,7 +526,8 @@ describe("coordinator status projection", () => {
 		expect(JSON.stringify(s)).not.toContain(T_OTHER);
 		expect(JSON.stringify(s)).not.toContain(S_OTHER);
 		expect(s.sessions).toEqual([]);
-		expect(s.unlistedSessions).toEqual({ unknownRelationship: 2, outOfScope: 1, active: 2 });
+		// The out-of-scope session is counted but its activity is not reported; only unknown sessions carry an active count.
+		expect(s.unlistedSessions).toEqual({ unknownRelationship: 2, unknownActive: 1, outOfScope: 1 });
 		expect(codes(s)).toContain("project-not-permitted-or-unknown");
 	});
 
@@ -550,21 +572,49 @@ describe("coordinator status projection", () => {
 		expect(taskOf(s, T_REVIEW).attempts.latest).toMatchObject({ id: A_REVIEW, sendAuthorized: true });
 	});
 
-	it("classifies who said what by event kind, and never promotes an unknown kind", () => {
-		expect(endoCoordinatorBasisOfKindV0("harness.process-exited")).toBe("controller-observed");
-		expect(endoCoordinatorBasisOfKindV0("workbench.prompt-dispatched")).toBe("controller-observed");
-		expect(endoCoordinatorBasisOfKindV0("lifecycle.interrupted")).toBe("controller-observed");
-		expect(endoCoordinatorBasisOfKindV0("lifecycle.run-completed")).toBe("agent-reported");
-		expect(endoCoordinatorBasisOfKindV0("tool.finished")).toBe("agent-reported");
-		expect(endoCoordinatorBasisOfKindV0("lifecycle.anomaly")).toBe("unclassified");
-		expect(endoCoordinatorBasisOfKindV0("mystery.kind")).toBe("unclassified");
+	it("derives who said what from the evidence an event rests on, not from its kind name", () => {
+		const sid = "endo.session.acp.basis";
+		// ACP v1: the run start is derived from the controller's own prompt request.
+		const requested = ev("control.requested", sid, NOW - 5 * MIN, { capability: "session.prompt" });
+		const acpRun = ev("lifecycle.run-started", sid, NOW - 5 * MIN, { instance: "x" }, [requested.id]);
+		// Pi: the same kind derived from the runtime's own agent_start.
+		const agentStart = ev("agent.agent-start", sid, NOW - 4 * MIN);
+		const piRun = ev("lifecycle.run-started", sid, NOW - 4 * MIN, { instance: "y" }, [agentStart.id]);
+		const orphan = ev("lifecycle.run-completed", sid, NOW - 3 * MIN, {}, ["endo.event.not-in-this-log"]);
+		const bare = ev("lifecycle.interrupted", sid, NOW - 3 * MIN);
+		const mixed = ev("lifecycle.stop-accepted", sid, NOW - 2 * MIN, {}, [requested.id, agentStart.id]);
+		const hypothesis = { ...ev("harness.guess", sid, NOW - 2 * MIN), source: "hypothesis" as const };
+		const loopA = ev("lifecycle.run-aborted", sid, NOW - MIN, {}, ["endo.event.loop-b"]);
+		const loopB = { ...ev("lifecycle.run-aborted", sid, NOW - MIN, {}, [loopA.id]), id: "endo.event.loop-b" };
+		const all = [requested, acpRun, agentStart, piRun, orphan, bare, mixed, hypothesis, loopA, loopB];
+		const basis = endoCoordinatorBasisResolverV0(all);
+		expect(basis(requested)).toBe("controller-observed");
+		expect(basis(acpRun)).toBe("controller-observed");
+		expect(basis(agentStart)).toBe("agent-reported");
+		expect(basis(piRun)).toBe("agent-reported");
+		expect(basis(mixed)).toBe("agent-reported");
+		expect(basis(orphan)).toBe("unclassified");
+		expect(basis(bare)).toBe("unclassified");
+		expect(basis(hypothesis)).toBe("unclassified");
+		expect(basis(loopA)).toBe("unclassified");
+
+		const s = endoCoordinatorStatusV0({
+			...baseline(),
+			events: { state: "complete", events: [ev("harness.attached", sid, NOW - 6 * MIN), requested, acpRun] },
+		});
+		const session = s.sessions.find((x) => x.sessionId === sid)!;
+		expect(session.openRun).toEqual({ turns: 0, basis: "controller-observed" });
 	});
 
 	it("the validator refuses what would mislead: active without fresh evidence, a phase not the operator's, another version", () => {
 		const good = endoCoordinatorStatusV0(baseline());
 		const clone = () => JSON.parse(JSON.stringify(good)) as EndoCoordinatorStatusV0;
 		const staleActive = clone();
-		staleActive.sessions[0]!.freshness.state = "stale";
+		staleActive.sessions[0]!.freshness = {
+			...staleActive.sessions[0]!.freshness,
+			state: "stale",
+			reason: "doctored",
+		};
 		expect(() => validateEndoCoordinatorStatusV0(staleActive)).toThrow(/active without fresh evidence/);
 		const inferredPhase = clone();
 		inferredPhase.projects[0]!.tasks[0]!.phase = "completed";
@@ -577,6 +627,206 @@ describe("coordinator status projection", () => {
 		const granting = clone() as unknown as { authority: { grants: string } };
 		granting.authority.grants = "terminal";
 		expect(() => validateEndoCoordinatorStatusV0(granting)).toThrow(/grants nothing/);
+	});
+});
+
+describe("coordinator status: review findings (ENDO-28 review)", () => {
+	const failedElsewhere = (state: "stale" | "tree-changed" = "stale") => planned(A_REVIEW, state, "failed");
+
+	it("a failure at an earlier HEAD is history, never a current failure; current state comes from checks at the current HEAD", () => {
+		for (const extra of [{}, { unreadable: 1 }]) {
+			const s = endoCoordinatorStatusV0({
+				...baseline(),
+				attention: new Map([
+					[
+						P,
+						{
+							observedAtMs: NOW,
+							view: view([
+								attentionTask(T_REVIEW, [failedElsewhere()], {
+									...extra,
+									checks: [
+										{
+											command: "node check.mjs",
+											outcome: "failed",
+											relation: "head-differs",
+											attemptId: A_REVIEW,
+											receiptId: "endo.receipt.2",
+											commit: "d".repeat(40),
+											startedAtMs: NOW - 20 * MIN,
+										},
+									] as never,
+								}),
+							]),
+						},
+					],
+				]),
+			});
+			validateEndoCoordinatorStatusV0(s);
+			const v = taskOf(s, T_REVIEW).verification;
+			expect(v.state).toBe("not-current");
+			expect(v.freshness.state).toBe(Object.keys(extra).length > 0 ? "incomplete" : "stale");
+			expect(v.results.every((r) => r.freshness === "stale")).toBe(true);
+			expect(taskOf(s, T_REVIEW).gaps.map((g) => g.code)).toEqual(
+				expect.arrayContaining(["earlier-failure-not-current", "checks-not-current", "no-check-at-current-head"]),
+			);
+			expect(s.attention.map((a) => a.kind)).not.toContain("verification-failing");
+			expect(codes(s)).not.toContain("status-contradicts-verification");
+		}
+		// A current pass outranks an older failure, and the older failure stays visible as history.
+		const mixedHistory = endoCoordinatorStatusV0({
+			...baseline(),
+			attention: new Map([
+				[
+					P,
+					{
+						observedAtMs: NOW,
+						view: view([attentionTask(T_REVIEW, [failedElsewhere(), planned(A_REVIEW, "passed")])]),
+					},
+				],
+			]),
+		});
+		validateEndoCoordinatorStatusV0(mixedHistory);
+		const m = taskOf(mixedHistory, T_REVIEW);
+		expect(m.verification.results[0]).toMatchObject({ relation: "at-head", outcome: "passed" });
+		expect(m.verification.state).toBe("not-current");
+		expect(m.gaps.map((g) => g.code)).toContain("earlier-failure-not-current");
+	});
+
+	it("a timestamp after the read never makes a session active or fresh", () => {
+		const sid = "endo.session.pi.future";
+		const s = endoCoordinatorStatusV0({
+			...baseline(),
+			staleAfterMs: 1000,
+			events: { state: "complete", events: [started(sid, NOW + 24 * 60 * MIN)] },
+		});
+		validateEndoCoordinatorStatusV0(s);
+		const x = s.sessions.find((y) => y.sessionId === sid)!;
+		expect(x.observation).toBe("last-observed");
+		expect(x.freshness.state).toBe("incomplete");
+		expect(x.lastEventAtMs).toBeLessThanOrEqual(NOW);
+		expect(codes(s)).toContain("event-time-in-future");
+	});
+
+	it("the validator recomputes the premises of every label instead of trusting them (doctored snapshots)", () => {
+		const good = endoCoordinatorStatusV0({ ...baseline(), requested: [P] });
+		validateEndoCoordinatorStatusV0(good);
+		const doctor = (edit: (s: EndoCoordinatorStatusV0) => void) => {
+			const c = JSON.parse(JSON.stringify(good)) as EndoCoordinatorStatusV0;
+			edit(c);
+			return () => validateEndoCoordinatorStatusV0(c);
+		};
+		const live = (s: EndoCoordinatorStatusV0) => s.sessions.find((x) => x.sessionId === S_LIVE)!;
+		expect(
+			doctor((s) => {
+				live(s).recordedState = "detached";
+			}),
+		).toThrow(/active but recorded detached/);
+		expect(
+			doctor((s) => {
+				const x = live(s);
+				x.lastEventAtMs = NOW - 20 * MIN;
+				x.freshness = { ...x.freshness, observedAtMs: NOW - 20 * MIN, ageMs: 20 * MIN };
+			}),
+		).toThrow(/fresh but older than the staleness window/);
+		expect(
+			doctor((s) => {
+				live(s).freshness.ageMs = 0;
+			}),
+		).toThrow(/ageMs is not readAtMs - observedAtMs/);
+		expect(
+			doctor((s) => {
+				live(s).lastEventAtMs = NOW + 1;
+				live(s).freshness = { ...live(s).freshness, observedAtMs: NOW + 1, ageMs: -1 };
+			}),
+		).toThrow(/observed after the read/);
+		expect(
+			doctor((s) => {
+				s.sources.events.state = "partial";
+			}),
+		).toThrow(/partial but its freshness is fresh/);
+		expect(
+			doctor((s) => {
+				s.sources.events = {
+					state: "partial",
+					freshness: { state: "incomplete", observedAtMs: NOW, ageMs: 0, reason: "doctored" },
+					detail: null,
+				};
+			}),
+		).toThrow(/without its event-log-incomplete finding/);
+		expect(
+			doctor((s) => {
+				s.scope.projects = [];
+			}),
+		).toThrow(/projects do not match scope.projects/);
+		expect(
+			doctor((s) => {
+				s.scope.projects = [];
+				s.projects = [];
+				s.sessions = [];
+			}),
+		).toThrow(/neither reported nor declared unknown/);
+		expect(
+			doctor((s) => {
+				s.scope.requested = [Q];
+			}),
+		).toThrow(/outside the requested scope/);
+		expect(
+			doctor((s) => {
+				const done = taskOf(s, T_DONE);
+				done.gaps = [];
+			}),
+		).toThrow(/completed without completed-not-reverified/);
+		expect(
+			doctor((s) => {
+				const review = taskOf(s, T_REVIEW);
+				review.verification.state = "failing";
+			}),
+		).toThrow(/failing without a failed check at the current HEAD/);
+		expect(
+			doctor((s) => {
+				s.projects[0]!.head = { commit: HEAD, clean: false };
+			}),
+		).toThrow(/passes at HEAD without a clean observed HEAD/);
+
+		const stale = endoCoordinatorStatusV0({
+			...baseline(),
+			attention: new Map([
+				[P, { observedAtMs: NOW, view: view([attentionTask(T_REVIEW, [planned(A_REVIEW, "stale")])]) }],
+			]),
+		});
+		validateEndoCoordinatorStatusV0(stale);
+		const cleared = JSON.parse(JSON.stringify(stale)) as EndoCoordinatorStatusV0;
+		taskOf(cleared, T_REVIEW).gaps = [];
+		expect(() => validateEndoCoordinatorStatusV0(cleared)).toThrow(/not-current without its gap/);
+		const relabelled = JSON.parse(JSON.stringify(stale)) as EndoCoordinatorStatusV0;
+		taskOf(relabelled, T_REVIEW).verification.results[0]!.freshness = "fresh";
+		expect(() => validateEndoCoordinatorStatusV0(relabelled)).toThrow(/freshness does not follow its relation/);
+	});
+
+	it("a recorded report that a check fails, and a failing check, is not a contradiction", () => {
+		const s = endoCoordinatorStatusV0({
+			...baseline(),
+			attempts: {
+				ok: true,
+				entries: [
+					{
+						...attemptEntry(A_WORK, T_WORK, "reported"),
+						outcome: { kind: "reported", recordedAtMs: NOW - 5 * MIN, note: "The synthetic check fails" },
+					},
+				],
+				problems: [],
+				authorizedProposalIds: [],
+			} as never,
+			attention: new Map([
+				[P, { observedAtMs: NOW, view: view([attentionTask(T_WORK, [planned(A_WORK, "failed", "failed")])]) }],
+			]),
+		});
+		validateEndoCoordinatorStatusV0(s);
+		expect(taskOf(s, T_WORK).verification.state).toBe("failing");
+		expect(s.findings.filter((f) => f.severity === "contradiction")).toEqual([]);
+		expect(taskOf(s, T_WORK).attempts.latest).toMatchObject({ state: "reported", stateBasis: "operator-declared" });
+		expect(taskOf(s, T_WORK).gaps.map((g) => g.code)).toContain("report-recorded-unverified");
 	});
 });
 
@@ -605,7 +855,7 @@ describe("endo coordinator status on disk", () => {
 		expect(t).toMatchObject({ taskId: f.taskId, phase: "awaiting-review", association: "unknown" });
 		expect(t.verification.state).toBe("passing-at-head");
 		expect(status.sessions).toEqual([]);
-		expect(status.unlistedSessions).toEqual({ unknownRelationship: 1, outOfScope: 0, active: 1 });
+		expect(status.unlistedSessions).toEqual({ unknownRelationship: 1, unknownActive: 1, outOfScope: 0 });
 		expect(run.stderr).toContain("coordinator status endo.coordinator-status.v0");
 
 		const all = spawnSync(process.execPath, [CLI, "coordinator", "status", f.root, "--quiet"], { encoding: "utf8" });

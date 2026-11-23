@@ -29,11 +29,10 @@ import {
 	type EndoCoordinatorVerificationStateV0,
 } from "../../protocol/coordinator-status.ts";
 import { endoDevelopAttemptStateV0 } from "../../protocol/develop-attempts.ts";
-import {
-	type EndoDevelopAttentionPlannedV1,
-	type EndoDevelopAttentionTaskV0,
-	type EndoDevelopAttentionViewV0,
-	endoPlannedTriageV1,
+import type {
+	EndoDevelopAttentionPlannedV1,
+	EndoDevelopAttentionTaskV0,
+	EndoDevelopAttentionViewV0,
 } from "../../protocol/develop-attention.ts";
 import type { EndoReceiptRelationV0 } from "../../protocol/develop-receipts.ts";
 import type { EndoEventV0 } from "../../protocol/event.ts";
@@ -78,31 +77,51 @@ const notFresh = (
 });
 
 /**
- * Who says so, by event kind. `harness.*`, `workbench.*` and `control.*` are written by Endophasia's controller from what it did or saw;
- * the Pi runtime's own events (`agent.*`, `tool.*`, `message.*`, ...) are the agent's report. Lifecycle interpretations inherit the basis of
- * what they derive from: an attachment, an operator's stop request, an interruption and a process exit are controller-observed; runs, turns,
- * stop acknowledgements and compactions are the runtime's report. Anything else is `unclassified`, never promoted.
+ * Who says so, derived from the evidence rather than from an event's name. A directly recorded fact (no `derivedFrom`) is classified by
+ * the recording namespace it was written under: `harness.*`, `workbench.*` and `control.*` are what Endophasia's controller did or saw;
+ * everything else a recording relays (`agent.*`, `tool.*`, `message.*`, `session.*`, ...) is the agent runtime's report. An
+ * interpretation (`lifecycle.*` and any other derived event) inherits the basis of the recorded events it says it derives from: all
+ * controller-observed parents make it controller-observed (ACP v1's run start is derived from the controller's own prompt request), any
+ * agent-reported parent makes it agent-reported (Pi's run start is derived from the runtime's own agent_start), and a parent that is
+ * not in the log, a cycle, or an event of another source class leaves it `unclassified`, never promoted.
  */
-const CONTROLLER_LIFECYCLE = new Set([
-	"lifecycle.session-started",
-	"lifecycle.session-resumed",
-	"lifecycle.stop-requested",
-	"lifecycle.interrupted",
-	"lifecycle.detached",
-]);
-const AGENT_PREFIXES = ["agent.", "tool.", "message.", "session.", "retry.", "compaction.", "extension."];
-const CONTROLLER_PREFIXES = ["harness.", "workbench.", "control."];
+const CONTROLLER_NAMESPACES = ["harness.", "workbench.", "control."];
 
-export function endoCoordinatorBasisOfKindV0(kind: string): EndoCoordinatorBasisV0 {
-	if (kind.startsWith("lifecycle.")) {
-		if (CONTROLLER_LIFECYCLE.has(kind)) return "controller-observed";
-		return kind === "lifecycle.anomaly" || kind === "lifecycle.unrecognized-runtime-event"
-			? "unclassified"
-			: "agent-reported";
-	}
-	if (CONTROLLER_PREFIXES.some((p) => kind.startsWith(p))) return "controller-observed";
-	if (AGENT_PREFIXES.some((p) => kind.startsWith(p))) return "agent-reported";
-	return "unclassified";
+export function endoCoordinatorBasisResolverV0(
+	events: readonly EndoEventV0[],
+): (event: EndoEventV0) => EndoCoordinatorBasisV0 {
+	const byId = new Map(events.map((e) => [e.id, e] as const));
+	const memo = new Map<string, EndoCoordinatorBasisV0>();
+	const resolve = (event: EndoEventV0, seen: Set<string>): EndoCoordinatorBasisV0 => {
+		const known = memo.get(event.id);
+		if (known !== undefined) return known;
+		let basis: EndoCoordinatorBasisV0;
+		if (seen.has(event.id)) return "unclassified";
+		if (event.derivedFrom.length === 0)
+			basis =
+				event.source !== "runtime-fact"
+					? "unclassified"
+					: CONTROLLER_NAMESPACES.some((p) => event.kind.startsWith(p))
+						? "controller-observed"
+						: "agent-reported";
+		else if (event.source !== "interpretation") basis = "unclassified";
+		else {
+			const parents = event.derivedFrom.map((id) => byId.get(id));
+			if (parents.some((p) => p === undefined)) basis = "unclassified";
+			else {
+				const next = new Set(seen).add(event.id);
+				const bases = (parents as EndoEventV0[]).map((p) => resolve(p, next));
+				basis = bases.includes("unclassified")
+					? "unclassified"
+					: bases.includes("agent-reported")
+						? "agent-reported"
+						: "controller-observed";
+			}
+		}
+		memo.set(event.id, basis);
+		return basis;
+	};
+	return (event) => resolve(event, new Set());
 }
 
 const PLANNED_RELATION: Record<EndoDevelopAttentionPlannedV1["state"], EndoReceiptRelationV0 | null> = {
@@ -126,13 +145,26 @@ const relationFreshness = (relation: EndoReceiptRelationV0 | null): EndoCoordina
 				? "unavailable"
 				: "stale";
 
-type Triage = "failed" | "inconclusive" | "unsettled" | "passed";
+/**
+ * One check's latest result, and whether it speaks about the current HEAD. Only results at the current HEAD decide the current state;
+ * a failure at an earlier commit, in a changed tree or another worktree is history, reported as such and never as a current failure.
+ */
+interface ReadResult {
+	result: EndoCoordinatorResultV0;
+	current: boolean;
+	severity: number;
+}
 
-function resultsOf(
-	task: EndoDevelopAttentionTaskV0,
-	headClean: boolean,
-): { result: EndoCoordinatorResultV0; triage: Triage }[] {
-	const planned = task.planned.map((p) => {
+const SEVERITY: Record<EndoCoordinatorResultV0["outcome"], number> = {
+	failed: 0,
+	mixed: 0,
+	inconclusive: 1,
+	"not-run": 2,
+	passed: 3,
+};
+
+function resultsOf(task: EndoDevelopAttentionTaskV0): ReadResult[] {
+	const planned = task.planned.map((p): EndoCoordinatorResultV0 => {
 		const relation = PLANNED_RELATION[p.state];
 		const outcome: EndoCoordinatorResultV0["outcome"] =
 			p.state === "passed" ||
@@ -143,25 +175,22 @@ function resultsOf(
 				? p.state
 				: (p.receipt?.outcome ?? "not-run");
 		return {
-			result: {
-				command: p.command,
-				reading: "planned" as const,
-				outcome,
-				relation,
-				freshness: relationFreshness(relation),
-				attemptId: p.attemptId,
-				receiptId: p.receipt?.receiptId ?? null,
-				commit: p.receipt?.commit ?? null,
-				startedAtMs: p.receipt?.startedAtMs ?? null,
-				basis: "controller-observed" as const,
-			},
-			triage: endoPlannedTriageV1(p),
+			command: p.command,
+			reading: "planned",
+			outcome,
+			relation,
+			freshness: relationFreshness(relation),
+			attemptId: p.attemptId,
+			receiptId: p.receipt?.receiptId ?? null,
+			commit: p.receipt?.commit ?? null,
+			startedAtMs: p.receipt?.startedAtMs ?? null,
+			basis: "controller-observed",
 		};
 	});
-	const unplanned = task.checks.map((c) => ({
-		result: {
+	const unplanned = task.checks.map(
+		(c): EndoCoordinatorResultV0 => ({
 			command: c.command,
-			reading: "unplanned" as const,
+			reading: "unplanned",
 			outcome: c.outcome,
 			relation: c.relation,
 			freshness: relationFreshness(c.relation),
@@ -169,19 +198,23 @@ function resultsOf(
 			receiptId: c.receiptId,
 			commit: c.commit,
 			startedAtMs: c.startedAtMs,
-			basis: "controller-observed" as const,
-		},
-		triage: (c.outcome === "failed"
-			? "failed"
-			: c.outcome === "inconclusive"
-				? "inconclusive"
-				: c.relation === "at-head" && headClean
-					? "passed"
-					: "unsettled") as Triage,
-	}));
-	const rank: Record<Triage, number> = { failed: 0, inconclusive: 1, unsettled: 2, passed: 3 };
-	return [...planned, ...unplanned].sort((a, b) => rank[a.triage] - rank[b.triage]);
+			basis: "controller-observed",
+		}),
+	);
+	return [...planned, ...unplanned]
+		.map((result) => ({ result, current: result.relation === "at-head", severity: SEVERITY[result.outcome] }))
+		.sort((a, b) => Number(b.current) - Number(a.current) || a.severity - b.severity);
 }
+
+const RUN_START: ReadonlySet<string> = new Set(["lifecycle.run-started"]);
+const RUN_END: ReadonlySet<string> = new Set([
+	"lifecycle.run-completed",
+	"lifecycle.run-failed",
+	"lifecycle.run-aborted",
+	"lifecycle.run-unclassified",
+	"lifecycle.interrupted",
+	"lifecycle.detached",
+]);
 
 const PHASE_ORDER: Record<EndoCoordinatorPhaseV0, number> = {
 	"awaiting-review": 0,
@@ -437,36 +470,44 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					};
 					gaps.push({ code: "attention-unavailable", text: "Its verification records could not be read." });
 				} else {
-					const all = resultsOf(tv, head?.clean === true);
+					const all = resultsOf(tv);
 					const moreNotPassing = tv.more.notPassing + tv.morePlanned.notPassing;
 					const moreNotCurrent = tv.more.notCurrent + tv.morePlanned.notCurrent;
 					const moreAll = tv.more.commands + tv.morePlanned.checks;
 					const incomplete = tv.unreadable + tv.skipped + tv.problems + tv.records > 0 || view?.truncated === true;
-					const triages = all.map((r) => r.triage);
+					const current = head === null ? [] : all.filter((r) => r.current);
+					const historicalFailure = all.some((r) => !r.current && r.severity === 0);
 					const ran = all.filter((r) => r.result.outcome !== "not-run");
 					const state: EndoCoordinatorVerificationStateV0 =
-						head === null && all.length > 0
-							? triages.includes("failed")
-								? "failing"
+						head === null
+							? all.length + moreAll === 0
+								? "no-checks"
 								: "unavailable"
-							: triages.includes("failed")
+							: current.some((r) => r.severity === 0)
 								? "failing"
-								: triages.includes("inconclusive")
+								: current.some((r) => r.severity === 1)
 									? "inconclusive"
-									: moreNotPassing > 0
-										? "failing"
-										: ran.length + moreAll === 0
-											? "no-checks"
-											: triages.every((x) => x === "passed") && moreNotCurrent === 0
-												? "passing-at-head"
-												: "not-current";
+									: ran.length + moreAll === 0
+										? "no-checks"
+										: head.clean &&
+												all.length > 0 &&
+												all.every((r) => r.current && r.result.outcome === "passed") &&
+												moreNotCurrent === 0 &&
+												moreNotPassing === 0
+											? "passing-at-head"
+											: "not-current";
 					const vFreshness =
 						head === null
 							? notFresh("unavailable", "HEAD could not be observed, so no check reads as current")
 							: incomplete
 								? notFresh("incomplete", "some of its receipt or attempt files were not read", headAt, readAtMs)
 								: state === "not-current"
-									? notFresh("stale", "its latest checks are not at the current clean HEAD", headAt, readAtMs)
+									? notFresh(
+											"stale",
+											"its latest checks are not current passes at the current clean HEAD",
+											headAt,
+											readAtMs,
+										)
 									: fresh(headAt, readAtMs);
 					verification = {
 						state,
@@ -487,6 +528,11 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 						gaps.push({
 							code: "no-check-recorded",
 							text: "No verification receipt has been recorded for its attempts.",
+						});
+					if (historicalFailure && state !== "failing")
+						gaps.push({
+							code: "earlier-failure-not-current",
+							text: "A check failed at an earlier commit, in a changed tree or in another worktree; it has not failed at the current HEAD, and that failure is history, not current status.",
 						});
 					if (state === "not-current") {
 						gaps.push({
@@ -521,8 +567,8 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 						});
 					if (latest?.state === "reported" && state !== "passing-at-head")
 						gaps.push({
-							code: "agent-report-unverified",
-							text: "A result was reported for its latest attempt, but no passing check at the current clean HEAD supports it.",
+							code: "report-recorded-unverified",
+							text: "The operator recorded a report for its latest attempt (operator-declared; what the report claims is not read by this status), and no current passing check at a clean HEAD is recorded.",
 						});
 					if (t.status === "review" && state !== "passing-at-head")
 						gaps.push({
@@ -535,13 +581,6 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 							severity: "contradiction",
 							subject: t.id,
 							text: `Task ${t.id} is in review by the operator's record while a check of it fails.`,
-						});
-					if (latest?.state === "reported" && state === "failing")
-						findings.push({
-							code: "agent-report-contradicts-verification",
-							severity: "contradiction",
-							subject: t.id,
-							text: `A result was reported for task ${t.id}'s latest attempt, but a controller-observed check of it fails.`,
 						});
 				}
 				const taskLinks = links.filter((l) => l.taskId === t.id);
@@ -580,33 +619,53 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 
 	// ---- sessions ----------------------------------------------------------------------------------------------------------------------
 	const allSessions: { session: EndoCoordinatorSessionV0; outOfScope: boolean }[] = [];
+	const basisOf = endoCoordinatorBasisResolverV0(log.state === "unavailable" ? [] : log.events);
 	for (const [sessionId, events] of sessionEvents) {
 		const overview = reduceEndoSessionOverviewV0(events);
-		const times = events.map((e) => Date.parse(e.at)).filter((n) => Number.isFinite(n));
+		const allTimes = events.map((e) => Date.parse(e.at)).filter((n) => Number.isFinite(n));
+		// A time after the read is not evidence of recency: it is left out of freshness, and the session is not reported active from it.
+		const future = allTimes.filter((n) => n > readAtMs).length;
+		const times = allTimes.filter((n) => n <= readAtMs);
 		const firstEventAtMs = times.length === 0 ? 0 : Math.min(...times);
 		const lastEventAtMs = times.length === 0 ? 0 : Math.max(...times);
 		const open = overview.state === "idle" || overview.state === "running";
+		if (future > 0)
+			findings.push({
+				code: "event-time-in-future",
+				severity: "integrity",
+				subject: sessionId,
+				text: `Session ${sessionId} has ${future} recorded event(s) dated after this read; they are not counted as recent activity.`,
+			});
 		const sessionFreshness: EndoCoordinatorFreshnessV0 =
 			log.state === "partial"
 				? notFresh("incomplete", "the event log's tail could not be verified", lastEventAtMs, readAtMs)
-				: readAtMs - lastEventAtMs > staleAfterMs
-					? notFresh(
-							"stale",
-							`its newest recorded event is older than ${Math.round(staleAfterMs / 1000)} s`,
-							lastEventAtMs,
-							readAtMs,
-						)
-					: fresh(lastEventAtMs, readAtMs);
+				: future > 0
+					? notFresh("incomplete", "some of its events are dated after this read", lastEventAtMs, readAtMs)
+					: readAtMs - lastEventAtMs > staleAfterMs
+						? notFresh(
+								"stale",
+								`its newest recorded event is older than ${Math.round(staleAfterMs / 1000)} s`,
+								lastEventAtMs,
+								readAtMs,
+							)
+						: fresh(lastEventAtMs, readAtMs);
 		const observation = open && sessionFreshness.state === "fresh" ? "active" : "last-observed";
 		const basisCounts = { events: events.length, agentReported: 0, controllerObserved: 0, unclassified: 0 };
 		const activityAll: EndoCoordinatorActivityV0[] = events.map((e) => {
-			const basis = endoCoordinatorBasisOfKindV0(e.kind);
+			const basis = basisOf(e);
 			if (basis === "agent-reported") basisCounts.agentReported += 1;
 			else if (basis === "controller-observed") basisCounts.controllerObserved += 1;
 			else basisCounts.unclassified += 1;
 			return { kind: e.kind, atMs: Date.parse(e.at), basis, eventId: e.id };
 		});
 		const activity = activityAll.slice(-ENDO_COORDINATOR_LIMITS_V0.maxActivityPerSession).reverse();
+		const newestBasis = (kinds: ReadonlySet<string>): EndoCoordinatorBasisV0 => {
+			for (let i = events.length - 1; i >= 0; i -= 1) {
+				const e = events[i] as EndoEventV0;
+				if (kinds.has(e.kind)) return basisOf(e);
+			}
+			return "unclassified";
+		};
 		const sessionLinks = links.filter((l) => l.sessionId === sessionId);
 		const scopedLinks = sessionLinks.filter(inScopeLink);
 		const session: EndoCoordinatorSessionV0 = {
@@ -619,14 +678,14 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 			freshness: sessionFreshness,
 			firstEventAtMs,
 			lastEventAtMs,
-			openRun: overview.run === null ? null : { turns: overview.run.turns, basis: "agent-reported" },
+			openRun: overview.run === null ? null : { turns: overview.run.turns, basis: newestBasis(RUN_START) },
 			lastRun:
 				overview.lastRun === null
 					? null
 					: {
 							outcome: overview.lastRun.outcome,
 							turns: overview.lastRun.turns,
-							basis: overview.lastRun.outcome === "interrupted" ? "controller-observed" : "agent-reported",
+							basis: newestBasis(RUN_END),
 						},
 			activity,
 			moreActivity: Math.max(0, activityAll.length - activity.length),
@@ -641,14 +700,16 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 		(a, b) =>
 			b.session.lastEventAtMs - a.session.lastEventAtMs || (a.session.sessionId < b.session.sessionId ? -1 : 1),
 	);
-	const unlistedSessions = { unknownRelationship: 0, outOfScope: 0, active: 0 };
+	const unlistedSessions = { unknownRelationship: 0, unknownActive: 0, outOfScope: 0 };
 	const listed: EndoCoordinatorSessionV0[] = [];
 	for (const { session: s, outOfScope } of allSessions) {
 		const show = s.association === "explicit" || (!outOfScope && requested === null);
 		if (!show) {
 			if (outOfScope) unlistedSessions.outOfScope += 1;
-			else unlistedSessions.unknownRelationship += 1;
-			if (s.observation === "active") unlistedSessions.active += 1;
+			else {
+				unlistedSessions.unknownRelationship += 1;
+				if (s.observation === "active") unlistedSessions.unknownActive += 1;
+			}
 			continue;
 		}
 		listed.push(s);
@@ -777,7 +838,7 @@ export function renderEndoCoordinatorStatusV0(status: EndoCoordinatorStatusV0): 
 	const u = status.unlistedSessions;
 	if (u.unknownRelationship + u.outOfScope > 0)
 		out.push(
-			`  unlisted  ${u.unknownRelationship} session(s) of unknown relationship, ${u.outOfScope} out of scope (${u.active} active)`,
+			`  unlisted  ${u.unknownRelationship} session(s) of unknown relationship (${u.unknownActive} active); ${u.outOfScope} linked only to projects not asked for (activity not reported)`,
 		);
 	for (const a of status.attention) out.push(`  attention [${a.kind}] ${a.text}`);
 	for (const f of status.findings) out.push(`  finding   [${f.severity}] ${f.code}: ${f.text}`);

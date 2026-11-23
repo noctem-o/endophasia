@@ -3,30 +3,27 @@
 // It runs ONE fixed command, `endo coordinator status --quiet --root <storeRoot> --project <id>...`, with an argv built only from the
 // operator's plugin config: the model chooses at most which permitted project to ask about, never a path, a flag or a command. No shell,
 // a scrubbed environment (the gateway's provider credentials never reach the child), a timeout, an output bound, and always a
-// bubblewrap sandbox with the whole filesystem read-only, no network, and the gateway's own credential stores masked. There is no
-// unsandboxed mode: if bubblewrap is missing or cannot start, the read is `unavailable` and endo never runs. What comes back is
+// bubblewrap sandbox: no network, an empty root, and read-only binds of exactly what the read needs (the system's /usr, the node
+// binary, endo's own code, the store's develop/ and events/ directories, and the requested projects' roots with their Git
+// directories). The home directory, the gateway's credential stores, the store's control socket and every other path are not mounted.
+// There is no unsandboxed mode: if bubblewrap is missing or cannot start, the read is `unavailable` and endo never runs. What comes back is
 // validated against the protocol's own validator before anything is relayed; another schema version is refused, not guessed at.
 //
 // This module has no OpenClaw or TypeBox import, so it is tested directly (tests/openclaw-endophasia-status.test.ts).
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
-import {
-	ENDO_COORDINATOR_STATUS_SCHEMA_V0,
-	type EndoCoordinatorStatusV0,
-	validateEndoCoordinatorStatusV0,
-} from "../../../protocol/coordinator-status.ts";
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import { type EndoCoordinatorStatusV0, validateEndoCoordinatorStatusV0 } from "../../../protocol/coordinator-status.ts";
 
 export interface EndophasiaStatusConfigV0 {
 	endo: { node: string; entry: string };
 	storeRoot: string;
-	projects: { id: string; label?: string }[];
+	projects: { id: string; root: string; label?: string }[];
 	staleAfterSeconds?: number;
 	timeoutMs?: number;
 	bwrapPath?: string;
-	disclose?: { taskTitles?: boolean };
+	disclose?: { taskTitles?: boolean; detail?: boolean };
 }
 
 export const ENDOPHASIA_STATUS_LIMITS_V0 = Object.freeze({
@@ -38,8 +35,12 @@ export const ENDOPHASIA_STATUS_LIMITS_V0 = Object.freeze({
 });
 
 const PROJECT_ID = /^endo\.project\.[0-9a-f]{32}$/;
-/** Credential stores masked (empty tmpfs) inside the sandbox when they exist: the reader needs none of them. */
-const MASKED_HOME_DIRS = [".openclaw", ".pi", ".ssh", ".gnupg", ".config/Capy"];
+/** The store directories the status read opens. Nothing else of the store (control socket, artifacts, harness state) is mounted. */
+const STORE_DIRS = ["develop", "events"];
+/** System files node and git may consult; bound read-only when present. */
+const SYSTEM_FILES = ["/etc/ld.so.cache", "/etc/localtime", "/etc/passwd", "/etc/group", "/etc/nsswitch.conf"];
+/** Top-level directories that are often symlinks into /usr (merged /usr); recreated as the same symlink, else bound read-only. */
+const SYSTEM_LINKS = ["/bin", "/sbin", "/lib", "/lib64"];
 
 export class EndophasiaStatusConfigErrorV0 extends Error {}
 
@@ -74,6 +75,8 @@ export function validateEndophasiaStatusConfigV0(value: unknown): EndophasiaStat
 		const entry = p as Record<string, unknown>;
 		if (typeof entry !== "object" || entry === null || typeof entry.id !== "string" || !PROJECT_ID.test(entry.id))
 			bad("each project needs an id of the form endo.project.<32 hex>");
+		if (typeof entry.root !== "string" || !isAbsolute(entry.root) || resolve(entry.root) === "/")
+			bad("each project needs root: the absolute path of its registered working tree");
 		if (entry.label !== undefined && (typeof entry.label !== "string" || entry.label.length > 80))
 			bad("a project label is a short string");
 	}
@@ -92,8 +95,10 @@ export function validateEndophasiaStatusConfigV0(value: unknown): EndophasiaStat
 	if (c.disclose !== undefined) {
 		const d = c.disclose as Record<string, unknown>;
 		if (typeof d !== "object" || d === null) bad("disclose must be an object");
-		for (const key of Object.keys(d)) if (key !== "taskTitles") bad(`unknown disclose key ${key}`);
+		for (const key of Object.keys(d))
+			if (key !== "taskTitles" && key !== "detail") bad(`unknown disclose key ${key}`);
 		if (d.taskTitles !== undefined && typeof d.taskTitles !== "boolean") bad("disclose.taskTitles must be a boolean");
+		if (d.detail !== undefined && typeof d.detail !== "boolean") bad("disclose.detail must be a boolean");
 	}
 	return value as EndophasiaStatusConfigV0;
 }
@@ -117,14 +122,62 @@ export interface EndophasiaCommandV0 {
 	env: Record<string, string>;
 }
 
-/** The exact command, built from config only. `home` is the gateway user's home (masking and git's global ignore file). */
+/** What the command builder may look at on the host: paths only, read-only. Injected in tests. */
+export interface EndophasiaHostViewV0 {
+	exists(path: string): boolean;
+	/** The symlink target of `path`, or null if it is not a symlink. */
+	link(path: string): string | null;
+	/** A small text file's contents, or null. */
+	text(path: string): string | null;
+	real(path: string): string;
+}
+
+export const realHostViewV0: EndophasiaHostViewV0 = {
+	exists: existsSync,
+	link: (path) => (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ? readlinkSync(path) : null),
+	text: (path) => {
+		try {
+			return readFileSync(path, "utf8").slice(0, 4096);
+		} catch {
+			return null;
+		}
+	},
+	real: (path) => {
+		try {
+			return realpathSync(path);
+		} catch {
+			return path;
+		}
+	},
+};
+
+/** A project's Git directories outside its working tree: a linked worktree's gitdir and the common directory it points at. */
+function gitDirsOutside(root: string, host: EndophasiaHostViewV0): string[] {
+	const dotGit = host.text(join(root, ".git"));
+	const match = dotGit === null ? null : /^gitdir: (.+)$/m.exec(dotGit);
+	if (match === null) return [];
+	const gitdir = resolve(root, (match[1] as string).trim());
+	const common = host.text(join(gitdir, "commondir"));
+	return common === null ? [gitdir] : [gitdir, resolve(gitdir, common.trim())];
+}
+
+/** endo's own code: the nearest ancestor of the entry with a package.json and node_modules, else the entry's directory. */
+function codeRootOf(entry: string, host: EndophasiaHostViewV0): string {
+	for (let dir = dirname(entry); dir !== dirname(dir); dir = dirname(dir))
+		if (host.exists(join(dir, "package.json")) && host.exists(join(dir, "node_modules"))) return dir;
+	return dirname(entry);
+}
+
+/**
+ * The exact command, built from config only: bubblewrap over an empty root with read-only binds of exactly what one status read of
+ * `projectIds` needs. Nothing under the home directory is mounted unless it is one of those paths.
+ */
 export function endophasiaStatusCommandV0(
 	config: EndophasiaStatusConfigV0,
 	projectIds: readonly string[],
-	home: string = homedir(),
-	exists: (path: string) => boolean = existsSync,
+	host: EndophasiaHostViewV0 = realHostViewV0,
 ): EndophasiaCommandV0 {
-	const env = { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: home, LANG: "C.UTF-8" };
+	const env = { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: "/tmp", LANG: "C.UTF-8" };
 	const endoArgs = [
 		config.endo.entry,
 		"coordinator",
@@ -136,21 +189,35 @@ export function endophasiaStatusCommandV0(
 		String(config.staleAfterSeconds ?? ENDOPHASIA_STATUS_LIMITS_V0.defaultStaleAfterSeconds),
 		...projectIds.flatMap((id) => ["--project", id]),
 	];
-	const masks = MASKED_HOME_DIRS.map((d) => join(home, d)).filter((p) => exists(p));
+	const ro = (path: string) => ["--ro-bind", path, path];
+	const roTry = (path: string) => ["--ro-bind-try", path, path];
+	const system = SYSTEM_LINKS.flatMap((p) => {
+		const target = host.link(p);
+		return target === null ? roTry(p) : ["--symlink", target, p];
+	});
+	const node = host.real(config.endo.node);
+	const roots = config.projects.filter((p) => projectIds.includes(p.id)).map((p) => p.root);
 	return {
 		file: config.bwrapPath ?? "/usr/bin/bwrap",
 		args: [
 			"--die-with-parent",
 			"--new-session",
 			"--unshare-all",
-			"--ro-bind",
-			"/",
-			"/",
+			"--tmpfs",
+			"/tmp",
+			...ro("/usr"),
+			...system,
+			...SYSTEM_FILES.flatMap(roTry),
+			...(node.startsWith("/usr/") ? [] : ro(dirname(dirname(node)))),
+			...ro(codeRootOf(config.endo.entry, host)),
+			...STORE_DIRS.flatMap((d) => roTry(join(config.storeRoot, d))),
+			...roots.flatMap((root) => [...ro(root), ...gitDirsOutside(root, host).flatMap(roTry)]),
 			"--dev",
 			"/dev",
 			"--proc",
 			"/proc",
-			...masks.flatMap((m) => ["--tmpfs", m]),
+			"--chdir",
+			"/",
 			"--clearenv",
 			...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
 			"--",
@@ -216,11 +283,11 @@ export const execEndophasiaV0: EndophasiaRunV0 = (command, options) =>
 export async function readEndophasiaStatusV0(
 	config: EndophasiaStatusConfigV0,
 	projectIds: readonly string[],
-	options: { run?: EndophasiaRunV0; signal?: AbortSignal; now?: () => number; home?: string } = {},
+	options: { run?: EndophasiaRunV0; signal?: AbortSignal; now?: () => number; host?: EndophasiaHostViewV0 } = {},
 ): Promise<EndophasiaStatusReadV0> {
 	const now = options.now ?? Date.now;
 	const started = now();
-	const command = endophasiaStatusCommandV0(config, projectIds, options.home);
+	const command = endophasiaStatusCommandV0(config, projectIds, options.host);
 	const ran = await (options.run ?? execEndophasiaV0)(command, {
 		timeoutMs: config.timeoutMs ?? ENDOPHASIA_STATUS_LIMITS_V0.defaultTimeoutMs,
 		maxBytes: ENDOPHASIA_STATUS_LIMITS_V0.maxStdoutBytes,
@@ -245,13 +312,15 @@ export async function readEndophasiaStatusV0(
 	}
 	try {
 		const status = validateEndoCoordinatorStatusV0((parsed as { coordinatorStatus?: unknown }).coordinatorStatus);
+		const asked = [...projectIds].sort().join(",");
+		if (status.scope.requested === null || [...status.scope.requested].sort().join(",") !== asked)
+			return unavailable("invalid-status", "the returned scope does not match the projects asked for");
 		return { availability: "available", status, durationMs };
 	} catch (error) {
 		return unavailable("invalid-status", error instanceof Error ? error.message.slice(0, 200) : "invalid status");
 	}
 }
 
-const iso = (ms: number | null) => (ms === null ? "unknown time" : new Date(ms).toISOString());
 const ago = (ms: number | null) => {
 	if (ms === null) return "age unknown";
 	const m = Math.round(ms / 60_000);
@@ -261,7 +330,94 @@ const ago = (ms: number | null) => {
 	return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
 };
 
-/** Hide what the operator did not choose to disclose (task titles are their private words), keeping every evidential field. */
+/**
+ * What the tool returns by default: only what a status answer needs. No check command strings (they carry argv), no commit ids, no
+ * project names from the task file (the operator's label or the opaque id instead), no session or runtime identifiers, no event ids, no
+ * finding prose (it names sessions and commands), and no store-wide counts of sessions outside the asked-for projects. Task titles are
+ * included only with `disclose.taskTitles`; the whole validated status only with `disclose.detail`.
+ */
+export interface EndophasiaExternalStatusV0 {
+	schemaVersion: string;
+	readAtMs: number;
+	sources: Record<"tasks" | "attempts" | "events", { state: string; freshness: string }>;
+	projects: {
+		project: string;
+		freshness: string;
+		head: "clean" | "uncommitted-changes" | "not-observed";
+		counts: Record<string, number>;
+		tasks: {
+			taskId: string;
+			title?: string;
+			phase: string;
+			verification: { state: string; freshness: string; incomplete: boolean };
+			gaps: string[];
+			association: string;
+			linkedSessions: number;
+		}[];
+	}[];
+	sessions: {
+		observation: string;
+		recordedState: string;
+		freshness: string;
+		lastEventAgeMs: number | null;
+		linkedTasks: string[];
+		lastRun: null | { outcome: string; basis: string };
+	}[];
+	attention: { kind: string; taskId: string | null }[];
+	findings: { code: string; severity: string }[];
+}
+
+export function externalEndophasiaStatusV0(
+	status: EndoCoordinatorStatusV0,
+	config: EndophasiaStatusConfigV0,
+): EndophasiaExternalStatusV0 {
+	const label = new Map(config.projects.map((p) => [p.id, p.label ?? p.id] as const));
+	const titles = config.disclose?.taskTitles === true;
+	const taskIds = new Set(status.projects.flatMap((p) => p.tasks.map((t) => t.taskId)));
+	const src = status.sources;
+	const source = (x: (typeof src)["tasks"]) => ({ state: x.state, freshness: x.freshness.state });
+	return {
+		schemaVersion: status.schemaVersion,
+		readAtMs: status.readAtMs,
+		sources: { tasks: source(src.tasks), attempts: source(src.attempts), events: source(src.events) },
+		projects: status.projects.map((p) => ({
+			project: label.get(p.id) ?? p.id,
+			freshness: p.freshness.state,
+			head: p.head === null ? "not-observed" : p.head.clean ? "clean" : "uncommitted-changes",
+			counts: { ...p.counts },
+			tasks: p.tasks.map((t) => ({
+				taskId: t.taskId,
+				...(titles ? { title: t.title } : {}),
+				phase: t.phase,
+				verification: {
+					state: t.verification.state,
+					freshness: t.verification.freshness.state,
+					incomplete: t.verification.incomplete,
+				},
+				gaps: t.gaps.map((g) => g.code),
+				association: t.association,
+				linkedSessions: t.sessions.length,
+			})),
+		})),
+		sessions: status.sessions
+			.filter((x) => x.association === "explicit")
+			.map((x) => ({
+				observation: x.observation,
+				recordedState: x.recordedState,
+				freshness: x.freshness.state,
+				lastEventAgeMs: x.freshness.ageMs,
+				linkedTasks: [...new Set(x.links.map((l) => l.taskId))],
+				lastRun: x.lastRun === null ? null : { outcome: x.lastRun.outcome, basis: x.lastRun.basis },
+			})),
+		attention: status.attention.map((a) => ({
+			kind: a.kind,
+			taskId: a.subject !== null && taskIds.has(a.subject) ? a.subject : null,
+		})),
+		findings: status.findings.map((f) => ({ code: f.code, severity: f.severity })),
+	};
+}
+
+/** The validated status with task titles withheld unless the operator chose to disclose them (`disclose.detail` only). */
 export function redactEndophasiaStatusV0(
 	status: EndoCoordinatorStatusV0,
 	config: EndophasiaStatusConfigV0,
@@ -275,57 +431,55 @@ export function redactEndophasiaStatusV0(
 
 /**
  * A plain-language answer for "what's happening, what needs me, which sessions are active?", qualified at every step: who says so,
- * how fresh it is, and what is not known. Built from the validated status only.
+ * how fresh it is, and what is not known. Built from the external view only, so it cannot say more than the tool returns.
  */
-export function summariseEndophasiaStatusV0(status: EndoCoordinatorStatusV0, config: EndophasiaStatusConfigV0): string {
-	const label = new Map(config.projects.map((p) => [p.id, p.label] as const));
-	const titles = config.disclose?.taskTitles === true;
-	const name = (t: { taskId: string; title: string }) => (titles ? `"${t.title}" (${t.taskId})` : t.taskId);
+export function summariseEndophasiaStatusV0(view: EndophasiaExternalStatusV0): string {
 	const lines: string[] = [];
 	lines.push(
-		`Endophasia status, read-only, read at ${iso(status.readAtMs)} (${ENDO_COORDINATOR_STATUS_SCHEMA_V0}). Task status is the operator's own record; checks are controller-observed host checks; anything an agent reported is unverified.`,
+		`Endophasia status, read-only, read at ${new Date(view.readAtMs).toISOString()} (${view.schemaVersion}). Task status is the operator's own record; checks are controller-observed host checks; a recorded report is the operator's record that a report exists, not a verified result.`,
 	);
-	const s = status.sources;
+	const s = view.sources;
 	lines.push(
-		`Sources: task file ${s.tasks.state}/${s.tasks.freshness.state}; attempt records ${s.attempts.state}/${s.attempts.freshness.state}; event log ${s.events.state}/${s.events.freshness.state}.`,
+		`Sources: task file ${s.tasks.state}/${s.tasks.freshness}; attempt records ${s.attempts.state}/${s.attempts.freshness}; event log ${s.events.state}/${s.events.freshness}.`,
 	);
-	for (const p of status.projects) {
-		const head =
-			p.head === null
-				? "HEAD not observed"
-				: `HEAD ${p.head.commit.slice(0, 12)}${p.head.clean ? " (clean)" : " (uncommitted changes)"}`;
+	for (const p of view.projects) {
 		const c = p.counts;
 		lines.push(
-			`Project ${label.get(p.id) ?? p.name} (${p.id}), ${head} [${p.freshness.state}]: ${c["awaiting-review"]} awaiting review, ${c["in-progress"]} in progress, ${c.blocked} blocked, ${c.open} open, ${c.completed} completed.`,
+			`Project ${p.project}, HEAD ${p.head} [${p.freshness}]: ${c["awaiting-review"]} awaiting review, ${c["in-progress"]} in progress, ${c.blocked} blocked, ${c.open} open, ${c.completed} completed.`,
 		);
 		for (const t of p.tasks) {
-			if (t.phase === "completed") continue;
+			const name = t.title === undefined ? t.taskId : `"${t.title}" (${t.taskId})`;
+			const gaps = t.gaps.length === 0 ? "no evidence gaps" : `gaps: ${t.gaps.join(", ")}`;
+			if (t.phase === "completed") {
+				lines.push(`- [completed] ${name}: ${gaps}.`);
+				continue;
+			}
 			const sessions =
 				t.association === "explicit"
-					? `linked sessions: ${t.sessions.map((l) => `${l.sessionId} (${l.via}, ${l.basis})`).join(", ")}`
+					? `${t.linkedSessions} linked session record(s)`
 					: "no session is linked by any record (relationship unknown)";
-			const latest = t.attempts.latest === null ? "no attempt" : `latest attempt ${t.attempts.latest.state}`;
-			const gaps = t.gaps.length === 0 ? "no evidence gaps" : `gaps: ${t.gaps.map((g) => g.code).join(", ")}`;
 			lines.push(
-				`- [${t.phase}] ${name(t)}: verification ${t.verification.state} [${t.verification.freshness.state}${t.verification.incomplete ? ", incomplete" : ""}]; ${latest}; ${gaps}; ${sessions}.`,
+				`- [${t.phase}] ${name}: verification ${t.verification.state} [${t.verification.freshness}${t.verification.incomplete ? ", incomplete" : ""}]; ${gaps}; ${sessions}.`,
 			);
 		}
 	}
-	if (status.attention.length === 0) lines.push("Needs your attention: nothing flagged by these records.");
-	else {
-		lines.push("Needs your attention (advisory, not acceptance):");
-		for (const a of status.attention) lines.push(`- [${a.kind}] ${a.text}`);
-	}
-	const active = status.sessions.filter((x) => x.observation === "active");
-	const u = status.unlistedSessions;
-	lines.push(
-		`Agent sessions: ${active.length} active among those linked to these projects; ${u.unknownRelationship} more session(s) in the store have no recorded relationship to them (${u.active} of those active, not listed).`,
-	);
-	for (const x of status.sessions)
+	if (view.attention.length === 0) lines.push("Needs your attention: nothing flagged by these records.");
+	else
 		lines.push(
-			`- [${x.observation}] ${x.sessionId}: recorded ${x.recordedState} [${x.freshness.state}], last event ${ago(x.freshness.ageMs)}; last run ${x.lastRun === null ? "none" : `${x.lastRun.outcome} (${x.lastRun.basis})`}.`,
+			`Needs your attention (advisory, not acceptance): ${view.attention.map((a) => (a.taskId === null ? a.kind : `${a.kind} (${a.taskId})`)).join("; ")}.`,
 		);
-	for (const f of status.findings) if (f.severity !== "info") lines.push(`Finding [${f.severity}]: ${f.text}`);
-	lines.push(`Not established: ${status.notEstablished[0]} ${status.notEstablished[1]}`);
+	const active = view.sessions.filter((x) => x.observation === "active");
+	lines.push(
+		`Agent sessions explicitly linked to these projects' tasks: ${view.sessions.length}, of which ${active.length} active. Sessions with no recorded link to these projects are not counted in this answer.`,
+	);
+	for (const x of view.sessions)
+		lines.push(
+			`- [${x.observation}] linked to ${x.linkedTasks.join(", ")}: recorded ${x.recordedState} [${x.freshness}], last event ${ago(x.lastEventAgeMs)}; last run ${x.lastRun === null ? "none" : `${x.lastRun.outcome} (${x.lastRun.basis})`}.`,
+		);
+	const findings = view.findings.filter((f) => f.severity !== "info");
+	if (findings.length > 0) lines.push(`Findings: ${findings.map((f) => `${f.code} [${f.severity}]`).join("; ")}.`);
+	lines.push(
+		"Not established: whether any session is alive now (there is no liveness probe), or which task an unlinked session worked on.",
+	);
 	return lines.join("\n");
 }

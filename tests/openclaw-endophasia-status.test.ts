@@ -11,7 +11,7 @@
 // - Real SDK: on a host with OpenClaw installed, the same definition is bound to the installed `defineToolPlugin` and its metadata read.
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,7 +29,7 @@ import {
 	execEndophasiaV0,
 	validateEndophasiaStatusConfigV0,
 } from "../integrations/openclaw-endophasia-status/src/status-reader.ts";
-import { validateEndoCoordinatorStatusV0 } from "../protocol/coordinator-status.ts";
+import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import {
 	buildCoordinatorStoreV0,
 	COORDINATOR_FIXTURE_SESSION_V0,
@@ -78,7 +78,7 @@ function config(over: Record<string, unknown> = {}) {
 	return {
 		endo: { node: process.execPath, entry: CLI },
 		storeRoot: "/store",
-		projects: [{ id: PROJECT, label: "alpha" }],
+		projects: [{ id: PROJECT, root: "/repo/alpha", label: "alpha" }],
 		...over,
 	};
 }
@@ -137,7 +137,7 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 				"--project",
 				PROJECT,
 			],
-			env: { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: homedir(), LANG: "C.UTF-8" },
+			env: { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: "/tmp", LANG: "C.UTF-8" },
 		});
 	});
 
@@ -201,22 +201,78 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 		}
 	});
 
-	it("always builds a bubblewrap sandbox: read-only root, no network, credential stores masked, clean env", () => {
-		const home = "/home/op";
-		const c = validateEndophasiaStatusConfigV0(config());
-		const cmd = endophasiaStatusCommandV0(
-			c,
-			[PROJECT],
-			home,
-			(p) => p === "/home/op/.openclaw" || p === "/home/op/.ssh",
+	it("always builds a bubblewrap sandbox over an empty root: only what the read needs is mounted, read-only", () => {
+		const host = {
+			exists: (p: string) => p === "/opt/endo/package.json" || p === "/opt/endo/node_modules",
+			link: (p: string) => (p === "/lib" ? "usr/lib" : p === "/bin" ? "usr/bin" : null),
+			text: (p: string) =>
+				p === "/repo/alpha/.git"
+					? "gitdir: /repo/main/.git/worktrees/alpha\n"
+					: p.endsWith("/commondir")
+						? "../..\n"
+						: null,
+			real: (p: string) => p,
+		};
+		const c = validateEndophasiaStatusConfigV0(
+			config({
+				endo: { node: "/usr/bin/node", entry: "/opt/endo/cli/index.ts" },
+				storeRoot: "/home/op/.local/share/endophasia/store",
+				projects: [
+					{ id: PROJECT, root: "/repo/alpha", label: "alpha" },
+					{ id: "endo.project.ffffffffffffffffffffffffffffffff", root: "/repo/other" },
+				],
+			}),
 		);
+		const cmd = endophasiaStatusCommandV0(c, [PROJECT], host);
 		expect(cmd.file).toBe(BWRAP);
 		const a = cmd.args;
-		expect(a.slice(0, 6)).toEqual(["--die-with-parent", "--new-session", "--unshare-all", "--ro-bind", "/", "/"]);
-		expect(a.join(" ")).toContain("--tmpfs /home/op/.openclaw --tmpfs /home/op/.ssh --clearenv");
-		expect(a).not.toContain("--bind");
-		expect(a).not.toContain("--share-net");
-		expect(a.slice(a.indexOf("--") + 1, a.indexOf("--") + 3)).toEqual([process.execPath, CLI]);
+		const binds = (flag: string) => a.flatMap((x, i) => (x === flag ? [a[i + 1]] : []));
+		expect(a.slice(0, 5)).toEqual(["--die-with-parent", "--new-session", "--unshare-all", "--tmpfs", "/tmp"]);
+		expect(binds("--ro-bind")).toEqual(["/usr", "/opt/endo", "/repo/alpha"]);
+		expect(binds("--ro-bind-try")).toEqual([
+			"/sbin",
+			"/lib64",
+			"/etc/ld.so.cache",
+			"/etc/localtime",
+			"/etc/passwd",
+			"/etc/group",
+			"/etc/nsswitch.conf",
+			"/home/op/.local/share/endophasia/store/develop",
+			"/home/op/.local/share/endophasia/store/events",
+			"/repo/main/.git/worktrees/alpha",
+			"/repo/main/.git",
+		]);
+		expect(a.join(" ")).toContain("--symlink usr/bin /bin");
+		// No whole-host bind, no writable bind, no network, nothing of the home directory or the store's control socket.
+		expect(a.join(" ")).not.toMatch(
+			/--ro-bind \/ \/|--bind |--share-net|\/home\/op\/\.openclaw|\/store\/control|\/repo\/other/,
+		);
+		expect(a.slice(a.indexOf("--") + 1, a.indexOf("--") + 3)).toEqual(["/usr/bin/node", "/opt/endo/cli/index.ts"]);
+	});
+
+	it("refuses a config whose project has no absolute root, or the filesystem root", async () => {
+		const { calls, run } = recorder();
+		const { tool } = mockedOpenClaw(run);
+		for (const projects of [[{ id: PROJECT }], [{ id: PROJECT, root: "repo" }], [{ id: PROJECT, root: "/" }]]) {
+			const out = (await tool.execute({}, config({ projects }), {})) as { ok: boolean; error: string };
+			expect(out.error).toContain("root");
+		}
+		expect(calls).toEqual([]);
+	});
+
+	it("refuses a status whose returned scope does not match the request", async () => {
+		const f = await buildCoordinatorStoreV0();
+		const other = spawnSync(process.execPath, [CLI, "coordinator", "status", "--quiet", "--root", f.root], {
+			encoding: "utf8",
+		});
+		expect(other.status, other.stderr).toBe(0);
+		const out = (await mockedOpenClaw(recorder(other.stdout).run).tool.execute(
+			{},
+			config({ storeRoot: f.root, projects: [{ id: f.projectId, root: f.repo }] }),
+			{},
+		)) as { availability: string; summary: string };
+		expect(out.availability).toBe("unavailable");
+		expect(out.summary).toContain("returned scope does not match");
 	});
 });
 
@@ -232,7 +288,7 @@ describe("endophasia-status plugin end to end (real CLI, real store)", () => {
 			const { tool } = mockedOpenClaw(run);
 			const out = (await tool.execute(
 				{ project: "disk" },
-				config({ storeRoot: f.root, projects: [{ id: f.projectId, label: "disk" }] }),
+				config({ storeRoot: f.root, projects: [{ id: f.projectId, root: f.repo, label: "disk" }] }),
 				{},
 			)) as Record<string, unknown>;
 			expect({ store: manifestOf(f.root), repo: manifestOf(f.repo) }).toEqual(before);
@@ -241,79 +297,154 @@ describe("endophasia-status plugin end to end (real CLI, real store)", () => {
 				availability: "available",
 				provenance: { sandbox: "bwrap", projects: [f.projectId] },
 			});
-			const status = validateEndoCoordinatorStatusV0(out.coordinatorStatus);
-			expect(status.projects[0]!.tasks[0]).toMatchObject({ phase: "awaiting-review", title: "[not disclosed]" });
+			const status = out.status as { projects: { project: string; tasks: Record<string, unknown>[] }[] };
+			expect(status.projects[0]!.project).toBe("disk");
+			expect(status.projects[0]!.tasks[0]).toMatchObject({ phase: "awaiting-review" });
+			expect(status.projects[0]!.tasks[0]).not.toHaveProperty("title");
 			const summary = out.summary as string;
 			expect(summary).toContain("1 awaiting review");
 			expect(summary).toContain("verification passing-at-head [fresh]");
 			expect(summary).toContain("no session is linked by any record (relationship unknown)");
-			expect(summary).toContain(
-				"1 more session(s) in the store have no recorded relationship to them (1 of those active, not listed)",
-			);
+			expect(summary).toContain("Sessions with no recorded link to these projects are not counted in this answer.");
 			expect(summary).not.toContain("Make ok.mjs succeed");
 			expect(JSON.stringify(out)).not.toContain(COORDINATOR_FIXTURE_SESSION_V0);
+			expect(out.status).not.toHaveProperty("unlistedSessions");
+			expect(out).not.toHaveProperty("coordinatorStatus");
 		});
 
 	it("discloses task titles only when the operator configures it", async () => {
 		const f = await buildCoordinatorStoreV0();
 		const out = (await mockedOpenClaw(unwrapped).tool.execute(
 			{},
-			config({ storeRoot: f.root, projects: [{ id: f.projectId }], disclose: { taskTitles: true } }),
+			config({ storeRoot: f.root, projects: [{ id: f.projectId, root: f.repo }], disclose: { taskTitles: true } }),
 			{},
 		)) as { summary: string };
 		expect(out.summary).toContain('"Make ok.mjs succeed"');
 	});
 
 	it.skipIf(!bwrapWorks)(
-		"negative control: inside the sandbox a write fails with EROFS and the credential stores read empty",
+		"negative control: inside the sandbox only the mounted paths exist, all read-only, with no host network",
 		() => {
 			const scratch = coordinatorTempDirV0("endo-coord-sandbox-");
-			const fakeHome = join(scratch, "home");
-			mkdirSync(join(fakeHome, ".openclaw"), { recursive: true });
-			writeFileSync(join(fakeHome, ".openclaw", "openclaw.json"), '{"secret":"canary"}');
-			const probe = join(scratch, "probe.mjs");
+			const store = join(scratch, "store");
+			const project = join(scratch, "project");
+			const code = join(scratch, "code");
+			for (const d of ["develop", "events", "control"]) mkdirSync(join(store, d), { recursive: true });
+			writeFileSync(join(store, "develop", "tasks.json"), "{}");
+			writeFileSync(join(store, "control", "endpoint.sock"), "stand-in for the control socket path");
+			mkdirSync(join(project, ".git"), { recursive: true });
+			mkdirSync(join(scratch, "home", ".openclaw"), { recursive: true });
+			writeFileSync(join(scratch, "home", ".openclaw", "openclaw.json"), '{"secret":"canary"}');
+			mkdirSync(join(scratch, "unrequested-project"), { recursive: true });
+			writeFileSync(join(scratch, "unrequested-project", "secret.txt"), "canary");
+			mkdirSync(code, { recursive: true });
+			const probe = join(code, "probe.mjs");
+			const paths = {
+				storeFile: join(store, "develop", "tasks.json"),
+				write: join(store, "develop", "probe-write"),
+				control: join(store, "control", "endpoint.sock"),
+				credential: join(scratch, "home", ".openclaw", "openclaw.json"),
+				unrequested: join(scratch, "unrequested-project", "secret.txt"),
+				hostHome: homedir(),
+			};
 			writeFileSync(
 				probe,
 				[
-					'import { readdirSync, writeFileSync } from "node:fs";',
-					"const target = process.argv[process.argv.indexOf('--root') + 1];",
+					'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
+					`const p = ${JSON.stringify(paths)};`,
 					"let write = 'written';",
-					"try { writeFileSync(target + '/probe-write', 'x'); } catch (e) { write = e.code; }",
-					"const masked = readdirSync(process.env.HOME + '/.openclaw');",
+					"try { writeFileSync(p.write, 'x'); } catch (e) { write = e.code; }",
+					"const seen = Object.fromEntries(['storeFile', 'control', 'credential', 'unrequested', 'hostHome'].map((k) => [k, existsSync(p[k])]));",
 					"const interfaces = Object.keys((await import('node:os')).networkInterfaces()).sort();",
-					"console.log(JSON.stringify({ write, masked, interfaces, env: Object.keys(process.env).sort() }));",
+					"console.log(JSON.stringify({ write, seen, interfaces, env: Object.keys(process.env).sort(), store: readFileSync(p.storeFile, 'utf8') }));",
 				].join("\n"),
 			);
 			const c = validateEndophasiaStatusConfigV0({
-				...config({ storeRoot: scratch }),
+				...config({ storeRoot: store, projects: [{ id: PROJECT, root: project }] }),
 				endo: { node: process.execPath, entry: probe },
 			});
-			const cmd = endophasiaStatusCommandV0(c, [PROJECT], fakeHome);
+			const cmd = endophasiaStatusCommandV0(c, [PROJECT]);
 			const run = spawnSync(cmd.file, cmd.args, { env: cmd.env, encoding: "utf8" });
 			expect(run.status, run.stderr).toBe(0);
-			const seen = JSON.parse(run.stdout) as {
+			const inside = JSON.parse(run.stdout) as {
 				write: string;
-				masked: string[];
+				seen: Record<string, boolean>;
 				interfaces: string[];
 				env: string[];
+				store: string;
 			};
-			expect(seen.write).toBe("EROFS");
-			expect(seen.masked).toEqual([]);
-			// A private network namespace: at most its own loopback, none of the host's interfaces.
-			expect(seen.interfaces.filter((i) => i !== "lo")).toEqual([]);
-			// bubblewrap itself sets PWD after --clearenv; nothing of the caller's environment crosses.
-			expect(seen.env).toEqual(["HOME", "LANG", "PATH", "PWD"]);
-			expect(readdirSync(scratch).sort()).toEqual(["home", "probe.mjs"]);
-			// Control for the control: the same probe outside the sandbox can write, so EROFS above is the sandbox's doing.
-			const outside = spawnSync(process.execPath, [probe, "--root", scratch], {
-				env: { ...cmd.env, HOME: fakeHome },
-				encoding: "utf8",
+			expect(inside.write).toBe("EROFS");
+			expect(inside.store).toBe("{}");
+			expect(inside.seen).toEqual({
+				storeFile: true,
+				control: false,
+				credential: false,
+				unrequested: false,
+				hostHome: paths.hostHome.startsWith(scratch),
 			});
-			expect(JSON.parse(outside.stdout).write).toBe("written");
-			expect(JSON.parse(outside.stdout).masked).toEqual(["openclaw.json"]);
-			expect(JSON.parse(outside.stdout).interfaces.some((i: string) => i !== "lo")).toBe(true);
+			expect(inside.interfaces.filter((i) => i !== "lo")).toEqual([]);
+			expect(inside.env).toEqual(["HOME", "LANG", "PATH"].concat(inside.env.includes("PWD") ? ["PWD"] : []).sort());
+			// Control for the control: outside the sandbox the same probe writes and sees every one of those paths.
+			const outside = spawnSync(process.execPath, [probe], { env: cmd.env, encoding: "utf8" });
+			const seenOutside = JSON.parse(outside.stdout) as typeof inside;
+			expect(seenOutside.write).toBe("written");
+			expect(seenOutside.seen).toEqual({
+				storeFile: true,
+				control: true,
+				credential: true,
+				unrequested: true,
+				hostHome: true,
+			});
+			expect(seenOutside.interfaces.some((i) => i !== "lo")).toBe(true);
 		},
 	);
+});
+
+describe("endophasia-status plugin returns only what a status answer needs (real CLI, real store)", () => {
+	const CANARY = "CANARY-7f3a9c";
+
+	it("drops argv-derived command strings, identifiers, commit ids, project names and store-wide counts unless detail is disclosed", async () => {
+		const f = await buildCoordinatorStoreV0({ checkArgv: ["node", "ok.mjs", CANARY] });
+		const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: f.repo, encoding: "utf8" }).stdout.trim();
+		const base = config({ storeRoot: f.root, projects: [{ id: f.projectId, root: f.repo }] });
+		const out = (await mockedOpenClaw(unwrapped).tool.execute({}, base, {})) as Record<string, unknown>;
+		expect(out.availability).toBe("available");
+		const text = JSON.stringify(out);
+		for (const secret of [
+			CANARY,
+			COORDINATOR_FIXTURE_SESSION_V0,
+			"disk-0001",
+			head,
+			head.slice(0, 12),
+			"Disk Demo",
+			"endo.receipt.",
+		])
+			expect(text).not.toContain(secret);
+		expect(out).not.toHaveProperty("coordinatorStatus");
+		expect(out.status).not.toHaveProperty("unlistedSessions");
+
+		const detailed = (await mockedOpenClaw(unwrapped).tool.execute(
+			{},
+			{ ...base, disclose: { detail: true } },
+			{},
+		)) as Record<string, unknown>;
+		// The canary really was in the record: only the explicit detail setting returns it.
+		expect(JSON.stringify(detailed.coordinatorStatus)).toContain(CANARY);
+		expect(JSON.stringify(detailed.coordinatorStatus)).toContain("[not disclosed]");
+	});
+
+	it("keeps a completed task's qualification in the summary", async () => {
+		const f = await buildCoordinatorStoreV0();
+		const tasks = new DevelopTasksStoreV0(f.root);
+		const moved = tasks.setStatus(f.projectId, f.taskId, f.revision, "done", null);
+		expect(moved.ok).toBe(true);
+		const out = (await mockedOpenClaw(unwrapped).tool.execute(
+			{},
+			config({ storeRoot: f.root, projects: [{ id: f.projectId, root: f.repo }] }),
+			{},
+		)) as { summary: string };
+		expect(out.summary).toContain(`- [completed] ${f.taskId}: gaps: completed-not-reverified.`);
+	});
 });
 
 describe("endophasia-status plugin fails closed when bubblewrap is unavailable (real runner)", () => {
@@ -337,7 +468,12 @@ describe("endophasia-status plugin fails closed when bubblewrap is unavailable (
 		const read = async (bwrapPath: string) =>
 			(await mockedOpenClaw(run).tool.execute(
 				{},
-				config({ storeRoot: scratch, endo: { node: process.execPath, entry }, bwrapPath }),
+				config({
+					storeRoot: scratch,
+					projects: [{ id: PROJECT, root: scratch }],
+					endo: { node: process.execPath, entry },
+					bwrapPath,
+				}),
 				{},
 			)) as { availability: string; summary: string; provenance: { sandbox: string } };
 		return { scratch, marker, failingBwrap, read, stdout: () => stdout };

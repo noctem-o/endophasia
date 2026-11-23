@@ -38,12 +38,17 @@
         "items": {
           "type": "object",
           "required": [
-            "id"
+            "id",
+            "root"
           ],
           "properties": {
             "id": {
               "type": "string",
               "description": "A permitted project id (endo.project.<32 hex>)."
+            },
+            "root": {
+              "type": "string",
+              "description": "Absolute path of the project's registered working tree; the only project path the sandbox mounts."
             },
             "label": {
               "type": "string",
@@ -72,6 +77,9 @@
         "type": "object",
         "properties": {
           "taskTitles": {
+            "type": "boolean"
+          },
+          "detail": {
             "type": "boolean"
           }
         },

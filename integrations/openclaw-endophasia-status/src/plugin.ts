@@ -7,6 +7,7 @@
 import {
 	type EndophasiaRunV0,
 	EndophasiaStatusConfigErrorV0,
+	externalEndophasiaStatusV0,
 	readEndophasiaStatusV0,
 	redactEndophasiaStatusV0,
 	selectEndophasiaProjectsV0,
@@ -82,13 +83,16 @@ export function endophasiaToolExecuteV0(run?: EndophasiaRunV0) {
 				summary: `Endophasia's status is unavailable right now (${read.reason}: ${read.detail}). Nothing is known about its tasks or sessions from this call; do not infer any.`,
 				provenance,
 			};
-		const status = redactEndophasiaStatusV0(read.status, config);
+		const view = externalEndophasiaStatusV0(read.status, config);
 		return {
 			ok: true,
 			availability: "available",
-			summary: summariseEndophasiaStatusV0(status, config),
-			provenance: { ...provenance, schemaVersion: status.schemaVersion, readAtMs: status.readAtMs },
-			coordinatorStatus: status,
+			summary: summariseEndophasiaStatusV0(view),
+			provenance: { ...provenance, schemaVersion: read.status.schemaVersion, readAtMs: read.status.readAtMs },
+			status: view,
+			...(config.disclose?.detail === true
+				? { coordinatorStatus: redactEndophasiaStatusV0(read.status, config) }
+				: {}),
 		};
 	};
 }
@@ -118,6 +122,10 @@ export function createEndophasiaStatusPluginV0(
 					Type.Object(
 						{
 							id: Type.String({ description: "A permitted project id (endo.project.<32 hex>)." }),
+							root: Type.String({
+								description:
+									"Absolute path of the project's registered working tree; the only project path the sandbox mounts.",
+							}),
 							label: Type.Optional(Type.String({ description: "A short name the operator may use for it." })),
 						},
 						{ additionalProperties: false },
@@ -128,7 +136,10 @@ export function createEndophasiaStatusPluginV0(
 				timeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 60000 })),
 				bwrapPath: Type.Optional(Type.String()),
 				disclose: Type.Optional(
-					Type.Object({ taskTitles: Type.Optional(Type.Boolean()) }, { additionalProperties: false }),
+					Type.Object(
+						{ taskTitles: Type.Optional(Type.Boolean()), detail: Type.Optional(Type.Boolean()) },
+						{ additionalProperties: false },
+					),
 				),
 			},
 			{ additionalProperties: false },

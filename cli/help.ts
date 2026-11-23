@@ -97,6 +97,11 @@ Commands that write to a store:
                                      read one attempt's records together: what was sent, what Pi reported, the latest check of each
                                      command and whether it still applies to --cwd, the task's status moves, and what is missing.
                                      Read-only; names no revision as the attempt's result (docs/designs/develop-attempt-evidence.md)
+  attempt bridge ... --attempt <id> [--cwd <dir>] [--protected-run <dir> [--spec-pin <sha256>] [--trial <t>/<c>/<n>]]
+                                     read-only end-to-end evidence bridge across task, attempt, authorisation, dispatch, run,
+                                     working-tree provenance, optional protected-experiment candidate/evaluation, ordinary receipts
+                                     and operator decision. Separates verified observations from advisory review suggestions, never
+                                     fabricates missing cross-space links, and labels workstation H0 BLOCKED (docs/designs/develop-evidence-bridge.md)
   attempt observe ... --attempt <id> [--cwd <dir>]
                                      record what Git shows of the attempt's working tree now (HEAD and each changed path's blob id;
                                      no contents). The live workbench records one just before a send and one when the run ends.

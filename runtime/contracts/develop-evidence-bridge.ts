@@ -4,10 +4,12 @@
 //
 // Layer rule: this module lives under `runtime/contracts/` and never imports from `adapters/`.
 
+import { ENDO_PROTECTED_ATTEMPT_ASSOCIATION_LABELS_V0 } from "../../protocol/develop-attempt-candidate-binding.ts";
 import { ENDO_ATTEMPT_RUN_LABELS_V0, ENDO_ATTEMPT_SEND_LABELS_V0 } from "../../protocol/develop-attempt-execution.ts";
 import { endoAttemptPlanV0, renderEndoDevelopBriefV0 } from "../../protocol/develop-attempts.ts";
 import {
-	ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V0,
+	ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V1,
+	ENDO_EVIDENCE_BRIDGE_BOUND_NOT_ESTABLISHED_V0,
 	ENDO_EVIDENCE_BRIDGE_FINDING_CODES_V0,
 	ENDO_EVIDENCE_BRIDGE_NOT_ESTABLISHED_V0,
 	ENDO_EVIDENCE_BRIDGE_SUGGESTION_LABELS_V0,
@@ -56,6 +58,19 @@ export function endoEmptyProtectedBridgeV0(): EndoBridgeProtectedExperimentV0 {
 		workstationH0: "blocked",
 		attemptAssociation: "not-supplied",
 		missingBindingRecord: null,
+		binding: {
+			launch: "absent",
+			record: "absent",
+			boundBy: null,
+			standing: null,
+			operationDigest: null,
+			bindingSha256: null,
+			runSource: null,
+			label: ENDO_PROTECTED_ATTEMPT_ASSOCIATION_LABELS_V0["not-supplied"],
+			checks: [],
+			limitation: null,
+		},
+		agentTreeSha256: null,
 		pinStatus: "not-supplied",
 		expectedSpecPin: null,
 		observedSpecSha256: null,
@@ -129,6 +144,26 @@ const FINDING_META: Readonly<
 	"protected-attempt-association-unestablished": {
 		severity: "unestablished",
 		text: "No existing record links this DEVELOP attempt (endo.attempt.<id>) to the supplied protected-experiment run or candidate; the bridge refuses heuristic matching by timestamp, prompt text, filename or agent self-report.",
+	},
+	"protected-attempt-binding-invalid": {
+		severity: "contradiction",
+		text: "This attempt's protected launch record or candidate binding is unusable, mis-sealed, or contradicts what was re-read now (another run, spec, trial, record, agent tree, prompt or candidate, a changed brief, or a workbench send too); it is not admitted.",
+	},
+	"protected-attempt-candidate-integrity-failure": {
+		severity: "integrity",
+		text: "The protected run this attempt's records name finished, but its candidate does not verify against its sealed record and bytes now.",
+	},
+	"protected-attempt-execution-incomplete": {
+		severity: "gap",
+		text: "A protected launch of this attempt was authorised, but no binding was sealed: the run is absent, unfinished, interrupted, its termination unconfirmed, or the launcher stopped before sealing.",
+	},
+	"protected-attempt-association-operator-declared": {
+		severity: "unestablished",
+		text: "The link from this attempt to its protected candidate is the operator's own declaration; its digests re-verify, but no controller established it.",
+	},
+	"protected-attempt-association-established": {
+		severity: "info",
+		text: "The protected launcher that ran this attempt bound it to its candidate, and every digest re-verifies now. That is integrity evidence over unsigned same-uid files, not a signature or authority.",
 	},
 	"protected-execution-unconfirmed-or-interrupted": {
 		severity: "gap",
@@ -377,10 +412,20 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 
 	// Protected-experiment findings (kept strictly separate from ordinary receipts and never fabricated as linked!)
 	if (pe.supplied) {
-		codes.add("protected-attempt-association-unestablished");
+		const association = pe.attemptAssociation;
+		if (association === "unestablished") codes.add("protected-attempt-association-unestablished");
+		if (association === "invalid") codes.add("protected-attempt-binding-invalid");
+		if (association === "candidate-integrity-failure") codes.add("protected-attempt-candidate-integrity-failure");
+		if (association === "incomplete-execution") codes.add("protected-attempt-execution-incomplete");
+		if (association === "operator-declared") codes.add("protected-attempt-association-operator-declared");
+		if (association === "established") codes.add("protected-attempt-association-established");
 		if (pe.pinStatus === "missing") codes.add("protected-spec-pin-missing");
 		if (pe.pinStatus === "mismatched") codes.add("protected-spec-pin-mismatch");
-		if (pe.outcome === "unreadable") codes.add("protected-run-unreadable");
+		if (
+			pe.outcome === "unreadable" &&
+			!(association === "incomplete-execution" && pe.binding.runSource === "launch-record")
+		)
+			codes.add("protected-run-unreadable");
 		if (pe.refusedRecords.length > 0 || pe.outcome === "refused") codes.add("protected-record-refused");
 		if (pe.candidateIntegrity === "tampered") codes.add("protected-candidate-bytes-changed");
 		if (pe.agent?.outputDigestVerified === false) codes.add("protected-agent-log-digest-mismatch");
@@ -685,26 +730,66 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 						"No existing DEVELOP record names a reconstructable staged change set or protected-experiment candidate, and no protected run was supplied.",
 					missingRecord: "develop-attempt-protected-candidate-binding",
 				}
-			: pe.candidateIntegrity === "tampered" ||
-					pe.pinStatus === "mismatched" ||
-					pe.pinStatus === "missing" ||
-					pe.outcome === "refused"
+			: pe.attemptAssociation === "established" || pe.attemptAssociation === "operator-declared"
 				? {
 						id: "attempt-to-reconstructable-candidate",
 						label: "Attempt -> Reconstructable Candidate",
-						status: "contradictory",
-						basis: "contradictory",
-						evidence: `Supplied protected-experiment candidate failed validation (${pe.candidateIntegrity}: ${pe.candidateDetail}) AND has no stored binding record to DEVELOP attempt ${attempt.id}.`,
-						missingRecord: "develop-attempt-protected-candidate-binding",
+						status: pe.attemptAssociation === "established" ? "established" : "partial",
+						basis: pe.attemptAssociation === "established" ? "controller-observed" : "operator-declared",
+						evidence:
+							pe.attemptAssociation === "established"
+								? `Controller-established binding (protected launch ${pe.binding.operationDigest?.slice(0, 12) ?? "unknown"}): run ${pe.runId ?? "unknown"}, record ${pe.recordSha256?.slice(0, 12) ?? "none"}, candidate ${(pe.candidateSha256 ?? pe.submissionSha256)?.slice(0, 12) ?? "none"}; every digest re-verified now. Integrity evidence only, not a signature.`
+								: `Operator-declared binding (not controller-established): run ${pe.runId ?? "unknown"}, record ${pe.recordSha256?.slice(0, 12) ?? "none"}, candidate ${(pe.candidateSha256 ?? pe.submissionSha256)?.slice(0, 12) ?? "none"}; digests re-verified now, association is the operator's statement.`,
+						missingRecord: null,
 					}
-				: {
-						id: "attempt-to-reconstructable-candidate",
-						label: "Attempt -> Reconstructable Candidate",
-						status: "unestablished",
-						basis: "missing",
-						evidence: `Supplied protected-experiment candidate (${pe.candidateMode ?? "unknown"}, integrity=${pe.candidateIntegrity}) has NO stored record linking it to DEVELOP attempt ${attempt.id}; association refused (no heuristic matching).`,
-						missingRecord: "develop-attempt-protected-candidate-binding",
-					},
+				: pe.attemptAssociation === "invalid" || pe.attemptAssociation === "candidate-integrity-failure"
+					? {
+							id: "attempt-to-reconstructable-candidate",
+							label: "Attempt -> Reconstructable Candidate",
+							status: "contradictory",
+							basis: "contradictory",
+							evidence: `${pe.binding.label} (${
+								pe.binding.checks
+									.filter((c) => c.result === "fail")
+									.map((c) => `${c.check}: ${c.detail}`)
+									.join("; ") || pe.candidateDetail
+							}).`,
+							missingRecord: "develop-attempt-protected-candidate-binding",
+						}
+					: pe.attemptAssociation === "incomplete-execution"
+						? {
+								id: "attempt-to-reconstructable-candidate",
+								label: "Attempt -> Reconstructable Candidate",
+								status: "partial",
+								basis: "controller-observed",
+								evidence: `A protected launch of this attempt was authorised on the terminal (operation ${pe.binding.operationDigest?.slice(0, 12) ?? "unknown"}), but no binding was sealed: ${
+									pe.binding.checks
+										.filter((c) => c.result === "fail")
+										.map((c) => c.detail)
+										.join("; ") || "the launcher stopped before sealing"
+								}.`,
+								missingRecord: "develop-attempt-protected-candidate-binding",
+							}
+						: pe.candidateIntegrity === "tampered" ||
+								pe.pinStatus === "mismatched" ||
+								pe.pinStatus === "missing" ||
+								pe.outcome === "refused"
+							? {
+									id: "attempt-to-reconstructable-candidate",
+									label: "Attempt -> Reconstructable Candidate",
+									status: "contradictory",
+									basis: "contradictory",
+									evidence: `Supplied protected-experiment candidate failed validation (${pe.candidateIntegrity}: ${pe.candidateDetail}) AND has no stored binding record to DEVELOP attempt ${attempt.id}.`,
+									missingRecord: "develop-attempt-protected-candidate-binding",
+								}
+							: {
+									id: "attempt-to-reconstructable-candidate",
+									label: "Attempt -> Reconstructable Candidate",
+									status: "unestablished",
+									basis: "missing",
+									evidence: `Supplied protected-experiment candidate (${pe.candidateMode ?? "unknown"}, integrity=${pe.candidateIntegrity}) has NO stored record linking it to DEVELOP attempt ${attempt.id}; association refused (no heuristic matching).`,
+									missingRecord: "develop-attempt-protected-candidate-binding",
+								},
 
 		// 7. Candidate -> Verification / Receipt
 		evidence.checks.state === "unreadable"
@@ -797,6 +882,8 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 		codes.has("protected-record-refused") ||
 		codes.has("protected-candidate-bytes-changed") ||
 		codes.has("protected-agent-log-digest-mismatch") ||
+		codes.has("protected-attempt-binding-invalid") ||
+		codes.has("protected-attempt-candidate-integrity-failure") ||
 		codes.has("checked-commit-differs-from-observed-run-end") ||
 		codes.has("provenance-other-send-observations") ||
 		codes.has("receipt-files-unusable");
@@ -836,6 +923,7 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 		codes.has("provenance-comparison-incomplete") ||
 		codes.has("task-unavailable") ||
 		codes.has("protected-attempt-association-unestablished") ||
+		codes.has("protected-attempt-execution-incomplete") ||
 		codes.has("protected-execution-unconfirmed-or-interrupted") ||
 		codes.has("protected-evaluation-incomplete");
 
@@ -851,7 +939,11 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 		suggestedOutcome = "do-not-accept-verification-failed";
 		basis = hasOrdinaryFailure
 			? "Independent ordinary verification at HEAD failed; do not accept until fixed and re-verified."
-			: "Supplied protected-experiment evaluation failed (experimental, non-authoritative, and not bound to this DEVELOP attempt).";
+			: pe.attemptAssociation === "established"
+				? "The protected evaluation of this attempt's bound candidate failed (experimental, non-authoritative)."
+				: pe.attemptAssociation === "operator-declared"
+					? "The protected evaluation of the candidate the operator declared for this attempt failed (experimental, non-authoritative)."
+					: "Supplied protected-experiment evaluation failed (experimental, non-authoritative, and not bound to this DEVELOP attempt).";
 	} else if (hasStaleness) {
 		suggestedOutcome = "recheck-required-stale-evidence";
 		basis =
@@ -893,7 +985,7 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 						: "unknown";
 
 	return {
-		schemaVersion: ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V0,
+		schemaVersion: ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V1,
 		readAtMs: input.readAtMs,
 		trustBoundary: ENDO_EVIDENCE_BRIDGE_TRUST_BOUNDARY_V0,
 		transitions,
@@ -1029,7 +1121,10 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 				note: evidence.operator.movedToDone?.note ?? null,
 			},
 		},
-		notEstablished: ENDO_EVIDENCE_BRIDGE_NOT_ESTABLISHED_V0,
+		notEstablished:
+			pe.attemptAssociation === "established" || pe.attemptAssociation === "operator-declared"
+				? [...ENDO_EVIDENCE_BRIDGE_BOUND_NOT_ESTABLISHED_V0, ...ENDO_EVIDENCE_BRIDGE_NOT_ESTABLISHED_V0.slice(1)]
+				: ENDO_EVIDENCE_BRIDGE_NOT_ESTABLISHED_V0,
 	};
 }
 
@@ -1074,6 +1169,15 @@ export function renderEndoDevelopEvidenceBridgeV0(b: EndoDevelopEvidenceBridgeV0
 					`    protected [experimental-non-authoritative; H0=blocked; attemptAssociation=${pe.attemptAssociation}] outcome=${pe.outcome} pin=${pe.pinStatus} run=${pe.runId ?? "unknown"} spec=${short(pe.observedSpecSha256)}${pe.evaluation === null ? "" : ` eval=${pe.evaluation.status}${pe.evaluation.cases === null ? "" : ` (${pe.evaluation.cases.passed}/${pe.evaluation.cases.total})`}`}${pe.agent === null ? "" : ` termination=${pe.agent.termination}`}`,
 				]
 			: ["    protected [not-supplied] no protected-experiment run inspected alongside this attempt"]),
+		...(pe.binding.launch === "absent" && pe.binding.record === "absent"
+			? []
+			: [
+					`    binding   [${pe.attemptAssociation}; ${pe.binding.standing ?? "no admitted binding"}] ${pe.binding.label}`,
+					...pe.binding.checks
+						.filter((c) => c.result !== "not-applicable")
+						.map((c) => `      check   [${c.result}] ${c.check}: ${c.detail}`),
+					...(pe.binding.limitation === null ? [] : [`      limits  ${pe.binding.limitation}`]),
+				]),
 		"  review (advisory only — operator decides; status unchanged):",
 		`    suggest   [${b.review.suggestedOutcome}] ${b.review.basis}`,
 		`    decision  [operator-declared] task status=${b.review.operatorDecision.status ?? "unavailable"}${b.review.operatorDecision.note === null ? "" : ` ("${b.review.operatorDecision.note}")`}`,

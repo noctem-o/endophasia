@@ -39,7 +39,7 @@ import {
 } from "../protocol/develop-attempt-execution.ts";
 import { renderEndoDevelopBriefV0 } from "../protocol/develop-attempts.ts";
 import {
-	ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V0,
+	ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V1,
 	type EndoDevelopEvidenceBridgeV0,
 } from "../protocol/develop-evidence-bridge.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
@@ -725,7 +725,7 @@ describe("DEVELOP-EVIDENCE-BRIDGE-001", () => {
 		if (!res.ok) return;
 		const b = res.bridge;
 
-		expect(b.schemaVersion).toBe(ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V0);
+		expect(b.schemaVersion).toBe(ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V1);
 		expect(b.trustBoundary.workstationH0).toBe("blocked");
 		expect(b.trustBoundary.protectedExperimentAuthority).toBe("experimental-non-authoritative");
 		expect(b.task.taskId).toBe(fx.taskId);

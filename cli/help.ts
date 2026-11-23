@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt|coordinator> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -109,6 +109,11 @@ Commands that write to a store:
   attempt provenance ... --attempt <id> [--cwd <dir>]
                                      read the observations: what changed between them, whether the tree now and the commits checked
                                      hold the same content as the last one. Read-only
+  coordinator status [<root> | --root dir] [--project <id>]... [--stale-after <seconds>] [--quiet]
+                                     read-only Coordinator status: tasks by the operator's status, their latest verification
+                                     and evidence gaps, sessions as active or last-observed with agent-reported vs
+                                     controller-observed activity, explicit vs unknown session/task relationships, and the
+                                     freshness of each. Writes nothing, grants nothing (docs/designs/coordinator-status.md)
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

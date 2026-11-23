@@ -22,7 +22,8 @@
 		"storage/**/*",
 		"cli/**/*",
 		"scripts/**/*",
-		"tests/**/*"
+		"tests/**/*",
+		"integrations/**/*"
 	],
-	"exclude": ["**/dist/**", "node_modules"]
+	"exclude": ["**/dist/**", "node_modules", "**/node_modules/**", "integrations/*/src/index.ts", "integrations/*/build.mjs"]
 }

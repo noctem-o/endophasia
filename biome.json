@@ -44,6 +44,7 @@
 			"cli/**/*.ts",
 			"scripts/**/*.ts",
 			"tests/**/*.ts",
+			"integrations/*/src/**/*.ts",
 			"!node_modules"
 		]
 	}

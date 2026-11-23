@@ -94,6 +94,7 @@ export const ENDO_COORDINATOR_GAP_CODES_V0 = [
 	"attempt-records-missing",
 	"receipt-records-missing",
 	"receipt-history-unverifiable",
+	"no-receipt-for-check",
 ] as const;
 export type EndoCoordinatorGapCodeV0 = (typeof ENDO_COORDINATOR_GAP_CODES_V0)[number];
 
@@ -498,7 +499,9 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 				fail(`${w} is inconclusive without an inconclusive check at the current HEAD`);
 			if (
 				vState === "incomplete" &&
-				(v.incomplete !== true || vFresh.state !== "incomplete" || !gaps.includes("receipt-history-unverifiable"))
+				(v.incomplete !== true ||
+					vFresh.state !== "incomplete" ||
+					(!gaps.includes("receipt-history-unverifiable") && !gaps.includes("no-receipt-for-check")))
 			)
 				fail(`${w} must qualify unverifiable receipt history as incomplete`);
 			if ((vState === "failing" || vState === "inconclusive") && head === null)

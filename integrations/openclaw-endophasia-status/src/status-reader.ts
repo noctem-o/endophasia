@@ -519,6 +519,16 @@ export function summariseEndophasiaStatusV0(view: EndophasiaExternalStatusV0): s
 			lines.push(
 				`- [${t.phase}] ${name}: verification ${t.verification.state} [${t.verification.freshness}${t.verification.incomplete && t.verification.freshness !== "incomplete" ? ", incomplete" : ""}]; ${gaps}; ${sessions}.`,
 			);
+			if (t.gaps.includes("no-receipt-for-check")) {
+				const missing = t.verification.results.flatMap((r, i) =>
+					r.outcome === "not-run" && r.relation === null ? [`#${i + 1}`] : [],
+				);
+				lines.push(
+					missing.length === 0
+						? "  No receipt at HEAD for a planned check."
+						: `  No receipt at HEAD for planned check results ${missing.join(", ")} in the status list.`,
+				);
+			}
 		}
 	}
 	if (view.attention.length === 0) lines.push("Needs your attention: nothing flagged by these records.");

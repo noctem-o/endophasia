@@ -527,8 +527,26 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					const moreAll = tv.more.commands + tv.morePlanned.checks;
 
 					const current = head === null ? [] : all.filter((r) => r.current);
-					const historicalFailure = all.some((r) => !r.current && r.severity === 0);
+					const historicalFailure = all.some((r) => r.result.freshness === "stale" && r.severity === 0);
 					const ran = all.filter((r) => r.result.outcome !== "not-run");
+					const missing = tv.planned.filter((p) => p.state === "not-run" && p.receipt === null);
+					const absence = missing.map((p) => `No receipt at HEAD for planned check "${p.name}".`).join(" ");
+					const stale = all.flatMap(({ result }) => {
+						if (result.receiptId === null) return [];
+						switch (result.relation) {
+							case "head-differs":
+								return [`A check receipt records commit ${result.commit}, not current HEAD.`];
+							case "at-head-changed":
+								return ["A check receipt does not match the current clean tree."];
+							case "other-worktree":
+								return ["A check receipt is from another worktree."];
+							case "other-repository":
+								return ["A check receipt is from another repository."];
+							default:
+								return [];
+						}
+					});
+					const staleReason = [...new Set(stale)].join(" ");
 					const state: EndoCoordinatorVerificationStateV0 =
 						head === null
 							? all.length + moreAll === 0
@@ -538,16 +556,19 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 								? "failing"
 								: current.some((r) => r.severity === 1)
 									? "inconclusive"
-									: ran.length + moreAll === 0
-										? "no-checks"
-										: head.clean &&
-												all.length > 0 &&
-												all.every((r) => r.current && r.result.outcome === "passed") &&
-												moreNotCurrent === 0 &&
-												moreNotPassing === 0
-											? "incomplete"
-											: "not-current";
+									: missing.length > 0
+										? "incomplete"
+										: ran.length + moreAll === 0
+											? "no-checks"
+											: head.clean &&
+													all.length > 0 &&
+													all.every((r) => r.current && r.result.outcome === "passed") &&
+													moreNotCurrent === 0 &&
+													moreNotPassing === 0
+												? "incomplete"
+												: "not-current";
 					const incomplete =
+						missing.length > 0 ||
 						state === "incomplete" ||
 						tv.unreadable + tv.skipped + tv.problems + tv.records > 0 ||
 						view?.truncated === true;
@@ -557,16 +578,17 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 							: incomplete
 								? notFresh(
 										"incomplete",
-										state === "incomplete"
-											? "the receipt store cannot establish which receipts are missing"
-											: "some of its receipt or attempt files were not read",
+										absence ||
+											(state === "incomplete"
+												? "the receipt store cannot establish which receipts are missing"
+												: "some of its receipt or attempt files were not read"),
 										headAt,
 										readAtMs,
 									)
 								: state === "not-current"
 									? notFresh(
-											"stale",
-											"its latest checks are not current passes at the current clean HEAD",
+											stale.length > 0 ? "stale" : "unavailable",
+											staleReason || "no receipt establishes a current result for every check",
 											headAt,
 											readAtMs,
 										)
@@ -584,7 +606,8 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 						results: all.slice(0, ENDO_COORDINATOR_LIMITS_V0.maxResultsPerTask).map((r) => r.result),
 						moreResults: Math.max(0, all.length - ENDO_COORDINATOR_LIMITS_V0.maxResultsPerTask) + moreAll,
 					};
-					if (state === "incomplete")
+					if (missing.length > 0) gaps.push({ code: "no-receipt-for-check", text: absence });
+					if (state === "incomplete" && missing.length === 0)
 						gaps.push({
 							code: "receipt-history-unverifiable",
 							text: "The checks shown passed at this HEAD, but the store has no independent record of which receipts should exist. A surviving pass does not establish that a later receipt was retained or that the task passed.",
@@ -604,17 +627,17 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					if (historicalFailure && state !== "failing")
 						gaps.push({
 							code: "earlier-failure-not-current",
-							text: "A check failed at an earlier commit, in a changed tree or in another worktree; it has not failed at the current HEAD, and that failure is history, not current status.",
+							text: "A failed receipt does not apply to the current clean HEAD. It is historical evidence, not a current failure.",
 						});
-					if (state === "not-current") {
+					if (state === "not-current" || (missing.length > 0 && stale.length > 0)) {
 						gaps.push({
 							code: "checks-not-current",
-							text: "Its latest checks were run at another commit, in a changed tree or in another worktree.",
+							text: staleReason || "No receipt establishes a current result for every check.",
 						});
 						if (!all.some((r) => r.result.relation === "at-head"))
 							gaps.push({
 								code: "no-check-at-current-head",
-								text: "No check has been run at the current HEAD.",
+								text: "No check receipt at the current HEAD was found.",
 							});
 					}
 					if (tv.unreadable > 0)
@@ -847,7 +870,11 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					subject: t.taskId,
 					text: `Task ${t.taskId} is blocked by the operator's record.`,
 				});
-			if ((t.phase === "in-progress" || t.phase === "awaiting-review") && t.verification.state === "not-current")
+			if (
+				(t.phase === "in-progress" || t.phase === "awaiting-review") &&
+				t.verification.state === "not-current" &&
+				(t.verification.freshness.state === "stale" || t.verification.results.some((r) => r.freshness === "stale"))
+			)
 				attention.push({
 					kind: "evidence-stale",
 					subject: t.taskId,

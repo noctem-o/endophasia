@@ -12,6 +12,10 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { readEndoCoordinatorStatusV0 } from "../adapters/develop/coordinator-status.ts";
 import {
+	externalEndophasiaStatusV0,
+	summariseEndophasiaStatusV0,
+} from "../integrations/openclaw-endophasia-status/src/status-reader.ts";
+import {
 	ENDO_COORDINATOR_STATUS_SCHEMA_V0,
 	type EndoCoordinatorStatusV0,
 	EndoInvalidCoordinatorStatusV0,
@@ -172,7 +176,7 @@ function planned(
 				? null
 				: {
 						receiptId: "endo.receipt.1",
-						commit: HEAD,
+						commit: state === "stale" ? "d".repeat(40) : HEAD,
 						startedAtMs: NOW - 10 * MIN,
 						endedAtMs: NOW - 9 * MIN,
 						outcome: outcome as never,
@@ -294,8 +298,8 @@ describe("coordinator status projection", () => {
 		expect(done.gaps.map((g) => g.code)).toEqual(["completed-not-reverified"]);
 
 		const work = taskOf(s, T_WORK);
-		expect(work.verification.state).toBe("no-checks");
-		expect(work.gaps.map((g) => g.code)).toEqual(["no-check-recorded"]);
+		expect(work.verification.state).toBe("incomplete");
+		expect(work.gaps.map((g) => g.code)).toEqual(["no-receipt-for-check"]);
 		expect(work.association).toBe("explicit");
 		expect(work.sessions[0]).toMatchObject({
 			sessionId: S_LIVE,
@@ -358,6 +362,7 @@ describe("coordinator status projection", () => {
 		const review = taskOf(s, T_REVIEW);
 		expect(review.verification.state).toBe("not-current");
 		expect(review.verification.freshness.state).toBe("stale");
+		expect(review.verification.freshness.reason).toContain("d".repeat(40));
 		expect(review.verification.results[0]).toMatchObject({
 			relation: "head-differs",
 			freshness: "stale",
@@ -373,6 +378,47 @@ describe("coordinator status projection", () => {
 		expect(s.findings.filter((f) => f.severity === "contradiction")).toEqual([]);
 		expect(s.attention.map((a) => a.kind)).toContain("evidence-stale");
 	});
+
+	it.each(["unrelated receipt", "one receipt in a two-check plan"])(
+		"names the missing planned check without claiming staleness with %s",
+		(shape) => {
+			const missing = { ...planned(A_REVIEW, "not-run"), name: "integration" };
+			const withReceipt = { ...planned(A_REVIEW, "passed"), name: "unit" };
+			const selected =
+				shape === "unrelated receipt"
+					? attentionTask(T_REVIEW, [missing], {
+							checks: [
+								{
+									command: "node unrelated.mjs",
+									attemptId: A_REVIEW,
+									receiptId: "endo.receipt.2",
+									commit: HEAD,
+									relation: "at-head",
+									outcome: "passed",
+									startedAtMs: NOW - MIN,
+								},
+							] as EndoDevelopAttentionTaskV0["checks"],
+						})
+					: attentionTask(T_REVIEW, [withReceipt, missing]);
+			const input = { ...baseline(), attention: new Map([[P, { observedAtMs: NOW, view: view([selected]) }]]) };
+			const status = validateEndoCoordinatorStatusV0(endoCoordinatorStatusV0(input));
+			const task = taskOf(status, T_REVIEW);
+			const reason = 'No receipt at HEAD for planned check "integration".';
+			expect(task.verification).toMatchObject({ state: "incomplete", freshness: { state: "incomplete", reason } });
+			expect(task.gaps).toEqual([{ code: "no-receipt-for-check", text: reason }]);
+			expect(task.verification.results.map((r) => r.relation)).toEqual(["at-head", null]);
+			const summary = summariseEndophasiaStatusV0(
+				externalEndophasiaStatusV0(status, {
+					endo: { node: process.execPath, entry: CLI },
+					storeRoot: "/store",
+					projects: [{ id: P, root: "/repo/alpha" }],
+				}),
+			);
+			expect(summary).toContain("No receipt at HEAD for planned check results #2");
+			expect(summary).not.toMatch(/\bstale\b|another commit|changed tree|another worktree/);
+			expect(JSON.stringify(endoCoordinatorStatusV0(input))).toBe(JSON.stringify(status));
+		},
+	);
 
 	it("stale: never active even when the record says running, whatever the staleness window", () => {
 		const s = endoCoordinatorStatusV0({ ...baseline(), staleAfterMs: 60_000 });

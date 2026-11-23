@@ -91,7 +91,7 @@ export function endophasiaToolExecuteV0(run?: EndophasiaRunV0) {
 			provenance: { ...provenance, schemaVersion: read.status.schemaVersion, readAtMs: read.status.readAtMs },
 			status: view,
 			...(config.disclose?.detail === true
-				? { coordinatorStatus: redactEndophasiaStatusV0(read.status, config) }
+				? { coordinatorStatus: redactEndophasiaStatusV0(read.status, config), projectRoots: read.projectRoots }
 				: {}),
 		};
 	};

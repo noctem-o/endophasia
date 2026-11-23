@@ -11,7 +11,7 @@
 // - Real SDK: on a host with OpenClaw installed, the same definition is bound to the installed `defineToolPlugin` and its metadata read.
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,7 +120,7 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 		const call = calls[0]!;
 		expect(call.file).toBe(BWRAP);
 		expect({
-			...call,
+			env: call.env,
 			file: call.args[call.args.indexOf("--") + 1],
 			args: call.args.slice(call.args.indexOf("--") + 2),
 		}).toEqual({
@@ -275,6 +275,23 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 		expect(calls).toEqual([]);
 	});
 
+	it("refuses a project root symlink that leaves its parent before launch", async () => {
+		const f = await buildCoordinatorStoreV0();
+		const alias = join(coordinatorTempDirV0("endo-coord-root-parent-"), "alias");
+		symlinkSync(f.repo, alias);
+		const { calls, run } = recorder();
+		const out = await mockedOpenClaw(run).tool.execute(
+			{},
+			config({ storeRoot: f.root, projects: [{ id: f.projectId, root: alias }] }),
+			{},
+		);
+		expect(out).toMatchObject({
+			availability: "unavailable",
+			summary: expect.stringContaining("project-root-refused"),
+		});
+		expect(calls).toEqual([]);
+	});
+
 	it("refuses a status whose returned scope does not match the request", async () => {
 		const f = await buildCoordinatorStoreV0();
 		const other = spawnSync(process.execPath, [CLI, "coordinator", "status", "--quiet", "--root", f.root], {
@@ -292,6 +309,70 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 });
 
 describe("endophasia-status plugin end to end (real CLI, real store)", () => {
+	it.skipIf(!bwrapWorks)(
+		"records the canonical mounted root for an allowed alias only in detailed output",
+		async () => {
+			const f = await buildCoordinatorStoreV0();
+			const alias = coordinatorTempDirV0("endo-coord-root-alias-");
+			const link = `${alias}-link`;
+			symlinkSync(f.repo, link);
+			try {
+				const c = config({ storeRoot: f.root, projects: [{ id: f.projectId, root: link }] });
+				const tool = mockedOpenClaw().tool;
+				const read = await tool.execute({}, c, {});
+				expect(read).toMatchObject({ availability: "available", status: { projects: [{ head: "clean" }] } });
+				expect(read).not.toHaveProperty("projectRoots");
+				expect(await tool.execute({}, { ...c, disclose: { detail: true } }, {})).toMatchObject({
+					availability: "available",
+					projectRoots: [{ projectId: f.projectId, resolvedRoot: f.repo }],
+				});
+			} finally {
+				unlinkSync(link);
+			}
+		},
+	);
+
+	it.skipIf(!bwrapWorks)(
+		"does not turn a surviving pass into a task pass after a later same-HEAD failure disappears",
+		async () => {
+			const f = await buildCoordinatorStoreV0({ repeatWithFailure: true });
+			const c = config({ storeRoot: f.root, projects: [{ id: f.projectId, root: f.repo }] });
+			const tool = mockedOpenClaw().tool;
+			expect(await tool.execute({}, c, {})).toMatchObject({
+				availability: "available",
+				status: {
+					projects: [
+						{
+							tasks: [
+								{ verification: { state: "failing", results: [{ outcome: "failed", relation: "at-head" }] } },
+							],
+						},
+					],
+				},
+			});
+			renameSync(f.failedReceiptPath!, join(f.root, "held-back-receipt.json"));
+			const out = await tool.execute({}, c, {});
+			expect(out).toMatchObject({
+				availability: "available",
+				status: {
+					projects: [
+						{
+							tasks: [
+								{
+									verification: {
+										state: "incomplete",
+										freshness: "incomplete",
+										results: [{ outcome: "passed", relation: "at-head" }],
+									},
+									gaps: expect.arrayContaining(["receipt-history-unverifiable"]),
+								},
+							],
+						},
+					],
+				},
+			});
+		},
+	);
 	const variants = [
 		["test-only unwrapped runner", unwrapped, true],
 		["real bwrap", execEndophasiaV0, bwrapWorks],
@@ -318,7 +399,7 @@ describe("endophasia-status plugin end to end (real CLI, real store)", () => {
 			expect(status.projects[0]!.tasks[0]).not.toHaveProperty("title");
 			const summary = out.summary as string;
 			expect(summary).toContain("1 awaiting review");
-			expect(summary).toContain("verification passing-at-head [fresh]");
+			expect(summary).toContain("verification incomplete [incomplete]");
 			expect(summary).toContain("no session is linked by any record (relationship unknown)");
 			expect(summary).toContain("Sessions with no recorded link to these projects are not counted in this answer.");
 			expect(summary).not.toContain("Make ok.mjs succeed");

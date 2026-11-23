@@ -12,7 +12,7 @@
 
 import { execFile } from "node:child_process";
 import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { type EndoCoordinatorStatusV0, validateEndoCoordinatorStatusV0 } from "../../../protocol/coordinator-status.ts";
 
 export interface EndophasiaStatusConfigV0 {
@@ -147,6 +147,7 @@ export const realHostViewV0: EndophasiaHostViewV0 = {
 };
 
 class ProjectGitLayoutError extends Error {}
+class ProjectRootError extends Error {}
 
 /** endo's own code: the nearest ancestor of the entry with a package.json and node_modules, else the entry's directory. */
 function codeRootOf(entry: string, host: EndophasiaHostViewV0): string {
@@ -163,7 +164,7 @@ export function endophasiaStatusCommandV0(
 	config: EndophasiaStatusConfigV0,
 	projectIds: readonly string[],
 	host: EndophasiaHostViewV0 = realHostViewV0,
-): EndophasiaCommandV0 {
+): EndophasiaCommandV0 & { projectRoots: { projectId: string; resolvedRoot: string }[] } {
 	const env = { PATH: "/usr/local/bin:/usr/bin:/bin", HOME: "/tmp", LANG: "C.UTF-8" };
 	const endoArgs = [
 		config.endo.entry,
@@ -183,19 +184,29 @@ export function endophasiaStatusCommandV0(
 		return target === null ? roTry(p) : ["--symlink", target, p];
 	});
 	const node = host.real(config.endo.node);
-	const roots = config.projects.filter((p) => projectIds.includes(p.id)).map((p) => p.root);
-	for (const root of roots) {
-		const git = join(root, ".git");
-		const kind = host.kind(git);
-		if (
-			host.real(root) === "/" ||
-			kind === "other" ||
-			(kind === "directory" && host.kind(join(git, "commondir")) !== "missing")
-		)
-			throw new ProjectGitLayoutError();
-	}
+	const roots = config.projects
+		.filter((p) => projectIds.includes(p.id))
+		.map((p) => {
+			const configuredRoot = resolve(p.root);
+			const resolvedRoot = host.real(configuredRoot);
+			const fromParent = relative(host.real(dirname(configuredRoot)), resolvedRoot);
+			if (
+				resolvedRoot === "/" ||
+				fromParent === "" ||
+				fromParent === ".." ||
+				fromParent.startsWith(`..${sep}`) ||
+				isAbsolute(fromParent)
+			)
+				throw new ProjectRootError();
+			const git = join(resolvedRoot, ".git");
+			const kind = host.kind(git);
+			if (kind === "other" || (kind === "directory" && host.kind(join(git, "commondir")) !== "missing"))
+				throw new ProjectGitLayoutError();
+			return { projectId: p.id, configuredRoot, resolvedRoot };
+		});
 	return {
 		file: config.bwrapPath ?? "/usr/bin/bwrap",
+		projectRoots: roots.map(({ projectId, resolvedRoot }) => ({ projectId, resolvedRoot })),
 		args: [
 			"--die-with-parent",
 			"--new-session",
@@ -208,7 +219,11 @@ export function endophasiaStatusCommandV0(
 			...(node.startsWith("/usr/") ? [] : ro(dirname(dirname(node)))),
 			...ro(codeRootOf(config.endo.entry, host)),
 			...STORE_DIRS.flatMap((d) => roTry(join(config.storeRoot, d))),
-			...roots.flatMap(ro),
+			...roots.flatMap(({ configuredRoot, resolvedRoot }) =>
+				configuredRoot === resolvedRoot
+					? ro(resolvedRoot)
+					: [...ro(resolvedRoot), "--symlink", resolvedRoot, configuredRoot],
+			),
 			"--dev",
 			"/dev",
 			"--proc",
@@ -226,11 +241,17 @@ export function endophasiaStatusCommandV0(
 }
 
 export type EndophasiaStatusReadV0 =
-	| { availability: "available"; status: EndoCoordinatorStatusV0; durationMs: number }
+	| {
+			availability: "available";
+			status: EndoCoordinatorStatusV0;
+			durationMs: number;
+			projectRoots: ReturnType<typeof endophasiaStatusCommandV0>["projectRoots"];
+	  }
 	| {
 			availability: "unavailable";
 			reason:
 				| "project-git-layout-refused"
+				| "project-root-refused"
 				| "spawn-failed"
 				| "timed-out"
 				| "output-too-large"
@@ -291,17 +312,24 @@ export async function readEndophasiaStatusV0(
 ): Promise<EndophasiaStatusReadV0> {
 	const now = options.now ?? Date.now;
 	const started = now();
-	let command: EndophasiaCommandV0;
+	let command: ReturnType<typeof endophasiaStatusCommandV0>;
 	try {
 		command = endophasiaStatusCommandV0(config, projectIds, options.host);
 	} catch (error) {
 		return {
 			availability: "unavailable",
-			reason: error instanceof ProjectGitLayoutError ? "project-git-layout-refused" : "spawn-failed",
+			reason:
+				error instanceof ProjectRootError
+					? "project-root-refused"
+					: error instanceof ProjectGitLayoutError
+						? "project-git-layout-refused"
+						: "spawn-failed",
 			detail:
-				error instanceof ProjectGitLayoutError
-					? "Git metadata indirection is unsupported; only a project with its Git directory inside its configured root can be read"
-					: "sandbox paths could not be checked",
+				error instanceof ProjectRootError
+					? "the configured project root resolves outside its parent directory"
+					: error instanceof ProjectGitLayoutError
+						? "Git metadata indirection is unsupported; only a project with its Git directory inside its configured root can be read"
+						: "sandbox paths could not be checked",
 			durationMs: now() - started,
 		};
 	}
@@ -332,7 +360,7 @@ export async function readEndophasiaStatusV0(
 		const asked = [...projectIds].sort().join(",");
 		if (status.scope.requested === null || [...status.scope.requested].sort().join(",") !== asked)
 			return unavailable("invalid-status", "the returned scope does not match the projects asked for");
-		return { availability: "available", status, durationMs };
+		return { availability: "available", status, durationMs, projectRoots: command.projectRoots };
 	} catch (error) {
 		return unavailable("invalid-status", error instanceof Error ? error.message.slice(0, 200) : "invalid status");
 	}
@@ -366,7 +394,13 @@ export interface EndophasiaExternalStatusV0 {
 			taskId: string;
 			title?: string;
 			phase: string;
-			verification: { state: string; freshness: string; incomplete: boolean };
+			verification: {
+				state: string;
+				freshness: string;
+				incomplete: boolean;
+				results: { outcome: string; relation: string | null }[];
+				moreResults: number;
+			};
 			gaps: string[];
 			association: string;
 			linkedSessions: number;
@@ -375,6 +409,7 @@ export interface EndophasiaExternalStatusV0 {
 	sessions: {
 		observation: string;
 		recordedState: string;
+		stateBasis: string;
 		freshness: string;
 		lastEventAgeMs: number | null;
 		linkedTasks: string[];
@@ -410,6 +445,8 @@ export function externalEndophasiaStatusV0(
 					state: t.verification.state,
 					freshness: t.verification.freshness.state,
 					incomplete: t.verification.incomplete,
+					results: t.verification.results.map(({ outcome, relation }) => ({ outcome, relation })),
+					moreResults: t.verification.moreResults,
 				},
 				gaps: t.gaps.map((g) => g.code),
 				association: t.association,
@@ -421,6 +458,7 @@ export function externalEndophasiaStatusV0(
 			.map((x) => ({
 				observation: x.observation,
 				recordedState: x.recordedState,
+				stateBasis: x.stateBasis,
 				freshness: x.freshness.state,
 				lastEventAgeMs: x.freshness.ageMs,
 				linkedTasks: [...new Set(x.links.map((l) => l.taskId))],
@@ -455,6 +493,9 @@ export function summariseEndophasiaStatusV0(view: EndophasiaExternalStatusV0): s
 	lines.push(
 		`Endophasia status, read-only, read at ${new Date(view.readAtMs).toISOString()} (${view.schemaVersion}). Task status is the operator's own record; checks are controller-observed host checks; a recorded report is the operator's record that a report exists, not a verified result.`,
 	);
+	lines.push(
+		"Check results describe the records present, not an overall task pass; the store cannot show whether a later receipt is missing.",
+	);
 	const s = view.sources;
 	lines.push(
 		`Sources: task file ${s.tasks.state}/${s.tasks.freshness}; attempt records ${s.attempts.state}/${s.attempts.freshness}; event log ${s.events.state}/${s.events.freshness}.`,
@@ -476,7 +517,7 @@ export function summariseEndophasiaStatusV0(view: EndophasiaExternalStatusV0): s
 					? `${t.linkedSessions} linked session record(s)`
 					: "no session is linked by any record (relationship unknown)";
 			lines.push(
-				`- [${t.phase}] ${name}: verification ${t.verification.state} [${t.verification.freshness}${t.verification.incomplete ? ", incomplete" : ""}]; ${gaps}; ${sessions}.`,
+				`- [${t.phase}] ${name}: verification ${t.verification.state} [${t.verification.freshness}${t.verification.incomplete && t.verification.freshness !== "incomplete" ? ", incomplete" : ""}]; ${gaps}; ${sessions}.`,
 			);
 		}
 	}
@@ -491,7 +532,7 @@ export function summariseEndophasiaStatusV0(view: EndophasiaExternalStatusV0): s
 	);
 	for (const x of view.sessions)
 		lines.push(
-			`- [${x.observation}] linked to ${x.linkedTasks.join(", ")}: recorded ${x.recordedState} [${x.freshness}], last event ${ago(x.lastEventAgeMs)}; last run ${x.lastRun === null ? "none" : `${x.lastRun.outcome} (${x.lastRun.basis})`}.`,
+			`- [${x.observation}] linked to ${x.linkedTasks.join(", ")}: recorded ${x.recordedState} (${x.stateBasis}) [${x.freshness}], last event ${ago(x.lastEventAgeMs)}; last run ${x.lastRun === null ? "none" : `${x.lastRun.outcome} (${x.lastRun.basis})`}.`,
 		);
 	const findings = view.findings.filter((f) => f.severity !== "info");
 	if (findings.length > 0) lines.push(`Findings: ${findings.map((f) => `${f.code} [${f.severity}]`).join("; ")}.`);

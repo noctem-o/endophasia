@@ -1,0 +1,108 @@
+{
+  "id": "endophasia-status",
+  "name": "Endophasia Status",
+  "description": "Read-only, evidence-qualified status of permitted Endophasia projects.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "required": [
+      "endo",
+      "storeRoot",
+      "projects"
+    ],
+    "properties": {
+      "endo": {
+        "type": "object",
+        "required": [
+          "node",
+          "entry"
+        ],
+        "properties": {
+          "node": {
+            "type": "string",
+            "description": "Absolute path of the node binary that runs endo."
+          },
+          "entry": {
+            "type": "string",
+            "description": "Absolute path of endo's CLI entry (cli/index.ts or dist/cli/index.js)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "storeRoot": {
+        "type": "string",
+        "description": "Absolute path of the Endophasia store root to read."
+      },
+      "projects": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "A permitted project id (endo.project.<32 hex>)."
+            },
+            "label": {
+              "type": "string",
+              "description": "A short name the operator may use for it."
+            }
+          },
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 8
+      },
+      "staleAfterSeconds": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 604800
+      },
+      "timeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 60000
+      },
+      "sandbox": {
+        "anyOf": [
+          {
+            "type": "string",
+            "const": "bwrap"
+          },
+          {
+            "type": "string",
+            "const": "none"
+          }
+        ]
+      },
+      "bwrapPath": {
+        "type": "string"
+      },
+      "disclose": {
+        "type": "object",
+        "properties": {
+          "taskTitles": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "contracts": {
+    "tools": [
+      "endophasia_status"
+    ]
+  },
+  "toolMetadata": {
+    "endophasia_status": {
+      "optional": true
+    }
+  }
+}

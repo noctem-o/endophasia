@@ -204,9 +204,9 @@ suite("EVOLVE-INSPECT-001: Studio Evolve Protected Experiment Inspector in a rea
 		const afterRefresh = page.seen.requests.filter((u) => u.includes("/api/v0/evolve/experiments")).length;
 		expect(afterRefresh).toBeGreaterThan(beforeRefresh);
 
-		// Navigate to Capabilities (still lazy Unavailable) and back to Observe (state preserved)
-		await page.click("button[data-workspace=capabilities]");
-		await page.waitFor("document.querySelector('[data-testid=unavailable-capabilities]')", 5000);
+		// Navigate to a planned placeholder (lazy Unavailable) and back to Observe (state preserved)
+		await page.click("button[data-workspace=research]");
+		await page.waitFor("document.querySelector('[data-testid=unavailable-research]')", 5000);
 		await page.click("button[data-workspace=observe]");
 		expect(await page.text("#inspector")).toContain("Event at position 2");
 

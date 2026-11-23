@@ -2,13 +2,17 @@
 import type { ReactElement } from "react";
 
 const NEEDS: Record<string, { what: string; needs: string }> = {
-	capabilities: {
-		what: "Capabilities sets what a runtime declares against what has been observed of it.",
-		needs: "It needs a projection of the declared surface beside the observed evidence. The Observe workspace already shows each capability's recorded status and the limits on it; a declared-versus-observed matrix needs more than that.",
+	research: {
+		what: "Research is a planned workspace for structured studies, experimental protocols, comparisons and reproducible analysis across runs.",
+		needs: "It is not implemented yet. Before it can appear as a workspace, it needs explicit study and dataset contracts with their own provenance and validation rather than ad-hoc summaries.",
 	},
-	evolve: {
-		what: "Evolve is the laboratory: lineage, experiments, candidates and checkpoints.",
-		needs: "It needs projections of lineage, experiments and candidates, each with its own version and validator, before a workspace can show them. A promotion record confers no authority, and this page offers no action.",
+	hardware: {
+		what: "Hardware is a planned workspace for inspecting physical and device-level execution targets, telemetry and environment boundaries.",
+		needs: "It is not implemented yet. It needs explicit device, host and measurement contracts that separate observed hardware facts from declared targets.",
+	},
+	coordinator: {
+		what: "Coordinator is a planned cross-workspace supervisory agent: configurable models, agent identities, permissions, budgets and assignments, eventually coordinating agents such as Codex, Claude, Gemini and Pi across Develop, Research and Hardware.",
+		needs: "Coordination is not implemented yet. Nothing here dispatches agents, grants permissions, tracks budgets or exercises authority across workspaces.",
 	},
 };
 
@@ -20,6 +24,7 @@ export default function Unavailable({ workspace, label }: { workspace: string; l
 			data-testid={`unavailable-${workspace}`}
 			aria-labelledby="unavailable-title"
 		>
+			<p className="unavailable-kicker">Planned workspace · not yet functional</p>
 			<h2 id="unavailable-title">{label} is not available yet</h2>
 			<p>{text?.what}</p>
 			<p>{text?.needs}</p>

@@ -1,6 +1,6 @@
 // Studio shell: read-only Observe, Compare, Develop and Evolve workspaces with persistent, separate request state.
-// Capabilities remains an explicit placeholder.
-import { lazy, type ReactElement, Suspense, useEffect, useRef, useState } from "react";
+// Research, Hardware and Coordinator remain explicit planned placeholders.
+import { Fragment, lazy, type ReactElement, Suspense, useEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../protocol/cockpit-develop.ts";
 import { CompareWorkspace } from "./compare/CompareWorkspace.tsx";
 import { DevelopWorkspace } from "./develop/DevelopWorkspace.tsx";
@@ -32,11 +32,13 @@ import { useWorkspace } from "./use-workspace.ts";
 const Unavailable = lazy(() => import("./observe/Unavailable.tsx"));
 
 const WORKSPACES = [
-	{ id: "observe", label: "Observe", ready: true },
-	{ id: "compare", label: "Compare", ready: true },
-	{ id: "develop", label: "Develop", ready: true },
-	{ id: "capabilities", label: "Capabilities", ready: false },
-	{ id: "evolve", label: "Evolve", ready: true },
+	{ id: "observe", label: "Observe", ready: true, separated: false },
+	{ id: "compare", label: "Compare", ready: true, separated: false },
+	{ id: "develop", label: "Develop", ready: true, separated: false },
+	{ id: "evolve", label: "Evolve", ready: true, separated: false },
+	{ id: "research", label: "Research", ready: false, separated: false },
+	{ id: "hardware", label: "Hardware", ready: false, separated: false },
+	{ id: "coordinator", label: "Coordinator", ready: false, separated: true },
 ] as const;
 
 export function App(): ReactElement {
@@ -216,17 +218,27 @@ export function App(): ReactElement {
 				</span>
 				<nav className="workspaces" aria-label="Workspaces">
 					{WORKSPACES.map((w) => (
-						<button
-							key={w.id}
-							type="button"
-							className="workspace"
-							aria-current={workspace === w.id ? "page" : undefined}
-							data-workspace={w.id}
-							onClick={() => setWorkspace(w.id)}
-						>
-							{w.label}
-							{w.ready ? null : <span className="later"> · later</span>}
-						</button>
+						<Fragment key={w.id}>
+							{w.separated ? (
+								<span
+									className="workspace-divider"
+									data-testid={`workspace-divider-${w.id}`}
+									aria-hidden="true"
+								/>
+							) : null}
+							<button
+								type="button"
+								className="workspace"
+								aria-current={workspace === w.id ? "page" : undefined}
+								aria-label={w.ready ? undefined : `${w.label} — planned workspace`}
+								title={w.ready ? undefined : `${w.label} — planned workspace (not yet functional)`}
+								data-workspace={w.id}
+								data-planned={w.ready ? undefined : "true"}
+								onClick={() => setWorkspace(w.id)}
+							>
+								{w.label}
+							</button>
+						</Fragment>
 					))}
 				</nav>
 				<span className="spacer" />

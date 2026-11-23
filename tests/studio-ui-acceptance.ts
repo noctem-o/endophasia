@@ -45,7 +45,7 @@ export async function exerciseStudioUi(
 		const count = (selector: string) =>
 			tab.eval<number>(`document.querySelectorAll(${JSON.stringify(selector)}).length`);
 
-		// The shell: the instrument's name, the five workspaces with Observe the one in use, and the page's read-only state.
+		// The shell: the instrument's name, the seven workspaces with Observe the one in use, and the page's read-only state.
 		expect(
 			(await tab.eval<string>("document.title")) === "Endophasia Studio",
 			"the page is titled Endophasia Studio",
@@ -55,8 +55,8 @@ export async function exerciseStudioUi(
 				await tab.eval<string[]>(
 					`[...document.querySelectorAll("nav.workspaces button")].map((b) => b.dataset.workspace)`,
 				)
-			).join() === "observe,compare,develop,capabilities,evolve",
-			"the five workspaces are named",
+			).join() === "observe,compare,develop,evolve,research,hardware,coordinator",
+			"the seven workspaces are named in architecture order",
 		);
 		expect(
 			(await tab.eval<string>(
@@ -141,10 +141,10 @@ export async function exerciseStudioUi(
 		}
 
 		// A workspace that is not built is loaded on demand, says so, and shows nothing of the store.
-		await tab.click("button[data-workspace=capabilities]");
-		await tab.waitFor(`document.querySelector("[data-testid=unavailable-capabilities]")`, 15_000);
+		await tab.click("button[data-workspace=research]");
+		await tab.waitFor(`document.querySelector("[data-testid=unavailable-research]")`, 15_000);
 		expect(
-			/is not available yet/.test(await text("[data-testid=unavailable-capabilities]")),
+			/is not available yet/.test(await text("[data-testid=unavailable-research]")),
 			"an unbuilt workspace says it is not available",
 		);
 		expect((await count("tr[data-seq]")) === 0, "and draws no record");

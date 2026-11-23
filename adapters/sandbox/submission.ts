@@ -221,9 +221,20 @@ export function verifyFixedSubmissionV0(
 		if (!PLAIN.test(p)) return { ok: false, reason: "refused", detail: `unsafe declared path ${p}` };
 	}
 
+	// Derive the exact allowed directory prefixes and files from declared paths so deeply nested valid submissions are
+	// accepted while any unexpected entry or subtree is rejected immediately.
+	const expectedFileSet = new Set(sortedExpected);
+	const expectedDirs = new Set<string>();
+	for (const p of sortedExpected) {
+		const parts = p.split("/");
+		for (let i = 1; i < parts.length; i += 1) {
+			expectedDirs.add(parts.slice(0, i).join("/"));
+		}
+	}
+
 	// Enumerate actual entries under submissionDir (refusing symlinks, special files, empty/extra entries).
 	const foundFiles: string[] = [];
-	const maxEntries = Math.max(256, sortedExpected.length * 16);
+	const maxEntries = expectedDirs.size + expectedFileSet.size;
 	let visited = 0;
 	const walk = (dir: string, prefix: string): string | null => {
 		let names: string[];
@@ -247,9 +258,11 @@ export function verifyFixedSubmissionV0(
 			if (st === undefined) return `entry vanished ${rel}`;
 			if (st.isSymbolicLink()) return `symbolic link in submission: ${rel}`;
 			if (st.isDirectory()) {
+				if (!expectedDirs.has(rel)) return `unexpected directory in submission: ${rel}`;
 				const err = walk(full, rel);
 				if (err !== null) return err;
 			} else if (st.isFile()) {
+				if (!expectedFileSet.has(rel)) return `unexpected file in submission: ${rel}`;
 				foundFiles.push(rel);
 			} else {
 				return `non-regular entry in submission: ${rel}`;

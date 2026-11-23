@@ -31,6 +31,7 @@ import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import { gitStateReaderV0 } from "../adapters/git/state-observer.ts";
 import { endoProtectedStagedBaselineV2 } from "../adapters/sandbox/protected-report.ts";
 import { collectStagedChangeSetV0, endoStagedCandidateRecordV0 } from "../adapters/sandbox/staged-changeset.ts";
+import { exportSubmissionV0, verifyFixedSubmissionV0 } from "../adapters/sandbox/submission.ts";
 import {
 	ENDO_DEVELOP_ATTEMPT_AUTHORIZATION_SCHEMA_V0,
 	type EndoDevelopAttemptAuthorizationV0,
@@ -1276,5 +1277,39 @@ describe("DEVELOP-EVIDENCE-BRIDGE-001", () => {
 		expect(treeManifest(fx.repo)).toEqual(beforeRepo);
 		expect(treeManifest(staged.dir)).toEqual(beforeProtected);
 		expect(dirname(fx.root)).not.toBe("");
+	});
+
+	it("verifyFixedSubmissionV0 accepts deeply nested declared paths exported by exportSubmissionV0 and still refuses unexpected entries", () => {
+		const workspaceDir = freshDir("endo-bridge-deep-ws-");
+		const submissionParent = freshDir("endo-bridge-deep-sub-");
+		const submissionDir = join(submissionParent, "submission");
+		// Four distinct trees of 70 nested directories each (145-char paths <= 200 PLAIN limit, 284 total entries > legacy 256 cap).
+		const declaredPaths = ["a", "b", "c", "d"].map(
+			(rootName) => `${rootName}/${Array.from({ length: 69 }, () => "x").join("/")}/f.txt`,
+		);
+		for (const rel of declaredPaths) {
+			const full = join(workspaceDir, rel);
+			mkdirSync(dirname(full), { recursive: true });
+			writeFileSync(full, `payload for ${rel}\n`);
+		}
+		const limits = { maxFileBytes: 1024 * 1024, maxTotalBytes: 4 * 1024 * 1024 };
+		const exported = exportSubmissionV0(workspaceDir, declaredPaths, limits, submissionDir);
+		expect(exported.status).toBe("collected");
+		expect(exported.sha256).not.toBeNull();
+		if (exported.status !== "collected" || exported.sha256 === null) return;
+
+		const verified = verifyFixedSubmissionV0(submissionDir, declaredPaths, exported.sha256, limits);
+		expect(verified).toMatchObject({
+			ok: true,
+			sha256: exported.sha256,
+			files: exported.files,
+		});
+
+		// Adding an unexpected sibling file is still immediately refused.
+		chmodSync(submissionDir, 0o700);
+		writeFileSync(join(submissionDir, "extra.txt"), "rogue\n");
+		const tampered = verifyFixedSubmissionV0(submissionDir, declaredPaths, exported.sha256, limits);
+		expect(tampered.ok).toBe(false);
+		if (!tampered.ok) expect(tampered.reason).toBe("unexpected-entry");
 	});
 });

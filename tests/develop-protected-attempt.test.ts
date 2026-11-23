@@ -587,6 +587,39 @@ describe("DEVELOP-PROTECTED-ATTEMPT-001: launcher and binding (deterministic, fa
 		const v0 = join(f.work, "v0.json");
 		writeFileSync(v0, readFileSync(join(EXAMPLE, "evaluator", "evaluator.json")));
 		expect((plan(f, { templatePath: v0 }) as { code: string }).code).toBe("template-unsupported");
+		const v3 = fixture({
+			templateChange: {
+				schemaVersion: "endo.protected-experiment-spec.v3",
+				limits: {
+					agentTimeoutMs: 30_000,
+					evaluationTimeoutMs: 30_000,
+					outputBytes: 65_536,
+					tmpfsBytes: 16 * 1024 * 1024,
+					maxFileBytes: 65_536,
+					maxTotalBytes: 262_144,
+					memoryMaxBytes: 512 * 1024 * 1024,
+					cpuQuotaPercent: 200,
+				},
+				runtime: { executables: ["/usr/bin/node"], aliases: [] },
+				modelAccess: {
+					upstream: "http://127.0.0.1:8090",
+					model: "m",
+					routes: [{ method: "POST", path: "/v1/chat/completions" }],
+					maxRequestBytes: 256 * 1024,
+					maxTransferredBytes: 16 * 1024 * 1024,
+					maxConnections: 8,
+					maxTotalConnections: 64,
+					maxExchanges: 32,
+					maxCompletionTokens: 64,
+					minExchanges: 1,
+				},
+			} as never,
+		});
+		expect(plan(v3)).toMatchObject({
+			ok: false,
+			code: "template-unsupported",
+			detail: expect.stringContaining("spec.v2 (offline)"),
+		});
 		const two = fixture({ templateChange: { trials: 2 } });
 		expect((plan(two) as { code: string }).code).toBe("template-unsupported");
 		const link = join(f.work, "template-link.json");

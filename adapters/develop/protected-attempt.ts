@@ -3,8 +3,8 @@
 //
 // The launcher executes ONE prepared DEVELOP attempt through the existing protected runner and nothing else. In order:
 //   1. plan (reads only): the attempt passes the same checks as a workbench send (DevelopAttemptDispatchV0.check), has no protected launch
-//      yet, and the operator's template spec is one staged-changeset task, one condition, one trial (endo.protected-experiment-spec.v2 or
-//      .v3). The spec is constructed from the template with the attempt's own run id and an agent directory that is the template's with
+//      yet, and the operator's template spec is one staged-changeset task, one condition, one trial (endo.protected-experiment-spec.v2,
+//      offline; v3 is refused in this version). The spec is constructed from the template with the attempt's own run id and an agent directory that is the template's with
 //      /agent/prompt.txt replaced by the frozen brief; the operation (every identity and digest) is shown whole with its digest;
 //   2. the operator types the operation's phrase on the controlling terminal (the caller supplies the reading of that line); anything else
 //      declines and nothing is written;
@@ -441,7 +441,7 @@ export const ENDO_PROTECTED_ATTEMPT_REFUSAL_WORDS_V0: Readonly<Record<EndoProtec
 		"--out must be a new absolute path (letters, digits and ._+- only) whose parent is an existing directory; nothing is ever written into an existing one",
 	"template-unreadable": "--template must name a regular JSON file (not a link) of at most 1 MiB",
 	"template-unsupported":
-		"the template must be an endo.protected-experiment-spec.v2 or .v3 with exactly one staged-changeset task, one condition and trials 1",
+		"the template must be an endo.protected-experiment-spec.v2 (offline) with exactly one staged-changeset task, one condition and trials 1",
 	"agent-template-unusable":
 		"the template's agent directory must be a plain directory of regular files (no links, bounded), and prompt.txt, if present, a regular file",
 	"spec-invalid": "the constructed spec does not validate",
@@ -514,8 +514,7 @@ export function planProtectedAttemptV0(options: PlanProtectedAttemptOptionsV0): 
 	if (!template.ok) return refuse("template-unsupported", `--template: ${template.message}`);
 	const t = template.value;
 	if (
-		(t.schemaVersion !== "endo.protected-experiment-spec.v2" &&
-			t.schemaVersion !== "endo.protected-experiment-spec.v3") ||
+		t.schemaVersion !== "endo.protected-experiment-spec.v2" ||
 		t.tasks.length !== 1 ||
 		t.conditions.length !== 1 ||
 		t.trials !== 1

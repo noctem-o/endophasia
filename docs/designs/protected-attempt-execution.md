@@ -29,7 +29,7 @@ sequenceDiagram
 ## 2. The bounded configuration (the only one)
 
 *   The attempt is **prepared**, passes the same checks a workbench send makes (`DevelopAttemptDispatchV0.check`: task open, words unchanged, brief recomputes), has **no workbench authorisation** and **no protected launch** yet.
-*   The operator supplies a **template spec**: `endo.protected-experiment-spec.v2` (offline) or `.v3` (model-connected through the runner's existing relay), with **exactly one task in `staged-changeset` mode, one condition, `trials: 1`**. Anything else is `template-unsupported`. Only v2 has been exercised (tests and the real run below); v3 is accepted by the planner but has not been run.
+*   The operator supplies a **template spec**: `endo.protected-experiment-spec.v2` (offline), with **exactly one task in `staged-changeset` mode, one condition, `trials: 1`**. Anything else is `template-unsupported`, including a model-connected `.v3` template: the operation and record vocabulary can describe v3 (model access is part of the operation digest), but the launcher refuses it until a model-connected launch has been exercised.
 *   The launcher constructs the spec from the template: run id `endo.experiment.attempt-<32 hex>` (the attempt's own), and the condition's agent directory replaced by `<out>/agent`: a bounded copy of the template's agent directory (no links, no special files; entries, bytes and depth bounded) whose `prompt.txt` is the attempt's frozen brief, byte for byte. The agent reads `/agent/prompt.txt`.
 *   `--out` must not exist, its parent must, and the path must be one the protected runner admits. The launcher writes `<out>/agent/`, `<out>/spec.json` and `<out>/run/`; nothing else outside the two records.
 
@@ -101,7 +101,7 @@ Statuses: `refused` (nothing written), `declined` (nothing written), `launch-not
 
 *   Integrity evidence over unsigned same-uid files; not a signature, proof of origin, or host authority. Workstation H0 stays BLOCKED.
 *   The workbench does not read `develop/protected-attempts/`: after a protected launch, a workbench send of the same attempt is not refused there; the bridge then reads the binding `invalid` (`single-execution-route`).
-*   One task, one condition, one trial, staged change set only. v3 (model-connected) is accepted but untested.
+*   One task, one condition, one trial, staged change set, offline v2 only. A model-connected (v3) launch is refused.
 *   No operator-binding writer, no Studio exposure, no acceptance binding.
 
 ## 10. Verification

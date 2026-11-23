@@ -5,7 +5,7 @@
 ### Added
 - **DEVELOP-PROTECTED-ATTEMPT-001: run a prepared attempt through the protected runner, and bind it to its candidate** ([design, authority, threat model and limits](docs/designs/protected-attempt-execution.md)).
   - `endo attempt protected-run --attempt <id> --template <spec.json> --out <new dir>`: one prepared attempt, one staged-changeset task, one
-    condition, one trial. The brief becomes `/agent/prompt.txt`. The whole operation is shown with its digest and runs only after
+    condition, one trial, offline (v2) only. The brief becomes `/agent/prompt.txt`. The whole operation is shown with its digest and runs only after
     `APPROVE PROTECTED ATTEMPT <16 hex>` is typed on the controlling terminal; it runs once, is never retried and has no unprotected fallback.
   - Two write-once records in `develop/protected-attempts/`: a launch record (after approval, before the run) and the
     `endo.develop-attempt-candidate-binding.v0` record, sealed by the controller only when the agent's scope is confirmed ended, the

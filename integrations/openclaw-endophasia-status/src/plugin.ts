@@ -25,8 +25,6 @@ export interface TypeBuilderV0 {
 	Boolean(options?: Record<string, unknown>): unknown;
 	Integer(options?: Record<string, unknown>): unknown;
 	Array(items: unknown, options?: Record<string, unknown>): unknown;
-	Union(items: unknown[], options?: Record<string, unknown>): unknown;
-	Literal(value: string): unknown;
 }
 
 /** The slice of `defineToolPlugin` this plugin uses: identity, config schema, and a static tool list. */
@@ -74,7 +72,7 @@ export function endophasiaToolExecuteV0(run?: EndophasiaRunV0) {
 		const provenance = {
 			source: "endo coordinator status (read-only projection of Endophasia's local records)",
 			projects: projectIds,
-			sandbox: config.sandbox ?? "bwrap",
+			sandbox: "bwrap",
 			durationMs: read.durationMs,
 		};
 		if (read.availability === "unavailable")
@@ -128,7 +126,6 @@ export function createEndophasiaStatusPluginV0(
 				),
 				staleAfterSeconds: Type.Optional(Type.Integer({ minimum: 1, maximum: 604800 })),
 				timeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 60000 })),
-				sandbox: Type.Optional(Type.Union([Type.Literal("bwrap"), Type.Literal("none")])),
 				bwrapPath: Type.Optional(Type.String()),
 				disclose: Type.Optional(
 					Type.Object({ taskTitles: Type.Optional(Type.Boolean()) }, { additionalProperties: false }),

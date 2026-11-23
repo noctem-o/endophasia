@@ -3,12 +3,15 @@
 // - Mocked OpenClaw boundary: the plugin definition is built against a fake `defineToolPlugin` and `Type`, and its one tool is driven the
 //   way OpenClaw drives a declarative tool (`execute(params, config, context)`), both with a fake runner (to pin the exact command and the
 //   unavailable paths) and with the real runner against a real store, where the read is proven to write nothing.
-// - Sandbox: on a host with bubblewrap, the default sandbox is shown read-only from the inside (a write fails with EROFS) with the
+// - Sandbox: the shipped reader has no unsandboxed mode. A missing or failing bubblewrap is shown, with the real runner, to yield
+//   `unavailable` without endo ever running. Tests that need endo to run on a host without bubblewrap inject `unwrapped`, a test-only
+//   runner that strips the bwrap prefix, so the opt-out lives here and not in the plugin's config.
+// - On a host with bubblewrap, the sandbox is shown read-only from the inside (a write fails with EROFS) with the
 //   credential stores masked, which is a negative control for the read-only claim that does not depend on Endophasia's own code.
 // - Real SDK: on a host with OpenClaw installed, the same definition is bound to the installed `defineToolPlugin` and its metadata read.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,8 +54,6 @@ const FakeType: TypeBuilderV0 = {
 	Boolean: (options = {}) => ({ type: "boolean", ...options }),
 	Integer: (options = {}) => ({ type: "integer", ...options }),
 	Array: (items, options = {}) => ({ type: "array", items, ...options }),
-	Union: (anyOf, options = {}) => ({ anyOf, ...options }),
-	Literal: (value) => ({ const: value }),
 };
 
 /** The mocked OpenClaw boundary: a `defineToolPlugin` that keeps what it was given and returns the declared tools. */
@@ -78,10 +79,16 @@ function config(over: Record<string, unknown> = {}) {
 		endo: { node: process.execPath, entry: CLI },
 		storeRoot: "/store",
 		projects: [{ id: PROJECT, label: "alpha" }],
-		sandbox: "none",
 		...over,
 	};
 }
+
+/** Test-only: run the command bubblewrap would have run, without bubblewrap. Asserts it was handed a bwrap command first. */
+const unwrapped: EndophasiaRunV0 = (command, options) => {
+	expect(command.file).toBe(BWRAP);
+	const inner = command.args.slice(command.args.indexOf("--") + 1);
+	return execEndophasiaV0({ file: inner[0]!, args: inner.slice(1), env: command.env }, options);
+};
 
 const recorder = (stdout = "{}", code = 0, error: string | null = null) => {
 	const calls: EndophasiaCommandV0[] = [];
@@ -110,7 +117,13 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 		const { tool } = mockedOpenClaw(run);
 		await tool.execute({}, config({ staleAfterSeconds: 120 }), {});
 		expect(calls).toHaveLength(1);
-		expect(calls[0]).toEqual({
+		const call = calls[0]!;
+		expect(call.file).toBe(BWRAP);
+		expect({
+			...call,
+			file: call.args[call.args.indexOf("--") + 1],
+			args: call.args.slice(call.args.indexOf("--") + 2),
+		}).toEqual({
 			file: process.execPath,
 			args: [
 				CLI,
@@ -157,6 +170,8 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 			config({ projects: [{ id: "*" }] }),
 			config({ extraArgs: ["--write"] }),
 			config({ sandbox: "host" }),
+			config({ sandbox: "none" }),
+			config({ sandbox: "bwrap" }),
 		]) {
 			const out = (await tool.execute({}, bad, {})) as { ok: boolean; error: string };
 			expect(out.ok).toBe(false);
@@ -186,9 +201,9 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 		}
 	});
 
-	it("builds a bubblewrap sandbox by default: read-only root, no network, credential stores masked, clean env", () => {
+	it("always builds a bubblewrap sandbox: read-only root, no network, credential stores masked, clean env", () => {
 		const home = "/home/op";
-		const c = validateEndophasiaStatusConfigV0({ ...config(), sandbox: undefined });
+		const c = validateEndophasiaStatusConfigV0(config());
 		const cmd = endophasiaStatusCommandV0(
 			c,
 			[PROJECT],
@@ -206,22 +221,25 @@ describe("endophasia-status plugin against a mocked OpenClaw boundary", () => {
 });
 
 describe("endophasia-status plugin end to end (real CLI, real store)", () => {
-	const variants = [["none", true] as const, ["bwrap", bwrapWorks] as const];
-	for (const [sandbox, enabled] of variants)
-		it.skipIf(!enabled)(`answers from the real status and writes nothing (sandbox: ${sandbox})`, async () => {
+	const variants = [
+		["test-only unwrapped runner", unwrapped, true],
+		["real bwrap", execEndophasiaV0, bwrapWorks],
+	] as const;
+	for (const [name, run, enabled] of variants)
+		it.skipIf(!enabled)(`answers from the real status and writes nothing (${name})`, async () => {
 			const f = await buildCoordinatorStoreV0();
 			const before = { store: manifestOf(f.root), repo: manifestOf(f.repo) };
-			const { tool } = mockedOpenClaw(execEndophasiaV0);
+			const { tool } = mockedOpenClaw(run);
 			const out = (await tool.execute(
 				{ project: "disk" },
-				config({ storeRoot: f.root, projects: [{ id: f.projectId, label: "disk" }], sandbox }),
+				config({ storeRoot: f.root, projects: [{ id: f.projectId, label: "disk" }] }),
 				{},
 			)) as Record<string, unknown>;
 			expect({ store: manifestOf(f.root), repo: manifestOf(f.repo) }).toEqual(before);
 			expect(out).toMatchObject({
 				ok: true,
 				availability: "available",
-				provenance: { sandbox, projects: [f.projectId] },
+				provenance: { sandbox: "bwrap", projects: [f.projectId] },
 			});
 			const status = validateEndoCoordinatorStatusV0(out.coordinatorStatus);
 			expect(status.projects[0]!.tasks[0]).toMatchObject({ phase: "awaiting-review", title: "[not disclosed]" });
@@ -238,7 +256,7 @@ describe("endophasia-status plugin end to end (real CLI, real store)", () => {
 
 	it("discloses task titles only when the operator configures it", async () => {
 		const f = await buildCoordinatorStoreV0();
-		const out = (await mockedOpenClaw(execEndophasiaV0).tool.execute(
+		const out = (await mockedOpenClaw(unwrapped).tool.execute(
 			{},
 			config({ storeRoot: f.root, projects: [{ id: f.projectId }], disclose: { taskTitles: true } }),
 			{},
@@ -269,7 +287,6 @@ describe("endophasia-status plugin end to end (real CLI, real store)", () => {
 			const c = validateEndophasiaStatusConfigV0({
 				...config({ storeRoot: scratch }),
 				endo: { node: process.execPath, entry: probe },
-				sandbox: "bwrap",
 			});
 			const cmd = endophasiaStatusCommandV0(c, [PROJECT], fakeHome);
 			const run = spawnSync(cmd.file, cmd.args, { env: cmd.env, encoding: "utf8" });
@@ -295,6 +312,61 @@ describe("endophasia-status plugin end to end (real CLI, real store)", () => {
 			expect(JSON.parse(outside.stdout).write).toBe("written");
 			expect(JSON.parse(outside.stdout).masked).toEqual(["openclaw.json"]);
 			expect(JSON.parse(outside.stdout).interfaces.some((i: string) => i !== "lo")).toBe(true);
+		},
+	);
+});
+
+describe("endophasia-status plugin fails closed when bubblewrap is unavailable (real runner)", () => {
+	function failClosedProbe() {
+		const scratch = coordinatorTempDirV0("endo-coord-failclosed-");
+		const marker = join(scratch, "endo-ran");
+		const entry = join(scratch, "endo.mjs");
+		writeFileSync(
+			entry,
+			`import { writeFileSync } from "node:fs"; try { writeFileSync(${JSON.stringify(marker)}, "ran"); } catch {} console.log("ENDO-RAN");`,
+		);
+		const failingBwrap = join(scratch, "bwrap-userns-denied");
+		writeFileSync(failingBwrap, "#!/bin/sh\necho 'bwrap: setting up uid map: Permission denied' >&2\nexit 1\n");
+		chmodSync(failingBwrap, 0o755);
+		let stdout = "";
+		const run: EndophasiaRunV0 = async (command, options) => {
+			const ran = await execEndophasiaV0(command, options);
+			stdout = ran.stdout;
+			return ran;
+		};
+		const read = async (bwrapPath: string) =>
+			(await mockedOpenClaw(run).tool.execute(
+				{},
+				config({ storeRoot: scratch, endo: { node: process.execPath, entry }, bwrapPath }),
+				{},
+			)) as { availability: string; summary: string; provenance: { sandbox: string } };
+		return { scratch, marker, failingBwrap, read, stdout: () => stdout };
+	}
+
+	it("bwrap missing or unable to start => unavailable, and endo never runs directly", async () => {
+		const p = failClosedProbe();
+		for (const [bwrapPath, reason] of [
+			[join(p.scratch, "no-such-bwrap"), "spawn-failed"],
+			[p.failingBwrap, "exited-nonzero"],
+		] as const) {
+			const out = await p.read(bwrapPath);
+			expect(out.availability).toBe("unavailable");
+			expect(out.summary).toContain(reason);
+			expect(out.provenance.sandbox).toBe("bwrap");
+			expect(p.stdout()).not.toContain("ENDO-RAN");
+			expect(existsSync(p.marker)).toBe(false);
+		}
+	});
+
+	it.skipIf(!bwrapWorks)(
+		"control: with a working bwrap the same entry does run, inside the read-only sandbox",
+		async () => {
+			const p = failClosedProbe();
+			const out = await p.read(BWRAP);
+			expect(out.availability).toBe("unavailable");
+			expect(out.summary).toContain("not-json");
+			expect(p.stdout()).toContain("ENDO-RAN");
+			expect(existsSync(p.marker)).toBe(false);
 		},
 	);
 });

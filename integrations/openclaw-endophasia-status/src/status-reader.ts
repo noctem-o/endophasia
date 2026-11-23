@@ -2,8 +2,9 @@
 //
 // It runs ONE fixed command, `endo coordinator status --quiet --root <storeRoot> --project <id>...`, with an argv built only from the
 // operator's plugin config: the model chooses at most which permitted project to ask about, never a path, a flag or a command. No shell,
-// a scrubbed environment (the gateway's provider credentials never reach the child), a timeout, an output bound, and by default a
-// bubblewrap sandbox with the whole filesystem read-only, no network, and the gateway's own credential stores masked. What comes back is
+// a scrubbed environment (the gateway's provider credentials never reach the child), a timeout, an output bound, and always a
+// bubblewrap sandbox with the whole filesystem read-only, no network, and the gateway's own credential stores masked. There is no
+// unsandboxed mode: if bubblewrap is missing or cannot start, the read is `unavailable` and endo never runs. What comes back is
 // validated against the protocol's own validator before anything is relayed; another schema version is refused, not guessed at.
 //
 // This module has no OpenClaw or TypeBox import, so it is tested directly (tests/openclaw-endophasia-status.test.ts).
@@ -24,7 +25,6 @@ export interface EndophasiaStatusConfigV0 {
 	projects: { id: string; label?: string }[];
 	staleAfterSeconds?: number;
 	timeoutMs?: number;
-	sandbox?: "bwrap" | "none";
 	bwrapPath?: string;
 	disclose?: { taskTitles?: boolean };
 }
@@ -56,7 +56,6 @@ export function validateEndophasiaStatusConfigV0(value: unknown): EndophasiaStat
 		"projects",
 		"staleAfterSeconds",
 		"timeoutMs",
-		"sandbox",
 		"bwrapPath",
 		"disclose",
 	]);
@@ -88,8 +87,6 @@ export function validateEndophasiaStatusConfigV0(value: unknown): EndophasiaStat
 		if (typeof n !== "number" || !Number.isInteger(n) || n < 1000 || n > ENDOPHASIA_STATUS_LIMITS_V0.maxTimeoutMs)
 			bad("timeoutMs must be 1000..60000");
 	}
-	if (c.sandbox !== undefined && c.sandbox !== "bwrap" && c.sandbox !== "none")
-		bad('sandbox must be "bwrap" or "none"');
 	if (c.bwrapPath !== undefined && (typeof c.bwrapPath !== "string" || !isAbsolute(c.bwrapPath)))
 		bad("bwrapPath must be absolute");
 	if (c.disclose !== undefined) {
@@ -139,7 +136,6 @@ export function endophasiaStatusCommandV0(
 		String(config.staleAfterSeconds ?? ENDOPHASIA_STATUS_LIMITS_V0.defaultStaleAfterSeconds),
 		...projectIds.flatMap((id) => ["--project", id]),
 	];
-	if ((config.sandbox ?? "bwrap") === "none") return { file: config.endo.node, args: endoArgs, env };
 	const masks = MASKED_HOME_DIRS.map((d) => join(home, d)).filter((p) => exists(p));
 	return {
 		file: config.bwrapPath ?? "/usr/bin/bwrap",

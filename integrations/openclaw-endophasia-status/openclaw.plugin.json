@@ -65,18 +65,6 @@
         "minimum": 1000,
         "maximum": 60000
       },
-      "sandbox": {
-        "anyOf": [
-          {
-            "type": "string",
-            "const": "bwrap"
-          },
-          {
-            "type": "string",
-            "const": "none"
-          }
-        ]
-      },
       "bwrapPath": {
         "type": "string"
       },

@@ -323,6 +323,28 @@ suite("the context column", () => {
 		await page.waitFor("document.querySelector('#develop-live').dataset.view === 'changes'");
 		expect(source.diffs).toBe(diffs);
 	});
+
+	it("on a phone, Show in Changes goes back to the work and shows the chosen file's diff, read once", async () => {
+		const { page, source } = await open(390, 844);
+		const details = "[data-testid=develop-crumb] button:last-child";
+		await page.click(details);
+		await page.waitFor("document.querySelector('[data-testid=change-row]')");
+		await page.eval(
+			"[...document.querySelectorAll('[data-testid=change-row]')].find((r) => r.dataset.area === 'unstaged' && r.textContent.includes('tokenizer.ts')).click()",
+		);
+		await page.waitFor("document.querySelector('[data-testid=diff-view]')?.dataset.state === 'ready'");
+		await page.click("[data-testid=tab-conversation]");
+		await page.waitFor("document.querySelector('#develop-live').dataset.view === 'conversation'");
+		await page.click(details);
+		await page.waitFor("document.querySelector('[data-testid=change-selected-open]')");
+		const diffs = source.diffs;
+		await page.click("[data-testid=change-selected-open]");
+		await page.waitFor(
+			"document.querySelector('#develop-live')?.dataset.view === 'changes' && (document.querySelector('[data-testid=diff-table]')?.getClientRects().length ?? 0) > 0",
+		);
+		expect(await page.text("[data-testid=diff-comparison]")).toContain("index → working tree (unstaged)");
+		expect(source.diffs).toBe(diffs);
+	});
 });
 
 suite("hiding Context in Instrument", () => {

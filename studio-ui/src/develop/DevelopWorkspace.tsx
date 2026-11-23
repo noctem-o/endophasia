@@ -373,11 +373,15 @@ export function DevelopWorkspace({
 			}
 		/>
 	);
-	// Choosing a file in the context column reads it in the centre: on a narrow screen that is the other stage.
+	// Choosing a file, or a view, in the context column shows it in the centre: on a narrow screen that is the other stage.
 	const chosen: ProjectApi = {
 		...project,
 		select: (key) => {
 			project.select(key);
+			if (narrow) dispatch({ type: "stage", stage: "activity" });
+		},
+		setView: (view) => {
+			project.setView(view);
 			if (narrow) dispatch({ type: "stage", stage: "activity" });
 		},
 	};

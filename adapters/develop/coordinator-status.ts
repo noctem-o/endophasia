@@ -24,8 +24,8 @@ import {
 import type { EndoSessionLogReadV0 } from "../../runtime/contracts/develop-attempt-execution.ts";
 import { endoDevelopAttentionViewV0 } from "../../runtime/contracts/develop-attention.ts";
 import { DevelopAttemptsStoreV0 } from "../../storage/develop-attempts.ts";
-import { DevelopReceiptsStoreV0 } from "../../storage/develop-receipts.ts";
-import { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
+import { DevelopReceiptsStoreV0, ENDO_DEVELOP_RECEIPTS_DIRECTORY_V0 } from "../../storage/develop-receipts.ts";
+import { DevelopTasksStoreV0, ENDO_DEVELOP_DIRECTORY_V0 } from "../../storage/develop-tasks.ts";
 import { createEndoDurableEventStoreV0 } from "../../storage/event-store.ts";
 
 export interface ReadEndoCoordinatorStatusOptionsV0 {
@@ -113,5 +113,9 @@ export async function readEndoCoordinatorStatusV0(
 		attempts,
 		events,
 		attention,
+		presence: {
+			attempts: existsSync(attemptsStore.directory),
+			receipts: existsSync(join(root, ENDO_DEVELOP_DIRECTORY_V0, ENDO_DEVELOP_RECEIPTS_DIRECTORY_V0)),
+		},
 	});
 }

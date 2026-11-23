@@ -56,6 +56,11 @@ export interface EndoCoordinatorInputsV0 {
 	attempts: EndoAttemptsReadV0;
 	events: EndoSessionLogReadV0;
 	attention: ReadonlyMap<string, EndoCoordinatorAttentionReadV0>;
+	/**
+	 * Whether the store's attempt and receipt directories exist. Their absence while the task file lists tasks (or attempts exist) is
+	 * missing evidence, never "no checks": an absent record says nothing about the work. Defaults to both present.
+	 */
+	presence?: { attempts: boolean; receipts: boolean };
 }
 
 const fresh = (observedAtMs: number, readAtMs: number): EndoCoordinatorFreshnessV0 => ({
@@ -235,7 +240,9 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 	const tasksSource: EndoCoordinatorSourceV0 = tasksRead.ok
 		? {
 				state: tasksRead.exists ? "ready" : "missing",
-				freshness: fresh(readAtMs, readAtMs),
+				freshness: tasksRead.exists
+					? fresh(readAtMs, readAtMs)
+					: notFresh("unavailable", "the task file is absent"),
 				detail: tasksRead.exists
 					? `task file revision ${tasksRead.file.revision}`
 					: "no task file: no project is registered",
@@ -253,28 +260,51 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 			text: `The task file cannot be used (${tasksRead.reason}): nothing is said about any project or task.`,
 		});
 	const attemptsRead = inputs.attempts;
-	const attemptsSource: EndoCoordinatorSourceV0 = !attemptsRead.ok
+	const presence = inputs.presence ?? { attempts: true, receipts: true };
+	const attemptsMissing = attemptsRead.ok && !presence.attempts;
+	const receiptsMissing = attemptsRead.ok && !presence.receipts && attemptsRead.entries.length > 0;
+	const attemptsSource: EndoCoordinatorSourceV0 = attemptsMissing
 		? {
-				state: "unavailable",
-				freshness: notFresh("unavailable", `the attempt records cannot be read (${attemptsRead.reason})`),
-				detail: attemptsRead.reason,
+				state: "missing",
+				freshness: notFresh("unavailable", "the attempt directory is absent"),
+				detail: "no attempt directory",
 			}
-		: attemptsRead.problems.length > 0
+		: !attemptsRead.ok
 			? {
-					state: "partial",
-					freshness: notFresh(
-						"incomplete",
-						`${attemptsRead.problems.length} attempt file(s) are not usable records`,
-						readAtMs,
-						readAtMs,
-					),
-					detail: `${attemptsRead.entries.length} attempt(s), ${attemptsRead.problems.length} unusable file(s)`,
+					state: "unavailable",
+					freshness: notFresh("unavailable", `the attempt records cannot be read (${attemptsRead.reason})`),
+					detail: attemptsRead.reason,
 				}
-			: {
-					state: "ready",
-					freshness: fresh(readAtMs, readAtMs),
-					detail: `${attemptsRead.entries.length} attempt(s)`,
-				};
+			: attemptsRead.problems.length > 0
+				? {
+						state: "partial",
+						freshness: notFresh(
+							"incomplete",
+							`${attemptsRead.problems.length} attempt file(s) are not usable records`,
+							readAtMs,
+							readAtMs,
+						),
+						detail: `${attemptsRead.entries.length} attempt(s), ${attemptsRead.problems.length} unusable file(s)`,
+					}
+				: {
+						state: "ready",
+						freshness: fresh(readAtMs, readAtMs),
+						detail: `${attemptsRead.entries.length} attempt(s)`,
+					};
+	if (attemptsMissing)
+		findings.push({
+			code: "attempt-records-missing",
+			severity: "unavailable",
+			subject: null,
+			text: "The attempt directory is absent: attempt records, their checks and links are unknown, not assumed absent.",
+		});
+	if (receiptsMissing)
+		findings.push({
+			code: "receipt-records-missing",
+			severity: "unavailable",
+			subject: null,
+			text: "The receipt directory is absent while attempts exist: no check result of any attempt is known, and none is assumed absent.",
+		});
 	if (!attemptsRead.ok)
 		findings.push({
 			code: "attempts-unavailable",
@@ -459,6 +489,27 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 						code: "completed-not-reverified",
 						text: "Completed by the operator's record; this status does not re-read its verification.",
 					});
+				} else if (attemptsMissing || (receiptsMissing && entries.length > 0)) {
+					const code = attemptsMissing ? "attempt-records-missing" : "receipt-records-missing";
+					verification = {
+						state: "unavailable",
+						basis: "controller-observed-host-check",
+						incomplete: true,
+						freshness: notFresh(
+							"unavailable",
+							attemptsMissing
+								? "the store's attempt directory is absent"
+								: "the store's receipt directory is absent",
+						),
+						results: [],
+						moreResults: 0,
+					};
+					gaps.push({
+						code,
+						text: attemptsMissing
+							? "The store's attempt records are missing: its attempts and checks are unknown, not absent."
+							: "The store's receipt records are missing: its check results are unknown, not absent.",
+					});
 				} else if (tv === undefined) {
 					verification = {
 						state: "unavailable",
@@ -508,7 +559,12 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 											headAt,
 											readAtMs,
 										)
-									: fresh(headAt, readAtMs);
+									: state === "no-checks"
+										? notFresh(
+												"unavailable",
+												"no check record was found; the absence of a record is not evidence about the work",
+											)
+										: fresh(headAt, readAtMs);
 					verification = {
 						state,
 						basis: "controller-observed-host-check",
@@ -524,7 +580,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 						});
 					if ((t.status === "in-progress" || t.status === "review") && entries.length === 0)
 						gaps.push({ code: "no-attempt", text: "No attempt record exists for this task." });
-					if (entries.length > 0 && state === "no-checks")
+					if (state === "no-checks")
 						gaps.push({
 							code: "no-check-recorded",
 							text: "No verification receipt has been recorded for its attempts.",
@@ -619,6 +675,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 
 	// ---- sessions ----------------------------------------------------------------------------------------------------------------------
 	const allSessions: { session: EndoCoordinatorSessionV0; outOfScope: boolean }[] = [];
+	const futureEvents = new Map<string, number>();
 	const basisOf = endoCoordinatorBasisResolverV0(log.state === "unavailable" ? [] : log.events);
 	for (const [sessionId, events] of sessionEvents) {
 		const overview = reduceEndoSessionOverviewV0(events);
@@ -629,13 +686,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 		const firstEventAtMs = times.length === 0 ? 0 : Math.min(...times);
 		const lastEventAtMs = times.length === 0 ? 0 : Math.max(...times);
 		const open = overview.state === "idle" || overview.state === "running";
-		if (future > 0)
-			findings.push({
-				code: "event-time-in-future",
-				severity: "integrity",
-				subject: sessionId,
-				text: `Session ${sessionId} has ${future} recorded event(s) dated after this read; they are not counted as recent activity.`,
-			});
+		if (future > 0) futureEvents.set(sessionId, future);
 		const sessionFreshness: EndoCoordinatorFreshnessV0 =
 			log.state === "partial"
 				? notFresh("incomplete", "the event log's tail could not be verified", lastEventAtMs, readAtMs)
@@ -723,6 +774,14 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 			text: `${listed.length - sessions.length} older session(s) are not listed.`,
 		});
 	for (const s of sessions) {
+		const future = futureEvents.get(s.sessionId);
+		if (future !== undefined)
+			findings.push({
+				code: "event-time-in-future",
+				severity: "integrity",
+				subject: s.sessionId,
+				text: `Session ${s.sessionId} has ${future} recorded event(s) dated after this read; they are not counted as recent activity.`,
+			});
 		if ((s.recordedState === "idle" || s.recordedState === "running") && s.observation !== "active")
 			findings.push({
 				code: "session-recorded-open-but-stale",

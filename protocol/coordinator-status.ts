@@ -91,6 +91,8 @@ export const ENDO_COORDINATOR_GAP_CODES_V0 = [
 	"review-without-passing-check",
 	"completed-not-reverified",
 	"attention-unavailable",
+	"attempt-records-missing",
+	"receipt-records-missing",
 ] as const;
 export type EndoCoordinatorGapCodeV0 = (typeof ENDO_COORDINATOR_GAP_CODES_V0)[number];
 
@@ -98,6 +100,8 @@ export const ENDO_COORDINATOR_FINDING_CODES_V0 = [
 	"tasks-unavailable",
 	"attempts-unavailable",
 	"attempt-records-unusable",
+	"attempt-records-missing",
+	"receipt-records-missing",
 	"event-log-unavailable",
 	"event-log-incomplete",
 	"project-not-permitted-or-unknown",
@@ -409,15 +413,18 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 	const sourceState: Record<string, string> = {};
 	const sourceFinding: Record<string, Partial<Record<string, EndoCoordinatorFindingCodeV0>>> = {
 		tasks: { unavailable: "tasks-unavailable" },
-		attempts: { unavailable: "attempts-unavailable", partial: "attempt-records-unusable" },
+		attempts: {
+			unavailable: "attempts-unavailable",
+			partial: "attempt-records-unusable",
+			missing: "attempt-records-missing",
+		},
 		events: { unavailable: "event-log-unavailable", partial: "event-log-incomplete" },
 	};
 	for (const key of ["tasks", "attempts", "events"] as const) {
 		const src = obj(sources[key], `sources.${key}`);
 		const state = oneOf(src.state, ["ready", "partial", "missing", "unavailable"] as const, `sources.${key}.state`);
 		const fr = freshness(src.freshness, `sources.${key}.freshness`, readAtMs);
-		const expected =
-			state === "ready" || state === "missing" ? "fresh" : state === "partial" ? "incomplete" : "unavailable";
+		const expected = state === "ready" ? "fresh" : state === "partial" ? "incomplete" : "unavailable";
 		if (fr.state !== expected) fail(`sources.${key} is ${state} but its freshness is ${String(fr.state)}`);
 		const needed = sourceFinding[key]?.[state];
 		if (needed !== undefined && !hasFinding(needed)) fail(`sources.${key} is ${state} without its ${needed} finding`);
@@ -449,6 +456,8 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 		const p = obj(pv, `projects[${pi}]`);
 		freshness(p.freshness, `projects[${pi}].freshness`, readAtMs);
 		const head = p.head === null ? null : obj(p.head, `projects[${pi}].head`);
+		if (head !== null && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(str(head.commit, `projects[${pi}].head.commit`)))
+			fail(`projects[${pi}].head.commit is not a full Git object ID`);
 		arr(p.tasks, `projects[${pi}].tasks`).forEach((tv, ti) => {
 			const w = `projects[${pi}].tasks[${ti}]`;
 			const t = obj(tv, w);
@@ -472,6 +481,8 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 				if (r.basis !== "controller-observed") fail(`${w}.verification.results[${ri}].basis`);
 				if ((fr === "fresh") !== (r.relation === "at-head"))
 					fail(`${w}.verification.results[${ri}] freshness does not follow its relation to HEAD`);
+				if (r.relation === "at-head" && (head === null || r.commit !== head.commit))
+					fail(`${w}.verification.results[${ri}] is at-head but names a commit other than the observed HEAD`);
 				return { fresh: fr === "fresh", outcome: r.outcome };
 			});
 			if (v.incomplete === true && vFresh.state === "fresh") fail(`${w}.verification is incomplete but fresh`);
@@ -494,6 +505,14 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 			if (vState === "not-current" && vFresh.state === "fresh") fail(`${w} is not-current but fresh`);
 			if (vState === "not-current" && !gaps.includes("checks-not-current"))
 				fail(`${w} is not-current without its gap`);
+			if (vState === "no-checks" && vFresh.state === "fresh") fail(`${w} reads no-checks as fresh evidence`);
+			if (
+				(gaps.includes("attempt-records-missing") || gaps.includes("receipt-records-missing")) &&
+				(vState !== "unavailable" || vFresh.state !== "unavailable")
+			)
+				fail(`${w} has missing records but its verification is not unavailable`);
+			if (sourceState.attempts === "missing" && status !== "done" && !gaps.includes("attempt-records-missing"))
+				fail(`${w} is read without its attempt records but has no attempt-records-missing gap`);
 			const links = arr(t.sessions, `${w}.sessions`).map((lv, li) => link(lv, `${w}.sessions[${li}]`));
 			if (links.some((l) => l.taskId !== taskId)) fail(`${w}.sessions names another task`);
 			const association = oneOf(t.association, ENDO_COORDINATOR_ASSOCIATIONS_V0, `${w}.association`);
@@ -538,6 +557,20 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 		if ((association === "explicit") !== links.length > 0) fail(`${w}.association does not match its links`);
 		if (association === "unknown" && requested !== null)
 			fail(`${w}: a scoped read lists a session of unknown relationship`);
+	});
+	const sessionIds = new Set(sessions.map((sv) => obj(sv, "session").sessionId as string));
+	const inScope = (subject: unknown) =>
+		subject === null ||
+		(typeof subject === "string" &&
+			(taskIds.has(subject) ||
+				sessionIds.has(subject) ||
+				projectIds.includes(subject) ||
+				unknown.includes(subject)));
+	for (const f of findings)
+		if (!inScope(f.subject)) fail(`finding ${f.code} is about something outside the reported scope`);
+	arr(s.attention, "attention").forEach((av, ai) => {
+		if (!inScope(obj(av, `attention[${ai}]`).subject))
+			fail(`attention[${ai}] is about something outside the reported scope`);
 	});
 	const unlisted = obj(s.unlistedSessions, "unlistedSessions");
 	const unknownCount = num(unlisted.unknownRelationship, "unlistedSessions.unknownRelationship");

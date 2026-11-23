@@ -6,7 +6,8 @@
 // before and after; a write command run against the same manifests is the negative control showing the manifest does see writes.
 
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -545,6 +546,36 @@ describe("coordinator status projection", () => {
 		expect(s.sessions.find((x) => x.sessionId === lookalike)).toMatchObject({ association: "unknown", links: [] });
 	});
 
+	it("includes session findings only for the requested project", () => {
+		const b = baseline();
+		const input: EndoCoordinatorInputsV0 = {
+			...b,
+			tasks: {
+				...b.tasks,
+				file: {
+					...(b.tasks as { file: object }).file,
+					projects: [project(P, "alpha"), project(Q, "beta")],
+					tasks: [
+						task(T_WORK, P, "in-progress", [piLink(S_LIVE)]),
+						task(T_OTHER, Q, "in-progress", [piLink(S_OTHER)]),
+					],
+				},
+			} as never,
+			events: { state: "complete", events: [started(S_LIVE, NOW + MIN), started(S_OTHER, NOW + MIN)] },
+		};
+		const affected = (s: EndoCoordinatorStatusV0) =>
+			s.findings.filter((f) => f.code === "event-time-in-future").map((f) => f.subject);
+		const all = validateEndoCoordinatorStatusV0(endoCoordinatorStatusV0(input));
+		expect(affected(all)).toEqual(expect.arrayContaining([S_LIVE, S_OTHER]));
+		const scoped = validateEndoCoordinatorStatusV0(endoCoordinatorStatusV0({ ...input, requested: [P] }));
+		expect(affected(scoped)).toEqual([S_LIVE]);
+		expect(JSON.stringify(scoped)).not.toContain(S_OTHER);
+		const otherFinding = all.findings.find((f) => f.subject === S_OTHER);
+		expect(() =>
+			validateEndoCoordinatorStatusV0({ ...scoped, findings: [...scoped.findings, otherFinding] }),
+		).toThrow(/outside the reported scope/);
+	});
+
 	it("an attempt's send authorisation is an explicit, controller-observed link", () => {
 		const b = baseline();
 		const entry = {
@@ -835,6 +866,44 @@ describe("coordinator status: review findings (ENDO-28 review)", () => {
 afterEach(cleanCoordinatorFixturesV0);
 
 describe("endo coordinator status on disk", () => {
+	it.each(["attempts", "receipts"] as const)(
+		"reports missing %s in a populated store without claiming readiness",
+		async (component) => {
+			const f = await buildCoordinatorStoreV0();
+			const read = () => {
+				const run = spawnSync(
+					process.execPath,
+					[CLI, "coordinator", "status", "--root", f.root, "--project", f.projectId, "--quiet"],
+					{ encoding: "utf8" },
+				);
+				expect(run.status, run.stderr).toBe(0);
+				return validateEndoCoordinatorStatusV0(JSON.parse(run.stdout).coordinatorStatus);
+			};
+			expect(taskOf(read(), f.taskId).verification.state).toBe("passing-at-head");
+			rmSync(join(f.root, "develop", component), { recursive: true });
+			const status = read();
+			const code = component === "attempts" ? "attempt-records-missing" : "receipt-records-missing";
+			if (component === "attempts")
+				expect(status.sources.attempts).toMatchObject({ state: "missing", freshness: { state: "unavailable" } });
+			const t = taskOf(status, f.taskId);
+			expect(t.verification).toMatchObject({
+				state: "unavailable",
+				incomplete: true,
+				freshness: { state: "unavailable" },
+			});
+			expect(t.gaps.map((g) => g.code)).toContain(code);
+			expect(codes(status)).toContain(code);
+		},
+	);
+
+	it("refuses an at-head receipt naming a different commit", () => {
+		const snapshot = validateEndoCoordinatorStatusV0(endoCoordinatorStatusV0(baseline()));
+		taskOf(snapshot, T_REVIEW).verification.results[0]!.commit = "e".repeat(40);
+		expect(() => validateEndoCoordinatorStatusV0(snapshot)).toThrow(
+			/at-head but names a commit other than the observed HEAD/,
+		);
+	});
+
 	it("prints a valid status and writes nothing: store and repository manifests (.git included) are identical", async () => {
 		const f = await buildCoordinatorStoreV0();
 		const before = { store: manifestOf(f.root), repo: manifestOf(f.repo) };

@@ -101,7 +101,10 @@ After only: `after-attempt-run-ended-1440.png` (a managed attempt's stages), `af
 
 ## 7. Next, each its own change
 
-1. One head line: merge worktree and run into a single line with the times moved to Context.
+1. One head line: merge worktree and run into a single line with the times moved to Context. *Done differently in DEVELOP-UI-DENSITY-001
+   ([develop-workbench.md](../../docs/develop-workbench.md) §16): the times are in Context, and the run and the worktree stay two
+   elements that share one line where the column is wide enough and wrap to two where it is not, because a session fact and a Git fact
+   should not read as one phrase, and the run line must stay a sticky element of its own in one column.*
 2. The sheet for the recorded view and the narrow layouts, or a deliberate statement that they are cards.
 3. Check drawn against a verification plan's ledger and HEAD, not only receipt outcomes.
 4. If wanted, an orchestration engine with real Fix/Build/Verify stages. That is a runtime project with its own design and review, and

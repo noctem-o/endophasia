@@ -2764,20 +2764,50 @@ table.fields thead th {
 	margin-top: 10px;
 }
 
+.change-selected {
+	margin: 8px 0 0;
+	padding: 4px 0 0 8px;
+	border-left: 2px solid var(--select);
+	overflow-wrap: anywhere;
+}
+
+.change-selected .btn {
+	margin-left: 4px;
+	padding-inline: 4px;
+}
+
+/* The worktree's counts in the context column: one line each, never one total. */
+.area-counts {
+	display: grid;
+	gap: 1px;
+	margin: 6px 0 0;
+	font-size: 12.5px;
+}
+
+.area-count {
+	display: inline-block;
+	min-width: 3ch;
+	text-align: right;
+	color: var(--fg-1);
+}
+
+.area-counts [data-area="conflicted"] {
+	color: var(--attention);
+}
+
 .changes-block[data-stale="yes"] .changes-list {
 	opacity: 0.78;
 }
 
+/* One line a file: the name has the room it needs first, its folder takes what is left (cut, whole in the title), the counts last. */
 .change-row {
 	display: grid;
-	grid-template-columns: 1.6em minmax(0, 1fr) auto;
-	grid-template-areas:
-		"letter name delta"
-		". dir dir";
+	grid-template-columns: 1.6em minmax(3ch, max-content) minmax(0, 1fr) auto;
+	grid-template-areas: "letter name dir delta";
 	align-items: baseline;
 	gap: 0 6px;
 	width: 100%;
-	padding: 3px 6px 3px 4px;
+	padding: 2px 6px 2px 4px;
 	border: 0;
 	border-left: 2px solid transparent;
 	background: none;
@@ -3121,14 +3151,38 @@ table.fields thead th {
 	max-width: 100%;
 }
 
-/* The composer is one compact block docked under the work: the mode choice and the request button share a row, the field is two lines and
-   grows with what is typed, and the hint is one line (its whole sentence is the field's description). */
-.composer-top {
+/* The composer is one compact block docked under the work: the field first, two lines that grow with what is typed; then one row with
+   the mode, what that mode does and who approves it (two lines, whole while the composer has focus; it is also the field's description),
+   and the request button. */
+.composer-bar {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
-	justify-content: space-between;
-	gap: 6px 12px;
+	gap: 4px 12px;
+}
+
+.composer-bar .modes {
+	flex: none;
+	gap: 4px 6px;
+}
+
+.composer-bar .composer-hint {
+	flex: 1 1 16rem;
+	min-width: 0;
+	-webkit-line-clamp: 2;
+	line-clamp: 2;
+	line-height: 1.4;
+}
+
+.composer:focus-within .composer-bar .composer-hint {
+	display: block;
+	-webkit-line-clamp: unset;
+	line-clamp: none;
+}
+
+.composer-bar [data-testid="send"] {
+	flex: none;
+	margin-left: auto;
 }
 
 /* A mode's description is its tooltip (the hint line says the rest); a selected mode that cannot be requested now reads as unavailable. */
@@ -3142,10 +3196,6 @@ table.fields thead th {
 	color: var(--fg-3);
 }
 
-.modes legend {
-	display: none;
-}
-
 @media (max-width: 1023.98px) {
 	.develop-live .composer textarea {
 		min-height: 2.6em;
@@ -3153,9 +3203,69 @@ table.fields thead th {
 }
 
 
-/* The run strip names the session and carries STOP last, with a short clause; the whole sentence is the button's description. */
+/* The head of the work, under the tabs: the run line (the session, its state, STOP last with a short clause; the whole sentence is the
+   button's description), then the worktree line (read with Git, with its own currency mark). Two elements, never one phrase: where the
+   column is wide enough they sit side by side behind a hairline, otherwise the worktree takes the line under the session. */
+.session-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	min-width: 0;
+	/* The worktree's left hairline is drawn one pixel outside it: beside the run line it divides the two, and where the worktree has
+	   wrapped onto its own line it falls outside this box and is not drawn. */
+	overflow: hidden;
+}
+
+/* Each line is as wide as what it says and wraps as a whole: a worktree that does not fit beside the session takes the next line rather
+   than folding its own words into a column. */
+.session-head > .run-strip {
+	flex: 1 0 auto;
+	max-width: 100%;
+	min-width: 0;
+}
+
+.session-head > .worktree-bar {
+	flex: 1 0 auto;
+	max-width: calc(100% + 1px);
+	min-width: 0;
+	padding-block: 4px;
+	margin-left: -1px;
+	border-left: 1px solid var(--line-subtle);
+}
+
+/* One column: the run line stays docked at the top while the page scrolls (below), so it must be a child of the column itself: a sticky
+   box cannot leave its parent, and this wrapper is only as tall as the two lines. */
+@media (max-width: 1023.98px) {
+	.session-head {
+		display: contents;
+	}
+}
+
+
+.strip-identity {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px 10px;
+	min-width: 0;
+	max-width: 100%;
+}
+
 .strip-session {
 	color: var(--fg-1);
+	min-width: 0;
+	max-width: 32ch;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.session-head > .worktree-bar .wt-main {
+	flex: 0 1 auto;
+	gap: 2px 12px;
+}
+
+.session-head > .worktree-bar .wt-tail {
+	gap: 6px;
 }
 
 .stop-short {
@@ -3573,7 +3683,7 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 .develop[data-appearance="field"] .develop-live .run-strip {
 	position: relative;
 	gap: 6px 14px;
-	padding: 13px 22px 15px;
+	padding: 8px 22px 10px;
 	border-bottom-color: transparent;
 	font-size: 12.5px;
 	color: var(--f-ink-2);
@@ -3638,30 +3748,9 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	box-shadow: none;
 }
 
-/* STOP stays the most visible control while a run is open: a filled button with a stop mark, last in the strip. */
+/* STOP keeps its place (last in the strip), its stop mark and its weight; its ground is the shared graphite stop below, not a lamp. */
 .develop[data-appearance="field"] [data-testid="stop"]:not(:disabled) {
-	display: inline-flex;
-	align-items: center;
-	gap: 8px;
-	padding: 5px 15px 5px 12px;
-	background: var(--f-ink-1);
-	border-color: var(--f-ink-1);
-	color: #050607;
-	font-weight: 600;
-	box-shadow: 0 0 0 4px rgba(239, 235, 227, 0.06);
-}
-
-.develop[data-appearance="field"] [data-testid="stop"]:not(:disabled)::before {
-	content: "";
-	width: 8px;
-	height: 8px;
-	border-radius: 1.5px;
-	background: currentColor;
-}
-
-.develop[data-appearance="field"] [data-testid="stop"]:hover:not(:disabled) {
-	background: #ffffff;
-	color: #050607;
+	padding: 4px 14px 4px 11px;
 }
 
 .develop[data-appearance="field"] .live-scroll {
@@ -4222,8 +4311,8 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 }
 
 .develop[data-surface="arrival"] .develop-live > .live-head,
-.develop[data-surface="arrival"] .develop-live > .worktree-bar,
-.develop[data-surface="arrival"] .develop-live > .run-strip {
+.develop[data-surface="arrival"] .develop-live > .session-head > .worktree-bar,
+.develop[data-surface="arrival"] .develop-live > .session-head > .run-strip {
 	background: var(--f-veil);
 }
 
@@ -4438,8 +4527,47 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 }
 
 /* The two buttons that open the drawer and the dock: quiet, in the conversation's header, with their state on them. */
-.dock-toggle {
+.dock-toggle,
+.context-toggle {
 	display: none;
+}
+
+/* Instrument: the Context column can be hidden for the conversation, from the end of the conversation's header (outside the column, so
+   focus is never left in something that is no longer drawn). With a rail, the column's width goes to the conversation and the course
+   stays above the sessions. Where the sessions are a drawer the course is in the right-hand column and is its only place: it stays, and
+   only the context under it goes. Below 1024 px the context is a stage of its own and nothing here applies. */
+@media (min-width: 1024px) and (min-height: 540px) {
+	.develop[data-appearance="instrument"][data-fill="true"] .context-toggle {
+		display: inline-flex;
+	}
+	.develop[data-appearance="instrument"][data-fill="true"] .context-toggle[aria-expanded="false"] {
+		border-color: var(--fg-4);
+		color: var(--fg-1);
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] #develop-context {
+		display: none;
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid[data-course] {
+		grid-template-columns: clamp(240px, 18vw, 340px) minmax(0, 1fr);
+		grid-template-areas:
+			"course activity"
+			"nav activity";
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid > .develop-activity {
+		border-right: 0;
+	}
+}
+
+@media (min-width: 1024px) and (max-width: 1359.98px) and (min-height: 540px) {
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid[data-course] {
+		grid-template-columns: minmax(0, 1fr) 300px;
+		grid-template-areas:
+			"activity course"
+			"activity .";
+	}
+	.develop[data-appearance="instrument"][data-fill="true"][data-dock="closed"] .develop-grid > .develop-course {
+		border-left: 1px solid var(--line);
+	}
 }
 
 .develop[data-appearance="field"] .sessions-toggle[aria-expanded="true"],
@@ -6623,7 +6751,7 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
    stop is the one control there drawn to be found. */
 .develop[data-appearance="instrument"] .develop-live .run-strip {
 	margin: 0;
-	padding: 7px 14px;
+	padding: 5px 14px;
 	border: 0;
 	border-bottom: 1px solid var(--line-subtle);
 	border-radius: 0;
@@ -6635,9 +6763,48 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	border-bottom-color: var(--attention);
 }
 
-.develop[data-appearance="instrument"] .develop-live .stop-control .btn:not(:disabled) {
-	border-color: var(--fg-3);
+/* --- STOP, in both appearances ------------------------------------------------------------------------------------------------------
+   Found by its words, its place (last in the run line) and a stop mark, not by luminance: on an OLED panel a near-white fill was the
+   brightest thing on the screen (Field's filled pill, #efebe3). Graphite ground, a border that reads against both the strip and the
+   button (≥ 4.5:1), light-grey text (10.6:1), a restrained hover and press, no glow. Focus is the page's ivory ring, held off the border.
+   Scoped to the stop button: every other button keeps its own treatment. Disabled keeps the shared disabled look. */
+.develop .develop-live [data-testid="stop"] {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	font-weight: 600;
+}
+
+.develop .develop-live [data-testid="stop"]:not(:disabled) {
+	background: #1d2027;
+	border-color: #8b8880;
+	color: #d4d0c6;
+	box-shadow: none;
+}
+
+.develop .develop-live [data-testid="stop"]:not(:disabled)::before {
+	content: "";
+	flex: none;
+	width: 7px;
+	height: 7px;
+	border-radius: 1px;
+	background: currentColor;
+}
+
+.develop .develop-live [data-testid="stop"]:hover:not(:disabled) {
+	background: #272b34;
+	border-color: #a8a49b;
 	color: var(--fg-1);
+}
+
+.develop .develop-live [data-testid="stop"]:active:not(:disabled) {
+	background: #15171c;
+	border-color: #8b8880;
+}
+
+.develop .develop-live [data-testid="stop"]:focus-visible {
+	outline: 2px solid var(--select);
+	outline-offset: 2px;
 }
 
 /* --- the conversation --------------------------------------------------------------------------------------------------------------
@@ -6735,7 +6902,6 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 		padding: 6px 12px;
 		gap: 6px 8px;
 	}
-	.develop[data-appearance="instrument"] .develop-live .worktree-bar,
 	.develop[data-appearance="instrument"] .develop-live .run-strip {
 		padding: 5px 12px;
 		gap: 2px 10px;

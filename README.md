@@ -32,7 +32,7 @@ for checking what coding agents actually did, and keeping the record for every c
 
 <br>
 
-<img src="docs/images/readme-hero-field-storm-1440.png" alt="Endophasia Develop workbench in Field mode with Storm atmosphere, Course gauges, folded reasoning, expanded Pi tool-call inspection, and live Git changes" width="100%">
+<img src="docs/images/readme-hero-field-storm-1440.png" alt="Endophasia Develop workbench in Field mode with Storm atmosphere: one compact head with the session, a graphite Request stop and the worktree; folded model-provided reasoning; four Pi tool calls, the first opened to its reported arguments; Course gauges; and a Context column that leads with the worktree's staged, unstaged and untracked counts above the changed files" width="100%">
 <p><sub><strong>Field (Storm)</strong> — live <em>Course</em> gauges, folded model-provided reasoning, inspectable tool calls with explicit safe-preview &amp; provenance labels, Git tree changes and terminal-gated Strict mode (synthetic fixture; weather is scenery).</sub></p>
 
 </div>

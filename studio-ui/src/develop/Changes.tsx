@@ -4,6 +4,7 @@
 // never typed or built: a file is chosen from the list the broker returned and read by its position in that list.
 import { type ReactElement, type ReactNode, useEffect, useRef } from "react";
 import {
+	AREA_ORDER,
 	AREA_WORDS,
 	AUTHORSHIP_WORDS,
 	COMPARISON_WORDS,
@@ -54,10 +55,16 @@ export function WorktreeBar({
 	connected,
 	leading,
 	basis = "the directory Pi was launched in",
+	compact = false,
 }: {
 	api: ProjectApi;
 	paired: boolean;
 	connected: boolean;
+	/**
+	 * The head of a live session's work: the time of the last read and the revision are left to the bar's title and the context column,
+	 * and the refresh button says "Refresh" (its whole name is still "Refresh worktree").
+	 */
+	compact?: boolean;
 	/** What directory the worktree is read from, in words (a workspace host reads the project's registered directory). */
 	basis?: string;
 	/** The project and task cluster that shares this row (develop/Tasks.tsx). It is not a Git fact and is not read from Git. */
@@ -83,7 +90,14 @@ export function WorktreeBar({
 			onClick={api.refresh}
 			title="Read the worktree again with Git. Nothing else is read until you ask."
 		>
-			{reading ? "Reading…" : view.kind === "unread" ? "Read worktree" : "Refresh worktree"}
+			{reading ? (
+				"Reading…"
+			) : (
+				<>
+					{view.kind === "unread" ? "Read" : "Refresh"}
+					<span className={compact ? "sr-only" : undefined}> worktree</span>
+				</>
+			)}
 		</button>
 	);
 	let body: ReactElement;
@@ -132,7 +146,7 @@ export function WorktreeBar({
 								<span className="dim"> (no commit yet)</span>
 							</>
 						)}
-						{head?.oid ? <span className="mono dim"> {shortOid(head.oid)}</span> : null}
+						{head?.oid && !compact ? <span className="mono dim"> {shortOid(head.oid)}</span> : null}
 					</span>
 					<span data-testid="project-counts" className="wt-counts">
 						{unknown ? (
@@ -165,12 +179,12 @@ export function WorktreeBar({
 			data-testid="project-header"
 			data-state={view.kind}
 			data-current={current ? "yes" : "no"}
-			title={`${basis.charAt(0).toUpperCase()}${basis.slice(1)} (configured), read with Git. A worktree is a place, not a session.`}
+			title={`${basis.charAt(0).toUpperCase()}${basis.slice(1)} (configured), read with Git${project === null ? "" : ` at ${clock(project.capturedAtMs)} (broker clock)`}. A worktree is a place, not a session.`}
 		>
 			{leading}
 			<span className="wt-main">{body}</span>
 			<span className="wt-tail">
-				{project === null ? null : (
+				{project === null || compact ? null : (
 					<span className="dim small" data-testid="project-read-at">
 						read {clock(project.capturedAtMs)} (broker clock)
 					</span>
@@ -332,6 +346,7 @@ export function ChangesList({
 					) : null}
 				</div>
 			)}
+			<SelectedChange api={api} />
 			{project === null
 				? null
 				: project.incomplete.map((code) => (
@@ -341,6 +356,136 @@ export function ChangesList({
 					))}
 			<p className="dim small authorship">{AUTHORSHIP_WORDS}</p>
 		</section>
+	);
+}
+
+/**
+ * The file chosen in the list, said once under it: its path, which comparison it is listed under, and its counts, from the list the broker
+ * returned. Its lines are the Changes view's; this reads nothing.
+ */
+function SelectedChange({ api }: { api: ProjectApi }): ReactElement | null {
+	const entry = findEntry(api.state.project, api.state.selection);
+	if (entry === null) return null;
+	return (
+		<p className="small change-selected" data-testid="change-selected" data-area={entry.area}>
+			<span className="dim">Selected </span>
+			<span className="mono path">{entry.path}</span>
+			<span className="dim">
+				{" "}
+				· {AREA_WORDS[entry.area].name}, {AREA_WORDS[entry.area].compares}
+			</span>{" "}
+			<Delta file={entry} />
+			{api.state.view === "changes" ? null : (
+				<button
+					type="button"
+					className="btn quiet small-btn"
+					data-testid="change-selected-open"
+					onClick={() => api.setView("changes")}
+				>
+					Show in Changes
+				</button>
+			)}
+		</p>
+	);
+}
+
+/**
+ * The worktree in a few lines, for the context column: where it is, its HEAD, how many paths each comparison lists (never one total: a
+ * staged and an unstaged version of a file are different contents), and when that was read. What the last read said, not what is there now.
+ */
+export function WorktreeOverview({
+	api,
+	paired,
+	connected,
+	basis,
+}: {
+	api: ProjectApi;
+	paired: boolean;
+	connected: boolean;
+	basis: string;
+}): ReactElement | null {
+	const { state } = api;
+	const project = state.project;
+	const repo = project?.repository ?? null;
+	if (project === null || repo === null) return null;
+	const head = project.head;
+	const current = state.current && connected && paired;
+	const { counts } = project.changes;
+	const known = project.changes.state !== "unavailable";
+	const areas = AREA_ORDER.filter((area) => area !== "conflicted" || counts.conflicted > 0);
+	return (
+		<>
+			<dl className="facts">
+				<div className="fact">
+					<dt>worktree</dt>
+					<dd className="mono path" title={repo.root}>
+						{repo.root}
+					</dd>
+				</div>
+				{repo.cwdRelative === "" ? null : (
+					<div className="fact">
+						<dt>launched in</dt>
+						<dd className="mono">{repo.cwdRelative}</dd>
+					</div>
+				)}
+				<div className="fact">
+					<dt>HEAD</dt>
+					<dd data-testid="context-head">
+						{head === null ? (
+							<span className="dim">unknown</span>
+						) : head.kind === "branch" ? (
+							<>
+								<span className="dim">branch </span>
+								<span className="mono">{head.branch}</span>
+							</>
+						) : head.kind === "detached" ? (
+							<span className="dim">detached</span>
+						) : (
+							<>
+								<span className="dim">unborn branch </span>
+								<span className="mono">{head.branch}</span>
+							</>
+						)}
+						{head?.oid ? <span className="mono dim"> {shortOid(head.oid)}</span> : null}
+					</dd>
+				</div>
+				<div className="fact">
+					<dt>read</dt>
+					<dd>
+						<span data-testid="project-read-at">
+							{clock(project.capturedAtMs)} <span className="dim">(broker clock)</span>
+						</span>
+						{current || state.reading ? null : (
+							<span className="chip-stale" data-testid="context-not-current">
+								{state.problem === "stale" ? "out of date" : "unconfirmed"}
+							</span>
+						)}
+					</dd>
+				</div>
+				<div className="fact">
+					<dt>basis</dt>
+					<dd className="dim">configured: {basis}, read with Git</dd>
+				</div>
+			</dl>
+			{known ? (
+				<ul className="plain area-counts" data-testid="context-counts" aria-label="Paths listed by each comparison">
+					{areas.map((area) => (
+						<li key={area} data-area={area} title={AREA_WORDS[area].compares}>
+							<span className="area-count mono">
+								{counts.exact ? "" : "≥"}
+								{counts[area]}
+							</span>{" "}
+							{AREA_WORDS[area].name.toLowerCase()}
+							<span className="dim small"> {AREA_WORDS[area].compares}</span>
+						</li>
+					))}
+				</ul>
+			) : (
+				<p className="dim small" data-testid="context-counts">
+					Changes unknown.
+				</p>
+			)}
+		</>
 	);
 }
 

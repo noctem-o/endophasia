@@ -62,7 +62,7 @@ import type { ProjectApi } from "../use-project.ts";
 import type { useWorkbench } from "../use-workbench.ts";
 import type { WorkspaceApi } from "../use-workspace.ts";
 import { AttemptRequest } from "./AttemptRequest.tsx";
-import { ChangesList, DiffView, projectView, WorktreeBar } from "./Changes.tsx";
+import { ChangesList, DiffView, projectView, WorktreeBar, WorktreeOverview } from "./Changes.tsx";
 import { GrowContext, ReasoningBlock, ReasoningPreference, type ReasoningView, ReflowContext } from "./Reasoning.tsx";
 import { SurfaceTag, SurfaceView } from "./Surface.tsx";
 import { ProjectBlock, TaskCluster, TaskPanel } from "./Tasks.tsx";
@@ -934,47 +934,13 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 				void send();
 			}}
 		>
-			<div className="composer-top">
-				<fieldset className="modes">
-					<legend>Send as</legend>
-					{MODES.map((m) => (
-						<label
-							key={m.id}
-							className="mode"
-							data-mode={m.id}
-							data-selected={mode === m.id}
-							data-offered={wb.state.status?.offers[m.id]?.offered === true ? "yes" : "no"}
-							title={m.gist}
-						>
-							<input
-								type="radio"
-								name={`${id}-mode`}
-								value={m.id}
-								checked={mode === m.id}
-								onChange={() => setMode(m.id)}
-								data-testid={`mode-${m.id}`}
-							/>
-							<span className="mode-name">{m.label}</span> <span className="dim">· {m.gist}</span>
-						</label>
-					))}
-				</fieldset>
-				<button
-					type="submit"
-					className="btn"
-					data-testid="send"
-					data-covered={covered ? "yes" : "no"}
-					disabled={!ok}
-				>
-					{covered ? "Send" : "Request"} {mode}
-				</button>
-			</div>
 			<label htmlFor={id} className="sr-only">
 				{label}
 			</label>
 			<textarea
 				id={id}
 				ref={field}
-				rows={3}
+				rows={2}
 				value={draft}
 				aria-describedby={`${id}-hint`}
 				data-testid="composer"
@@ -1001,14 +967,50 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 					{terminalCommandWords(asCommand)}
 				</p>
 			)}
-			<p
-				className="dim small composer-hint"
-				id={`${id}-hint`}
-				data-testid="composer-hint"
-				title={offer.offered ? hint : (offer.reason ?? "")}
-			>
-				{offer.offered ? hint : (offer.reason ?? "")}
-			</p>
+			{/* One row under the field: what to send it as, what that does and who approves it, and the button. The hint is two lines
+			    here and whole while the composer has focus; it is also the field's description. */}
+			<div className="composer-bar">
+				<fieldset className="modes">
+					<legend className="sr-only">Send as</legend>
+					{MODES.map((m) => (
+						<label
+							key={m.id}
+							className="mode"
+							data-mode={m.id}
+							data-selected={mode === m.id}
+							data-offered={wb.state.status?.offers[m.id]?.offered === true ? "yes" : "no"}
+							title={m.gist}
+						>
+							<input
+								type="radio"
+								name={`${id}-mode`}
+								value={m.id}
+								checked={mode === m.id}
+								onChange={() => setMode(m.id)}
+								data-testid={`mode-${m.id}`}
+							/>
+							<span className="mode-name">{m.label}</span> <span className="dim">· {m.gist}</span>
+						</label>
+					))}
+				</fieldset>
+				<p
+					className="dim small composer-hint"
+					id={`${id}-hint`}
+					data-testid="composer-hint"
+					title={offer.offered ? hint : (offer.reason ?? "")}
+				>
+					{offer.offered ? hint : (offer.reason ?? "")}
+				</p>
+				<button
+					type="submit"
+					className="btn"
+					data-testid="send"
+					data-covered={covered ? "yes" : "no"}
+					disabled={!ok}
+				>
+					{covered ? "Send" : "Request"} {mode}
+				</button>
+			</div>
 		</form>
 	);
 }
@@ -1187,6 +1189,7 @@ export function LiveConversation({
 	workspace,
 	reasoning,
 	leading,
+	trailing,
 	arrival,
 	beacon,
 }: {
@@ -1198,6 +1201,8 @@ export function LiveConversation({
 	reasoning: ReasoningView;
 	/** Shown at the start of the header: the sessions toggle at the widths where the list is a drawer. */
 	leading?: ReactElement;
+	/** Shown at the end of the header's tools: the control that hides or shows the context column, where there is one. */
+	trailing?: ReactElement;
 	/** Field appearance: shown in place of the empty conversation (the ledger). */
 	arrival?: ReactNode;
 	/** Field appearance: a line under the run strip while something waits for the terminal. Text only, never a control. */
@@ -1293,39 +1298,50 @@ export function LiveConversation({
 						>
 							{state.busy ? "Reading…" : "Read session"}
 						</button>
+						{trailing}
 					</div>
 				</header>
-				<WorktreeBar
-					api={project}
-					paired={paired}
-					connected={connected}
-					// With no Git context AND no project, there is nothing for the bar to say (as before): no bar at all.
-					leading={
-						workspace.state.availability === "absent" && !changesOffered ? null : (
-							<TaskCluster
-								workspace={workspace}
-								git={project.state.project}
-								onDetails={() => project.setView("task")}
-							/>
-						)
-					}
-				/>
-				<div className="run-strip" data-testid="run-strip" data-connection={connection}>
-					<ConnectionGlyph state={connection} />
-					<span
-						className="mono strip-session"
-						data-testid="run-strip-session"
-						title="The session this conversation belongs to"
-					>
-						{state.status?.session == null ? "session not identified yet" : shortSession(state.status.session)}
-					</span>
-					<span aria-live="polite" data-testid="run-strip-words">
-						{words}
-					</span>
-					<span className="dim small">
-						{state.statusAt === null ? "" : `read ${clock(state.statusAt)} (browser clock)`}
-					</span>
-					<StopControl wb={wb} />
+				{/* The head of the work: the session, read from the broker, with STOP; then the worktree, read with Git. Two sources, two
+				    segments, each with its own currency mark: side by side where the column is wide, one under the other where it is not.
+				    The times of the last reads, the revision and the paths are in Context. */}
+				<div className="session-head">
+					<div className="run-strip" data-testid="run-strip" data-connection={connection}>
+						<span
+							className="strip-identity"
+							title={
+								state.statusAt === null
+									? "The session this conversation belongs to. Its status has not been read yet."
+									: `The session this conversation belongs to. Status as of the last read, ${clock(state.statusAt)} (browser clock).`
+							}
+						>
+							<ConnectionGlyph state={connection} />
+							<span className="mono strip-session" data-testid="run-strip-session">
+								{state.status?.session == null
+									? "session not identified yet"
+									: shortSession(state.status.session)}
+							</span>
+							<span aria-live="polite" data-testid="run-strip-words">
+								{words}
+							</span>
+						</span>
+						<StopControl wb={wb} />
+					</div>
+					<WorktreeBar
+						api={project}
+						paired={paired}
+						connected={connected}
+						compact
+						// With no Git context AND no project, there is nothing for the bar to say (as before): no bar at all.
+						leading={
+							workspace.state.availability === "absent" && !changesOffered ? null : (
+								<TaskCluster
+									workspace={workspace}
+									git={project.state.project}
+									onDetails={() => project.setView("task")}
+								/>
+							)
+						}
+					/>
 				</div>
 				<NextStepStrip wb={wb} workspace={workspace} view={view} onTask={() => project.setView("task")} />
 				{beacon}
@@ -1424,8 +1440,6 @@ export function LiveContext({
 			className="develop-inspector"
 			resetKey={status?.launchId ?? "none"}
 		>
-			<ChangesList api={project} paired={paired} connected={connected} />
-			<ProjectBlock workspace={workspace} git={project.state.project} />
 			<section className="block" data-testid="context-worktree">
 				<h3>Worktree</h3>
 				{repo === null ? (
@@ -1439,24 +1453,12 @@ export function LiveContext({
 									: "Not read yet. Nothing is known about where the session works."}
 					</p>
 				) : (
-					<dl className="facts">
-						<div className="fact">
-							<dt>basis</dt>
-							<dd className="dim">configured: the directory Pi was launched in, read with Git</dd>
-						</div>
-						<div className="fact">
-							<dt>worktree</dt>
-							<dd className="mono path" title={repo.root}>
-								{repo.root}
-							</dd>
-						</div>
-						{repo.cwdRelative === "" ? null : (
-							<div className="fact">
-								<dt>launched in</dt>
-								<dd className="mono">{repo.cwdRelative}</dd>
-							</div>
-						)}
-					</dl>
+					<WorktreeOverview
+						api={project}
+						paired={paired}
+						connected={connected}
+						basis="the directory Pi was launched in"
+					/>
 				)}
 				{shown === null || shown.worktrees.length < 2 ? null : (
 					<details className="more" data-testid="other-worktrees">
@@ -1483,6 +1485,8 @@ export function LiveContext({
 					</details>
 				)}
 			</section>
+			<ChangesList api={project} paired={paired} connected={connected} />
+			<ProjectBlock workspace={workspace} git={project.state.project} />
 			<section className="block">
 				<h3>Session</h3>
 				<dl className="facts">
@@ -1498,6 +1502,21 @@ export function LiveContext({
 						<dt>session</dt>
 						<dd className="mono">
 							{status?.session === null || status === null ? "not identified yet" : shortSession(status.session)}
+						</dd>
+					</div>
+					<div className="fact">
+						<dt>status read</dt>
+						<dd data-testid="context-status-read">
+							{wb.state.statusAt === null ? (
+								<span className="dim">not yet</span>
+							) : (
+								<>
+									{clock(wb.state.statusAt)} <span className="dim">(browser clock)</span>
+									{wb.state.unreachable ? (
+										<span className="dim"> · the broker has not answered since</span>
+									) : null}
+								</>
+							)}
 						</dd>
 					</div>
 				</dl>

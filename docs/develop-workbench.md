@@ -537,3 +537,41 @@ The attachment’s private live callback projects fields *before* the grant-gate
 Exit code is shown only for a safe integer in `result.details.exitCode`. No parsing shell output or inferring zero. A missing field is unavailable; a present value outside the projection is withheld. The public path vocabulary in `live-tool-fields.ts` is deliberately small: most real project filenames and commands will not be shown. The projection does not try to recognise every kind of secret. Accepted tool identifiers and numeric metadata are runtime assertions, not a confidentiality boundary against a malicious provider encoding data in permitted values. Model-provided messages and reasoning have their own unchanged rules.
 
 At most three fields per boundary event. The largest is 512 UTF-8 bytes of ASCII output; validate the entire input first, withhold over 65,536 input characters rather than inspecting an unbounded result. Projected tool items count toward the existing transcript and page budgets. No argument or result object is retained. This does not alter Pi’s own session files or a separately configured recording proxy.
+
+
+## 16. Density (DEVELOP-UI-DENSITY-001)
+
+A refinement of the live workbench'\''s layout, not a redesign: no route, record, request, grant, approval or read changed, and no file
+outside `studio-ui/`, `tests/`, `docs/` and `research/` was touched.
+
+- **The head of the work** is the tabs line and one `session-head`: the run line (session, its state, STOP last) and the worktree line
+  (project and task, repository, branch, per-area counts, its own currency mark and **Refresh**). They are two elements, side by side behind
+  a hairline where the column is wide enough and one under the other where it is not; below 1024 px the wrapper is `display: contents`
+  so the run line is still the sticky child of the column. The times of the last reads (status, browser clock; worktree, broker clock)
+  and the short commit moved to Context. A stale or unconfirmed worktree keeps its chip and its dashed amber rule; an unreachable broker
+  keeps its words in the run line.
+- **STOP** is one graphite control in both appearances: `#1d2027` ground, `#8b8880` border, `#d4d0c6` text (10.6:1), a 7 px stop
+  mark, a restrained hover and press, the page'\''s 2 px ivory focus ring. Field'\''s filled near-white pill (`#efebe3`, relative luminance
+  0.83) is gone. Wording, disabled and unavailable states, `aria-describedby` and the stop path are unchanged.
+- **The composer** is the field (two lines, growing with what is typed up to 14 em) over one row: the modes, the hint (two lines; whole
+  while the composer has focus; still the field'\''s description) and the request button. The legend "Send as" is now read by assistive
+  technology (it was `display: none`).
+- **Context** opens with **Worktree**: the path, HEAD, the time of the read, the basis, and one line per comparison (staged HEAD → index,
+  unstaged index → working tree, untracked not in Git; conflicted only above zero), never a total. The change list is one line a file
+  (the name first, its folder cut to what is left, whole in the title), and the chosen file is named under it with its comparison. Its
+  **Show in Changes** only switches the view, as the tab does.
+- **Hide context** (Instrument, 1024 px and wider) closes the Context column from the end of the conversation'\''s header, so focus is never
+  left in a column that is no longer drawn. It is the same memory-only state as Field'\''s dock. The column stays mounted: what was chosen
+  and opened in it is there when it comes back, its scroll position is restored, and nothing is read again. With a rail the column'\''s
+  width goes to the conversation; where the sessions are a drawer (1024–1359 px) the course is the right column'\''s only content and stays.
+  Below 1024 px Context is its own stage and the control is not drawn.
+
+Measured in headless Chromium on the synthetic fixtures (`tests/endo-studio-density-shots.test.ts`), Instrument, a run open:
+
+| Viewport | Head above the conversation | Composer and mode line below it | Conversation scroller |
+| :-- | :-- | :-- | :-- |
+| 1440×900, before | 137 px | 153 px | 765×533 |
+| 1440×900, after | 112 px | 136 px | 765×575; 1112×605 with Context hidden |
+| 1366×768, before | 137 px | 153 px | 722×401 |
+| 1366×768, after | 112 px | 136 px | 722×443; 1051×443 with Context hidden |
+

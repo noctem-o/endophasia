@@ -5,7 +5,7 @@
 // Two appearances share this one component tree: Instrument (the default) and Field (docs/develop-field.md). Field changes no state,
 // no action and no element the keyboard handlers below look for; it adds a contour field behind the work, a legend that says what the
 // field shows, the ledger where there is nothing to read, and a beacon while something waits for the terminal.
-import { type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { EndoCockpitDevelopSessionRowV0 } from "../../../protocol/cockpit-develop.ts";
 import { attemptCourse, courseAttempt, liveCourse, recordedCourse } from "../model/course.ts";
 import { eventDetail } from "../model/detail.ts";
@@ -185,8 +185,20 @@ export function DevelopWorkspace({
 	// The sessions list is a drawer at the widths where three columns do not fit (and, drawn as Field, wherever a live session is open);
 	// it closes when something is chosen, and on Escape.
 	const [drawer, setDrawer] = useState(false);
-	// Field only: the dock beside a live conversation (changes, then context) can be closed for a focused reading width. Memory only.
+	// The context column beside a live conversation can be closed for a focused reading width: Field's dock, Instrument's Context. Memory
+	// only. Closed, the column is not drawn but stays mounted, so what was chosen and opened in it is there when it comes back, and nothing
+	// is read again; its scroll position is kept by hand (a column that is not drawn has none).
 	const [dock, setDock] = useState(true);
+	const contextScroll = useRef(0);
+	const toggleDock = () => {
+		const body = document.querySelector<HTMLElement>("#develop-context > .panel-body");
+		if (dock && body !== null) contextScroll.current = body.scrollTop;
+		setDock(!dock);
+	};
+	useLayoutEffect(() => {
+		const body = document.querySelector<HTMLElement>("#develop-context > .panel-body");
+		if (dock && body !== null) body.scrollTop = contextScroll.current;
+	}, [dock]);
 	// The course under the sessions: one of three heights. Memory only, like every other choice on this page.
 	const [courseSize, setCourseSize] = useState<CourseSize>("fit");
 	// A held run the operator asked to be shown: once the conversation is drawn again its marker is brought into view and takes focus.
@@ -361,11 +373,15 @@ export function DevelopWorkspace({
 			}
 		/>
 	);
-	// Choosing a file in the context column reads it in the centre: on a narrow screen that is the other stage.
+	// Choosing a file, or a view, in the context column shows it in the centre: on a narrow screen that is the other stage.
 	const chosen: ProjectApi = {
 		...project,
 		select: (key) => {
 			project.select(key);
+			if (narrow) dispatch({ type: "stage", stage: "activity" });
+		},
+		setView: (view) => {
+			project.setView(view);
 			if (narrow) dispatch({ type: "stage", stage: "activity" });
 		},
 	};
@@ -561,7 +577,7 @@ export function DevelopWorkspace({
 			data-motion={field ? signal.motion : undefined}
 			data-texture={field ? signal.texture : undefined}
 			data-attention={field ? signal.attention : undefined}
-			data-dock={field ? (dock ? "open" : "closed") : undefined}
+			data-dock={dock ? "open" : "closed"}
 			data-atmosphere={field ? atmosphere : undefined}
 		>
 			{field ? <FieldLayer signal={signal} atmosphere={atmosphere} paused={paused} /> : null}
@@ -706,12 +722,31 @@ export function DevelopWorkspace({
 													? "Close the changes and context beside the conversation, for a wider reading measure."
 													: "Show the changes and context beside the conversation."
 											}
-											onClick={() => setDock((open) => !open)}
+											onClick={toggleDock}
 										>
 											{dock ? "Focus" : "Changes & context"}
 										</button>
 									) : null}
 								</>
+							}
+							trailing={
+								field ? undefined : (
+									<button
+										type="button"
+										className="btn small-btn context-toggle"
+										data-testid="context-toggle"
+										aria-expanded={dock}
+										aria-controls="develop-context"
+										title={
+											dock
+												? "Hide the Context column for a wider conversation. Nothing in it is lost or read again."
+												: "Show the Context column: the worktree, its changes, the session and what can be requested."
+										}
+										onClick={toggleDock}
+									>
+										{dock ? "Hide context" : "Show context"}
+									</button>
+								)
 							}
 						/>
 					) : ompMode ? (

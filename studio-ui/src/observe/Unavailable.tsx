@@ -7,7 +7,7 @@ const NEEDS: Record<string, { what: string; needs: string }> = {
 		needs: "It is not implemented yet. Before it can appear as a workspace, it needs explicit study and dataset contracts with their own provenance and validation rather than ad-hoc summaries.",
 	},
 	hardware: {
-		what: "Hardware is a planned workspace for inspecting physical and device-level execution targets, telemetry and environment boundaries.",
+		what: "Hardware is a planned workspace for inspecting physical and device-level execution targets, measurements and environment boundaries.",
 		needs: "It is not implemented yet. It needs explicit device, host and measurement contracts that separate observed hardware facts from declared targets.",
 	},
 	coordinator: {

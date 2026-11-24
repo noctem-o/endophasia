@@ -112,7 +112,8 @@ function displayFieldsValid(status: EndoCoordinatorStatusV0): boolean {
 						ENDO_COORDINATOR_BASES_V0.includes(session.lastRun.basis))) &&
 				(session.openRun === null ||
 					(count(session.openRun.turns) && ENDO_COORDINATOR_BASES_V0.includes(session.openRun.basis))) &&
-				session.activity.every((item) => text(item.kind) && text(item.eventId) && time(item.atMs)),
+				session.activity.every((item) => text(item.kind) && text(item.eventId) && time(item.atMs)) &&
+				session.links.every((link) => link.source === "pi-live" || link.source === "omp-saved"),
 		)
 	);
 }

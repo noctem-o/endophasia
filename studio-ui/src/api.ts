@@ -888,6 +888,46 @@ export async function fetchSnapshot(request: ReadRequest): Promise<Fetched> {
 	}
 }
 
+const MAX_COORDINATOR_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+async function readBoundedJson(
+	response: Response,
+	limit: number,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
+	const header = response.headers.get("content-length");
+	if (header !== null && /^\d+$/.test(header.trim()) && Number(header.trim()) > limit) {
+		await response.body?.cancel().catch(() => {});
+		return { ok: false };
+	}
+	const reader = response.body?.getReader();
+	let bytes: Uint8Array;
+	if (reader === undefined) {
+		const buffer = await response.arrayBuffer();
+		if (buffer.byteLength > limit) return { ok: false };
+		bytes = new Uint8Array(buffer);
+	} else {
+		const chunks: Uint8Array[] = [];
+		let total = 0;
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			total += value.byteLength;
+			if (total > limit) {
+				await reader.cancel().catch(() => {});
+				return { ok: false };
+			}
+			chunks.push(value);
+		}
+		bytes = new Uint8Array(total);
+		let offset = 0;
+		for (const chunk of chunks) {
+			bytes.set(chunk, offset);
+			offset += chunk.byteLength;
+		}
+	}
+	return { ok: true, value: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) };
+}
+
 export async function fetchCoordinator(grant: string, cancel: AbortSignal): Promise<CoordinatorReply> {
 	const timeout = AbortSignal.timeout(60_000);
 	try {
@@ -908,10 +948,12 @@ export async function fetchCoordinator(grant: string, cancel: AbortSignal): Prom
 		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? ""))
 			return { kind: "failure", problem: "invalid" };
 		try {
-			const record = readCoordinatorStatus(await response.json());
+			const parsed = await readBoundedJson(response, MAX_COORDINATOR_RESPONSE_BYTES);
+			if (!parsed.ok) return { kind: "failure", problem: "invalid" };
+			const record = readCoordinatorStatus(parsed.value);
 			return record === null ? { kind: "failure", problem: "invalid" } : { kind: "status", status: record };
 		} catch {
-			return { kind: "failure", problem: timeout.aborted ? "timeout" : "invalid" };
+			return { kind: "failure", problem: cancel.aborted ? "unreachable" : timeout.aborted ? "timeout" : "invalid" };
 		}
 	} catch {
 		return { kind: "failure", problem: timeout.aborted ? "timeout" : "unreachable" };

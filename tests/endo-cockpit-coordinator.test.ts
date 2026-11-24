@@ -1,12 +1,22 @@
+import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readEndoCoordinatorStatusV0 } from "../adapters/develop/coordinator-status.ts";
 import { EndoCockpitCoordinatorV0 } from "../cockpit-http/coordinator.ts";
 import { EndoWorkspaceHostV0 } from "../cockpit-http/workspace-host.ts";
 import { validateEndoCoordinatorStatusV0 } from "../protocol/coordinator-status.ts";
+import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
+import { readDirectoryNamesAtMostV0 } from "../storage/write-once.ts";
+import { readCoordinatorStatus } from "../studio-ui/src/coordinator/read.ts";
 import { capabilityOf, send, serve, stopServers } from "./cockpit-http-fixtures.ts";
-import { buildCoordinatorStoreV0, cleanCoordinatorFixturesV0 } from "./coordinator-status-fixture.ts";
+import {
+	buildCoordinatorStoreV0,
+	buildMissionBoardFixtureV0,
+	cleanCoordinatorFixturesV0,
+} from "./coordinator-status-fixture.ts";
 import { haveGit } from "./git-fixtures.ts";
 
 afterEach(async () => {
@@ -17,7 +27,7 @@ afterEach(async () => {
 
 describe.skipIf(!haveGit)("paired Coordinator read", () => {
 	async function open() {
-		const { root, repo, projectId } = await buildCoordinatorStoreV0({
+		const { root, repo, projectId, taskId } = await buildCoordinatorStoreV0({
 			checkArgv: ["node", "ok.mjs", "fixture-private-arg"],
 		});
 		const tasks = new DevelopTasksStoreV0(root);
@@ -36,7 +46,7 @@ describe.skipIf(!haveGit)("paired Coordinator read", () => {
 		});
 		const grant = (paired.body as { grant: string }).grant;
 		const get = (route: string) => send(server, `${base}/${route}`, { headers: { "X-Endo-Grant": grant } });
-		return { root, repo, projectId, tasks, host, server, base, get };
+		return { root, repo, projectId, taskId, tasks, host, server, base, get };
 	}
 
 	it("keeps the existing workspace route response identical across a Coordinator read", async () => {
@@ -104,6 +114,55 @@ describe.skipIf(!haveGit)("paired Coordinator read", () => {
 		expect(status.sources.events.state).toBe("unavailable");
 		expect(status.findings.map(({ code }) => code)).toContain("event-log-unavailable");
 	});
-});
 
-import { renameSync } from "node:fs";
+	it("rejects malformed session.links[].source and non-operator decisionAuthority in protocol and Studio validators", async () => {
+		const { status } = await buildMissionBoardFixtureV0();
+		expect(readCoordinatorStatus(status)).not.toBeNull();
+		const badSource = structuredClone(status) as unknown as {
+			sessions: { links: { source: unknown }[] }[];
+		};
+		expect(badSource.sessions[0]?.links.length).toBeGreaterThan(0);
+		badSource.sessions[0]!.links[0]!.source = { crash: true };
+		expect(() => validateEndoCoordinatorStatusV0(badSource)).toThrow();
+		expect(readCoordinatorStatus(badSource)).toBeNull();
+
+		const badAuthority = structuredClone(status) as unknown as { authority: { decisionAuthority: unknown } };
+		badAuthority.authority.decisionAuthority = "agent";
+		expect(() => validateEndoCoordinatorStatusV0(badAuthority)).toThrow();
+		expect(readCoordinatorStatus(badAuthority)).toBeNull();
+	});
+
+	it("bounds negative directory limits and charges temporary receipt entries across attempts", async () => {
+		const { root, projectId, taskId } = await open();
+		expect(readDirectoryNamesAtMostV0(join(root, "develop"), -1)).toBeNull();
+		const tasks = new DevelopTasksStoreV0(root);
+		const attempts = new DevelopAttemptsStoreV0(root);
+		const svc = new DevelopAttemptsServiceV0(tasks, attempts);
+		const a2 = svc.prepare(projectId, taskId, { objective: "Second attempt for temp enumeration bound" });
+		const a3 = svc.prepare(projectId, taskId, { objective: "Third attempt for temp enumeration bound" });
+		expect(a2.ok && a3.ok).toBe(true);
+		if (!a2.ok || !a3.ok) throw new Error("prepare failed");
+		for (const id of [a2.value.id, a3.value.id]) {
+			const dir = join(root, "develop", "receipts", id);
+			mkdirSync(dir, { recursive: true });
+			for (let i = 0; i < 6; i += 1) {
+				writeFileSync(join(dir, `.tmp-100-${i.toString(16).padStart(12, "0")}`), "{}");
+			}
+		}
+		const status = validateEndoCoordinatorStatusV0(
+			await readEndoCoordinatorStatusV0({
+				root,
+				projects: [projectId],
+				budget: {
+					eventsBytes: 1024 * 1024,
+					attemptEntries: 64,
+					attemptBytes: 1024 * 1024,
+					receiptFiles: 8,
+					receiptBytes: 1024 * 1024,
+				},
+			}),
+		);
+		const task = status.projects[0]?.tasks[0];
+		expect(task?.gaps.map(({ code }) => code)).toContain("receipts-skipped-at-limit");
+	});
+});

@@ -197,8 +197,8 @@ export function TaskCard({
 							: "Session relationship unknown"}
 					</span>
 				</div>
-				{contradictions.map((finding) => (
-					<p key={finding.code} className="coordinator-contradiction">
+				{contradictions.map((finding, i) => (
+					<p key={`${finding.code}:${i}`} className="coordinator-contradiction">
 						<strong>Contradiction</strong> · {finding.text}
 					</p>
 				))}

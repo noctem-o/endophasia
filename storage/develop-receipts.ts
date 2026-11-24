@@ -82,14 +82,14 @@ export class DevelopReceiptsStoreV0 {
 	readAtMost(
 		attemptId: string,
 		max: { files: number; bytes: number },
-	): (EndoReceiptsReadV0 & { bytes?: number }) | { ok: false; reason: "too-many" } {
+	): (EndoReceiptsReadV0 & { bytes?: number; enumerated?: number }) | { ok: false; reason: "too-many" } {
 		return this.#read(attemptId, max);
 	}
 
 	#read(
 		attemptId: string,
 		max: { files: number; bytes: number } | undefined,
-	): (EndoReceiptsReadV0 & { bytes?: number }) | { ok: false; reason: "too-many" } {
+	): (EndoReceiptsReadV0 & { bytes?: number; enumerated?: number }) | { ok: false; reason: "too-many" } {
 		const dir = this.#attemptDir(attemptId);
 		if (dir === null) return { ok: false, reason: "unsafe-path" };
 		const dirs = checkDirectoriesSyncV0([this.#develop, this.#dir, dir]);
@@ -161,7 +161,11 @@ export class DevelopReceiptsStoreV0 {
 			receipts.push(receipt);
 		}
 		receipts.sort((a, b) => a.startedAtMs - b.startedAtMs || (a.id < b.id ? -1 : 1));
-		return max === undefined ? { ok: true, receipts, problems } : { ok: true, receipts, problems, bytes };
+		return max === undefined
+			? { ok: true, receipts, problems }
+			: this.#boundDirectoryReads
+				? { ok: true, receipts, problems, bytes, enumerated: names.length }
+				: { ok: true, receipts, problems, bytes };
 	}
 
 	/** The bytes a receipt is written as, or null when it does not fit its bound. */

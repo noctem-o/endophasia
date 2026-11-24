@@ -34,11 +34,12 @@ export const WRITE_ONCE_TEMPORARY_V0 = /^\.tmp-[0-9]+-[0-9a-f]{12}$/;
 export type WriteOnceReadProblemV0 = "unsafe-path" | "too-large" | "malformed" | "io";
 
 export function readDirectoryNamesAtMostV0(path: string, limit: number): string[] | null {
+	if (!Number.isSafeInteger(limit) || limit < 0) return null;
 	const dir = opendirSync(path, { bufferSize: 1 });
 	try {
 		const names: string[] = [];
 		for (let next = dir.readSync(); next !== null; next = dir.readSync()) {
-			if (names.length === limit) return null;
+			if (names.length >= limit) return null;
 			names.push(next.name);
 		}
 		return names.sort();

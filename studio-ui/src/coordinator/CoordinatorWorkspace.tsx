@@ -363,12 +363,20 @@ export function CoordinatorWorkspace({
 		onGrantRequired();
 	});
 	useLayoutEffect(() => {
-		if (grant !== null || !focusPairing.current) return;
+		if (grant !== null) {
+			setGrantRefused(false);
+			return;
+		}
+		setFilters(NO_FILTERS);
+		if (!focusPairing.current) return;
 		focusPairing.current = false;
 		pairingButton.current?.focus();
 	}, [grant]);
 	const status = reply?.kind === "status" ? reply.status : null;
 	const problem = reply?.kind === "failure" ? reply.problem : null;
+	useLayoutEffect(() => {
+		if (problem === "forbidden") setFilters(NO_FILTERS);
+	}, [problem]);
 	const reduced = useReducedMotion();
 	const field = appearance === "field";
 	const still = reduced || paused;

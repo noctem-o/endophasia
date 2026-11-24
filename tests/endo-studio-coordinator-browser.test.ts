@@ -115,6 +115,17 @@ describe.skipIf(!haveGit || (executable === null && !requireBrowser))("Studio Co
 		await page.click(refresh);
 		await page.waitFor(withState("invalid"));
 		expect(await page.text(board)).not.toContain("Stream partial tokens");
+		// Oversized (> 2 MiB) response is rejected client-side without rendering stale records.
+		reply = { status: 200, body: { ...status, padding: "x".repeat(2 * 1024 * 1024 + 1024) } };
+		await page.click(refresh);
+		await page.waitFor(withState("invalid"));
+		expect(await page.text(board)).not.toContain("Stream partial tokens");
+		// Malformed session.links[].source must be rejected instead of crashing React.
+		const badLink = structuredClone(status) as unknown as { sessions: { links: { source: unknown }[] }[] };
+		badLink.sessions[0]!.links[0]!.source = { bad: true };
+		reply = { status: 200, body: badLink };
+		await page.click(refresh);
+		await page.waitFor(withState("invalid"));
 		reply = { status: 403, body: { error: "forbidden" } };
 		await page.click(refresh);
 		await page.waitFor(withState("forbidden"));

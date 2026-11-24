@@ -116,10 +116,17 @@ export async function startModelRelayV0(options: {
 	readonly policy: EndoModelRelayPolicyV0;
 	readonly log: EndoCaptureLogV0;
 	readonly runtimeDirectory: string;
+	/** Optional controller-owned gates. They narrow the base policy and are not represented by its policy digest. */
+	readonly additionalAdmission?: {
+		readonly request: NonNullable<Parameters<typeof startEndoRecordingProxyV0>[0]["admitRequest"]>;
+		readonly response: NonNullable<Parameters<typeof startEndoRecordingProxyV0>[0]["admitResponse"]>;
+	};
 }): Promise<EndoModelRelayV0> {
 	// One immutable snapshot, validated, judged by and digested: a caller that keeps and changes its own policy object afterwards cannot
 	// change what is admitted, nor make the digest describe another policy than the one enforced (Codex, #134).
 	const policy = snapshotPolicy(options.policy);
+	const additionalRequest = options.additionalAdmission?.request;
+	const additionalResponse = options.additionalAdmission?.response;
 	checkPolicy(policy);
 	const refused: Record<EndoModelRefusalReasonV0 | "unjudged" | "connections" | "exchanges", number> = {
 		route: 0,
@@ -137,6 +144,7 @@ export async function startModelRelayV0(options: {
 		upstream: options.upstream,
 		log: options.log,
 		maxTransferredBytes: policy.maxTransferredBytes,
+		...(additionalResponse === undefined ? {} : { admitResponse: additionalResponse }),
 		admitRequest: (request) => {
 			judged += 1;
 			if (admitted >= policy.maxExchanges) {
@@ -144,9 +152,13 @@ export async function startModelRelayV0(options: {
 				return false;
 			}
 			const verdict = admitModelRequestV0(policy, request);
-			if (verdict.admitted) admitted += 1;
-			else refused[verdict.reason] += 1;
-			return verdict.admitted;
+			if (!verdict.admitted) {
+				refused[verdict.reason] += 1;
+				return false;
+			}
+			if (additionalRequest !== undefined && !additionalRequest(request)) return false;
+			admitted += 1;
+			return true;
 		},
 	});
 	// From here on, any failure closes what was already started (the proxy, the socket's directory), so a caller that catches it and

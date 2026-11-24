@@ -54,7 +54,12 @@ export interface EndoRecordingProxyOptionsV0 {
 	 * before any upstream connection is opened. Returning false, throwing, or an unparseable request refuses it.
 	 * The callback must consume its own one-shot authority synchronously; it is not a remote approval mechanism.
 	 */
-	readonly admitRequest?: (request: { method: string; path: string; body: Uint8Array }) => boolean;
+	readonly admitRequest?: (request: {
+		method: string;
+		path: string;
+		body: Uint8Array;
+		headers: readonly [string, string][];
+	}) => boolean;
 	/** Idle timeout for an incomplete governed request. Default 5 seconds. */
 	readonly admissionIdleMs?: number;
 	/** Optional bounded, fail-closed response admission; no response bytes reach the client until it accepts. */
@@ -169,6 +174,7 @@ interface Hop {
 /** The raw bytes of one request, from its first byte to its last, and the hop that carries it. */
 interface Slot {
 	entry: Exchange | null;
+	requestHeaders?: readonly [string, string][];
 	/** The stream is no longer parseable HTTP/1.1: this slot is its opaque tail and delimits nothing. */
 	raw: boolean;
 	buffered: Buffer[];
@@ -823,6 +829,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 								method: front.entry.method,
 								path: front.entry.path,
 								body: Buffer.concat(front.entry.bodyParts),
+								headers: front.requestHeaders ?? [],
 							}) === true;
 				} catch {
 					// A broken policy is a refusal, never a reason to forward.
@@ -832,6 +839,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 					return;
 				}
 			}
+			delete front.requestHeaders;
 			openHop(front);
 			const hop = front.hop as Hop | null;
 			if (hop === null) return;
@@ -912,6 +920,7 @@ export async function startEndoRecordingProxyV0(options: EndoRecordingProxyOptio
 				// (the client gave up mid-body; Codex, #134): the governed profile forwards only complete requests, so there it is numbered when
 				// the request is complete (end, below). The transparent relay numbers at the head, as before.
 				const governed = options.admitRequest !== undefined;
+				if (governed) slot.requestHeaders = head.headers;
 				if (!governed) counter += 1;
 				const entry: Exchange = {
 					exchange: governed ? 0 : counter,

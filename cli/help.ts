@@ -121,6 +121,8 @@ Commands that write to a store:
                                      and evidence gaps, sessions as active or last-observed with agent-reported vs
                                      controller-observed activity, explicit vs unknown session/task relationships, and the
                                      freshness of each. Writes nothing, grants nothing (docs/designs/coordinator-status.md)
+  coordinator brief [<root> | --root dir] --project <id> [--quiet]
+                                     derive a local-model briefing from read-only status evidence for one project
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

@@ -3,7 +3,9 @@
 // no subcommand here writes, moves a task, prompts, launches, attaches or approves.
 
 import { endoCoordinatorStaleAfterV0, readEndoCoordinatorStatusV0 } from "../adapters/develop/coordinator-status.ts";
+import { ENDO_PROJECT_ID_PATTERN_V0 } from "../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { briefFromCoordinatorSubstrateV0 } from "../runtime/contracts/coordinator-brief.ts";
 import { renderEndoCoordinatorStatusV0 } from "../runtime/contracts/coordinator-status.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 
@@ -39,4 +41,35 @@ async function status(argv: readonly string[]): Promise<void> {
 	if (!quiet) process.stderr.write(renderEndoCoordinatorStatusV0(coordinatorStatus));
 }
 
-export const COORDINATOR_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = { status };
+async function brief(argv: readonly string[]): Promise<void> {
+	const usage = "usage: endo coordinator brief [<root> | --root dir] --project <id> [--quiet]";
+	const taken = takeEndoRootV0(argv, 0, new Set(["--project"]));
+	let projectId: string | undefined;
+	let quiet = false;
+	const rest = [...taken.rest];
+	while (rest.length > 0) {
+		const flag = rest.shift();
+		if (flag === "--quiet") quiet = true;
+		else if (flag === "--project" && projectId === undefined) {
+			projectId = rest.shift();
+			if (projectId === undefined || !ENDO_PROJECT_ID_PATTERN_V0.test(projectId))
+				throw new TypeError("--project needs one endo.project.<32 hex> id");
+		} else throw new TypeError(usage);
+	}
+	if (projectId === undefined) throw new TypeError(usage);
+	announceEndoRootV0(taken);
+	const { openClawCoordinatorV0 } = await import("../adapters/coordinator/openclaw.ts");
+	const coordinatorBrief = await briefFromCoordinatorSubstrateV0({ projectId }, openClawCoordinatorV0(taken.root));
+	process.stdout.write(canonicalEndoJsonV0({ coordinatorBrief }));
+	if (!quiet)
+		process.stderr.write(
+			coordinatorBrief.availability === "available"
+				? `Coordinator briefing (derived from status, not authoritative):\n${coordinatorBrief.answer.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "")}\n`
+				: `Coordinator briefing unavailable (${coordinatorBrief.reason}).\n`,
+		);
+}
+
+export const COORDINATOR_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
+	status,
+	brief,
+};

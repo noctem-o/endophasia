@@ -82,7 +82,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 		ATTEMPT_COMMANDS_V0,
 		"usage: endo attempt <prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt|evidence|bridge|observe|provenance|protected-run> ...",
 	),
-	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator status ..."),
+	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator <status|brief> ..."),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(
 		{

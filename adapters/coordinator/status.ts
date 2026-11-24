@@ -72,7 +72,7 @@ export function coordinatorAnswerRefusalV0(answer: string, view: EndophasiaExter
 					verification.incomplete || ["unavailable", "not-read", "not-current"].includes(verification.state),
 			),
 		) &&
-		/\b(?:(?:zero|no) (?:verification |passing |failing )?(?:result|receipt|check|failure)s? (?:(?:is |was |were |are |has been |have been )?recorded|on file|exists?|ran)|no recorded (?:pass\/fail|checks?|receipts?))\b/i.test(
+		/\b(?:(?:zero|no) (?:current[- ]head )?(?:verification |passing |failing )?(?:result|receipt|check|failure)s? (?:(?:is |was |were |are |has been |have been )?recorded|on file|exists?|ran)|no recorded (?:pass\/fail|checks?|receipts?))\b/i.test(
 			answer,
 		)
 	)

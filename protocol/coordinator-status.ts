@@ -197,7 +197,9 @@ export interface EndoCoordinatorTaskV0 {
 	verification: {
 		state: EndoCoordinatorVerificationStateV0;
 		basis: "controller-observed-host-check";
-		/** Some receipt or attempt files could not be read or were skipped: a later result may be among them. */
+		/** Every applicable attempt and its surviving receipt files were enumerated and read without omissions or problems. */
+		receiptReadComplete: boolean;
+		/** The read was incomplete or the observed receipts do not establish the task's verification. */
 		incomplete: boolean;
 		freshness: EndoCoordinatorFreshnessV0;
 		results: EndoCoordinatorResultV0[];
@@ -326,12 +328,19 @@ export interface EndoCoordinatorStatusV0 {
 
 // ---- validation ---------------------------------------------------------------------------------------------------------------------
 
-export class EndoInvalidCoordinatorStatusV0 extends Error {}
+export class EndoInvalidCoordinatorStatusV0 extends Error {
+	readonly code: string;
+
+	constructor(message: string, code = "invalid-coordinator-status") {
+		super(message);
+		this.code = code;
+	}
+}
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
-const fail = (what: string): never => {
-	throw new EndoInvalidCoordinatorStatusV0(`invalid coordinator status: ${what}`);
+const fail = (what: string, code?: string): never => {
+	throw new EndoInvalidCoordinatorStatusV0(`invalid coordinator status: ${what}`, code);
 };
 const obj = (v: unknown, what: string): Obj => (isObj(v) ? v : fail(`${what} is not an object`));
 const arr = (v: unknown, what: string): unknown[] => (Array.isArray(v) ? v : fail(`${what} is not an array`));
@@ -481,8 +490,49 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 				oneOf(obj(gv, `${w}.gaps[${gi}]`).code, ENDO_COORDINATOR_GAP_CODES_V0, `${w}.gaps[${gi}].code`),
 			);
 			const v = obj(t.verification, `${w}.verification`);
+			if (!Object.hasOwn(v, "receiptReadComplete"))
+				fail(
+					"version skew: the installed endo predates verification.receiptReadComplete; upgrade endo before using this reader",
+					"coordinator-status-version-skew",
+				);
+			if (typeof v.receiptReadComplete !== "boolean") fail(`${w}.verification.receiptReadComplete is not a boolean`);
 			const vState = oneOf(v.state, ENDO_COORDINATOR_VERIFICATION_STATES_V0, `${w}.verification.state`);
 			const vFresh = freshness(v.freshness, `${w}.verification.freshness`, readAtMs);
+			const readGap = gaps.some(
+				(code) =>
+					code === "receipts-unreadable" ||
+					code === "receipts-skipped-at-limit" ||
+					code === "receipt-files-unusable" ||
+					code === "attempt-records-unusable" ||
+					code === "attempt-records-missing" ||
+					code === "receipt-records-missing" ||
+					code === "attention-unavailable",
+			);
+			const absenceGap = gaps.includes("no-check-recorded");
+			if (vState === "no-checks" || absenceGap) {
+				const claim = vState === "no-checks" ? "no-checks" : "no-check-recorded";
+				if (
+					v.receiptReadComplete !== true ||
+					v.incomplete !== false ||
+					vFresh.state === "incomplete" ||
+					readGap ||
+					sourceState.attempts === "missing" ||
+					sourceState.attempts === "unavailable"
+				)
+					fail(`${w} claims ${claim} without a complete receipt read`, `${claim}-without-complete-receipt-read`);
+				if (
+					vState !== "no-checks" ||
+					!absenceGap ||
+					v.moreResults !== 0 ||
+					arr(v.results, `${w}.verification.results`).length !== 0
+				)
+					fail(`${w} does not support no-check-recorded with an empty no-checks result`);
+			}
+			if (v.receiptReadComplete && readGap) fail(`${w} marks a receipt read with gaps as complete`);
+			if (v.receiptReadComplete === false && vState === "not-current")
+				fail(`${w} is not-current without a complete receipt read`, "not-current-without-complete-receipt-read");
+			if (v.receiptReadComplete === false && !readGap && vState !== "not-read")
+				fail(`${w} marks the receipt read incomplete without a read gap`, "incomplete-receipt-read-without-gap");
 			const results = arr(v.results, `${w}.verification.results`).map((rv, ri) => {
 				const r = obj(rv, `${w}.verification.results[${ri}]`);
 				const fr = oneOf(r.freshness, ENDO_COORDINATOR_FRESHNESS_V0, `${w}.verification.results[${ri}].freshness`);
@@ -507,7 +557,7 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 				vState === "incomplete" &&
 				(v.incomplete !== true ||
 					vFresh.state !== "incomplete" ||
-					(!gaps.includes("receipt-history-unverifiable") && !gaps.includes("no-receipt-for-check")))
+					(!readGap && !gaps.includes("receipt-history-unverifiable") && !gaps.includes("no-receipt-for-check")))
 			)
 				fail(`${w} must qualify unverifiable receipt history as incomplete`);
 			if ((vState === "failing" || vState === "inconclusive") && head === null)

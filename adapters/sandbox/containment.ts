@@ -243,6 +243,7 @@ export function scopeArgsV0(
 ): string[] {
 	if (!sandboxUnitPattern.test(unit)) throw new TypeError("a scope unit name must be one the controller made");
 	const limited = limitArgs(limits);
+	const ownerStart = limited.length === 0 ? null : processStartTimeV0(process.pid);
 	return [
 		"--user",
 		"--scope",
@@ -250,6 +251,9 @@ export function scopeArgsV0(
 		// A limited scope is kept after it ends, so that its result (an OOM kill) can be read; scopeResultV0 then has it forgotten.
 		...(limited.length > 0 ? [] : ["--collect"]),
 		`--unit=${unit}`,
+		...(ownerStart === null
+			? []
+			: [`--description=Endophasia sandbox (owner pid ${process.pid} start ${ownerStart})`]),
 		"-p",
 		`RuntimeMaxSec=${Math.max(1, Math.ceil(runtimeMaxSec))}`,
 		"-p",
@@ -401,6 +405,43 @@ export function processStartTimeV0(pid: number): string | null {
 		return start !== undefined && /^[0-9]+$/.test(start) ? start : null;
 	} catch {
 		return null;
+	}
+}
+
+export function resetAbandonedSandboxScopesV0(c: Pick<EndoContainmentV0, "systemctl" | "env">): void {
+	const r = spawnSync(
+		c.systemctl,
+		[
+			"--user",
+			"list-units",
+			"--type=scope",
+			"--all",
+			"--state=failed,inactive",
+			"--plain",
+			"--no-legend",
+			"--no-pager",
+			"endo-sandbox-*.scope",
+		],
+		{ env: c.env, encoding: "utf8", timeout: 10_000 },
+	);
+	if (r.status !== 0) return;
+	for (const line of (r.stdout ?? "").split("\n")) {
+		const unit = /^(endo-sandbox-[0-9a-f]{24})\.scope\s/.exec(line)?.[1];
+		if (unit === undefined) continue;
+		const p = show(c, unit, ["ActiveState", "Transient", "Description", "ControlGroup"]);
+		if (p.Transient !== "yes" || (p.ActiveState !== "failed" && p.ActiveState !== "inactive")) continue;
+		const owner = /^Endophasia sandbox \(owner pid ([1-9][0-9]*) start ([0-9]+)\)$/.exec(p.Description ?? "");
+		if (owner === null) continue;
+		const pid = Number(owner[1]);
+		if (!Number.isSafeInteger(pid)) continue;
+		const started = processStartTimeV0(pid);
+		if (started === owner[2] || (started === null && existsSync(`/proc/${pid}`))) continue;
+		if (p.ControlGroup === undefined || !cgroupEmpty(p.ControlGroup, unit)) continue;
+		spawnSync(c.systemctl, ["--user", "reset-failed", `${unit}.scope`], {
+			env: c.env,
+			stdio: "ignore",
+			timeout: 10_000,
+		});
 	}
 }
 

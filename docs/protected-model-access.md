@@ -232,18 +232,19 @@ The policy's identity is the sha256 of its canonical JSON, independent of route 
 ## 8. Reproduce
 
 ```sh
-npx vitest --run tests/protected-model-relay.test.ts                                     # judge, host side, real isolation
-ENDO_PI_DIST=/usr/lib/node_modules/@earendil-works/pi-coding-agent/dist \
+# Run the real-scope tests only with a disposable user manager.
+ENDO_REAL_SCOPES=1 npx vitest --run tests/protected-model-relay.test.ts                   # judge, host side, real isolation
+ENDO_REAL_SCOPES=1 ENDO_PI_DIST=/usr/lib/node_modules/@earendil-works/pi-coding-agent/dist \
   npx vitest --run tests/protected-model-relay.test.ts                                   # + real Pi (fake model), verification
-ENDO_PI_DIST=… ENDO_MODEL_ENDPOINT=http://127.0.0.1:8081 ENDO_MODEL_ID=<loaded model> \
+ENDO_REAL_SCOPES=1 ENDO_PI_DIST=… ENDO_MODEL_ENDPOINT=http://127.0.0.1:8081 ENDO_MODEL_ID=<loaded model> \
   npx vitest --run tests/protected-model-relay.test.ts -t "REAL local model"             # + a real local model
 node research/protected-eval/model-connected/trial.ts run --out <new dir> --pi-dist <dist> \
   --upstream http://127.0.0.1:8081 --model <id> --prompt "<task>"
 node research/protected-eval/model-connected/trial.ts verify <dir> --pi-dist <dist>
 
 # EVAL-ISO-003 (§9)
-npx vitest --run tests/protected-model-records.test.ts tests/protected-model-run.test.ts  # v1 spec, record, reader; real runs
-ENDO_PI_DIST=… npx vitest --run tests/protected-model-run.test.ts                        # + real Pi through protected-run (fake model)
+ENDO_REAL_SCOPES=1 npx vitest --run tests/protected-model-records.test.ts tests/protected-model-run.test.ts  # v1 spec, record, reader; real runs
+ENDO_REAL_SCOPES=1 ENDO_PI_DIST=… npx vitest --run tests/protected-model-run.test.ts       # + real Pi through protected-run (fake model)
 node research/protected-eval/model-connected/pi-condition.ts --pi-dist <dist> --agent-out <new dir> \
   --model <loaded model> > spec.json                                                     # a Pi condition against a local model
 endo experiment protected-run spec.json --out <new dir> && endo experiment protected-report <dir>

@@ -172,8 +172,9 @@ On this host (Arch Linux, systemd 262, cgroup v2, Node 26.12.1), 2026-11-08:
 
 ```sh
 npx vitest --run tests/live-process-containment.test.ts
-env -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS npx vitest --run tests/live-process-containment.test.ts   # as CI sees it
-ENDO_PI_EXECUTABLE=/usr/bin/pi npx vitest --run tests/work-cycle-001a.test.ts -t "WORK-CYCLE-001B"         # real Pi, fake endpoint
+# Run these only with a disposable user manager:
+ENDO_REAL_SCOPES=1 npx vitest --run tests/live-process-containment.test.ts
+ENDO_REAL_SCOPES=1 ENDO_PI_EXECUTABLE=/usr/bin/pi npx vitest --run tests/work-cycle-001a.test.ts -t "WORK-CYCLE-001B"
 ```
 
 While a session runs, `systemctl --user list-units 'endo-live-*'` shows its scope, and `systemd-cgls --user-unit <unit>.scope` shows

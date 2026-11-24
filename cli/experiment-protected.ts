@@ -66,7 +66,12 @@ import {
 	resolveRuntimeV0,
 	runSandboxV0,
 } from "../adapters/sandbox/bubblewrap.ts";
-import { detectContainmentV0, type EndoContainmentV0, stopScopeV0 } from "../adapters/sandbox/containment.ts";
+import {
+	detectContainmentV0,
+	type EndoContainmentV0,
+	resetAbandonedSandboxScopesV0,
+	stopScopeV0,
+} from "../adapters/sandbox/containment.ts";
 import {
 	ENDO_EVALUATOR_DRIVER_SHA256_V0,
 	type EndoLoadedEvaluatorV0,
@@ -1392,6 +1397,7 @@ export async function runProtectedExperimentV0(options: EndoProtectedRunOptionsV
 	const dir = resolve(options.dir);
 	const p = await prepare(spec, options.bwrapCandidates, dir, options.containmentTools);
 	try {
+		resetAbandonedSandboxScopesV0(p.containment);
 		return await runPrepared(p, options, dir);
 	} finally {
 		// A model-connected run's probe socket and bridge, whatever happened.

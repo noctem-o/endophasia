@@ -80,7 +80,7 @@ const fresh = (name: string) => {
 	return d;
 };
 const detected = detectBubblewrapV0();
-const contained = detected.ok ? await detectContainmentV0() : null;
+const contained = process.env.ENDO_REAL_SCOPES === "1" && detected.ok ? await detectContainmentV0() : null;
 const REAL = detected.ok && contained?.ok === true && process.env.XDG_RUNTIME_DIR !== undefined;
 if (!REAL)
 	process.stderr.write(

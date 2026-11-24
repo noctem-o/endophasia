@@ -1547,7 +1547,7 @@ describe("DEVELOP-PROTECTED-ATTEMPT-001: audit remediation regressions", () => {
 // ---- real protected runner -----------------------------------------------------------------------------------------------------------
 
 const detected = detectBubblewrapV0();
-const contained = detected.ok ? await detectContainmentV0() : null;
+const contained = process.env.ENDO_REAL_SCOPES === "1" && detected.ok ? await detectContainmentV0() : null;
 const REAL = detected.ok && contained?.ok === true;
 if (!REAL)
 	process.stderr.write(

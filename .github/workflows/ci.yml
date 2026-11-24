@@ -128,6 +128,52 @@ jobs:
         env:
           ENDO_REQUIRE_BROWSER: "1"
 
+  live-scopes:
+    name: Live process containment (real user scopes)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # The default shards withhold the user manager from tests and their CLI children, so the scope-wrapped keeper, stop and release
+      # paths of `endo harness attach` run only here, on a runner that has one.
+      - name: Run the CLI suites that start live scopes, and require that they did
+        env:
+          ENDO_REAL_SCOPES: "1"
+        run: |
+          # A live scope is collected as soon as its session ends, and a count taken from the runner's journal afterwards read 0 here, so
+          # watch the manager while the suites run and count the distinct live scopes it listed.
+          # One file at a time: several of these build studio-ui/dist and a parallel run failed once reading a file another build had
+          # removed (and once failed a steer-cli apply that passed on the run before).
+          seen="$RUNNER_TEMP/live-scopes-seen.txt"
+          : > "$seen"
+          (while :; do systemctl --user list-units --type=scope --all --plain --no-legend --no-pager 'endo-live-*' | awk '{print $1}' >> "$seen"; sleep 0.1; done) &
+          poller=$!
+          status=0
+          npm test -- --no-file-parallelism tests/develop-tasks-cli.test.ts tests/develop-ux-001.test.ts tests/develop-ux-002-cli.test.ts tests/steer-cli.test.ts tests/prime-runtime-ingress.test.ts tests/endo-workbench-cli.test.ts tests/endo-workbench-attempts-cli.test.ts tests/endo-workbench-attempt-page.test.ts || status=$?
+          kill "$poller" || true
+          started="$(grep -E '^endo-live-[0-9a-f]{24}[.]scope$' "$seen" | sort -u | wc -l)"
+          echo "distinct live scopes the manager listed during the CLI suites: $started"
+          test "$status" -eq 0
+          test "$started" -gt 0
+      - name: Run the live-scope suite and require its exact real coverage
+        env:
+          ENDO_REAL_SCOPES: "1"
+        run: |
+          npm test -- tests/live-process-containment.test.ts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/live-scopes.json"
+          # 5 cases in the "a live scope" describe, the cgroup.events refusal, and the contained branch of the attach test.
+          jq -e '
+            [.testResults[].assertionResults[]] as $t
+            | def only(f): [$t[] | select(f)] | (length == 1 and all(.status == "passed"));
+              ([$t[] | select(.fullName | contains("a live scope (systemd user manager:"))] | length == 5 and all(.status == "passed"))
+              and only(.title | startswith("a host where a live scope\u0027s cgroup.events cannot be read"))
+              and only(.title | contains("every process Pi started has ended, and none has"))
+          ' "$RUNNER_TEMP/live-scopes.json"
+
   package:
     name: Packaged CLI (build, pack, isolated install)
     runs-on: ubuntu-24.04

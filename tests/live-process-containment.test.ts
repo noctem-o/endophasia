@@ -19,7 +19,7 @@ import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 const CLI = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
 const CONTROLLER = fileURLToPath(new URL("./fixtures/live-scope-controller.ts", import.meta.url));
 const linux = process.platform === "linux" && existsSync("/proc/self/stat");
-const detected = linux ? await detectContainmentV0() : null;
+const detected = process.env.ENDO_REAL_SCOPES === "1" && linux ? await detectContainmentV0() : null;
 const contained = detected?.ok === true ? detected.containment : null;
 
 const cleanup: (() => void | Promise<void>)[] = [];

@@ -49,6 +49,13 @@ George's host). Run it only on a dedicated agent whose tool list is exactly `["e
 would add `exec` or any other tool. Installing it into a live gateway changes that gateway's configuration; this repository does not do
 that for you.
 
+**2026.11.7 (e31bbf0) shell compatibility.** Measured on Arch Linux with the declared TypeBox 1.3.34: metadata build check and validation
+passed, lint exited zero with one TypeBox runtime-code-generation warning, and scratch-state runtime inspection loaded the optional
+`endophasia_status` tool with no diagnostics and an SDK deprecation advisory. The peer range adds only this tested release. It does not
+certify the plugin in a systemd service or a production Gateway. The separate
+[`endo coordinator brief` runner](../../docs/designs/coordinator-runtime.md) uses this plugin's trimmed view but independently enforces
+the embedded agent's tool surface and does not mount project roots.
+
 ## What it can and cannot do
 
 It runs one fixed command built from this config: no shell, a scrubbed environment, a timeout, an output bound, and always inside

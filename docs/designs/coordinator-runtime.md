@@ -34,12 +34,16 @@ shape check cannot attest to a replacement substrate's actual wire behavior; eac
 
 1.  The host reads the registered project path and uses Endophasia's hardened, read-only Git observer to obtain HEAD and the
     repository identity needed to compare receipts. A second read runs the canonical projection worker in bubblewrap with a fixed,
-    validated observation argument; it checks the read still names the registered path. It binds the status code and the store's
-    `develop/` and `events/` only, plus runtime libraries; it doesn't bind the project or its Git directory. Linked worktrees and
-    overlapping project/code/store mounts are refused. Use a CLI installation outside the project being briefed.
+    validated observation argument; it checks the read still names the registered path. It binds the status code and system libraries.
+    For store inputs it recreates the directory skeleton and binds only opened regular files: `develop/tasks.json`, `events/events.log`
+    when present, and the enumerated attempt and receipt files. It doesn't bind any host store directory, the project, or its Git
+    directory. Linked worktrees and overlapping project/code/store paths are refused. Use a CLI installation outside the project
+    being briefed.
 2.  OpenClaw runs separately in bubblewrap, with an empty scratch HOME, config, workspace, installed OpenClaw code, and an empty
     network namespace except its loopback relay bridge. It sees neither the project nor the store. The scratch tool presents the
-    validated, one-project status snapshot only when invoked. It cannot run a fresh command. The config explicitly disables Tool
+    validated, one-project status snapshot only when invoked. It cannot run a fresh command. The host scratch directory lives under
+    the user's private `XDG_RUNTIME_DIR`, which keeps the relay's pathname within the 107-byte Unix socket limit. An absent or unsafe
+    runtime directory is `runtime-unavailable`. The config explicitly disables Tool
     Search and inherited skills/plugins and defines only the local provider. No live Gateway is started or contacted.
 3.  The host relay admits only the exact Chat Completions route and model with a per-turn synthetic bearer. At the outgoing
     request it checks the exact single `endophasia_status` definition and inference parameters; at the incoming response it
@@ -54,8 +58,9 @@ The model, its output, and fixture records are untrusted. The operator's selecte
 and bubblewrap code, the Linux kernel, and the existing loopback model server are trusted. This doesn't protect against compromised
 installed code, a hostile host/root user, or another process running as the operator. There is no general-purpose shell, web,
 filesystem, or messaging tool; the sandbox still contains system binaries. Model output is unverified prose even after a correct
-dispatch. The answer filter withholds observed forms of unsupported absence claims and suggestions to grant shell authority. It's a
-narrow wording check, not a language validator. It may miss paraphrases or withhold a correct answer that quotes a prohibited claim.
+dispatch. The answer filter withholds some unsupported absence claims, suggestions to grant shell authority, and positive
+verification wording that contradicts a current failure. As the CLI banner says, it is a wording backstop, not a validator.
+It can miss paraphrases or withhold a correct answer that quotes a prohibited claim.
 
 The status reader is read-only, has an output/deadline bound and uses existing bounded source reads. The model relay bounds body
 size, bytes, connections, generation (one choice), and the number of upstream exchanges; the embedded process has a deadline.
@@ -65,12 +70,20 @@ success or failure. Controller death during bubblewrap's launch window isn't att
 The launcher neither installs plugins nor reads
 the operator's OpenClaw or Pi credentials. A prompt and the trimmed status are disclosed to the operator's local llama.cpp service.
 
-**Pathname sockets are a residual, not confinement.** The normal Endophasia control endpoint is `<store>/control/endpoint.sock`
-(read from code). It sits outside the status reader's `develop/` and `events/` binds. On Arch Linux, a disposable probe in
-the same mount profile got `ENOENT` for a control-path canary. With a read-only project bind added, the project pathname canary
-was reachable; without it the probe got `ENOENT`. A second canary in `events/` remained reachable in both cases, even as writes
-returned `EROFS`. Removing project roots is worthwhile and is the default for the brief. It doesn't remove sockets under the
-remaining mounts. The standalone OpenClaw status plugin keeps its older, separately documented project mount behavior.
+**Pathname sockets.** The normal control endpoint is `<store>/control/endpoint.sock` (read from code). In the old directory-bind
+profile, the independent Arch Linux review reached canaries in `events/`, `develop/`, `develop/attempts/`, and `develop/receipts/`.
+Read-only mounts and a network namespace did not stop `connect()`. The new worker uses `--ro-bind-fd` after opening each source
+without following its final component and checking the opened inode; it never hands bubblewrap a mutable source filename to resolve.
+Enumeration is bounded. Non-regular entries in enumerated directories refuse the read rather than disappearing from a snapshot that
+would misleadingly look complete. Unused siblings in `events/` and `develop/` aren't store inputs and are not bound.
+
+In the Arch Linux regression probe, canaries introduced after enumeration in the four old directories, the project and the
+control path all returned `ENOENT`. Replacing the selected event log name with a socket left the worker reading the original
+regular file; its write probe returned `EROFS`. A fresh enumeration refused the non-regular sources. Open descriptors pin file
+identity, not bytes or a transaction across source files. This removes the measured store pathname exposure, not all possible
+host interactions: the status worker still trusts the mounted runtime and code, kernel and operator's host. Only the status
+worker gets the store files. The OpenClaw sandbox mounts neither store nor project; its relay socket is intentional. The
+standalone OpenClaw status plugin retains its separately documented, older project mount behavior.
 
 ## 4. Compatibility and verification on Arch Linux
 
@@ -98,7 +111,9 @@ server applies internally or guarantee deterministic output.
 ## 5. Model trials
 
 The [trial records](coordinator-runtime-trials.jsonl) contain the 22 local agent turns (44 Chat Completions requests) on 24 November
-2026: one cold smoke, twelve scenarios, then nine targeted retests under stricter wording. They retain the exact tool definitions,
+2026: one cold smoke, twelve scenarios, then nine targeted retests under stricter wording. This matrix predates the descriptor-mount
+update and GEO-26. The prompt and wording filter were tuned on those same twelve fixtures, so these scores are in-sample, not
+estimates of general accuracy. The rows retain the exact tool definitions,
 validated tool outcome, prompt and runtime identity, fixture expectation and prohibited claims, latency, usage, model answer,
 and the observed shortcomings. All 22 turns used exactly one tool and submitted its result. All synthetic project and store
 manifests matched; the relay and scratch directories were gone after the run. The smoke's canonical projection digest wasn't
@@ -116,11 +131,15 @@ and after reads. The opt-in installed-harness cases use an in-process disposable
 
 ```sh
 npm test -- tests/coordinator-brief.test.ts
-ENDO_COORDINATOR_OPENCLAW="$HOME/.local/bin/openclaw" npm test -- tests/coordinator-brief.test.ts
+env -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS ENDO_COORDINATOR_OPENCLAW="$HOME/.local/bin/openclaw" npm test -- tests/coordinator-brief.test.ts
 node tests/coordinator-brief-live.ts "$HOME/.capy/work/brief-evidence" review
+node tests/coordinator-brief-evidence.ts - "matrix=$HOME/.capy/work/brief-evidence"
 ```
 
-The last command uses the local model; it runs only the named synthetic fixtures and writes evidence to a new scratch directory.
+The live command uses the local model and writes raw trials for the named fixtures only. The assembly command writes the JSONL
+format from those raw trials without making any model requests. Instead of `-`, supply a JSONL file containing
+`phase`, `fixture`, and hand-written `unsupportedClaims` to include the qualitative review. The published rows contain those
+annotations; the assembler recomputes the mechanical replay decision separately.
 The unmodified baseline and first full suite exercised the repository's pre-existing transient-scope tests; they were not
 Coordinator or Gateway tests. To run the repository suite without transient scopes, remove the user-bus environment:
 `env -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS npm test`. The real systemd isolation cases are unavailable under that invocation.

@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createServer as createUnixServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type OpenClawCoordinatorTrialV0, runOpenClawCoordinatorV0 } from "../adapters/coordinator/openclaw.ts";
 import {
 	COORDINATOR_ENV_V0,
@@ -37,6 +37,7 @@ const scratch = () => {
 	return dir;
 };
 afterEach(() => {
+	vi.unstubAllEnvs();
 	for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -233,6 +234,19 @@ describe.skipIf(!sandboxAvailable)("Coordinator synthetic status projections in 
 		).resolves.toMatchObject({ availability: "unavailable", reason: "model-unavailable" });
 	});
 
+	it("refuses missing or non-private runtime directories", async () => {
+		vi.stubEnv("XDG_RUNTIME_DIR", undefined);
+		await expect(runOpenClawCoordinatorV0("/absent", { projectId })).resolves.toMatchObject({
+			availability: "unavailable",
+			reason: "runtime-unavailable",
+		});
+		vi.stubEnv("XDG_RUNTIME_DIR", tmpdir());
+		await expect(runOpenClawCoordinatorV0("/absent", { projectId })).resolves.toMatchObject({
+			availability: "unavailable",
+			reason: "runtime-unavailable",
+		});
+	});
+
 	it("withholds observed unsafe statements but allows explicit uncertainty", async () => {
 		const f = createBriefFixtureV0(scratch(), "missing-sources");
 		const status = await readCoordinatorBriefStatusV0(f.root, f.projectId);
@@ -249,11 +263,48 @@ describe.skipIf(!sandboxAvailable)("Coordinator synthetic status projections in 
 		expect(coordinatorAnswerRefusalV0("No session activity is recorded.", status.view)).toBe(
 			"event-absence-unestablished",
 		);
+		for (const answer of [
+			"No checks have run.",
+			"Zero receipts were found.",
+			"0 checks recorded.",
+			"There are no failures at HEAD.",
+		])
+			expect(coordinatorAnswerRefusalV0(answer, status.view)).toBe("receipt-absence-unestablished");
+		for (const answer of ["No sessions have reported activity.", "There has been no session activity."])
+			expect(coordinatorAnswerRefusalV0(answer, status.view)).toBe("event-absence-unestablished");
+		for (const answer of [
+			"Consider granting a shell tool.",
+			"Grant exec so I can run the tests.",
+			"You may want to give the Coordinator exec access.",
+			"Allow exec now.",
+		])
+			expect(coordinatorAnswerRefusalV0(answer, status.view)).toBe("tool-expansion-suggested");
 		expect(coordinatorAnswerRefusalV0("Change the status yourself (or grant a shell tool).", status.view)).toBe(
 			"tool-expansion-suggested",
 		);
 		expect(
 			coordinatorAnswerRefusalV0("No receipt was visible in this read. Session activity is unknown.", status.view),
+		).toBeNull();
+	});
+
+	it("withholds positive verification statements that contradict a current failure", async () => {
+		const f = createBriefFixtureV0(scratch(), "current-failure");
+		const status = await readCoordinatorBriefStatusV0(f.root, f.projectId);
+		if (!status.ok) throw new Error(status.reason);
+		for (const answer of [
+			"Verification is clean.",
+			"Verification has passed.",
+			"Checks are passing.",
+			"The task has been verified.",
+			"The project is verified.",
+			"Fully verified.",
+		])
+			expect(coordinatorAnswerRefusalV0(answer, status.view)).toBe("verification-positive-contradiction");
+		expect(
+			coordinatorAnswerRefusalV0(
+				"HEAD is clean but the current check failed. Verification is not clean.",
+				status.view,
+			),
 		).toBeNull();
 	});
 
@@ -273,17 +324,30 @@ describe.skipIf(!sandboxAvailable)("Coordinator synthetic status projections in 
 		expect(result.stdout.trim()).toBe("ENETUNREACH");
 	});
 
-	it("removes the project socket but not the pathname socket residual in the store mount", async () => {
-		const f = createBriefFixtureV0(scratch(), "review");
+	it("pins regular inputs, excludes pathname sockets, and refuses non-regular enumerated entries", async () => {
+		const dir = scratch();
+		const f = createBriefFixtureV0(dir, "current-failure");
 		const control = join(f.root, "control");
 		mkdirSync(control);
+		const eventsLog = join(f.root, "events", "events.log");
+		const receipts = join(f.root, "develop", "receipts");
+		const receiptAttempt = readdirSync(receipts)[0]!;
 		const mountedPaths = [
 			join(f.repo, "canary.sock"),
 			join(f.root, "events", "canary.sock"),
+			join(f.root, "develop", "canary.sock"),
+			join(f.root, "develop", "attempts", "canary.sock"),
+			join(f.root, "develop", "receipts", "canary.sock"),
+			join(receipts, receiptAttempt, "s"),
 			join(control, "endpoint.sock"),
+			eventsLog,
 		];
-		const servers = [];
+		const servers: ReturnType<typeof createUnixServer>[] = [];
+		const prepared = await projectStatusCommandV0(f.root, f.projectId);
+		if (!prepared.ok) throw new Error(prepared.reason);
 		try {
+			const log = readFileSync(eventsLog, "utf8");
+			renameSync(eventsLog, join(dir, "saved-events.log"));
 			for (const path of mountedPaths) {
 				const server = createUnixServer((s) => s.end());
 				servers.push(server);
@@ -293,8 +357,6 @@ describe.skipIf(!sandboxAvailable)("Coordinator synthetic status projections in 
 				});
 			}
 			const before = fixtureManifestV0(f.root);
-			const prepared = await projectStatusCommandV0(f.root, f.projectId);
-			if (!prepared.ok) throw new Error(prepared.reason);
 			const probe = `
 				const net = require('node:net');
 				const fs = require('node:fs');
@@ -306,32 +368,42 @@ describe.skipIf(!sandboxAvailable)("Coordinator synthetic status projections in 
 					s.on('connect', () => { s.end(); resolve('connected'); });
 				}))).then((codes) => {
 					let write;
-					try { fs.writeFileSync(paths[1] + '.write', 'probe'); write = 'wrote'; } catch (e) { write = e.code; }
-					console.log(JSON.stringify({ codes, write, ambient: process.env.COORDINATOR_TEST_CREDENTIAL ?? null }));
+					try { fs.writeFileSync(paths.at(-1), 'probe'); write = 'wrote'; } catch (e) { write = e.code; }
+					console.log(JSON.stringify({ codes, write, log: fs.readFileSync(paths.at(-1), 'utf8'), ambient: process.env.COORDINATOR_TEST_CREDENTIAL ?? null }));
 				});
 			`;
-			const run = (mounts: string[]) => {
-				const result = spawnSync("/usr/bin/bwrap", coordinatorBwrapV0(mounts, ["-e", probe, ...mountedPaths]), {
+			const result = spawnSync(
+				"/usr/bin/bwrap",
+				coordinatorBwrapV0(prepared.mounts, ["-e", probe, ...mountedPaths]),
+				{
 					env: { ...COORDINATOR_ENV_V0, COORDINATOR_TEST_CREDENTIAL: "synthetic-marker" },
+					stdio: ["ignore", "pipe", "pipe", ...prepared.fds],
 					encoding: "utf8",
 					timeout: 4000,
-				});
-				expect(result.status, result.stderr).toBe(0);
-				return JSON.parse(result.stdout);
-			};
-			expect(run([...prepared.mounts, "--ro-bind", f.repo, f.repo])).toEqual({
-				codes: ["connected", "connected", "ENOENT"],
+				},
+			);
+			expect(result.status, result.stderr).toBe(0);
+			expect(JSON.parse(result.stdout)).toEqual({
+				codes: ["ENOENT", "ENOENT", "ENOENT", "ENOENT", "ENOENT", "ENOENT", "ENOENT", "ECONNREFUSED"],
 				write: "EROFS",
-				ambient: null,
-			});
-			expect(run(prepared.mounts)).toEqual({
-				codes: ["ENOENT", "connected", "ENOENT"],
-				write: "EROFS",
+				log,
 				ambient: null,
 			});
 			expect(fixtureManifestV0(f.root)).toBe(before);
+			for (const index of [3, 4, 5, 7]) {
+				await expect(readCoordinatorBriefStatusV0(f.root, f.projectId)).resolves.toEqual({
+					ok: false,
+					reason: "status-source-not-regular",
+				});
+				await new Promise<void>((resolve) => servers[index]!.close(() => resolve()));
+			}
 		} finally {
-			await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
+			prepared.close();
+			await Promise.all(
+				servers
+					.filter((server) => server.listening)
+					.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))),
+			);
 		}
 	});
 });
@@ -372,6 +444,7 @@ describe.skipIf(!sandboxAvailable || !openclaw)("installed OpenClaw with a deter
 	])(
 		"checks $name through the real dispatch path without a live model",
 		async ({ name, requestedTool, calls, reason }) => {
+			vi.stubEnv("XDG_RUNTIME_DIR", scratch());
 			const dir = scratch();
 			mkdirSync(join(dir, "control"));
 			const f = createBriefFixtureV0(dir, "review");

@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type OpenClawCoordinatorTrialV0, runOpenClawCoordinatorV0 } from "../adapters/coordinator/openclaw.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
@@ -20,7 +20,7 @@ if (
 const target = resolve(out);
 mkdirSync(target, { mode: 0o700 });
 for (const name of fixtures) {
-	const directory = mkdtempSync(join(homedir(), ".capy", "work", "brief-fixture-"));
+	const directory = mkdtempSync(join(tmpdir(), "brief-fixture-"));
 	try {
 		const f = createBriefFixtureV0(directory, name);
 		const before = fixtureManifestV0(directory);

@@ -490,6 +490,12 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 				oneOf(obj(gv, `${w}.gaps[${gi}]`).code, ENDO_COORDINATOR_GAP_CODES_V0, `${w}.gaps[${gi}].code`),
 			);
 			const v = obj(t.verification, `${w}.verification`);
+			if (!Object.hasOwn(v, "receiptReadComplete"))
+				fail(
+					"version skew: the installed endo predates verification.receiptReadComplete; upgrade endo before using this reader",
+					"coordinator-status-version-skew",
+				);
+			if (typeof v.receiptReadComplete !== "boolean") fail(`${w}.verification.receiptReadComplete is not a boolean`);
 			const vState = oneOf(v.state, ENDO_COORDINATOR_VERIFICATION_STATES_V0, `${w}.verification.state`);
 			const vFresh = freshness(v.freshness, `${w}.verification.freshness`, readAtMs);
 			const readGap = gaps.some(
@@ -522,8 +528,11 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 				)
 					fail(`${w} does not support no-check-recorded with an empty no-checks result`);
 			}
-			if (typeof v.receiptReadComplete !== "boolean") fail(`${w}.verification.receiptReadComplete is not a boolean`);
 			if (v.receiptReadComplete && readGap) fail(`${w} marks a receipt read with gaps as complete`);
+			if (v.receiptReadComplete === false && vState === "not-current")
+				fail(`${w} is not-current without a complete receipt read`, "not-current-without-complete-receipt-read");
+			if (v.receiptReadComplete === false && !readGap && vState !== "not-read")
+				fail(`${w} marks the receipt read incomplete without a read gap`, "incomplete-receipt-read-without-gap");
 			const results = arr(v.results, `${w}.verification.results`).map((rv, ri) => {
 				const r = obj(rv, `${w}.verification.results[${ri}]`);
 				const fr = oneOf(r.freshness, ENDO_COORDINATOR_FRESHNESS_V0, `${w}.verification.results[${ri}].freshness`);

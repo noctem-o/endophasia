@@ -731,17 +731,31 @@ describe("coordinator status projection", () => {
 		expect(() => validateEndoCoordinatorStatusV0(granting)).toThrow(/grants nothing/);
 	});
 
-	it("refuses no-checks without an explicit complete receipt read", () => {
+	it("diagnoses older v0 records without receipt-read completeness as version skew", () => {
+		const legacy = endoCoordinatorStatusV0(baseline());
+		expect(legacy.schemaVersion).toBe("endo.coordinator-status.v0");
+		for (const project of legacy.projects)
+			for (const task of project.tasks) Reflect.deleteProperty(task.verification, "receiptReadComplete");
+		expect(() => validateEndoCoordinatorStatusV0(legacy)).toThrow(
+			expect.objectContaining({
+				code: "coordinator-status-version-skew",
+				message:
+					"invalid coordinator status: version skew: the installed endo predates verification.receiptReadComplete; upgrade endo before using this reader",
+			}),
+		);
+	});
+
+	it("refuses no-checks over an explicitly incomplete receipt read", () => {
 		const s = endoCoordinatorStatusV0(baseline());
 		const t = taskOf(s, T_REVIEW);
 		Object.assign(t.verification, {
 			state: "no-checks",
+			receiptReadComplete: false,
 			incomplete: false,
 			freshness: { state: "unavailable", observedAtMs: null, ageMs: null, reason: "no recorded check" },
 			results: [],
 			moreResults: 0,
 		});
-		Reflect.deleteProperty(t.verification, "receiptReadComplete");
 		t.gaps = [{ code: "no-check-recorded", text: "No recorded check." }];
 		expect(() => validateEndoCoordinatorStatusV0(s)).toThrow(
 			expect.objectContaining({ code: "no-checks-without-complete-receipt-read" }),
@@ -769,6 +783,38 @@ describe("coordinator status projection", () => {
 			);
 		},
 	);
+
+	it.each([
+		["stale", "not-current", "not-current-without-complete-receipt-read"],
+		["failed", "failing", "incomplete-receipt-read-without-gap"],
+	] as const)("rejects a partial read with a misleading %s projection", (planState, state, code) => {
+		const s = validateEndoCoordinatorStatusV0(
+			endoCoordinatorStatusV0({
+				...baseline(),
+				attention: new Map([
+					[
+						P,
+						{
+							observedAtMs: NOW,
+							view: view([attentionTask(T_REVIEW, [planned(A_REVIEW, planState, "failed")])]),
+						},
+					],
+				]),
+			}),
+		);
+		const t = taskOf(s, T_REVIEW);
+		expect(t.verification.state).toBe(state);
+		t.verification.receiptReadComplete = false;
+		t.verification.incomplete = true;
+		t.verification.freshness = {
+			...t.verification.freshness,
+			state: "incomplete",
+			reason: "some receipts were skipped",
+		};
+		if (state === "not-current")
+			t.gaps.push({ code: "receipts-skipped-at-limit", text: "Some receipts were skipped." });
+		expect(() => validateEndoCoordinatorStatusV0(s)).toThrow(expect.objectContaining({ code }));
+	});
 
 	it("keeps a task's complete empty read separate from a skipped task, even without HEAD", () => {
 		const s = validateEndoCoordinatorStatusV0(
@@ -1083,6 +1129,27 @@ describe("endo coordinator status on disk", () => {
 			}
 		},
 	);
+
+	it("preserves empty receipt evidence with unrelated filenames but degrades it for ambiguous attempt records", async () => {
+		const f = await buildCoordinatorStoreV0({ repeatWithFailure: true });
+		const receipts = dirname(f.failedReceiptPath!);
+		for (const name of readdirSync(receipts)) rmSync(join(receipts, name));
+		const attempts = join(f.root, "develop", "attempts");
+		const read = async () => validateEndoCoordinatorStatusV0(await readEndoCoordinatorStatusV0({ root: f.root }));
+		writeFileSync(join(attempts, "README.txt"), "");
+		const unrelated = await read();
+		expect(unrelated.sources.attempts.state).toBe("partial");
+		expect(codes(unrelated)).toContain("attempt-records-unusable");
+		const empty = taskOf(unrelated, f.taskId);
+		expect(empty.verification).toMatchObject({ state: "no-checks", receiptReadComplete: true });
+		expect(empty.gaps.map((g) => g.code)).toContain("no-check-recorded");
+
+		writeFileSync(join(attempts, `endo.attempt.${"a".repeat(32)}.handoff.json`), "not JSON");
+		const ambiguous = taskOf(await read(), f.taskId);
+		expect(ambiguous.verification).toMatchObject({ state: "incomplete", receiptReadComplete: false });
+		expect(ambiguous.gaps.map((g) => g.code)).toContain("attempt-records-unusable");
+		expect(ambiguous.gaps.map((g) => g.code)).not.toContain("no-check-recorded");
+	});
 
 	it.skipIf(process.platform !== "linux" || process.getuid?.() === 0)(
 		"reports an I/O gap when the default read can enumerate but not stat receipt files",

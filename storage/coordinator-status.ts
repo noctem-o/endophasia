@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoCoordinatorStatusV0 } from "../protocol/coordinator-status.ts";
 import { ENDO_COORDINATOR_DEFAULT_STALE_AFTER_MS_V0 } from "../protocol/coordinator-status.ts";
+import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "../protocol/develop-attempts.ts";
 import type { EndoReceiptCurrentV0 } from "../protocol/develop-receipts.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import {
@@ -108,9 +109,17 @@ export async function readEndoCoordinatorStatusV0(
 		budget === undefined ? undefined : { entries: budget.attemptEntries, bytes: budget.attemptBytes },
 	);
 	const events = readEventLogReadOnly(root, budget?.eventsBytes);
+	const verificationAttempts = attempts.ok
+		? {
+				...attempts,
+				problems: attempts.problems.filter(
+					(p) => p.reason !== "unknown-file" || ENDO_ATTEMPT_ID_PATTERN_V0.test(p.name.split(".", 3).join(".")),
+				),
+			}
+		: { ok: false as const, reason: "io" as const };
 	const attentionAttempts = new (class extends DevelopAttemptsStoreV0 {
 		override read() {
-			return attempts.ok ? attempts : { ok: false as const, reason: "io" as const };
+			return verificationAttempts;
 		}
 	})(root);
 	const attentionTasks = new (class extends DevelopTasksStoreV0 {

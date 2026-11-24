@@ -178,22 +178,6 @@ export async function readCoordinatorBriefStatusV0(root: string, id: string) {
 			projects: [{ id, root: prepared.project.path }],
 		};
 		const view = externalEndophasiaStatusV0(status, config);
-		for (const project of view.projects) {
-			for (const task of project.tasks) {
-				if (task.verification.state !== "no-checks") continue;
-				const canonicalTask = status.projects[0]?.tasks.find((candidate) => candidate.taskId === task.taskId);
-				const verification = canonicalTask?.verification;
-				if (verification && "receiptReadComplete" in verification && verification.receiptReadComplete === true)
-					continue;
-				task.verification = {
-					...task.verification,
-					state: "unavailable",
-					freshness: "incomplete",
-					incomplete: true,
-				};
-				task.gaps = [...task.gaps.filter((gap) => gap !== "no-check-recorded"), "receipt-coverage-not-established"];
-			}
-		}
 		return {
 			ok: true as const,
 			view,

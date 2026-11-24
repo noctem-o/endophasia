@@ -19,11 +19,7 @@ briefing is a model interpretation, not acceptance, authorization, or a new sour
 The briefing covers the operator's task status and review queue, things needing attention, controller-observed failures at HEAD,
 incomplete evidence, recent recorded session activity and its basis, what can't be known, and one suggested next action. Completion
 doesn't prove correctness; a pass doesn't prove complete verification; a historical failure isn't a current failure; activity isn't liveness.
-The default trimmed plugin view omits task titles, attempt prose, paths, commands, and identifying session details. Additionally, if a
-projection says `no-checks` but cannot positively establish that it read the receipt inventory, the brief view says
-`receipt-coverage-not-established` and marks verification unavailable/incomplete. That avoids relaying the pre-GEO-26 absence ambiguity
-as evidence. A newer validator and worker must come from the same Endophasia build. This does not upgrade a surviving pass into proof
-of complete receipt history.
+The default trimmed plugin view omits task titles, attempt prose, paths, commands, and identifying session details.
 
 ## 2. Substrate boundary
 
@@ -61,6 +57,15 @@ filesystem, or messaging tool; the sandbox still contains system binaries. Model
 dispatch. The answer filter withholds some unsupported absence claims, suggestions to grant shell authority, and positive
 verification wording that contradicts a current failure. As the CLI banner says, it is a wording backstop, not a validator.
 It can miss paraphrases or withhold a correct answer that quotes a prohibited claim.
+
+**Absence of checks.** The trimmed view does not carry `verification.receiptReadComplete`. The brief relays `no-checks` as stated
+rather than surfacing that fact, because the canonical validator (GEO-26) runs on every read before the view is built and refuses a
+`no-checks` record unless `receiptReadComplete` is true, `incomplete` is false, no receipt-read gap is present, and the result list
+is empty. A `no-checks` the model sees therefore follows a complete receipt read; an incomplete read arrives as `incomplete` with a
+read gap, and an older `endo` without the field is refused as version skew. The instructions tell the model to say "no check is
+recorded for this task" for `no-checks` only, and the backstop still withholds absence wording when any task's read is incomplete or
+unavailable. This relies on the worker and validator coming from the same Endophasia build. Absence of a record is still not evidence
+about the work, and a surviving pass is still not proof of complete receipt history.
 
 The status reader is read-only, has an output/deadline bound and uses existing bounded source reads. The model relay bounds body
 size, bytes, connections, generation (one choice), and the number of upstream exchanges; the embedded process has a deadline.

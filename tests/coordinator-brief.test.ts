@@ -182,11 +182,8 @@ describe.skipIf(!sandboxAvailable)("Coordinator synthetic status projections in 
 					break;
 				case "review":
 					expect(task.phase).toBe("awaiting-review");
-					if (task.verification.state !== "no-checks") {
-						expect(task.verification.incomplete).toBe(true);
-						expect(task.gaps).toContain("receipt-coverage-not-established");
-						expect(task.gaps).not.toContain("no-check-recorded");
-					}
+					expect(task.verification).toMatchObject({ state: "no-checks", incomplete: false });
+					expect(task.gaps).toContain("no-check-recorded");
 					break;
 				case "current-failure":
 					expect(task.verification).toMatchObject({

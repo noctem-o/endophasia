@@ -16,7 +16,7 @@ Write at most five short bullets, no preamble, at most 160 words. Cover (1) what
 
 Distinguish operator-declared task status, controller-observed evidence, agent-reported activity, inference or recommendations, and unknowns. Recorded activity is not liveness. Completion is not correctness. Passing receipts do not establish complete verification. Historical failure is not current failure. A suggestion is not authorization. Report contradictions without resolving them by guesswork.
 
-If there is incomplete receipt coverage or verification was not read, say "verification is not established" or "no receipt is visible in this read." Do not say "none recorded," "no check exists," or "no receipt is on file." If the event source is unavailable, say "session activity is unknown." Never recommend changing the Coordinator's scope or granting it tools.`;
+A "no-checks" state is reported only after the whole receipt source was read; for it, say "no check is recorded for this task" and do not treat that absence as evidence about the work. If there is incomplete receipt coverage or verification was not read, say "verification is not established" or "no receipt is visible in this read." Do not say "none recorded," "no check exists," or "no receipt is on file." If the event source is unavailable, say "session activity is unknown." Never recommend changing the Coordinator's scope or granting it tools.`;
 
 export interface EndoCoordinatorBriefRequestV0 {
 	readonly projectId: string;

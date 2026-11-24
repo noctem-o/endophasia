@@ -145,8 +145,8 @@ jobs:
         env:
           ENDO_REAL_SCOPES: "1"
         run: |
-          # The scopes are collected as soon as their session ends and the runner's journal is not readable by its user, so watch the
-          # manager while the suites run and count the distinct live scopes it listed.
+          # A live scope is collected as soon as its session ends, and a count taken from the runner's journal afterwards read 0 here, so
+          # watch the manager while the suites run and count the distinct live scopes it listed.
           seen="$RUNNER_TEMP/live-scopes-seen.txt"
           : > "$seen"
           (while :; do systemctl --user list-units --type=scope --all --plain --no-legend --no-pager 'endo-live-*' | awk '{print $1}' >> "$seen"; sleep 0.1; done) &

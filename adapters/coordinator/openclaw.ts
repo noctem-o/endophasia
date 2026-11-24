@@ -1,6 +1,15 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	realpathSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { get, type IncomingMessage } from "node:http";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
@@ -217,6 +226,15 @@ export async function runOpenClawCoordinatorV0(
 	if (!ENDO_PROJECT_ID_PATTERN_V0.test(projectId)) return unavailable("malformed-selector");
 	const origin = options.origin ?? ORIGIN;
 	if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(origin)) return unavailable("model-unavailable");
+	const scratch = process.env.XDG_RUNTIME_DIR;
+	if (!scratch?.startsWith("/")) return unavailable("runtime-unavailable");
+	try {
+		const stat = lstatSync(scratch);
+		if (!stat.isDirectory() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
+			return unavailable("runtime-unavailable");
+	} catch {
+		return unavailable("runtime-unavailable");
+	}
 	try {
 		runtime.provider = await providerBuild(origin);
 	} catch {
@@ -228,6 +246,8 @@ export async function runOpenClawCoordinatorV0(
 		if (status.reason === "project-not-registered") return unavailable("project-out-of-scope");
 		if (status.reason === "output-too-large") return unavailable("status-output-too-large");
 		if (status.reason === "timed-out") return unavailable("status-timeout");
+		if (status.reason === "status-source-not-regular" || status.reason === "status-source-too-large")
+			return unavailable(status.reason);
 		return unavailable("status-unavailable");
 	}
 	const toolOutcome = { availability: "available", status: status.view };
@@ -249,8 +269,6 @@ export async function runOpenClawCoordinatorV0(
 			JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version !== "2026.11.7"
 		)
 			return unavailable("runtime-unavailable");
-		const scratch = join(home, ".capy/work");
-		mkdirSync(scratch, { recursive: true, mode: 0o700 });
 		directory = mkdtempSync(join(scratch, "brief-"));
 		const agent = join(directory, "agent");
 		mkdirSync(agent, { mode: 0o700 });

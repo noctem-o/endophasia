@@ -38,6 +38,9 @@ export type EndoCoordinatorBriefRefusalV0 =
 	| "receipt-absence-unestablished"
 	| "event-absence-unestablished"
 	| "tool-expansion-suggested"
+	| "verification-positive-contradiction"
+	| "status-source-not-regular"
+	| "status-source-too-large"
 	| "ungrounded";
 
 export interface EndoCoordinatorBriefEvidenceV0 {

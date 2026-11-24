@@ -64,7 +64,7 @@ async function brief(argv: readonly string[]): Promise<void> {
 	if (!quiet)
 		process.stderr.write(
 			coordinatorBrief.availability === "available"
-				? `Coordinator briefing (derived from status, not authoritative):\n${coordinatorBrief.answer.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "")}\n`
+				? `Coordinator briefing (model interpretation; wording backstop, not a validator):\n${coordinatorBrief.answer.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, "")}\n`
 				: `Coordinator briefing unavailable (${coordinatorBrief.reason}).\n`,
 		);
 }

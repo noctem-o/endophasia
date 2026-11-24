@@ -58,6 +58,7 @@ import {
 	endoProtectedAttemptAuthorityV0,
 	sealEndoAttemptCandidateBindingV0,
 } from "../runtime/contracts/develop-attempt-candidate-binding.ts";
+import { DevelopAttemptDispatchV0 } from "../runtime/contracts/develop-attempt-dispatch.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { renderEndoDevelopEvidenceBridgeV0 } from "../runtime/contracts/develop-evidence-bridge.ts";
 import {
@@ -1157,6 +1158,292 @@ describe("DEVELOP-PROTECTED-ATTEMPT-001: legacy records and the read-only bridge
 		);
 		expect(flag.status).not.toBe(0);
 		expect(manifest(f.work)).toEqual(before);
+	});
+});
+
+describe("DEVELOP-PROTECTED-ATTEMPT-001: audit remediation regressions", () => {
+	const DISPATCH = fileURLToPath(new URL("../runtime/contracts/develop-attempt-dispatch.ts", import.meta.url));
+	const TASKS_STORE = fileURLToPath(new URL("../storage/develop-tasks.ts", import.meta.url));
+	const ATTEMPTS_STORE = fileURLToPath(new URL("../storage/develop-attempts.ts", import.meta.url));
+
+	const dummyBinding = () => ({
+		session: "endo.session.pi.aaaa",
+		attachment: "endo.attachment.0123456789abcdef",
+		launchId: "a".repeat(16),
+		proposalId: `endo.evidence.workbench-prompt-${"b".repeat(32)}`,
+		proposalDigest: H("d"),
+		authorizationEventId: `endo.event.${"e".repeat(32)}`,
+		message: {
+			bytes: 120,
+			digest: { algorithm: "hmac-sha256" as const, keyId: "k1", value: H("f") },
+		},
+	});
+
+	it("enforces cross-route exclusivity sequentially in both directions (including legacy protected records without route file)", async () => {
+		const f = fixture();
+		const { result } = await launched(f);
+		expect(result.status).toBe("bound");
+		const tasks = new DevelopTasksStoreV0(f.root);
+		const attempts = new DevelopAttemptsStoreV0(f.root);
+		const entry = (attempts.read() as Extract<ReturnType<DevelopAttemptsStoreV0["read"]>, { ok: true }>).entries[0]!;
+		const dispatch = new DevelopAttemptDispatchV0(tasks, attempts, {
+			projectId: entry.attempt.projectId,
+			launchDirectory: f.project,
+		});
+		expect(dispatch.check(f.attemptId)).toEqual({ ok: false, code: "already-authorized" });
+		// Even if attempt-routes/ is removed (legacy protected-launch store), workbench still refuses.
+		rmSync(join(f.root, "develop", "attempt-routes"), { recursive: true, force: true });
+		expect(dispatch.check(f.attemptId)).toEqual({ ok: false, code: "already-authorized" });
+
+		// Reverse direction: workbench authorizes first, then protected launcher refuses.
+		const g = fixture();
+		const gTasks = new DevelopTasksStoreV0(g.root);
+		const gAttempts = new DevelopAttemptsStoreV0(g.root);
+		const gEntry = (gAttempts.read() as Extract<ReturnType<DevelopAttemptsStoreV0["read"]>, { ok: true }>)
+			.entries[0]!;
+		const gDispatch = new DevelopAttemptDispatchV0(gTasks, gAttempts, {
+			projectId: gEntry.attempt.projectId,
+			launchDirectory: g.project,
+		});
+		const checked = gDispatch.check(g.attemptId);
+		expect(checked.ok).toBe(true);
+		if (!checked.ok) throw new Error(checked.code);
+		const auth = gDispatch.authorize(checked.value, dummyBinding());
+		expect(auth.ok).toBe(true);
+		const planned = planProtectedAttemptV0({
+			root: g.root,
+			attemptId: g.attemptId,
+			templatePath: g.template,
+			out: join(g.work, "out"),
+		});
+		expect(planned.ok).toBe(false);
+		if (!planned.ok) expect(planned.code).toBe("already-authorized");
+	});
+
+	it("enforces cross-route exclusivity atomically under concurrent workbench and protected-attempt processes", async () => {
+		const f = fixture();
+		const attempts = new DevelopAttemptsStoreV0(f.root);
+		const entry = (attempts.read() as Extract<ReturnType<DevelopAttemptsStoreV0["read"]>, { ok: true }>).entries[0]!;
+		const gate = join(f.work, "go");
+		const workerProtected = (idx: number) =>
+			new Promise<{ route: "protected"; status: string }>((resolve, reject) => {
+				const code = `
+					import { existsSync } from "node:fs";
+					import { launchProtectedAttemptV0 } from ${JSON.stringify(ADAPTER)};
+					while (!existsSync(${JSON.stringify(gate)})) {}
+					const r = await launchProtectedAttemptV0({
+						root: ${JSON.stringify(f.root)},
+						attemptId: ${JSON.stringify(f.attemptId)},
+						templatePath: ${JSON.stringify(f.template)},
+						out: ${JSON.stringify(join(f.work, `race-p-${idx}`))},
+						approve: async (p) => p.phrase,
+						runner: async () => { throw new Error("stop-after-launch"); },
+					});
+					process.stdout.write(JSON.stringify({ route: "protected", status: r.status }));
+				`;
+				const child = spawn(process.execPath, ["--input-type=module", "-e", code], {
+					stdio: ["ignore", "pipe", "pipe"],
+				});
+				let out = "";
+				let err = "";
+				child.stdout.on("data", (d) => {
+					out += d;
+				});
+				child.stderr.on("data", (d) => {
+					err += d;
+				});
+				child.on("close", (c) =>
+					c === 0 ? resolve(JSON.parse(out)) : reject(new Error(`protected worker ${idx} exited ${c}: ${err}`)),
+				);
+			});
+		const workerWorkbench = (idx: number) =>
+			new Promise<{ route: "workbench"; ok: boolean; code: string | null }>((resolve, reject) => {
+				const code = `
+					import { existsSync } from "node:fs";
+					import { DevelopAttemptDispatchV0 } from ${JSON.stringify(DISPATCH)};
+					import { DevelopTasksStoreV0 } from ${JSON.stringify(TASKS_STORE)};
+					import { DevelopAttemptsStoreV0 } from ${JSON.stringify(ATTEMPTS_STORE)};
+					const d = new DevelopAttemptDispatchV0(
+						new DevelopTasksStoreV0(${JSON.stringify(f.root)}),
+						new DevelopAttemptsStoreV0(${JSON.stringify(f.root)}),
+						{ projectId: ${JSON.stringify(entry.attempt.projectId)}, launchDirectory: ${JSON.stringify(f.project)} },
+					);
+					const c = d.check(${JSON.stringify(f.attemptId)});
+					while (!existsSync(${JSON.stringify(gate)})) {}
+					const r = c.ok ? d.authorize(c.value, ${JSON.stringify(dummyBinding())}) : c;
+					process.stdout.write(JSON.stringify({ route: "workbench", ok: r.ok, code: r.ok ? null : r.code }));
+				`;
+				const child = spawn(process.execPath, ["--input-type=module", "-e", code], {
+					stdio: ["ignore", "pipe", "pipe"],
+				});
+				let out = "";
+				let err = "";
+				child.stdout.on("data", (d) => {
+					out += d;
+				});
+				child.stderr.on("data", (d) => {
+					err += d;
+				});
+				child.on("close", (c) =>
+					c === 0 ? resolve(JSON.parse(out)) : reject(new Error(`workbench worker ${idx} exited ${c}: ${err}`)),
+				);
+			});
+
+		const pending = [
+			workerProtected(1),
+			workerProtected(2),
+			workerProtected(3),
+			workerWorkbench(1),
+			workerWorkbench(2),
+			workerWorkbench(3),
+		];
+		await new Promise((r) => setTimeout(r, 150));
+		writeFileSync(gate, "go");
+		const outcomes = await Promise.all(pending);
+		const protectedWinners = outcomes.filter((o) => o.route === "protected" && o.status === "run-failed");
+		const workbenchWinners = outcomes.filter((o) => o.route === "workbench" && o.ok);
+		expect(protectedWinners.length + workbenchWinners.length).toBe(1);
+		const hasLaunch = existsSync(launchPath(f));
+		const hasAuth = existsSync(join(f.root, "develop", "attempts", `${f.attemptId}.authorized.json`));
+		expect(hasLaunch !== hasAuth).toBe(true);
+	}, 30_000);
+
+	it("refuses symlink substitution on <runDir>/.agents and <runDir> itself", async () => {
+		const f = fixture();
+		const { out, result } = await launched(f);
+		expect(result.status).toBe("bound");
+		const run = join(out, "run");
+		const agentsDir = join(run, ".agents");
+		const movedAgents = join(out, "moved-agents");
+		renameSync(agentsDir, movedAgents);
+		symlinkSync(movedAgents, agentsDir);
+		const rAgents = reading(f);
+		expect(rAgents?.attemptAssociation).toBe("invalid");
+		expect(failed(rAgents)).toEqual(expect.arrayContaining(["agent-tree", "agent-prompt"]));
+
+		// Restore .agents, now replace <out>/run itself with a symlink to a moved copy.
+		rmSync(agentsDir);
+		renameSync(movedAgents, agentsDir);
+		expect(reading(f)?.attemptAssociation).toBe("established");
+		const movedRun = join(out, "moved-run");
+		renameSync(run, movedRun);
+		symlinkSync(movedRun, run);
+		const rRun = reading(f);
+		expect(rRun?.attemptAssociation).toBe("invalid");
+		expect(failed(rRun)).toContain("run-directory");
+	});
+
+	it("rejects operator-declared and controller bindings whose projectId or taskId disagrees with the prepared attempt", async () => {
+		const f = fixture();
+		const { result } = await launched(f);
+		expect(result.status).toBe("bound");
+		const orig = readBinding(f);
+		// 1. Operator-declared binding (no launch record) with bogus projectId/taskId must fail attempt-identity.
+		rmSync(launchPath(f));
+		const opWrong = sealEndoAttemptCandidateBindingV0({
+			schemaVersion: orig.schemaVersion,
+			attemptId: orig.attemptId,
+			projectId: `endo.project.${"f".repeat(32)}`,
+			taskId: `endo.task.${"e".repeat(32)}`,
+			briefSha256: orig.briefSha256,
+			recordedAtMs: orig.recordedAtMs,
+			boundBy: "operator",
+			via: "operator-declaration",
+			standing: ENDO_ATTEMPT_BINDING_STANDING_V0.operator,
+			authorization: null,
+			target: { ...orig.target, agent: null },
+			integrity: orig.integrity,
+		});
+		chmodSync(bindingPath(f), 0o600);
+		writeFileSync(bindingPath(f), canonicalEndoJsonV0(opWrong as never));
+		const rOp = reading(f);
+		expect(rOp?.attemptAssociation).toBe("invalid");
+		expect(failed(rOp)).toContain("attempt-identity");
+
+		// 2. Controller launch + binding whose projectId agrees with each other but disagrees with prepared.json.
+		const g = fixture();
+		expect((await launched(g)).result.status).toBe("bound");
+		const launchRec = JSON.parse(readFileSync(launchPath(g), "utf8"));
+		launchRec.operation.projectId = `endo.project.${"9".repeat(32)}`;
+		launchRec.operationDigest = sha256HexV0(canonicalEndoJsonV0(launchRec.operation));
+		chmodSync(launchPath(g), 0o600);
+		writeFileSync(launchPath(g), canonicalEndoJsonV0(launchRec));
+		const launchSha = sha256HexV0(canonicalEndoJsonV0(launchRec));
+		forgeBinding(g, (b) => {
+			b.projectId = launchRec.operation.projectId;
+			(b.authorization as { operationDigest: string; launchSha256: string }).operationDigest =
+				launchRec.operationDigest;
+			(b.authorization as { operationDigest: string; launchSha256: string }).launchSha256 = launchSha;
+		});
+		const rCtrl = reading(g);
+		expect(rCtrl?.attemptAssociation).toBe("invalid");
+		expect(failed(rCtrl)).toContain("attempt-identity");
+	});
+
+	it("sets candidate.reconstructable.missingRecord to null when association is established", async () => {
+		const f = fixture();
+		expect((await launched(f)).result.status).toBe("bound");
+		const res = await readDevelopEvidenceBridgeV0({ root: f.root, attemptId: f.attemptId });
+		expect(res.ok).toBe(true);
+		if (!res.ok) throw new Error(res.code);
+		expect(res.bridge.candidate.reconstructable.attemptAssociation).toBe("established");
+		expect(res.bridge.candidate.reconstructable.missingRecord).toBeNull();
+	});
+
+	it("refuses to seal a controller binding when agent.log digest fails or scope.established is false", async () => {
+		// Tampered agent.log after runner writes it: launcher must not seal a controller binding.
+		const f = fixture();
+		const { result: logRes } = await launched(
+			f,
+			{},
+			{
+				runner: async (spec, dir) => {
+					await fakeRunner()(spec, dir);
+					const log = join(dir, "trials", "calc-fix", "fixture", "0", "attempt-1", "agent.log");
+					writeFileSync(log, "tampered output\n");
+				},
+			},
+		);
+		expect(logRes.status).toBe("not-bound");
+		expect(existsSync(bindingPath(f))).toBe(false);
+
+		// scope.established: false must fail termination check and prevent sealing.
+		const g = fixture();
+		const { result: scopeRes } = await launched(
+			g,
+			{},
+			{
+				runner: async (spec, dir) => {
+					await fakeRunner()(spec, dir);
+					const recPath = join(dir, "trials", "calc-fix", "fixture", "0", "attempt-1", "record.json");
+					const rec = JSON.parse(readFileSync(recPath, "utf8"));
+					const { recordSha256: _old, ...rest } = rec;
+					rest.agent.scope.established = false;
+					writeFileSync(recPath, canonicalEndoJsonV0(sealEndoProtectedTrialV0(rest as never) as never));
+				},
+			},
+		);
+		expect(scopeRes.status).toBe("not-bound");
+		expect(scopeRes.checks.find((c) => c.check === "termination")?.result).toBe("fail");
+		expect(existsSync(bindingPath(g))).toBe(false);
+	});
+
+	it("enforces maxAgentBytes when prompt.txt override is added in endoBoundedTreeDigestV0", () => {
+		const dir = fresh("bounded-override");
+		writeFileSync(join(dir, "a.txt"), "12345");
+		const res = endoBoundedTreeDigestV0(
+			dir,
+			{ name: "prompt.txt", bytes: Buffer.from("678901") },
+			{
+				maxTemplateBytes: 1024,
+				maxRecordBytes: 1024,
+				maxAgentEntries: 10,
+				maxAgentBytes: 10,
+				maxAgentDepth: 4,
+				maxPromptBytes: 1024,
+			},
+		);
+		expect(res.ok).toBe(false);
 	});
 });
 

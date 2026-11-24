@@ -12,6 +12,7 @@
 // words are the ones the brief was prepared on; no outcome and no authorisation are recorded for it; and its brief fits a workbench prompt.
 
 import { realpathSync } from "node:fs";
+import { dirname } from "node:path";
 import {
 	ENDO_DEVELOP_ATTEMPT_AUTHORIZATION_SCHEMA_V0,
 	type EndoAttemptMessageRefV0,
@@ -24,6 +25,10 @@ import {
 	renderEndoDevelopBriefV0,
 } from "../../protocol/develop-attempts.ts";
 import { ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0 } from "../../protocol/workbench.ts";
+import {
+	checkProtectedAttemptPresenceSyncV0,
+	DevelopAttemptRoutesStoreV0,
+} from "../../storage/develop-attempt-routes.ts";
 import { type DevelopAttemptsStoreV0, endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { endoBriefSha256V0 } from "./develop-attempt-execution.ts";
@@ -119,6 +124,8 @@ const realpath = (path: string): string | null => {
 export class DevelopAttemptDispatchV0 {
 	readonly #tasks: DevelopTasksStoreV0;
 	readonly #attempts: DevelopAttemptsStoreV0;
+	readonly #developDir: string;
+	readonly #routes: DevelopAttemptRoutesStoreV0;
 	readonly #projectId: string;
 	readonly #launchDirectory: string;
 	readonly #now: () => number;
@@ -131,6 +138,8 @@ export class DevelopAttemptDispatchV0 {
 	) {
 		this.#tasks = tasks;
 		this.#attempts = attempts;
+		this.#developDir = dirname(attempts.directory);
+		this.#routes = new DevelopAttemptRoutesStoreV0(this.#developDir);
 		this.#projectId = config.projectId;
 		this.#launchDirectory = config.launchDirectory;
 		this.#now = options.now ?? Date.now;
@@ -150,6 +159,12 @@ export class DevelopAttemptDispatchV0 {
 		const { attempt } = entry;
 		if (attempt.projectId !== this.#projectId) return refuse("other-project");
 		if (entry.authorized !== null) return refuse("already-authorized");
+		const route = this.#routes.read(attemptId);
+		if (route.state === "present") return refuse("already-authorized");
+		if (route.state === "problem") return refuse("unreadable");
+		const protectedPresence = checkProtectedAttemptPresenceSyncV0(this.#developDir, attemptId);
+		if (protectedPresence === "present") return refuse("already-authorized");
+		if (protectedPresence === "problem") return refuse("unreadable");
 		if (entry.outcome !== null) return refuse("outcome-recorded");
 		if (entry.handoff !== null) return refuse("handed-off");
 		const tasks = this.#tasks.read();
@@ -192,12 +207,13 @@ export class DevelopAttemptDispatchV0 {
 		if (!now.ok) return now;
 		if (now.value.briefSha256 !== approved.briefSha256 || now.value.brief !== approved.brief)
 			return { ok: false, code: "task-words-changed" };
+		const nowMs = this.#now();
 		let record: EndoDevelopAttemptAuthorizationV0;
 		try {
 			record = validateEndoDevelopAttemptAuthorizationV0({
 				schemaVersion: ENDO_DEVELOP_ATTEMPT_AUTHORIZATION_SCHEMA_V0,
 				attemptId: approved.attemptId,
-				recordedAtMs: this.#now(),
+				recordedAtMs: nowMs,
 				briefSha256: approved.briefSha256,
 				taskRevision: now.value.taskRevision,
 				harness: "pi",
@@ -213,6 +229,16 @@ export class DevelopAttemptDispatchV0 {
 			});
 		} catch {
 			return { ok: false, code: "storage-failed" };
+		}
+		// Atomically claim the shared execution-route reservation before writing the workbench authorisation so concurrent
+		// workbench and protected-attempt dispatchers cannot both pass preflight and execute the same attempt.
+		const claimed = this.#routes.claim(approved.attemptId, "workbench", nowMs);
+		if (claimed !== "created") {
+			if (claimed === "exists") {
+				const existing = this.#routes.read(approved.attemptId);
+				return { ok: false, code: existing.state === "present" ? "already-authorized" : "unreadable" };
+			}
+			return { ok: false, code: claimed === "unsafe-path" ? "unreadable" : "storage-failed" };
 		}
 		const written = this.#attempts.write(approved.attemptId, "authorized", record);
 		if (written === "created") return { ok: true, value: record };

@@ -120,14 +120,19 @@ export type EndoRecordReadV0<T> =
 
 export interface EndoProtectedAttemptAssessInputV0 {
 	attemptId: string;
+	/** The prepared attempt's projectId and taskId as read now; null when the prepared record cannot be read. */
+	currentProjectId: string | null;
+	currentTaskId: string | null;
 	/** sha256 of the brief rendered from the prepared record now; null when the prepared record cannot be read. */
 	currentBriefSha256: string | null;
-	/** The attempt also has a workbench send authorisation (develop/attempts/<id>.authorized.json). */
+	/** The attempt also has a workbench send authorisation (develop/attempts/<id>.authorized.json or workbench route reservation). */
 	workbenchAuthorized: boolean;
 	launch: EndoRecordReadV0<EndoProtectedAttemptLaunchV0>;
 	binding: EndoRecordReadV0<EndoDevelopAttemptCandidateBindingV0>;
 	/** Whether a run directory the reader was given names the same directory the records name; null when none was given. */
 	suppliedRunDirectoryMatches: boolean | null;
+	/** True when the run directory path exists on disk as a link or non-directory (refused, never followed). */
+	runDirectoryUnsafe?: boolean;
 	/** A spec pin the reader was given; null when none. */
 	suppliedSpecPin: string | null;
 	/** The independent read-only inspection of the run directory the records name (adapters/develop/evidence-bridge.ts). */
@@ -213,16 +218,21 @@ export function endoAssessProtectedAttemptV0(
 	} else set("operation-digest", binding === null || !controller ? null : false, "no launch record to compare");
 
 	const ids = [launch?.attemptId, launch?.operation.attemptId, binding?.attemptId].filter((x) => x !== undefined);
+	const projectIds = [launch?.operation.projectId, binding?.projectId].filter((x) => x !== undefined);
+	const taskIds = [launch?.operation.taskId, binding?.taskId].filter((x) => x !== undefined);
 	const projectTaskOk =
-		launch === null || binding === null
-			? true
-			: binding.projectId === launch.operation.projectId && binding.taskId === launch.operation.taskId;
+		input.currentProjectId !== null &&
+		input.currentTaskId !== null &&
+		projectIds.every((id) => id === input.currentProjectId) &&
+		taskIds.every((id) => id === input.currentTaskId);
 	set(
 		"attempt-identity",
 		ids.every((id) => id === input.attemptId) && projectTaskOk,
-		ids.every((id) => id === input.attemptId) && projectTaskOk
-			? `every record names ${input.attemptId}`
-			: "a record names another attempt, project or task",
+		input.currentProjectId === null || input.currentTaskId === null
+			? "the prepared attempt cannot be read, so its project and task identity cannot be verified"
+			: ids.every((id) => id === input.attemptId) && projectTaskOk
+				? `every record names ${input.attemptId}`
+				: "a record names another attempt, project or task",
 	);
 
 	const briefs = [launch?.operation.briefSha256, binding?.briefSha256].filter((x) => x !== undefined);
@@ -244,13 +254,17 @@ export function endoAssessProtectedAttemptV0(
 	);
 
 	const runDirs = [launch?.operation.run.directory, binding?.target.runDirectory].filter((x) => x !== undefined);
-	const runDirOk = runDirs.every((d) => d === runDirs[0]) && input.suppliedRunDirectoryMatches !== false;
+	const runDirUnsafe = input.runDirectoryUnsafe === true;
+	const runDirOk =
+		!runDirUnsafe && runDirs.every((d) => d === runDirs[0]) && input.suppliedRunDirectoryMatches !== false;
 	set(
 		"run-directory",
 		runDirOk,
-		runDirOk
-			? `run directory ${runDirs[0]}`
-			: "the records, or the reader's --protected-run, name different run directories",
+		runDirUnsafe
+			? "the run directory path is a symbolic link or not a plain directory (refused, never followed)"
+			: runDirOk
+				? `run directory ${runDirs[0]}`
+				: "the records, or the reader's --protected-run, name different run directories",
 	);
 
 	const specs = [launch?.operation.run.specSha256, binding?.target.specSha256].filter((x) => x !== undefined);
@@ -329,6 +343,7 @@ export function endoAssessProtectedAttemptV0(
 		pe.agent !== null &&
 		pe.preflightStatus === "established" &&
 		pe.agent.termination === "confirmed" &&
+		pe.agent.scopeEstablished === true &&
 		pe.agent.scopeEnded === "confirmed";
 	set(
 		"termination",
@@ -336,12 +351,14 @@ export function endoAssessProtectedAttemptV0(
 		pe.agent === null
 			? "no agent facts were re-read"
 			: terminated
-				? "preflight established; the agent's scope was confirmed ended"
+				? "preflight established; the agent's scope was established and confirmed ended"
 				: "preflight " +
 					(pe.preflightStatus ?? "unknown") +
 					", termination " +
 					pe.agent.termination +
-					", scope " +
+					", scope established " +
+					String(pe.agent.scopeEstablished ?? "unknown") +
+					", scope ended " +
 					(pe.agent.scopeEnded ?? "unknown"),
 	);
 

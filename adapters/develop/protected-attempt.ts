@@ -76,6 +76,7 @@ import {
 } from "../../runtime/contracts/develop-attempt-dispatch.ts";
 import { endoBriefSha256V0 } from "../../runtime/contracts/develop-attempt-execution.ts";
 import { endoEmptyProtectedBridgeV0 } from "../../runtime/contracts/develop-evidence-bridge.ts";
+import { DevelopAttemptRoutesStoreV0 } from "../../storage/develop-attempt-routes.ts";
 import { DevelopAttemptsStoreV0, endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0, ENDO_DEVELOP_DIRECTORY_V0 } from "../../storage/develop-tasks.ts";
 import {
@@ -118,27 +119,31 @@ export type EndoBoundedTreeV0 =
 
 /** Read one regular file whole without following a link, within a bound; null on anything else. */
 function readPlainFile(path: string, maxBytes: number): { bytes: Buffer; mode: number } | null {
+	if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) return null;
 	let fd: number;
 	try {
-		const before = lstatSync(path);
-		if (!before.isFile() || before.size > maxBytes) return null;
+		const before = lstatSync(path, { bigint: true });
+		if (!before.isFile() || before.size > BigInt(maxBytes)) return null;
 		fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
 	} catch {
 		return null;
 	}
 	try {
-		const opened = fstatSync(fd);
-		if (!opened.isFile() || opened.size > maxBytes) return null;
-		const bytes = Buffer.alloc(opened.size);
+		const opened = fstatSync(fd, { bigint: true });
+		if (!opened.isFile() || opened.size > BigInt(maxBytes)) return null;
+		const size = Number(opened.size);
+		const bytes = Buffer.alloc(size);
 		let at = 0;
 		while (at < bytes.length) {
 			const n = readSync(fd, bytes, at, bytes.length - at, at);
 			if (n === 0) break;
 			at += n;
 		}
-		const after = fstatSync(fd);
-		if (at !== opened.size || after.size !== opened.size || after.mtimeMs !== opened.mtimeMs) return null;
-		return { bytes, mode: opened.mode };
+		const extra = Buffer.alloc(1);
+		const grew = readSync(fd, extra, 0, 1, at) > 0;
+		const after = fstatSync(fd, { bigint: true });
+		if (grew || at !== size || after.size !== opened.size || after.mtimeNs !== opened.mtimeNs) return null;
+		return { bytes, mode: Number(opened.mode) };
 	} catch {
 		return null;
 	} finally {
@@ -173,6 +178,7 @@ export function endoBoundedTreeDigestV0(
 			if (depth === 0 && override !== undefined && name === override.name) {
 				const existing = lstatSync(path, { throwIfNoEntry: false });
 				if (existing !== undefined && !existing.isFile()) return `${override.name} is not a regular file`;
+				if (bytes + override.bytes.length > limits.maxAgentBytes) return `exceeds ${limits.maxAgentBytes} bytes`;
 				bytes += override.bytes.length;
 				entries.push([name, "file:644", override.bytes.length, sha256HexV0(override.bytes)]);
 				continue;
@@ -232,6 +238,10 @@ function copyAgentTemplate(template: string, destination: string, prompt: Buffer
 		}
 	};
 	copy(template, destination, 0);
+	if (++entries > ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxAgentEntries)
+		throw new Error("the agent template has too many entries");
+	if (bytes + prompt.length > ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxAgentBytes)
+		throw new Error("the agent template exceeds the byte limit");
 	writeFileSync(join(destination, ENDO_PROTECTED_ATTEMPT_PROMPT_FILE_V0), prompt, { flag: "wx", mode: 0o600 });
 	chmodSync(join(destination, ENDO_PROTECTED_ATTEMPT_PROMPT_FILE_V0), 0o644);
 }
@@ -320,10 +330,14 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 
 	const attempts = new DevelopAttemptsStoreV0(root).read();
 	const entry = attempts.ok ? attempts.entries.find((e) => e.attempt.id === attemptId) : undefined;
+	const currentProjectId = entry?.attempt.projectId ?? null;
+	const currentTaskId = entry?.attempt.taskId ?? null;
 	const currentBriefSha256 = entry === undefined ? null : endoBriefSha256V0(renderEndoDevelopBriefV0(entry.attempt));
+	const routeReservation = DevelopAttemptRoutesStoreV0.forRoot(root).read(attemptId);
 	const workbenchAuthorized =
 		entry?.authorized != null ||
-		(attempts.ok && endoAttemptProblemsOfV0(attempts.problems, attemptId).some((p) => p.kind === "authorized"));
+		(attempts.ok && endoAttemptProblemsOfV0(attempts.problems, attemptId).some((p) => p.kind === "authorized")) ||
+		(routeReservation.state === "present" && routeReservation.record.route === "workbench");
 
 	const b = binding.state === "present" ? binding.record : null;
 	const l = launch.state === "present" ? launch.record : null;
@@ -337,15 +351,28 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 				: undefined;
 	const trial = options.trial ?? expectedTrial;
 	const inspectedDirectory = options.protectedRunDir ?? runDirectory;
+	let runDirectoryUnsafe = false;
+	if (inspectedDirectory !== null) {
+		try {
+			const st = lstatSync(inspectedDirectory, { throwIfNoEntry: false });
+			if (st !== undefined && !st.isDirectory()) runDirectoryUnsafe = true;
+		} catch {
+			runDirectoryUnsafe = true;
+		}
+	}
 	const inspected =
-		inspectedDirectory === null
+		inspectedDirectory === null || runDirectoryUnsafe
 			? {
 					...endoEmptyProtectedBridgeV0(),
 					supplied: true,
 					outcome: "unreadable" as const,
 					candidateIntegrity: "unreadable" as const,
-					candidateDetail: "no usable record names a run directory",
-					problem: "no usable record names a run directory",
+					candidateDetail: runDirectoryUnsafe
+						? "the run directory path is a symbolic link or not a plain directory (refused, never followed)"
+						: "no usable record names a run directory",
+					problem: runDirectoryUnsafe
+						? "the run directory path is a symbolic link or not a plain directory"
+						: "no usable record names a run directory",
 				}
 			: inspectProtectedRunForBridgeV0({
 					directory: inspectedDirectory,
@@ -355,22 +382,39 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 
 	let agentCopy: { treeSha256: string | null; promptSha256: string | null; detail: string } | null = null;
 	const condition = inspected.trialCoordinates?.condition;
-	if (inspectedDirectory !== null && condition !== undefined && SAFE_COMPONENT.test(condition)) {
-		const copy = join(inspectedDirectory, ".agents", condition);
-		const tree = endoBoundedTreeDigestV0(copy);
-		const prompt = readPlainFile(
-			join(copy, ENDO_PROTECTED_ATTEMPT_PROMPT_FILE_V0),
-			ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxPromptBytes,
-		);
-		agentCopy = {
-			treeSha256: tree.ok ? tree.sha256 : null,
-			promptSha256: prompt === null ? null : sha256HexV0(prompt.bytes),
-			detail: tree.ok ? (prompt === null ? "no readable prompt.txt" : "re-hashed") : tree.reason,
-		};
+	if (
+		!runDirectoryUnsafe &&
+		inspectedDirectory !== null &&
+		condition !== undefined &&
+		SAFE_COMPONENT.test(condition)
+	) {
+		const agentsDir = join(inspectedDirectory, ".agents");
+		const dirCheck = checkDirectoriesSyncV0([inspectedDirectory, agentsDir]);
+		if (dirCheck !== "ok") {
+			agentCopy = {
+				treeSha256: null,
+				promptSha256: null,
+				detail: dirCheck === "missing" ? "missing .agents directory" : ".agents directory is not a plain directory",
+			};
+		} else {
+			const copy = join(agentsDir, condition);
+			const tree = endoBoundedTreeDigestV0(copy);
+			const prompt = readPlainFile(
+				join(copy, ENDO_PROTECTED_ATTEMPT_PROMPT_FILE_V0),
+				ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxPromptBytes,
+			);
+			agentCopy = {
+				treeSha256: tree.ok ? tree.sha256 : null,
+				promptSha256: prompt === null ? null : sha256HexV0(prompt.bytes),
+				detail: tree.ok ? (prompt === null ? "no readable prompt.txt" : "re-hashed") : tree.reason,
+			};
+		}
 	}
 
 	const assessment = endoAssessProtectedAttemptV0({
 		attemptId,
+		currentProjectId,
+		currentTaskId,
 		currentBriefSha256,
 		workbenchAuthorized,
 		launch,
@@ -379,6 +423,7 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 			options.protectedRunDir === undefined || runDirectory === null
 				? null
 				: realOrResolved(options.protectedRunDir) === realOrResolved(runDirectory),
+		runDirectoryUnsafe,
 		suppliedSpecPin: options.specPin ?? null,
 		inspected,
 		agentCopy,
@@ -492,13 +537,17 @@ export function planProtectedAttemptV0(options: PlanProtectedAttemptOptionsV0): 
 	if (!taskFile.ok) return refuse("tasks-unreadable");
 	const project = taskFile.file.projects.find((p) => p.id === entry.attempt.projectId);
 	if (project === undefined) return refuse("other-project");
+	const existing = readProtectedAttemptRecordsV0(root, attemptId);
+	if (existing.launch.state !== "absent" || existing.binding.state !== "absent") return refuse("already-launched");
+	const route = DevelopAttemptRoutesStoreV0.forRoot(root).read(attemptId);
+	if (route.state === "present")
+		return refuse(route.record.route === "workbench" ? "already-authorized" : "already-launched");
+	if (route.state === "problem") return refuse("already-launched");
 	const checked = new DevelopAttemptDispatchV0(tasks, attempts, {
 		projectId: project.id,
 		launchDirectory: project.path,
 	}).check(attemptId);
 	if (!checked.ok) return refuse(checked.code);
-	const existing = readProtectedAttemptRecordsV0(root, attemptId);
-	if (existing.launch.state !== "absent" || existing.binding.state !== "absent") return refuse("already-launched");
 
 	const out = resolve(options.out);
 	if (!ABS.test(out) || !ABS.test(join(out, "agent")) || !ABS.test(join(out, "run"))) return refuse("out-unusable");
@@ -690,16 +739,37 @@ export async function launchProtectedAttemptV0(
 			operationDigest: plan.operationDigest,
 		});
 
+	const recordedAtMs = now();
 	const launch: EndoProtectedAttemptLaunchV0 = {
 		schemaVersion: ENDO_DEVELOP_PROTECTED_ATTEMPT_LAUNCH_SCHEMA_V0,
 		attemptId: options.attemptId,
-		recordedAtMs: now(),
+		recordedAtMs,
 		operation: plan.operation,
 		operationDigest: plan.operationDigest,
 		approvedBy: "operator",
 		via: "controlling-terminal-phrase",
 	};
 	validateEndoProtectedAttemptLaunchV0(JSON.parse(canonicalEndoJsonV0(launch as never)));
+	// Atomically claim the shared execution-route reservation before writing the launch record so a concurrent
+	// workbench dispatch cannot race past preflight and execute the same attempt.
+	const routes = DevelopAttemptRoutesStoreV0.forRoot(options.root);
+	const claimed = routes.claim(options.attemptId, "protected", recordedAtMs);
+	if (claimed !== "created") {
+		if (claimed === "exists") {
+			const winner = routes.read(options.attemptId);
+			const byWorkbench = winner.state === "present" && winner.record.route === "workbench";
+			return result("refused", {
+				code: byWorkbench ? "already-authorized" : "already-launched",
+				detail: ENDO_PROTECTED_ATTEMPT_REFUSAL_WORDS_V0[byWorkbench ? "already-authorized" : "already-launched"],
+				operationDigest: plan.operationDigest,
+			});
+		}
+		return result("launch-not-recorded", {
+			code: "storage-failed",
+			detail: "the execution-route reservation could not be written, so nothing was created or run",
+			operationDigest: plan.operationDigest,
+		});
+	}
 	const written = writeRecord(options.root, options.attemptId, "launch", launch);
 	if (written !== "created")
 		return result(written === "exists" ? "refused" : "launch-not-recorded", {
@@ -752,6 +822,9 @@ export async function launchProtectedAttemptV0(
 	const sealable =
 		runError === null &&
 		reading.attemptAssociation === "incomplete-execution" &&
+		reading.agent?.outputDigestVerified !== false &&
+		reading.refusedRecords.length === 0 &&
+		reading.invalidating.length === 0 &&
 		reading.binding.checks.every((c) => !SEAL_CHECKS.has(c.check) || c.result === "pass");
 	if (!sealable)
 		return result(runError === null ? "not-bound" : "run-failed", {

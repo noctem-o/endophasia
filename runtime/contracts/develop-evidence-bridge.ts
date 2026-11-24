@@ -1084,7 +1084,10 @@ export function endoDevelopEvidenceBridgeV0(input: EndoDevelopEvidenceBridgeInpu
 			reconstructable: {
 				supplied: pe.supplied,
 				attemptAssociation: pe.attemptAssociation,
-				missingRecord: "develop-attempt-protected-candidate-binding",
+				missingRecord:
+					pe.attemptAssociation === "established" || pe.attemptAssociation === "operator-declared"
+						? null
+						: "develop-attempt-protected-candidate-binding",
 				integrity: pe.candidateIntegrity,
 				mode: pe.candidateMode,
 				baselineSha256: pe.baselineSha256,

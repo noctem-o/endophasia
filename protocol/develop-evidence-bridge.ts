@@ -391,7 +391,7 @@ export interface EndoDevelopEvidenceBridgeV0 {
 		reconstructable: {
 			supplied: boolean;
 			attemptAssociation: EndoProtectedAttemptAssociationV0;
-			missingRecord: "develop-attempt-protected-candidate-binding";
+			missingRecord: "develop-attempt-protected-candidate-binding" | null;
 			integrity: EndoBridgeProtectedExperimentV0["candidateIntegrity"];
 			mode: "staged-changeset" | "fixed-paths" | null;
 			baselineSha256: string | null;

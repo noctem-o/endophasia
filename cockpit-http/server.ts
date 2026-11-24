@@ -666,7 +666,7 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 					? await workbench.handle(workbenchRequest, {
 							root,
 							observe: async (directory) => {
-								const seen = await new GitRevisionObserverV0().observe(directory, { within: false });
+								const seen = await new GitRevisionObserverV0().observe(directory, { within: true });
 								if (!seen.ok) return null;
 								const { worktree, commonDir, commit, dirty } = seen.observation;
 								return { worktree, commonDir, commit, clean: dirty.length === 0 };

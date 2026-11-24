@@ -173,4 +173,57 @@ describe.skipIf(!haveGit)("paired Coordinator read", () => {
 		const task = status.projects[0]?.tasks[0];
 		expect(task?.gaps.map(({ code }) => code)).toContain("receipts-skipped-at-limit");
 	});
+
+	it("observes HEAD for a project registered in a Git subdirectory while enforcing observedGitRoot", async () => {
+		const { root, repo, tasks } = await open();
+		const subdir = join(repo, "packages", "sub");
+		mkdirSync(subdir, { recursive: true });
+		const subProject = tasks.registerProject({ name: "Subdir package", path: subdir, observedGitRoot: repo });
+		expect(subProject.ok).toBe(true);
+		if (!subProject.ok) throw new Error("register failed");
+		const subId = subProject.value.id;
+
+		const service = new DevelopWorkspaceServiceV0(tasks);
+		const host = new EndoWorkspaceHostV0({
+			open: (facts) => service.forLaunch({ projectId: subId, launchDirectory: subdir }, facts),
+		});
+		const server = await serve(root, { workbench: host });
+		const base = `${capabilityOf(server)}/api/v0/workbench`;
+		const paired = await host.handle({
+			method: "POST",
+			route: ["pair"],
+			grant: null,
+			query: "",
+			body: { code: host.issuePairingCode().code },
+		});
+		const grant = (paired.body as { grant: string }).grant;
+
+		const cliStatus = validateEndoCoordinatorStatusV0(
+			await readEndoCoordinatorStatusV0({ root, projects: [subId], projectPath: subdir }),
+		);
+		const httpResponse = await send(server, `${base}/workspace/coordinator`, {
+			headers: { "X-Endo-Grant": grant },
+		});
+		expect(httpResponse.status).toBe(200);
+		const httpStatus = validateEndoCoordinatorStatusV0(JSON.parse(httpResponse.body));
+		expect(cliStatus.projects[0]?.head).not.toBeNull();
+		expect(httpStatus.projects[0]?.head).toEqual(cliStatus.projects[0]?.head);
+		expect(httpStatus.projects[0]?.head?.commit).toMatch(/^[0-9a-f]{40}$/);
+		expect(httpStatus.projects[0]?.head?.clean).toBe(true);
+
+		// A project whose observedGitRoot does not match the observed worktree must still receive head: null.
+		const mismatched = await new EndoCockpitCoordinatorV0().read(
+			root,
+			{ id: subId, path: subdir, observedGitRoot: `${repo}-other` },
+			async () => ({
+				worktree: repo,
+				commonDir: join(repo, ".git"),
+				commit: httpStatus.projects[0]!.head!.commit,
+				clean: true,
+			}),
+		);
+		expect(mismatched.status).toBe(200);
+		const mismatchedStatus = validateEndoCoordinatorStatusV0(mismatched.body);
+		expect(mismatchedStatus.projects[0]?.head).toBeNull();
+	});
 });

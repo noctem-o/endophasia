@@ -45,6 +45,19 @@ import { reduceEndoSessionOverviewV0 } from "./session-overview.ts";
 export interface EndoCoordinatorAttentionReadV0 {
 	view: EndoDevelopAttentionViewV0 | null;
 	observedAtMs: number;
+	completeReceiptTasks: ReadonlySet<string>;
+}
+
+export function endoCoordinatorAttentionReadV0(
+	view: EndoDevelopAttentionViewV0 | null,
+	observedAtMs: number,
+): EndoCoordinatorAttentionReadV0 {
+	const completeReceiptTasks = new Set<string>();
+	if (view?.state === "ready" && view.unattributed === 0)
+		for (const t of view.tasks)
+			if (t.unreadable === 0 && t.skipped === 0 && t.problems === 0 && t.records === 0)
+				completeReceiptTasks.add(t.taskId);
+	return { view, observedAtMs, completeReceiptTasks };
 }
 
 export interface EndoCoordinatorInputsV0 {
@@ -480,6 +493,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					verification = {
 						state: "not-read",
 						basis: "controller-observed-host-check",
+						receiptReadComplete: false,
 						incomplete: false,
 						freshness: notFresh("unavailable", "receipts of a completed task are not re-read by this status"),
 						results: [],
@@ -494,6 +508,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					verification = {
 						state: "unavailable",
 						basis: "controller-observed-host-check",
+						receiptReadComplete: false,
 						incomplete: true,
 						freshness: notFresh(
 							"unavailable",
@@ -514,6 +529,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					verification = {
 						state: "unavailable",
 						basis: "controller-observed-host-check",
+						receiptReadComplete: false,
 						incomplete: true,
 						freshness: notFresh("unavailable", "the project's verification records could not be read"),
 						results: [],
@@ -521,6 +537,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					};
 					gaps.push({ code: "attention-unavailable", text: "Its verification records could not be read." });
 				} else {
+					const receiptReadComplete = read?.completeReceiptTasks.has(t.id) === true;
 					const all = resultsOf(tv);
 					const moreNotPassing = tv.more.notPassing + tv.morePlanned.notPassing;
 					const moreNotCurrent = tv.more.notCurrent + tv.morePlanned.notCurrent;
@@ -528,8 +545,9 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 
 					const current = head === null ? [] : all.filter((r) => r.current);
 					const historicalFailure = all.some((r) => r.result.freshness === "stale" && r.severity === 0);
-					const ran = all.filter((r) => r.result.outcome !== "not-run");
-					const missing = tv.planned.filter((p) => p.state === "not-run" && p.receipt === null);
+					const missing = receiptReadComplete
+						? tv.planned.filter((p) => p.state === "not-run" && p.receipt === null)
+						: [];
 					const absence = missing.map((p) => `No receipt at HEAD for planned check "${p.name}".`).join(" ");
 					const stale = all.flatMap(({ result }) => {
 						if (result.receiptId === null) return [];
@@ -547,67 +565,59 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 						}
 					});
 					const staleReason = [...new Set(stale)].join(" ");
-					const state: EndoCoordinatorVerificationStateV0 =
-						head === null
-							? all.length + moreAll === 0
-								? "no-checks"
-								: "unavailable"
-							: current.some((r) => r.severity === 0)
-								? "failing"
-								: current.some((r) => r.severity === 1)
-									? "inconclusive"
-									: missing.length > 0
-										? "incomplete"
-										: ran.length + moreAll === 0
-											? "no-checks"
-											: head.clean &&
-													all.length > 0 &&
-													all.every((r) => r.current && r.result.outcome === "passed") &&
-													moreNotCurrent === 0 &&
-													moreNotPassing === 0
-												? "incomplete"
-												: "not-current";
-					const incomplete =
-						missing.length > 0 ||
-						state === "incomplete" ||
-						tv.unreadable + tv.skipped + tv.problems + tv.records > 0 ||
-						view?.truncated === true;
-					const vFreshness =
-						head === null
-							? notFresh("unavailable", "HEAD could not be observed, so no check reads as current")
-							: incomplete
-								? notFresh(
-										"incomplete",
-										absence ||
-											(state === "incomplete"
-												? "the receipt store cannot establish which receipts are missing"
-												: "some of its receipt or attempt files were not read"),
-										headAt,
-										readAtMs,
-									)
-								: state === "not-current"
-									? notFresh(
-											stale.length > 0 ? "stale" : "unavailable",
-											staleReason || "no receipt establishes a current result for every check",
-											headAt,
-											readAtMs,
-										)
-									: state === "no-checks"
-										? notFresh(
-												"unavailable",
-												"no check record was found; the absence of a record is not evidence about the work",
-											)
-										: fresh(headAt, readAtMs);
+					let state: EndoCoordinatorVerificationStateV0;
+					if (current.some((r) => r.severity === 0)) state = "failing";
+					else if (current.some((r) => r.severity === 1)) state = "inconclusive";
+					else if (!receiptReadComplete) state = "incomplete";
+					else if (all.length + moreAll === 0) state = "no-checks";
+					else if (head === null) state = "unavailable";
+					else if (missing.length > 0) state = "incomplete";
+					else if (
+						head.clean &&
+						all.length > 0 &&
+						all.every((r) => r.current && r.result.outcome === "passed") &&
+						moreNotCurrent === 0 &&
+						moreNotPassing === 0
+					)
+						state = "incomplete";
+					else state = "not-current";
+					const incomplete = !receiptReadComplete || missing.length > 0 || state === "incomplete";
+					let vFreshness: EndoCoordinatorFreshnessV0;
+					if (incomplete)
+						vFreshness = notFresh(
+							"incomplete",
+							!receiptReadComplete
+								? "the receipt source was not read whole"
+								: absence || "the receipt store cannot establish which receipts are missing",
+							head === null ? null : headAt,
+							readAtMs,
+						);
+					else if (head === null)
+						vFreshness = notFresh("unavailable", "HEAD could not be observed, so no check reads as current");
+					else if (state === "not-current")
+						vFreshness = notFresh(
+							stale.length > 0 ? "stale" : "unavailable",
+							staleReason || "no receipt establishes a current result for every check",
+							headAt,
+							readAtMs,
+						);
+					else if (state === "no-checks")
+						vFreshness = notFresh(
+							"unavailable",
+							"no check record was found; the absence of a record is not evidence about the work",
+						);
+					else vFreshness = fresh(headAt, readAtMs);
 					verification = {
 						state,
 						basis: "controller-observed-host-check",
+						receiptReadComplete,
 						incomplete,
 						freshness: vFreshness,
 						results: all.slice(0, ENDO_COORDINATOR_LIMITS_V0.maxResultsPerTask).map((r) => r.result),
 						moreResults: Math.max(0, all.length - ENDO_COORDINATOR_LIMITS_V0.maxResultsPerTask) + moreAll,
 					};
 					if (missing.length > 0) gaps.push({ code: "no-receipt-for-check", text: absence });
-					if (state === "incomplete" && missing.length === 0)
+					if (state === "incomplete" && receiptReadComplete && missing.length === 0)
 						gaps.push({
 							code: "receipt-history-unverifiable",
 							text: "The checks shown passed at this HEAD, but the store has no independent record of which receipts should exist. A surviving pass does not establish that a later receipt was retained or that the task passed.",
@@ -622,7 +632,7 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 					if (state === "no-checks")
 						gaps.push({
 							code: "no-check-recorded",
-							text: "No verification receipt has been recorded for its attempts.",
+							text: "No verification receipt was found in the complete read of its attempts.",
 						});
 					if (historicalFailure && state !== "failing")
 						gaps.push({
@@ -655,20 +665,24 @@ export function endoCoordinatorStatusV0(inputs: EndoCoordinatorInputsV0): EndoCo
 							code: "receipt-files-unusable",
 							text: `${tv.problems} receipt file(s) are not usable receipts.`,
 						});
-					if (tv.records > 0)
+					const unattributed = view?.unattributed ?? 0;
+					if (tv.records > 0 || unattributed > 0)
 						gaps.push({
 							code: "attempt-records-unusable",
-							text: `${tv.records} of its attempt record file(s) are not usable.`,
+							text:
+								unattributed > 0
+									? `${unattributed} unusable attempt record file(s) could not be attributed to a task.`
+									: `${tv.records} of its attempt record file(s) are not usable.`,
 						});
 					if (latest?.state === "reported" && !current.some((r) => r.result.outcome === "passed"))
 						gaps.push({
 							code: "report-recorded-unverified",
-							text: "The operator recorded a report for its latest attempt (operator-declared; what the report claims is not read by this status), and no current passing check at a clean HEAD is recorded.",
+							text: "The operator recorded a report for its latest attempt (operator-declared; what the report claims is not read by this status). This read did not establish a passing check at the current clean HEAD.",
 						});
 					if (t.status === "review" && !current.some((r) => r.result.outcome === "passed"))
 						gaps.push({
 							code: "review-without-passing-check",
-							text: "It awaits review without a passing check at the current clean HEAD.",
+							text: "It awaits review and this read did not establish a passing check at the current clean HEAD.",
 						});
 					if (t.status === "review" && state === "failing")
 						findings.push({

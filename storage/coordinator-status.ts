@@ -11,10 +11,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoCoordinatorStatusV0 } from "../protocol/coordinator-status.ts";
 import { ENDO_COORDINATOR_DEFAULT_STALE_AFTER_MS_V0 } from "../protocol/coordinator-status.ts";
+import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "../protocol/develop-attempts.ts";
 import type { EndoReceiptCurrentV0 } from "../protocol/develop-receipts.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
 import {
 	type EndoCoordinatorAttentionReadV0,
+	endoCoordinatorAttentionReadV0,
 	endoCoordinatorStatusV0,
 } from "../runtime/contracts/coordinator-status.ts";
 import type { EndoSessionLogReadV0 } from "../runtime/contracts/develop-attempt-execution.ts";
@@ -83,7 +85,16 @@ export async function readEndoCoordinatorStatusV0(
 	const tasksStore = new DevelopTasksStoreV0(root);
 	const attemptsStore = new DevelopAttemptsStoreV0(root);
 	const budget = options.budget;
-	const receiptsStore = new DevelopReceiptsStoreV0(root, { boundDirectoryReads: budget !== undefined });
+	const receiptsStore = new (class extends DevelopReceiptsStoreV0 {
+		override readAtMost(...args: Parameters<DevelopReceiptsStoreV0["readAtMost"]>) {
+			try {
+				return super.readAtMost(...args);
+			} catch (error) {
+				if (!(error instanceof Error) || !("syscall" in error) || error.syscall !== "lstat") throw error;
+				return { ok: false as const, reason: "io" as const };
+			}
+		}
+	})(root, { boundDirectoryReads: budget !== undefined });
 	const tasks = tasksStore.read();
 	const requested = options.projects === undefined || options.projects === null ? null : [...options.projects];
 	if (budget !== undefined && requested?.length !== 1)
@@ -98,22 +109,24 @@ export async function readEndoCoordinatorStatusV0(
 		budget === undefined ? undefined : { entries: budget.attemptEntries, bytes: budget.attemptBytes },
 	);
 	const events = readEventLogReadOnly(root, budget?.eventsBytes);
-	const attentionAttempts =
-		budget === undefined
-			? attemptsStore
-			: new (class extends DevelopAttemptsStoreV0 {
-					override read() {
-						return attempts.ok ? attempts : { ok: false as const, reason: "io" as const };
-					}
-				})(root);
-	const attentionTasks =
-		budget === undefined
-			? tasksStore
-			: new (class extends DevelopTasksStoreV0 {
-					override read() {
-						return tasks;
-					}
-				})(root);
+	const verificationAttempts = attempts.ok
+		? {
+				...attempts,
+				problems: attempts.problems.filter(
+					(p) => p.reason !== "unknown-file" || ENDO_ATTEMPT_ID_PATTERN_V0.test(p.name.split(".", 3).join(".")),
+				),
+			}
+		: { ok: false as const, reason: "io" as const };
+	const attentionAttempts = new (class extends DevelopAttemptsStoreV0 {
+		override read() {
+			return verificationAttempts;
+		}
+	})(root);
+	const attentionTasks = new (class extends DevelopTasksStoreV0 {
+		override read() {
+			return tasks;
+		}
+	})(root);
 	const attention = new Map<string, EndoCoordinatorAttentionReadV0>();
 	if (tasks.ok)
 		for (const project of tasks.file.projects) {
@@ -128,7 +141,7 @@ export async function readEndoCoordinatorStatusV0(
 					? undefined
 					: { maxReceiptFiles: budget.receiptFiles, maxReceiptBytes: budget.receiptBytes },
 			);
-			attention.set(project.id, { view, observedAtMs });
+			attention.set(project.id, endoCoordinatorAttentionReadV0(view, observedAtMs));
 		}
 	return endoCoordinatorStatusV0({
 		readAtMs: now(),

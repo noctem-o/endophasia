@@ -8894,14 +8894,6 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 	color: var(--obs);
 }
 
-.coordinator-receipt-cmd {
-	padding: 3px 6px;
-	background: var(--surface-1);
-	border: 1px solid var(--coord-rule-subtle);
-	border-radius: 4px;
-	color: var(--fg-1);
-}
-
 .coordinator-records,
 .coordinator-signals {
 	list-style: none;

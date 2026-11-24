@@ -101,6 +101,7 @@ function SummaryStrip({ status, filters }: { status: EndoCoordinatorStatusV0; fi
 	const sourceList = [status.sources.tasks, status.sources.attempts, status.sources.events];
 	const readySources = sourceList.filter((source) => source.state === "ready").length;
 	const alertCount = failingTasks + contradictionCount;
+	const eventsUnavailable = status.sources.events.state === "unavailable";
 	return (
 		<dl className="coordinator-summary" data-testid="coordinator-summary">
 			<div className="coordinator-metric">
@@ -115,21 +116,33 @@ function SummaryStrip({ status, filters }: { status: EndoCoordinatorStatusV0; fi
 				<dt>Recorded tasks</dt>
 				<dd>{countsKnown ? tasks.length : "Unavailable"}</dd>
 			</div>
-			<div className="coordinator-metric" data-tone={awaitingReview > 0 ? "info" : undefined}>
+			<div className="coordinator-metric" data-tone={countsKnown && awaitingReview > 0 ? "info" : undefined}>
 				<dt>Awaiting review</dt>
 				<dd>{countsKnown ? awaitingReview : "—"}</dd>
 			</div>
-			<div className="coordinator-metric" data-tone={alertCount > 0 ? "fault" : undefined}>
+			<div className="coordinator-metric" data-tone={countsKnown && alertCount > 0 ? "fault" : undefined}>
 				<dt>Failing / contradictions</dt>
 				<dd>
-					{failingTasks} failing · {contradictionCount}{" "}
-					{contradictionCount === 1 ? "contradiction" : "contradictions"}
+					{countsKnown ? (
+						<>
+							{failingTasks} failing · {contradictionCount}{" "}
+							{contradictionCount === 1 ? "contradiction" : "contradictions"}
+						</>
+					) : (
+						"Unavailable"
+					)}
 				</dd>
 			</div>
-			<div className="coordinator-metric">
+			<div className="coordinator-metric" data-tone={eventsUnavailable ? "attention" : undefined}>
 				<dt>Listed sessions</dt>
 				<dd>
-					{activeSessions} recorded active · {lastObservedSessions} last observed
+					{eventsUnavailable ? (
+						"Unavailable"
+					) : (
+						<>
+							{activeSessions} recorded active · {lastObservedSessions} last observed
+						</>
+					)}
 				</dd>
 			</div>
 			<div className="coordinator-metric" data-tone={readySources < 3 ? "attention" : undefined}>
@@ -295,7 +308,7 @@ function Board({
 					<dl className="coordinator-sources">
 						{(["tasks", "attempts", "events"] as const).map((key) => {
 							const source = status.sources[key];
-							const note = source.detail ?? source.freshness.reason;
+							const note = source.freshness.reason;
 							return (
 								<div key={key} data-source={key} data-source-state={source.state}>
 									<dt>{key === "events" ? "Event log" : key === "tasks" ? "Tasks" : "Attempts"}</dt>
@@ -510,7 +523,9 @@ function Board({
 												data-target-task={targetId}
 												onClick={() => onJumpToTask(targetId)}
 											>
-												<span className="coordinator-signal-name">{taskTitles.get(targetId)}</span>
+												<span className="coordinator-signal-name">
+													{taskTitles.get(targetId) || "Untitled task"}
+												</span>
 												<span className="coordinator-jump-cue" aria-hidden="true">
 													Inspect →
 												</span>
@@ -587,7 +602,9 @@ function Board({
 												data-target-task={targetId}
 												onClick={() => onJumpToTask(targetId)}
 											>
-												<span className="coordinator-signal-name">{taskTitles.get(targetId)}</span>
+												<span className="coordinator-signal-name">
+													{taskTitles.get(targetId) || "Untitled task"}
+												</span>
 												<span className="coordinator-jump-cue" aria-hidden="true">
 													Inspect →
 												</span>

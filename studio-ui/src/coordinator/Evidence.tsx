@@ -89,7 +89,9 @@ export function SessionLinks({
 								data-target-task={link.taskId}
 								onClick={() => onJumpToTask(link.taskId)}
 							>
-								<span className="coordinator-signal-name">{taskTitles.get(link.taskId)}</span>
+								<span className="coordinator-signal-name">
+									{taskTitles.get(link.taskId) || "Untitled task"}
+								</span>
 								<span className="coordinator-jump-cue" aria-hidden="true">
 									Inspect →
 								</span>

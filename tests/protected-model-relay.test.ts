@@ -756,10 +756,14 @@ const bw = detectBubblewrapV0();
 const contained = process.env.ENDO_REAL_SCOPES === "1" && bw.ok ? await detectContainmentV0() : null;
 const REAL = bw.ok && contained?.ok === true;
 const containment = contained?.ok === true ? contained.containment : (null as unknown as EndoContainmentV0);
-if (!REAL)
-	process.stderr.write(
-		`protected-model-relay: real isolation tests skipped: ${bw.ok ? `containment: ${(contained as { detail: string }).detail}` : `${bw.reason}: ${bw.detail}`}\n`,
-	);
+if (!REAL) {
+	const reason = !bw.ok
+		? `${bw.reason}: ${bw.detail}`
+		: contained?.ok === false
+			? `containment: ${contained.detail}`
+			: "real scopes require ENDO_REAL_SCOPES=1";
+	process.stderr.write(`protected-model-relay: real isolation tests skipped: ${reason}\n`);
+}
 const NODE = realpathSync(process.execPath);
 const sha = (bytes: string | Buffer) => require("node:crypto").createHash("sha256").update(bytes).digest("hex");
 

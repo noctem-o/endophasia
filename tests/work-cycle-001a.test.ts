@@ -47,7 +47,8 @@ const hasScript = spawnSync("script", ["--version"]).status === 0;
 const linuxPty = hasScript && process.platform === "linux";
 const realPi = process.env.ENDO_PI_EXECUTABLE ?? "";
 /** Whether `endo harness attach` will run Pi in a live scope here (LIVE-PROCESS-CONTAINMENT-001): a systemd user manager is reachable. */
-const liveScope = process.platform === "linux" && (await detectContainmentV0()).ok;
+const liveScope =
+	process.env.ENDO_REAL_SCOPES === "1" && process.platform === "linux" && (await detectContainmentV0()).ok;
 const modelEndpoint = process.env.ENDO_WORK_CYCLE_ENDPOINT ?? "";
 const modelId = process.env.ENDO_WORK_CYCLE_MODEL ?? "";
 const keep = process.env.ENDO_WORK_CYCLE_EVIDENCE_DIR ?? "";

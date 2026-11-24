@@ -17,7 +17,10 @@ export default defineConfig({
 		environment: "node",
 		include: ["tests/**/*.test.ts"],
 		testTimeout: 30_000,
-		env: { ENDO_DIGEST_KEY_FILE: join(digestKeyDirectory, "digest-key") },
+		env: {
+			ENDO_DIGEST_KEY_FILE: join(digestKeyDirectory, "digest-key"),
+			...(process.env.ENDO_REAL_SCOPES === "1" ? {} : { XDG_RUNTIME_DIR: "", DBUS_SESSION_BUS_ADDRESS: "" }),
+		},
 		globalSetup: ["tests/global-setup.ts"],
 		provide: { digestKeyDirectory },
 	},

@@ -162,7 +162,7 @@ sandbox or a network destination (the spec reader is closed; see `tests/protecte
   - **Not demonstrated:** that a process stranded in this window is ended by the scope. The reproduction exists
     (`tests/protected-launch-window.test.ts`). It holds the launcher inside the window with `--userns-block-fd`, kills it, asserts the
     stranded state (alive, reparented, blocked on an eventfd read), and shows that stopping the scope ends it. It deliberately strands a
-    process, so it runs only with `ENDO_DISPOSABLE_STRANDED_TEST=1`, in a separately authorised disposable environment, with the scope's
+    process, so it requires `ENDO_REAL_SCOPES=1 ENDO_DISPOSABLE_STRANDED_TEST=1`, in a separately authorised disposable environment, with the scope's
     own `RuntimeMaxSec=20` as its independent cleanup deadline. It was not run on the operator's workstation.
 - **Profile digest:** the logical profile, with roles in place of host paths and every mounted file (and the agent tree, each file's
   content and the permission bits its copy keeps) by digest. It is the same for every attempt of a condition, and a resume refuses a changed one.
@@ -312,12 +312,23 @@ another way. A probe that fails at an attempt refuses that attempt, which stays 
 
 | File | Real kernel isolation | Covers |
 | :-- | :-- | :-- |
-| `tests/protected-isolation.test.ts` | **yes** when Bubblewrap and scope detection succeed; otherwise **absent**, explicitly reported in the test log and GitHub Actions job summary | see the list below |
+| `tests/protected-isolation.test.ts` | **yes** when opted in and Bubblewrap and scope detection succeed; otherwise **absent**, explicitly reported in the test log and GitHub Actions job summary | see the list below |
 | `tests/protected-isolation.test.ts`, "refusal instead of an unprotected fallback" | no | a missing or untrusted bubblewrap, a linked or non-root runtime, an undeclared executable: refused, nothing run |
 | `tests/protected-records.test.ts` | no | records: tampered, truncated, unknown-version, extended and self-contradictory ones refused; a closed spec; collection on the host (links, hard links, FIFO, traversal, oversize, a change mid-read, totals); the historical planner and readers unchanged |
 
-A green shard with absent coverage is not kernel-isolation evidence. CI checks that Python and Bash are installed before testing. On a
-host expected to supply real isolation, set `ENDO_REQUIRE_ISOLATION=1` to fail the suite when it cannot measure that boundary.
+A green shard with absent coverage is not kernel-isolation evidence. By default, the suite skips real systemd user scopes and does not
+pass the workstation's user manager environment to tests or their CLI children. On a disposable Linux runner with a working systemd
+user manager, run the real-isolation job with both opt-ins:
+
+```sh
+ENDO_REAL_SCOPES=1 ENDO_REQUIRE_ISOLATION=1 npm test
+```
+
+`ENDO_REAL_SCOPES=1` permits real scopes; `ENDO_REQUIRE_ISOLATION=1` fails the protected-isolation suite if it cannot measure the boundary.
+Specialized host cases still require their own flags; the deliberate stranded-process test also needs `ENDO_DISPOSABLE_STRANDED_TEST=1`.
+
+A protected run clears failed or inactive, empty sandbox scopes left by a dead controller when the scope carries Endophasia's owner
+marker. Older scopes without the marker are left alone for the operator to inspect.
 
 The real-isolation tests cover:
 - a positive control: an honest agent passes the independent evaluator;

@@ -753,7 +753,7 @@ describe("EVAL-ISO-002: the relay's host side (Unix socket, governed recording p
 });
 
 const bw = detectBubblewrapV0();
-const contained = bw.ok ? await detectContainmentV0() : null;
+const contained = process.env.ENDO_REAL_SCOPES === "1" && bw.ok ? await detectContainmentV0() : null;
 const REAL = bw.ok && contained?.ok === true;
 const containment = contained?.ok === true ? contained.containment : (null as unknown as EndoContainmentV0);
 if (!REAL)

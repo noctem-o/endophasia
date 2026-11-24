@@ -61,14 +61,17 @@ const fresh = (name: string) => {
 };
 const detected = detectBubblewrapV0();
 // Real isolation needs both the sandbox and the process containment (a systemd user manager): either missing is a refusal.
-const contained = detected.ok ? await detectContainmentV0() : null;
+const realScopes = process.env.ENDO_REAL_SCOPES === "1";
+const contained = realScopes && detected.ok ? await detectContainmentV0() : null;
 const REAL = detected.ok && contained?.ok === true;
 const containment = contained?.ok === true ? contained.containment : (null as unknown as EndoContainmentV0);
 const isolationUnavailable = REAL
 	? null
-	: detected.ok
-		? `containment: ${(contained as { detail: string }).detail}`
-		: `${detected.reason}: ${detected.detail}`;
+	: !realScopes
+		? "real scopes require ENDO_REAL_SCOPES=1"
+		: !detected.ok
+			? `${detected.reason}: ${detected.detail}`
+			: `containment: ${contained?.ok === false ? contained.detail : "unavailable"}`;
 if (isolationUnavailable !== null) {
 	process.stderr.write(`protected-isolation: real isolation tests skipped: ${isolationUnavailable}\n`);
 	if (process.env.GITHUB_ACTIONS === "true" && process.env.GITHUB_STEP_SUMMARY) {

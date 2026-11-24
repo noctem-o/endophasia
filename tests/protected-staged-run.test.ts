@@ -77,7 +77,7 @@ const fresh = (name: string) => {
 	return d;
 };
 const detected = detectBubblewrapV0();
-const contained = detected.ok ? await detectContainmentV0() : null;
+const contained = process.env.ENDO_REAL_SCOPES === "1" && detected.ok ? await detectContainmentV0() : null;
 const REAL = detected.ok && contained?.ok === true;
 if (!REAL) process.stderr.write("protected-staged-run: real isolation tests skipped (no bubblewrap or user manager)\n");
 const sha = (p: string) => createHash("sha256").update(readFileSync(p)).digest("hex");

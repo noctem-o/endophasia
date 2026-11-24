@@ -1,6 +1,6 @@
 // Bubblewrap's launch window (containers/bubblewrap#633; 0.13.1 affected), reproduced deliberately: a process is STRANDED on purpose.
 //
-// NOT run by default, and not on an operator's workstation. It runs only where ENDO_DISPOSABLE_STRANDED_TEST=1 is set, in a separately
+// NOT run by default, and not on an operator's workstation. It requires ENDO_REAL_SCOPES=1 and ENDO_DISPOSABLE_STRANDED_TEST=1, in a separately
 // authorised, disposable environment (a throwaway VM or container with its own systemd user manager). Its cleanup does not depend on
 // this test: the scope carries RuntimeMaxSec=20, so the user manager ends it after 20 seconds whatever happens here, and the test also
 // stops it in `finally`.
@@ -24,7 +24,7 @@ import {
 	stopScopeV0,
 } from "../adapters/sandbox/containment.ts";
 
-const authorised = process.env.ENDO_DISPOSABLE_STRANDED_TEST === "1";
+const authorised = process.env.ENDO_REAL_SCOPES === "1" && process.env.ENDO_DISPOSABLE_STRANDED_TEST === "1";
 const bwrap = authorised ? detectBubblewrapV0() : null;
 const contained = authorised && bwrap?.ok === true ? await detectContainmentV0() : null;
 

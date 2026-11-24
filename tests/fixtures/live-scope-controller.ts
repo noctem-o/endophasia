@@ -7,6 +7,7 @@ import { ProcessGroupV0 } from "../../adapters/rpc-jsonl/process-group.ts";
 import { detectContainmentV0, liveScopeV0 } from "../../adapters/sandbox/containment.ts";
 
 const pidFile = process.argv[2] as string;
+if (process.env.ENDO_REAL_SCOPES !== "1") throw new Error("live scope fixture requires ENDO_REAL_SCOPES=1");
 const detected = await detectContainmentV0();
 if (!detected.ok) {
 	process.stderr.write(`${detected.detail}\n`);

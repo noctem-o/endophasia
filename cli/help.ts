@@ -109,6 +109,13 @@ Commands that write to a store:
   attempt provenance ... --attempt <id> [--cwd <dir>]
                                      read the observations: what changed between them, whether the tree now and the commits checked
                                      hold the same content as the last one. Read-only
+  attempt protected-run ... --attempt <id> --template <spec.json> --out <new dir>
+                                     run ONE prepared attempt once through the protected runner (staged v2/v3 template, one task,
+                                     one condition, one trial; the brief becomes /agent/prompt.txt). Shows the operation and its
+                                     digest, runs only after its phrase is typed on the controlling terminal, then seals a
+                                     controller binding when termination is confirmed and the candidate re-verifies. Never
+                                     retried, never unprotected, applies nothing, changes no status; evaluation is experimental
+                                     and non-authoritative, workstation H0 BLOCKED (docs/designs/protected-attempt-execution.md)
   coordinator status [<root> | --root dir] [--project <id>]... [--stale-after <seconds>] [--quiet]
                                      read-only Coordinator status: tasks by the operator's status, their latest verification
                                      and evidence gaps, sessions as active or last-observed with agent-reported vs

@@ -10,6 +10,11 @@
 // - Protected-experiment results are ALWAYS labelled experimental, non-authoritative — never an authoritative protected PASS.
 // - No missing relationship is ever fabricated from timestamps, prompt text, filenames or agent self-reports.
 
+import type {
+	EndoAttemptBindingBoundByV0,
+	EndoProtectedAttemptAssociationV0,
+	EndoProtectedAttemptCheckV0,
+} from "./develop-attempt-candidate-binding.ts";
 import type { EndoAttemptRunStateV0, EndoAttemptSendStateV0 } from "./develop-attempt-execution.ts";
 import type { EndoDevelopTaskWordV0 } from "./develop-attempts.ts";
 import type {
@@ -24,6 +29,11 @@ import type { EndoDevelopStatusChangeV0, EndoDevelopTaskStatusV0 } from "./devel
 import type { EndoAcceptanceLedgerV0 } from "./develop-verification.ts";
 
 export const ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V0 = "endo.develop-evidence-bridge.v0";
+/**
+ * v1 (DEVELOP-PROTECTED-ATTEMPT-001): the protected section reads the attempt's protected launch record and candidate binding
+ * (protocol/develop-attempt-candidate-binding.ts) and carries the closed association state and its checks. v0 is no longer served.
+ */
+export const ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V1 = "endo.develop-evidence-bridge.v1";
 
 /** Every transition traced from Task to Operator Decision, in fixed order. */
 export const ENDO_EVIDENCE_BRIDGE_TRANSITION_IDS_V0 = [
@@ -79,6 +89,11 @@ export const ENDO_EVIDENCE_BRIDGE_FINDING_CODES_V0 = [
 	"protected-candidate-bytes-changed",
 	"protected-agent-log-digest-mismatch",
 	"protected-attempt-association-unestablished",
+	"protected-attempt-binding-invalid",
+	"protected-attempt-candidate-integrity-failure",
+	"protected-attempt-execution-incomplete",
+	"protected-attempt-association-operator-declared",
+	"protected-attempt-association-established",
 	"protected-execution-unconfirmed-or-interrupted",
 	"protected-evaluation-failed",
 	"protected-evaluation-incomplete",
@@ -171,6 +186,14 @@ export const ENDO_EVIDENCE_BRIDGE_TRUST_BOUNDARY_V0 = Object.freeze({
 	]),
 });
 
+/**
+ * What a reading whose protected association is established or operator-declared still cannot establish. It replaces the first statement
+ * of ENDO_EVIDENCE_BRIDGE_NOT_ESTABLISHED_V0, which would be false there; the rest stand.
+ */
+export const ENDO_EVIDENCE_BRIDGE_BOUND_NOT_ESTABLISHED_V0 = Object.freeze([
+	"The attempt-to-candidate binding is unkeyed integrity evidence over unsigned same-uid files: not a signature, not proof of origin, and not host authority. It does not show that the protected evaluation is authoritative (it is experimental), that the candidate is correct, or that it was applied anywhere.",
+]);
+
 /** What this bridge reading can never establish from existing records alone. */
 export const ENDO_EVIDENCE_BRIDGE_NOT_ESTABLISHED_V0 = Object.freeze([
 	"No existing record links a DEVELOP attempt (endo.attempt.<id>) to a protected-experiment run or reconstructable staged change set; cross-space candidate association is never fabricated by timestamp, prompt text, filename or agent self-report.",
@@ -200,9 +223,34 @@ export interface EndoBridgeProtectedExperimentV0 {
 	supplied: boolean;
 	authority: "experimental-non-authoritative";
 	workstationH0: "blocked";
-	/** Always `unestablished` when supplied until an explicit, validated cross-space binding record exists. */
-	attemptAssociation: "not-supplied" | "unestablished";
+	/**
+	 * `not-supplied` / `unestablished` exactly as before when the attempt has no protected launch record and no binding; otherwise the
+	 * closed state the binding reading decided (protocol/develop-attempt-candidate-binding.ts). Never inferred from anything else.
+	 */
+	attemptAssociation: EndoProtectedAttemptAssociationV0;
+	/** Named while no admitted binding exists (everything but `established` and `operator-declared`). */
 	missingBindingRecord: "develop-attempt-protected-candidate-binding" | null;
+	/** The attempt's protected launch record and binding, as read, and every exact check made against what was re-read now. */
+	binding: {
+		launch: "absent" | "present" | "unusable";
+		record: "absent" | "present" | "unusable";
+		boundBy: EndoAttemptBindingBoundByV0 | null;
+		/** The standing of the association itself: who made it, never upgraded. */
+		standing: "controller-established" | "operator-declared" | null;
+		operationDigest: string | null;
+		bindingSha256: string | null;
+		/** Where the run directory and spec pin the reading used came from. */
+		runSource: "operator-flag" | "binding-record" | "launch-record" | null;
+		label: string;
+		checks: EndoProtectedAttemptCheckV0[];
+		limitation: string | null;
+	};
+	/**
+	 * The /agent tree digest, re-hashed from the run's retained agent copy (<run>/.agents/<condition>). The sealed v2 trial record does not
+	 * name it (only read-only files carry a digest; the tree is committed only inside the profile digest), so this is file evidence, not a
+	 * sealed fact. Null when no protected launch is being read.
+	 */
+	agentTreeSha256: string | null;
 	pinStatus: "not-supplied" | "missing" | "matched" | "mismatched";
 	expectedSpecPin: string | null;
 	observedSpecSha256: string | null;
@@ -263,7 +311,7 @@ export interface EndoBridgeProtectedExperimentV0 {
 }
 
 export interface EndoDevelopEvidenceBridgeV0 {
-	schemaVersion: typeof ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V0;
+	schemaVersion: typeof ENDO_DEVELOP_EVIDENCE_BRIDGE_SCHEMA_V1;
 	readAtMs: number;
 	trustBoundary: typeof ENDO_EVIDENCE_BRIDGE_TRUST_BOUNDARY_V0;
 	transitions: EndoEvidenceBridgeTransitionV0[];
@@ -342,8 +390,8 @@ export interface EndoDevelopEvidenceBridgeV0 {
 		};
 		reconstructable: {
 			supplied: boolean;
-			attemptAssociation: "not-supplied" | "unestablished";
-			missingRecord: "develop-attempt-protected-candidate-binding";
+			attemptAssociation: EndoProtectedAttemptAssociationV0;
+			missingRecord: "develop-attempt-protected-candidate-binding" | null;
 			integrity: EndoBridgeProtectedExperimentV0["candidateIntegrity"];
 			mode: "staged-changeset" | "fixed-paths" | null;
 			baselineSha256: string | null;

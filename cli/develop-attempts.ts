@@ -61,12 +61,13 @@ import { endoPlannedReadingV0, endoShownOutputV0 } from "../runtime/contracts/de
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
+import { attemptProtectedRunCommandV0 } from "./attempt-protected.ts";
 import { endoDevelopObservationsV0, endoSessionLogV0 } from "./develop-service.ts";
 import { flagsOf } from "./develop-tasks.ts";
 import { endoVersionV0 } from "./help.ts";
 
 const USAGE =
-	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] [--keep-output] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>] | endo attempt bridge ... --attempt <id> [--cwd <dir>] [--protected-run <dir> [--spec-pin <sha256>] [--trial <task>/<condition>/<trial>]] | endo attempt observe ... --attempt <id> [--cwd <dir>] | endo attempt provenance ... --attempt <id> [--cwd <dir>]";
+	"usage: endo attempt prepare [<root> | --root dir] --project <id> --task <id> (--objective <text> | --objective-file <path>) [--constraints <text> | --constraints-file <path>] [--report-back <text> | --report-back-file <path>] [--plan-file <path>] | endo attempt brief ... --attempt <id> | endo attempt handoff ... --attempt <id> --to <label> [--note <n>] | endo attempt report ... --attempt <id> --note <what was reported> | endo attempt abandon ... --attempt <id> [--note <n>] | endo attempt list ... --project <id> [--task <id>] | endo attempt show ... --attempt <id> | endo attempt check ... --attempt <id> [--cwd <dir>] [--timeout <seconds>] [--keep-output] -- <executable> [args...] | endo attempt receipts ... --attempt <id> [--cwd <dir>] | endo attempt receipt ... --receipt <id> [--cwd <dir>] | endo attempt evidence ... --attempt <id> [--cwd <dir>] | endo attempt bridge ... --attempt <id> [--cwd <dir>] [--protected-run <dir> [--spec-pin <sha256>] [--trial <task>/<condition>/<trial>]] | endo attempt observe ... --attempt <id> [--cwd <dir>] | endo attempt provenance ... --attempt <id> [--cwd <dir>] | endo attempt protected-run ... --attempt <id> --template <spec.json> --out <new dir>";
 
 const REFUSALS: Readonly<Record<DevelopAttemptsRefusalV0, string>> = {
 	"not-found": "no such project, task (in that project) or attempt in this store",
@@ -761,4 +762,5 @@ export const ATTEMPT_COMMANDS_V0: Record<string, (argv: readonly string[]) => vo
 	bridge,
 	observe,
 	provenance,
+	"protected-run": attemptProtectedRunCommandV0,
 };

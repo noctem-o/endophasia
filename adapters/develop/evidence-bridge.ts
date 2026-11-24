@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, lstatSync, openSync, readSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { ENDO_PROTECTED_ATTEMPT_ASSOCIATION_LABELS_V0 } from "../../protocol/develop-attempt-candidate-binding.ts";
 import type {
 	EndoBridgeProtectedExperimentV0,
 	EndoDevelopEvidenceBridgeV0,
@@ -41,6 +42,7 @@ import { GitRevisionObserverV0 } from "../git/revision-observer.ts";
 import { gitStateReaderV0 } from "../git/state-observer.ts";
 import { EndoProtectedRefusalV0, inspectProtectedExperimentV0 } from "../sandbox/protected-report.ts";
 import { verifyFixedSubmissionV0 } from "../sandbox/submission.ts";
+import { readProtectedAttemptV0 } from "./protected-attempt.ts";
 
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 const MAX_AGENT_LOG_BYTES = 64 * 1024 * 1024;
@@ -152,11 +154,13 @@ export function inspectProtectedRunForBridgeV0(options: {
 	const pinMissing = rawPin === undefined || rawPin === "";
 	const pinMalformed = !pinMissing && !SHA256_HEX.test(rawPin);
 
+	const empty = endoEmptyProtectedBridgeV0();
 	const base: EndoBridgeProtectedExperimentV0 = {
-		...endoEmptyProtectedBridgeV0(),
+		...empty,
 		supplied: true,
 		attemptAssociation: "unestablished",
 		missingBindingRecord: "develop-attempt-protected-candidate-binding",
+		binding: { ...empty.binding, label: ENDO_PROTECTED_ATTEMPT_ASSOCIATION_LABELS_V0.unestablished },
 		pinStatus: pinMissing ? "missing" : pinMalformed ? "mismatched" : "matched",
 		expectedSpecPin: pinMissing ? null : rawPin,
 	};
@@ -376,6 +380,7 @@ export function inspectProtectedRunForBridgeV0(options: {
 			attempt: finalRecord.trial.attempt,
 		},
 		recordSha256: finalRecord.recordSha256,
+		agentTreeSha256: null,
 		preflightStatus: finalRecord.preflight.status,
 		agent: {
 			status: finalRecord.agent.status,
@@ -483,14 +488,24 @@ export async function readDevelopEvidenceBridgeV0(
 			null)
 		: null;
 
+	// An attempt with a protected launch record or binding is read through them (exact digests only); without either, exactly as before.
+	const bound = readProtectedAttemptV0({
+		root: options.root,
+		attemptId: options.attemptId,
+		...(options.protectedRunDir === undefined ? {} : { protectedRunDir: options.protectedRunDir }),
+		...(options.specPin === undefined ? {} : { specPin: options.specPin }),
+		...(options.trial === undefined ? {} : { trial: options.trial }),
+	});
 	const protectedExperiment =
-		options.protectedRunDir === undefined
-			? endoEmptyProtectedBridgeV0()
-			: inspectProtectedRunForBridgeV0({
-					directory: options.protectedRunDir,
-					...(options.specPin === undefined ? {} : { specPin: options.specPin }),
-					...(options.trial === undefined ? {} : { trial: options.trial }),
-				});
+		bound !== null
+			? bound
+			: options.protectedRunDir === undefined
+				? endoEmptyProtectedBridgeV0()
+				: inspectProtectedRunForBridgeV0({
+						directory: options.protectedRunDir,
+						...(options.specPin === undefined ? {} : { specPin: options.specPin }),
+						...(options.trial === undefined ? {} : { trial: options.trial }),
+					});
 
 	const bridge = endoDevelopEvidenceBridgeV0({
 		report,

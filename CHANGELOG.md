@@ -3,6 +3,18 @@
 ## Unreleased
 
 ### Added
+- **DEVELOP-PROTECTED-ATTEMPT-001: run a prepared attempt through the protected runner, and bind it to its candidate** ([design, authority, threat model and limits](docs/designs/protected-attempt-execution.md)).
+  - `endo attempt protected-run --attempt <id> --template <spec.json> --out <new dir>`: one prepared attempt, one staged-changeset task, one
+    condition, one trial, offline (v2) only. The brief becomes `/agent/prompt.txt`. The whole operation is shown with its digest and runs only after
+    `APPROVE PROTECTED ATTEMPT <16 hex>` is typed on the controlling terminal; it runs once, is never retried and has no unprotected fallback.
+  - Two write-once records in `develop/protected-attempts/`: a launch record (after approval, before the run) and the
+    `endo.develop-attempt-candidate-binding.v0` record, sealed by the controller only when the agent's scope is confirmed ended, the
+    agent copy and prompt re-hash, and the candidate re-verifies from its bytes.
+  - `endo attempt bridge` (now `endo.develop-evidence-bridge.v1`) reads the association as one of `not-supplied`, `unestablished`,
+    `established`, `operator-declared`, `invalid`, `incomplete-execution`, `candidate-integrity-failure`, with 15 named checks
+    re-verified on every read. Still strictly read-only; attempts without these records read as before.
+  - **Not changed:** workstation H0 stays BLOCKED; protected evaluation stays experimental and non-authoritative; no task status change,
+    candidate application, merge or acceptance; operator acceptance is not bound to a candidate (documented, not implemented).
 - **DEVELOP-UX-002: bounded session control, and modes** ([architecture, threat model, specification and results](research/develop-ux/DEVELOP-UX-002.md)).
   - `endo develop --mode everyday|protected|strict`. `endo develop` asks for Everyday; `endo harness attach --workbench` stays Strict.
   - A **session-control grant** in the broker, separate from the pairing grant: issued only when a pairing code the terminal marked is

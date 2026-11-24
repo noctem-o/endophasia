@@ -131,7 +131,7 @@ jobs:
   live-scopes:
     name: Live process containment (real user scopes)
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -139,14 +139,29 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - name: Run the live-scope suite and require real coverage
+      # The default shards withhold the user manager from tests and their CLI children, so the scope-wrapped keeper, stop and release
+      # paths of `endo harness attach` run only here, on a runner that has one.
+      - name: Run the CLI suites that start live scopes, and require that they did
+        env:
+          ENDO_REAL_SCOPES: "1"
+        run: |
+          since="$(date '+%Y-%m-%d %H:%M:%S')"
+          npm test -- tests/develop-tasks-cli.test.ts tests/develop-ux-001.test.ts tests/develop-ux-002-cli.test.ts tests/steer-cli.test.ts tests/prime-runtime-ingress.test.ts tests/endo-workbench-cli.test.ts tests/endo-workbench-attempts-cli.test.ts tests/endo-workbench-attempt-page.test.ts
+          started="$(journalctl --user --since "$since" --no-pager -o cat | grep -c '^Started endo live session' || true)"
+          echo "live scopes started by the CLI suites: $started"
+          test "$started" -gt 0
+      - name: Run the live-scope suite and require its exact real coverage
         env:
           ENDO_REAL_SCOPES: "1"
         run: |
           npm test -- tests/live-process-containment.test.ts --reporter=default --reporter=json --outputFile.json="$RUNNER_TEMP/live-scopes.json"
+          # 5 cases in the "a live scope" describe, the cgroup.events refusal, and the contained branch of the attach test.
           jq -e '
-            [.testResults[].assertionResults[] | select(.fullName | contains("a live scope (systemd user manager:"))]
-            | length > 0 and all(.status == "passed")
+            [.testResults[].assertionResults[]] as $t
+            | def only(f): [$t[] | select(f)] | (length == 1 and all(.status == "passed"));
+              ([$t[] | select(.fullName | contains("a live scope (systemd user manager:"))] | length == 5 and all(.status == "passed"))
+              and only(.title | startswith("a host where a live scope\u0027s cgroup.events cannot be read"))
+              and only(.title | contains("every process Pi started has ended, and none has"))
           ' "$RUNNER_TEMP/live-scopes.json"
 
   package:

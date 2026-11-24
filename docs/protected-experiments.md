@@ -317,8 +317,11 @@ another way. A probe that fails at an attempt refuses that attempt, which stays 
 | `tests/protected-records.test.ts` | no | records: tampered, truncated, unknown-version, extended and self-contradictory ones refused; a closed spec; collection on the host (links, hard links, FIFO, traversal, oversize, a change mid-read, totals); the historical planner and readers unchanged |
 
 A green shard with absent coverage is not kernel-isolation evidence. By default, the suite skips real systemd user scopes and does not
-pass the workstation's user manager environment to tests or their CLI children. The GitHub Actions shards use that default; a dedicated
-live-process containment job opts in on its disposable runner. For the protected-sandbox suites, use a disposable Linux runner with
+pass the workstation's user manager environment to tests or their CLI children. The GitHub Actions shards use that default, so the CLI suites that start `endo harness attach` run Pi unscoped there (the live-process
+report reads UNVERIFIED). A dedicated `live-scopes` job opts in on its disposable runner and runs those CLI suites
+(develop-tasks-cli, develop-ux-001, develop-ux-002-cli, steer-cli, prime-runtime-ingress, endo-workbench-cli, endo-workbench-attempts-cli,
+endo-workbench-attempt-page) plus live-process-containment with exact case counts; it fails unless the runner's journal shows live scopes
+started. The bubblewrap protected-sandbox suites have no runner that exercises them. For the protected-sandbox suites, use a disposable Linux runner with
 trusted Bubblewrap, working unprivileged user namespaces, cgroup v2, and a working systemd user manager. Run with both opt-ins:
 
 ```sh

@@ -1331,6 +1331,37 @@ describe("DEVELOP-PROTECTED-ATTEMPT-001: audit remediation regressions", () => {
 		const rRun = reading(f);
 		expect(rRun?.attemptAssociation).toBe("invalid");
 		expect(failed(rRun)).toContain("run-directory");
+		// Trailing slash on a symlinked --protected-run must still be refused (POSIX lstat follows trailing '/').
+		const rRunSlash = reading(f, { protectedRunDir: `${run}/` });
+		expect(rRunSlash?.attemptAssociation).toBe("invalid");
+		expect(failed(rRunSlash)).toContain("run-directory");
+		// Even when --protected-run names the plain movedRun, the symlinked recorded runDirectory must be refused.
+		const rRunPlainArg = reading(f, { protectedRunDir: movedRun });
+		expect(rRunPlainArg?.attemptAssociation).toBe("invalid");
+		expect(failed(rRunPlainArg)).toContain("run-directory");
+		// Symlinked condition directory inside .agents must fail both agent-tree and agent-prompt (never read prompt through link).
+		rmSync(run);
+		renameSync(movedRun, run);
+		const condDir = join(run, ".agents", "fixture");
+		const movedCond = join(out, "moved-cond");
+		renameSync(condDir, movedCond);
+		symlinkSync(movedCond, condDir);
+		const rCond = reading(f);
+		expect(rCond?.attemptAssociation).toBe("invalid");
+		expect(failed(rCond)).toEqual(expect.arrayContaining(["agent-tree", "agent-prompt"]));
+		// Trailing slash on endoBoundedTreeDigestV0 must also refuse symlinks.
+		expect(endoBoundedTreeDigestV0(`${condDir}/`).ok).toBe(false);
+	});
+
+	it("fails closed when a route reservation record in develop/attempt-routes/ is damaged", async () => {
+		const f = fixture();
+		expect((await launched(f)).result.status).toBe("bound");
+		const routeFile = join(f.root, "develop", "attempt-routes", `${f.attemptId}.route.json`);
+		chmodSync(routeFile, 0o600);
+		writeFileSync(routeFile, "{corrupt");
+		const r = reading(f);
+		expect(r?.attemptAssociation).toBe("invalid");
+		expect(failed(r)).toContain("single-execution-route");
 	});
 
 	it("rejects operator-declared and controller bindings whose projectId or taskId disagrees with the prepared attempt", async () => {

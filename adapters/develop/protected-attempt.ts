@@ -207,15 +207,19 @@ export function endoBoundedTreeDigestV0(
 		}
 		return null;
 	};
-	const top = lstatSync(root, { throwIfNoEntry: false });
+	const normalizedRoot = resolve(root);
+	const top = lstatSync(normalizedRoot, { throwIfNoEntry: false });
 	if (top === undefined || !top.isDirectory()) return { ok: false, reason: "not a plain directory" };
-	const problem = walk(root, "", 0);
+	const problem = walk(normalizedRoot, "", 0);
 	if (problem !== null) return { ok: false, reason: problem };
 	return { ok: true, sha256: sha256HexV0(canonicalEndoJsonV0(entries)), entries: entries.length, bytes };
 }
 
 /** Copy a template agent directory into a new directory, bounded, links refused, keeping the permission bits the tree digest records. */
 function copyAgentTemplate(template: string, destination: string, prompt: Buffer): void {
+	const normalizedTemplate = resolve(template);
+	const top = lstatSync(normalizedTemplate, { throwIfNoEntry: false });
+	if (top === undefined || !top.isDirectory()) throw new Error("the agent template is not a plain directory");
 	let entries = 0;
 	let bytes = 0;
 	const copy = (from: string, to: string, depth: number) => {
@@ -237,7 +241,7 @@ function copyAgentTemplate(template: string, destination: string, prompt: Buffer
 			} else throw new Error("the agent template holds a link or special file");
 		}
 	};
-	copy(template, destination, 0);
+	copy(normalizedTemplate, destination, 0);
 	if (++entries > ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxAgentEntries)
 		throw new Error("the agent template has too many entries");
 	if (bytes + prompt.length > ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxAgentBytes)
@@ -337,6 +341,7 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 	const workbenchAuthorized =
 		entry?.authorized != null ||
 		(attempts.ok && endoAttemptProblemsOfV0(attempts.problems, attemptId).some((p) => p.kind === "authorized")) ||
+		routeReservation.state === "problem" ||
 		(routeReservation.state === "present" && routeReservation.record.route === "workbench");
 
 	const b = binding.state === "present" ? binding.record : null;
@@ -350,11 +355,16 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 				? `${l.operation.trial.task}/${l.operation.trial.condition}/0`
 				: undefined;
 	const trial = options.trial ?? expectedTrial;
-	const inspectedDirectory = options.protectedRunDir ?? runDirectory;
+	const rawInspected = options.protectedRunDir ?? runDirectory;
+	// Normalize with resolve() to strip any trailing slash before lstatSync (POSIX lstat follows symlinks with trailing '/').
+	const inspectedDirectory = rawInspected === null ? null : resolve(rawInspected);
+	const normalizedRunDirectory = runDirectory === null ? null : resolve(runDirectory);
 	let runDirectoryUnsafe = false;
-	if (inspectedDirectory !== null) {
+	for (const candidateDir of new Set(
+		[inspectedDirectory, normalizedRunDirectory].filter((d): d is string => d !== null),
+	)) {
 		try {
-			const st = lstatSync(inspectedDirectory, { throwIfNoEntry: false });
+			const st = lstatSync(candidateDir, { throwIfNoEntry: false });
 			if (st !== undefined && !st.isDirectory()) runDirectoryUnsafe = true;
 		} catch {
 			runDirectoryUnsafe = true;
@@ -399,10 +409,12 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 		} else {
 			const copy = join(agentsDir, condition);
 			const tree = endoBoundedTreeDigestV0(copy);
-			const prompt = readPlainFile(
-				join(copy, ENDO_PROTECTED_ATTEMPT_PROMPT_FILE_V0),
-				ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxPromptBytes,
-			);
+			const prompt = tree.ok
+				? readPlainFile(
+						join(copy, ENDO_PROTECTED_ATTEMPT_PROMPT_FILE_V0),
+						ENDO_PROTECTED_ATTEMPT_LIMITS_V0.maxPromptBytes,
+					)
+				: null;
 			agentCopy = {
 				treeSha256: tree.ok ? tree.sha256 : null,
 				promptSha256: prompt === null ? null : sha256HexV0(prompt.bytes),

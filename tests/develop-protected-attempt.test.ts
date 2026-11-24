@@ -1476,6 +1476,72 @@ describe("DEVELOP-PROTECTED-ATTEMPT-001: audit remediation regressions", () => {
 		);
 		expect(res.ok).toBe(false);
 	});
+
+	it("rejects an existing binding when agent.log is modified or deleted after sealing", async () => {
+		const f = fixture();
+		const { out, result } = await launched(f);
+		expect(result.status).toBe("bound");
+		expect(reading(f)?.attemptAssociation).toBe("established");
+
+		const logPath = join(out, "run", "trials", "calc-fix", "fixture", "0", "attempt-1", "agent.log");
+
+		// Modify agent.log after sealing: binding must become invalid and bridge transition must be contradictory.
+		writeFileSync(logPath, "tampered after seal\n");
+		const afterModify = reading(f);
+		expect(afterModify?.agent?.outputDigestVerified).toBe(false);
+		expect(afterModify?.attemptAssociation).toBe("invalid");
+		expect(failed(afterModify)).toContain("trial-record");
+
+		const bridgeModified = await readDevelopEvidenceBridgeV0({ root: f.root, attemptId: f.attemptId });
+		expect(bridgeModified.ok).toBe(true);
+		if (!bridgeModified.ok) throw new Error("bridge failed");
+		expect(bridgeModified.bridge.verification.protectedExperiment.attemptAssociation).toBe("invalid");
+		expect(bridgeModified.bridge.candidate.reconstructable.attemptAssociation).toBe("invalid");
+		expect(bridgeModified.bridge.candidate.reconstructable.missingRecord).toBe(
+			"develop-attempt-protected-candidate-binding",
+		);
+		expect(bridgeModified.bridge.findings.map((x) => x.code)).toEqual(
+			expect.arrayContaining(["protected-attempt-binding-invalid", "protected-agent-log-digest-mismatch"]),
+		);
+		expect(
+			bridgeModified.bridge.transitions.find((t) => t.id === "attempt-to-reconstructable-candidate")?.status,
+		).toBe("contradictory");
+
+		// Delete agent.log after sealing: must also be rejected as invalid.
+		rmSync(logPath);
+		const afterDelete = reading(f);
+		expect(afterDelete?.agent?.outputDigestVerified).toBe(false);
+		expect(afterDelete?.attemptAssociation).toBe("invalid");
+		expect(failed(afterDelete)).toContain("trial-record");
+	});
+
+	it.skipIf(typeof process.getuid === "function" && process.getuid() === 0)(
+		"converts unsearchable .agents stat errors into an invalid binding rather than throwing",
+		async () => {
+			const f = fixture();
+			const { out, result } = await launched(f);
+			expect(result.status).toBe("bound");
+			const agentsDir = join(out, "run", ".agents");
+			chmodSync(agentsDir, 0o000);
+			try {
+				const tree = endoBoundedTreeDigestV0(join(agentsDir, "fixture"));
+				expect(tree).toEqual({ ok: false, reason: "unreadable directory" });
+
+				const r = reading(f);
+				expect(r).not.toBeNull();
+				expect(r?.attemptAssociation).toBe("invalid");
+				expect(failed(r)).toContain("agent-tree");
+
+				const bridge = await readDevelopEvidenceBridgeV0({ root: f.root, attemptId: f.attemptId });
+				expect(bridge.ok).toBe(true);
+				if (!bridge.ok) throw new Error("bridge failed");
+				expect(bridge.bridge.verification.protectedExperiment.attemptAssociation).toBe("invalid");
+				expect(bridge.bridge.verification.protectedExperiment.recordSha256).not.toBeNull();
+			} finally {
+				chmodSync(agentsDir, 0o755);
+			}
+		},
+	);
 });
 
 // ---- real protected runner -----------------------------------------------------------------------------------------------------------

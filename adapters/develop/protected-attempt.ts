@@ -176,7 +176,12 @@ export function endoBoundedTreeDigestV0(
 			if (entries.length >= limits.maxAgentEntries) return `more than ${limits.maxAgentEntries} entries`;
 			const path = `${dir}/${name}`;
 			if (depth === 0 && override !== undefined && name === override.name) {
-				const existing = lstatSync(path, { throwIfNoEntry: false });
+				let existing: ReturnType<typeof lstatSync> | undefined;
+				try {
+					existing = lstatSync(path, { throwIfNoEntry: false });
+				} catch {
+					return `unreadable entry ${override.name}`;
+				}
 				if (existing !== undefined && !existing.isFile()) return `${override.name} is not a regular file`;
 				if (bytes + override.bytes.length > limits.maxAgentBytes) return `exceeds ${limits.maxAgentBytes} bytes`;
 				bytes += override.bytes.length;
@@ -208,7 +213,12 @@ export function endoBoundedTreeDigestV0(
 		return null;
 	};
 	const normalizedRoot = resolve(root);
-	const top = lstatSync(normalizedRoot, { throwIfNoEntry: false });
+	let top: ReturnType<typeof lstatSync> | undefined;
+	try {
+		top = lstatSync(normalizedRoot, { throwIfNoEntry: false });
+	} catch {
+		return { ok: false, reason: "unreadable directory" };
+	}
 	if (top === undefined || !top.isDirectory()) return { ok: false, reason: "not a plain directory" };
 	const problem = walk(normalizedRoot, "", 0);
 	if (problem !== null) return { ok: false, reason: problem };
@@ -563,8 +573,12 @@ export function planProtectedAttemptV0(options: PlanProtectedAttemptOptionsV0): 
 
 	const out = resolve(options.out);
 	if (!ABS.test(out) || !ABS.test(join(out, "agent")) || !ABS.test(join(out, "run"))) return refuse("out-unusable");
-	if (lstatSync(out, { throwIfNoEntry: false }) !== undefined) return refuse("out-unusable");
-	if (lstatSync(dirname(out), { throwIfNoEntry: false })?.isDirectory() !== true) return refuse("out-unusable");
+	try {
+		if (lstatSync(out, { throwIfNoEntry: false }) !== undefined) return refuse("out-unusable");
+		if (lstatSync(dirname(out), { throwIfNoEntry: false })?.isDirectory() !== true) return refuse("out-unusable");
+	} catch {
+		return refuse("out-unusable");
+	}
 
 	const templateRead = readBoundedJsonSyncV0(
 		resolve(options.templatePath),

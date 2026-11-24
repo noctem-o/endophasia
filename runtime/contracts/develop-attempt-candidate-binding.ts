@@ -328,15 +328,19 @@ export function endoAssessProtectedAttemptV0(
 				: "the trial re-read has other coordinates than the records name",
 	);
 
-	const recordOk = pe.recordSha256 !== null && (binding === null || binding.target.recordSha256 === pe.recordSha256);
+	const logOk = pe.agent?.outputDigestVerified !== false;
+	const recordOk =
+		pe.recordSha256 !== null && logOk && (binding === null || binding.target.recordSha256 === pe.recordSha256);
 	set(
 		"trial-record",
 		pe.recordSha256 === null ? (binding === null ? null : false) : recordOk,
 		pe.recordSha256 === null
 			? `no verified final trial record (${pe.problem ?? pe.outcome})`
-			: recordOk
-				? `sealed trial record ${short(pe.recordSha256)} re-read and verified`
-				: "the sealed trial record re-read is not the one the binding names",
+			: !logOk
+				? "the sealed trial record's agent.log digest does not verify against the file on disk"
+				: recordOk
+					? `sealed trial record ${short(pe.recordSha256)} re-read and verified`
+					: "the sealed trial record re-read is not the one the binding names",
 	);
 
 	const terminated =
@@ -443,7 +447,8 @@ export function endoAssessProtectedAttemptV0(
 	if (pe.recordSha256 === null || failed("termination") || pe.agent === null) {
 		return done(pe.candidateIntegrity === "tampered" ? "candidate-integrity-failure" : "incomplete-execution");
 	}
-	if (failed("trial-coordinates") || failed("agent-tree") || failed("agent-prompt")) return done("invalid");
+	if (failed("trial-coordinates") || failed("trial-record") || failed("agent-tree") || failed("agent-prompt"))
+		return done("invalid");
 	if (failed("candidate")) return done("candidate-integrity-failure");
 	return done("incomplete-execution");
 }

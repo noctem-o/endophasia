@@ -317,8 +317,9 @@ another way. A probe that fails at an attempt refuses that attempt, which stays 
 | `tests/protected-records.test.ts` | no | records: tampered, truncated, unknown-version, extended and self-contradictory ones refused; a closed spec; collection on the host (links, hard links, FIFO, traversal, oversize, a change mid-read, totals); the historical planner and readers unchanged |
 
 A green shard with absent coverage is not kernel-isolation evidence. By default, the suite skips real systemd user scopes and does not
-pass the workstation's user manager environment to tests or their CLI children. On a disposable Linux runner with a working systemd
-user manager, run the real-isolation job with both opt-ins:
+pass the workstation's user manager environment to tests or their CLI children. The GitHub Actions shards use that default; a dedicated
+live-process containment job opts in on its disposable runner. For the protected-sandbox suites, use a disposable Linux runner with
+trusted Bubblewrap, working unprivileged user namespaces, cgroup v2, and a working systemd user manager. Run with both opt-ins:
 
 ```sh
 ENDO_REAL_SCOPES=1 ENDO_REQUIRE_ISOLATION=1 npm test

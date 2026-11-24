@@ -362,7 +362,7 @@ export function endoDevelopAttentionViewV0(
 					} else unreadable += 1;
 					continue;
 				}
-				left -= got.receipts.length + got.problems.length;
+				left -= Math.max(got.receipts.length + got.problems.length, got.enumerated ?? 0);
 				leftBytes -= got.bytes ?? 0;
 				problems += got.problems.length;
 				const plan = endoAttemptPlanV0(e.attempt);

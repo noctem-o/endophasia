@@ -25,6 +25,7 @@ import {
 	checkDirectoriesSyncV0,
 	ensureDirectoriesSyncV0,
 	readBoundedJsonSyncV0,
+	readDirectoryNamesAtMostV0,
 	WRITE_ONCE_TEMPORARY_V0,
 	writeOnceSyncV0,
 } from "./write-once.ts";
@@ -45,9 +46,11 @@ export type EndoReceiptsReadV0 =
 export interface EndoDevelopReceiptsStoreOptionsV0 {
 	/** For tests: runs after the temporary file is complete and before it is linked (see storage/write-once.ts). */
 	beforeLink?: () => void;
+	boundDirectoryReads?: boolean;
 }
 
 export class DevelopReceiptsStoreV0 {
+	readonly #boundDirectoryReads: boolean;
 	readonly #develop: string;
 	readonly #dir: string;
 	readonly #beforeLink: (() => void) | undefined;
@@ -56,6 +59,7 @@ export class DevelopReceiptsStoreV0 {
 		this.#develop = join(root, ENDO_DEVELOP_DIRECTORY_V0);
 		this.#dir = join(this.#develop, ENDO_DEVELOP_RECEIPTS_DIRECTORY_V0);
 		this.#beforeLink = options.beforeLink;
+		this.#boundDirectoryReads = options.boundDirectoryReads === true;
 	}
 
 	get directory(): string {
@@ -78,14 +82,14 @@ export class DevelopReceiptsStoreV0 {
 	readAtMost(
 		attemptId: string,
 		max: { files: number; bytes: number },
-	): (EndoReceiptsReadV0 & { bytes?: number }) | { ok: false; reason: "too-many" } {
+	): (EndoReceiptsReadV0 & { bytes?: number; enumerated?: number }) | { ok: false; reason: "too-many" } {
 		return this.#read(attemptId, max);
 	}
 
 	#read(
 		attemptId: string,
 		max: { files: number; bytes: number } | undefined,
-	): (EndoReceiptsReadV0 & { bytes?: number }) | { ok: false; reason: "too-many" } {
+	): (EndoReceiptsReadV0 & { bytes?: number; enumerated?: number }) | { ok: false; reason: "too-many" } {
 		const dir = this.#attemptDir(attemptId);
 		if (dir === null) return { ok: false, reason: "unsafe-path" };
 		const dirs = checkDirectoriesSyncV0([this.#develop, this.#dir, dir]);
@@ -93,18 +97,36 @@ export class DevelopReceiptsStoreV0 {
 		if (dirs !== "ok") return { ok: false, reason: dirs };
 		let names: string[];
 		try {
-			names = readdirSync(dir).sort();
+			const listed =
+				this.#boundDirectoryReads && max !== undefined
+					? readDirectoryNamesAtMostV0(dir, max.files)
+					: readdirSync(dir).sort();
+			if (listed === null) return { ok: false, reason: "too-many" };
+			names = listed;
 		} catch (error) {
 			const code = (error as NodeJS.ErrnoException | undefined)?.code;
 			return { ok: false, reason: code === "ENOTDIR" || code === "ELOOP" ? "unsafe-path" : "io" };
 		}
 		let bytes = 0;
-		if (max !== undefined) {
+		const budget = this.#boundDirectoryReads ? max : undefined;
+		if (max !== undefined && budget === undefined) {
 			const entries = names.filter((n) => !WRITE_ONCE_TEMPORARY_V0.test(n));
 			if (entries.length > max.files) return { ok: false, reason: "too-many" };
 			for (const name of entries) bytes += lstatSync(join(dir, name), { throwIfNoEntry: false })?.size ?? 0;
 			if (bytes > max.bytes) return { ok: false, reason: "too-many" };
 		}
+		let exhausted = false;
+		const reserve =
+			budget === undefined
+				? undefined
+				: (size: number) => {
+						if (bytes + size > budget.bytes) {
+							exhausted = true;
+							return false;
+						}
+						bytes += size;
+						return true;
+					};
 		const receipts: EndoDevelopReceiptV0[] = [];
 		const problems: EndoReceiptProblemV0[] = [];
 		for (const name of names) {
@@ -114,7 +136,8 @@ export class DevelopReceiptsStoreV0 {
 				problems.push({ name, reason: "unknown-file" });
 				continue;
 			}
-			const read = readBoundedJsonSyncV0(join(dir, name), ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxFileBytes);
+			const read = readBoundedJsonSyncV0(join(dir, name), ENDO_DEVELOP_RECEIPT_LIMITS_V0.maxFileBytes, reserve);
+			if (exhausted) return { ok: false, reason: "too-many" };
 			if (!read.ok) {
 				problems.push({ name, reason: read.reason });
 				continue;
@@ -138,7 +161,11 @@ export class DevelopReceiptsStoreV0 {
 			receipts.push(receipt);
 		}
 		receipts.sort((a, b) => a.startedAtMs - b.startedAtMs || (a.id < b.id ? -1 : 1));
-		return max === undefined ? { ok: true, receipts, problems } : { ok: true, receipts, problems, bytes };
+		return max === undefined
+			? { ok: true, receipts, problems }
+			: this.#boundDirectoryReads
+				? { ok: true, receipts, problems, bytes, enumerated: names.length }
+				: { ok: true, receipts, problems, bytes };
 	}
 
 	/** The bytes a receipt is written as, or null when it does not fit its bound. */

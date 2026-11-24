@@ -31,6 +31,7 @@ import {
 	checkDirectoriesSyncV0,
 	ensureDirectoriesSyncV0,
 	readBoundedJsonSyncV0,
+	readDirectoryNamesAtMostV0,
 	WRITE_ONCE_TEMPORARY_V0,
 	writeOnceSyncV0,
 } from "./write-once.ts";
@@ -98,7 +99,7 @@ export type EndoAttemptsReadV0 =
 			 */
 			authorizedProposalIds: string[];
 	  }
-	| { ok: false; reason: "unsafe-path" | "io" };
+	| { ok: false; reason: "unsafe-path" | "io" | "too-large" };
 
 export interface EndoDevelopAttemptsStoreOptionsV0 {
 	/**
@@ -124,18 +125,27 @@ export class DevelopAttemptsStoreV0 {
 	}
 
 	/** Every attempt in the directory, read now. A missing directory is no attempts (nothing is created). */
-	read(): EndoAttemptsReadV0 {
+	read(): Exclude<EndoAttemptsReadV0, { ok: false }> | { ok: false; reason: "io" | "unsafe-path" };
+	read(budget: { entries: number; bytes: number } | undefined): EndoAttemptsReadV0;
+	read(budget?: { entries: number; bytes: number }): EndoAttemptsReadV0 {
 		const dirs = checkDirectoriesSyncV0([this.#develop, this.#dir]);
 		if (dirs === "missing") return { ok: true, entries: [], problems: [], authorizedProposalIds: [] };
 		if (dirs !== "ok") return { ok: false, reason: dirs };
 		let names: string[];
 		try {
-			names = readdirSync(this.#dir).sort();
+			const listed =
+				budget === undefined
+					? readdirSync(this.#dir).sort()
+					: readDirectoryNamesAtMostV0(this.#dir, budget.entries);
+			if (listed === null) return { ok: false, reason: "too-large" };
+			names = listed;
 		} catch (error) {
 			const code = (error as NodeJS.ErrnoException | undefined)?.code;
 			return { ok: false, reason: code === "ENOTDIR" || code === "ELOOP" ? "unsafe-path" : "io" };
 		}
 		const problems: EndoAttemptProblemV0[] = [];
+		let remaining = budget?.bytes ?? 0;
+		let exhausted = false;
 		const found = new Map<string, Partial<Record<EndoAttemptRecordKindV0, unknown>>>();
 		for (const name of names) {
 			if (WRITE_ONCE_TEMPORARY_V0.test(name)) continue;
@@ -149,7 +159,21 @@ export class DevelopAttemptsStoreV0 {
 				kind === "prepared"
 					? ENDO_DEVELOP_ATTEMPT_LIMITS_V0.maxPreparedBytes
 					: ENDO_DEVELOP_ATTEMPT_LIMITS_V0.maxNoteFileBytes;
-			const read = readBoundedJsonSyncV0(join(this.#dir, name), limit);
+			const read = readBoundedJsonSyncV0(
+				join(this.#dir, name),
+				limit,
+				budget === undefined
+					? undefined
+					: (size) => {
+							if (size > remaining) {
+								exhausted = true;
+								return false;
+							}
+							remaining -= size;
+							return true;
+						},
+			);
+			if (exhausted) return { ok: false, reason: "too-large" };
 			if (!read.ok) {
 				problems.push({ name, reason: read.reason });
 				continue;

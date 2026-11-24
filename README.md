@@ -359,6 +359,8 @@ Design records: [work attempts](docs/designs/develop-work-attempts.md) · [recei
 
 The browser interface — **Endophasia Web**, served locally under the `endo` CLI — is a React and TypeScript application with **Observe**, **Compare**, **Develop** and **Evolve** workspaces. Every mode binds strictly to `127.0.0.1` behind a private per-launch capability URL, with no external requests.
 
+In a paired `endo workspace open` launch, the [Coordinator Mission Board](docs/designs/coordinator-board.md) shows read-only task, verification and recorded session evidence for that launch's project.
+
 <table>
   <tr>
     <td width="50%" valign="top">

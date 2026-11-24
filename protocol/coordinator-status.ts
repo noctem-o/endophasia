@@ -372,6 +372,7 @@ function link(v: unknown, what: string): Obj {
 	str(l.sessionId, `${what}.sessionId`);
 	oneOf(l.via, ["operator-linked", "send-authorized"] as const, `${what}.via`);
 	oneOf(l.basis, ["operator-declared", "controller-observed"] as const, `${what}.basis`);
+	oneOf(l.source, ["pi-live", "omp-saved"] as const, `${what}.source`);
 	oneOf(l.inLog, ["yes", "no", "unknown", "not-applicable"] as const, `${what}.inLog`);
 	return l;
 }
@@ -398,7 +399,12 @@ export function validateEndoCoordinatorStatusV0(value: unknown): EndoCoordinator
 	)
 		fail("staleAfterMs is out of bounds");
 	const authority = obj(s.authority, "authority");
-	if (authority.kind !== "read-only-projection" || authority.grants !== "none" || authority.writes !== "none")
+	if (
+		authority.kind !== "read-only-projection" ||
+		authority.grants !== "none" ||
+		authority.writes !== "none" ||
+		authority.decisionAuthority !== "operator-only"
+	)
 		fail("authority is not a read-only projection that grants nothing");
 
 	const findings = arr(s.findings, "findings").map((fv, fi) => {

@@ -37,6 +37,7 @@ import {
 	fsyncSync,
 	openSync,
 	readFileSync,
+	readSync,
 	renameSync,
 	statSync,
 	writeSync,
@@ -147,6 +148,7 @@ export function endoFrameLogRecoveryV0(
 export interface EndoFrameLogOptionsV0 {
 	/** Refuse append and truncateTo: the log is only read. */
 	readOnly?: boolean;
+	maxReadBytes?: number;
 }
 
 /**
@@ -199,7 +201,7 @@ export class EndoLogUnreadableErrorV0 extends TypeError {
  * Opens nonblocking without following a final symlink and verifies a regular file via fstat so a FIFO, socket, or device
  * never blocks synchronous readers.
  */
-function readLogBytes(path: string): Buffer {
+function readLogBytes(path: string, maxBytes?: number): Buffer {
 	const flags = constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0);
 	let fd: number;
 	try {
@@ -213,7 +215,17 @@ function readLogBytes(path: string): Buffer {
 		const st = fstatSync(fd);
 		if (st.isDirectory()) throw new EndoLogUnreadableErrorV0("EISDIR");
 		if (!st.isFile()) throw new EndoLogUnreadableErrorV0("ENOTREG");
-		return readFileSync(fd);
+		if (maxBytes === undefined) return readFileSync(fd);
+		if (st.size > maxBytes) throw new EndoLogUnreadableErrorV0("EFBIG");
+		const bytes = Buffer.alloc(st.size + 1);
+		let at = 0;
+		while (at < bytes.length) {
+			const read = readSync(fd, bytes, at, bytes.length - at, at);
+			if (read === 0) break;
+			at += read;
+		}
+		if (at !== st.size) throw new EndoLogUnreadableErrorV0(at > maxBytes ? "EFBIG" : "EAGAIN");
+		return bytes.subarray(0, at);
 	} catch (error) {
 		if (error instanceof EndoLogUnreadableErrorV0) throw error;
 		const code = (error as NodeJS.ErrnoException).code;
@@ -248,7 +260,7 @@ export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV
 		const frames: Uint8Array[] = [];
 		let truncated = false;
 		let corruptAt: number | null = null;
-		const buffer = readLogBytes(path);
+		const buffer = readLogBytes(path, options.maxReadBytes);
 		let offset = 0;
 		let index = 0;
 		/** The end of the last valid frame: where a torn tail begins. */

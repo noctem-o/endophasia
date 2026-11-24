@@ -23,6 +23,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
+import { GitRevisionObserverV0 } from "../adapters/git/revision-observer.ts";
 import {
 	canonicalEndoJsonV0,
 	ENDO_COCKPIT_PAGE_MAX_LIMIT_V0,
@@ -56,7 +57,6 @@ import {
 	type EndoEvolveProtectedExperimentsObserverV0,
 } from "../protocol/protected-experiment-observation.ts";
 import type { EndoCockpitWorkbenchV0 } from "../protocol/workbench-http.ts";
-
 import { readEndoCockpitCompareCandidatesV0, readEndoCockpitSelectedComparisonV0 } from "./candidates.ts";
 import {
 	EndoCockpitComparisonRefusalV0,
@@ -64,6 +64,7 @@ import {
 	readEndoCockpitComparisonV0,
 } from "./comparison.ts";
 import { readEndoCockpitDevelopSessionsV0, readEndoCockpitDevelopSessionV0 } from "./develop.ts";
+import { EndoWorkspaceHostV0 } from "./workspace-host.ts";
 
 const LOOPBACK = "127.0.0.1";
 /** The only API version. An unknown version is a 404, never a downgrade to this one. */
@@ -651,13 +652,27 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 			const grants = request.headers["x-endo-grant"];
 			if (rawHeaderCount(request, "x-endo-grant") > 1) return sendRefusal(response, "bad-request");
 			const body = method === "POST" ? await readJson(request) : null;
-			const answer = await workbench.handle({
+			const workbenchRequest = {
 				method,
 				route: segments.slice(3),
 				query: rawQuery,
 				grant: typeof grants === "string" ? grants : null,
 				body,
-			});
+			};
+			const coordinator = workbenchRequest.route.join("/") === "workspace/coordinator";
+			if (coordinator && method !== "GET") return sendRefusal(response, "method-not-allowed");
+			const answer =
+				coordinator && workbench instanceof EndoWorkspaceHostV0
+					? await workbench.handle(workbenchRequest, {
+							root,
+							observe: async (directory) => {
+								const seen = await new GitRevisionObserverV0().observe(directory, { within: true });
+								if (!seen.ok) return null;
+								const { worktree, commonDir, commit, dirty } = seen.observation;
+								return { worktree, commonDir, commit, clean: dirty.length === 0 };
+							},
+						})
+					: await workbench.handle(workbenchRequest);
 			if (!WORKBENCH_STATUSES.includes(answer.status)) throw new TypeError("workbench status");
 			send(response, answer.status, canonicalEndoJsonV0(answer.body as never));
 		} catch (error) {

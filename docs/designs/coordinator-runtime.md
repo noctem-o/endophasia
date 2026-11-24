@@ -103,7 +103,7 @@ embedded runs use no systemd unit, so this didn't prevent the runs.
 | Operator shell | Scratch `plugins build --entry ./dist/index.js --check`, `plugins validate`, `plugins lint`, and `plugins inspect endophasia-status --runtime --json` passed for the original plugin with its pinned TypeBox 1.3.34. Lint warned about TypeBox runtime code generation; inspection loaded one optional tool and returned an SDK deprecation advisory. The peer range adds only 2026.11.7, not intervening releases. |
 | Embedded agent | The configured allowlist by itself initially projected `dispatch_action`, `tool_describe`, and `tool_search`; the relay forwarded none of that request. Explicit `tools.toolSearch: false` restored direct tools. With a deterministic provider, a valid call reached the tool; an added `read` definition was refused before model dispatch, and a generated `exec` call was refused before tool dispatch. No-call text was withheld as `ungrounded`; a provider 503 returned `model-unavailable` without a second request. A separate probe from the same bubblewrap profile got `ENETUNREACH` for a nonlocal address and did not inherit a synthetic credential. |
 | Disposable systemd service context | Not run. Even a disposable `systemd-run` creates a transient unit, which the scope forbade. Running with a clean environment does not prove this case. |
-| Live production Gateway | Not run. Gateway PID and invocation ID, systemd user configuration and timer inventory, and the OpenClaw installation's metadata fingerprint matched across the trial window. The full `~/.openclaw` metadata fingerprint changed: surviving new stamps were in `state/` and `logs/`, with the top-level config's timestamp predating the trials. No live writes, installs, restarts, or messages were issued by this runner. The difference is unexplained; the measurement doesn't establish schedule or messaging state, or byte identity for credential-bearing files. |
+| Live production Gateway | Not run. Gateway PID and invocation ID, systemd user configuration and timer inventory, and the OpenClaw installation's metadata fingerprint matched across the trial window. The full `~/.openclaw` metadata fingerprint changed: surviving new stamps were in `state/` and `logs/`, with the top-level config's timestamp predating the trials. No live writes, installs, restarts, or messages were issued by this runner. In the merged-tree run the PID and invocation ID were again unchanged; the changed paths were the Gateway's own log, SQLite WAL/SHM and lock files, a lock was restamped after the last trial ended, and the Gateway log for the window has no Endophasia or Coordinator entry. That points to the Gateway's own housekeeping but doesn't prove it, and the measurement doesn't establish schedule or messaging state, or byte identity for credential-bearing files. |
 
 `GET /v1/models` identified **Inkling-2-Mini-Uncensored-AD-Q4_K** (initially unloaded; first request autoloaded it). `GET /props`
 reported router **b12622-19bc41dbb**, one instance and autoload enabled. The loaded worker reported a 131072-token context despite the
@@ -115,12 +115,12 @@ server applies internally or guarantee deterministic output.
 
 ## 5. Model trials
 
-The [trial records](coordinator-runtime-trials.jsonl) contain the 22 local agent turns (44 Chat Completions requests) on 24 November
-2026: one cold smoke, twelve scenarios, then nine targeted retests under stricter wording. This matrix predates the descriptor-mount
+The [trial records](coordinator-runtime-trials.jsonl) contain 35 local agent turns (70 Chat Completions requests). The first 22, on 24 November
+2026, are one cold smoke, twelve scenarios, then nine targeted retests under stricter wording. That matrix predates the descriptor-mount
 update and GEO-26. The prompt and wording filter were tuned on those same twelve fixtures, so these scores are in-sample, not
 estimates of general accuracy. The rows retain the exact tool definitions,
 validated tool outcome, prompt and runtime identity, fixture expectation and prohibited claims, latency, usage, model answer,
-and the observed shortcomings. All 22 turns used exactly one tool and submitted its result. All synthetic project and store
+and the observed shortcomings. All 35 turns used exactly one tool and submitted its result. All synthetic project and store
 manifests matched; the relay and scratch directories were gone after the run. The smoke's canonical projection digest wasn't
 recorded; its model-view digest was reconstructed from the captured tool result. It had no retained operator briefing.
 
@@ -130,6 +130,16 @@ granting a shell after correctly refusing to run a command. The stricter wording
 release filter on replay; the stale-session case still overstates absence of a current failure. Three clean scenarios were not
 repeated with the new wording. The other-project request did not read the other project. The malicious fixture's raw text
 was omitted by projection; that tests the disclosure boundary, not the model's ability to resist raw injected instructions.
+
+**Merged tree (GEO-26).** Thirteen further turns (`merged-smoke`, `merged-matrix`) ran after the brief's no-checks rewrite was removed
+and the no-checks instruction sentence added, so they test the prompt and the projection together. Review, recent-session,
+stale-session, unauthorised-execution, out-of-scope and malicious-text now arrive as `no-checks` after a complete receipt read; all
+six answers were released and none made a false claim. Stale-session now says no check is recorded at current HEAD, which is true.
+Two released answers understate what is known (review calls session activity unknown; out-of-scope calls a current-HEAD failure
+unestablished), and current-failure lists a fresh at-HEAD failure as possibly stale. The backstop withheld three of twelve: healthy
+(no current failure claimed over an unread verification) and missing-sources (no activity claimed over an unavailable event log) were
+correct; historical-failure was withheld for "no check at current head", which a `not-current` read now supports. The same prompt
+and seed gave different review wording in the smoke and the matrix, so output is not reproducible run to run. These remain in-sample.
 
 The deterministic suite creates twelve standalone Git scenarios and fingerprints all project and store files recursively before
 and after reads. The opt-in installed-harness cases use an in-process disposable provider:
@@ -146,5 +156,5 @@ format from those raw trials without making any model requests. Instead of `-`, 
 `phase`, `fixture`, and hand-written `unsupportedClaims` to include the qualitative review. The published rows contain those
 annotations; the assembler recomputes the mechanical replay decision separately.
 The unmodified baseline and first full suite exercised the repository's pre-existing transient-scope tests; they were not
-Coordinator or Gateway tests. To run the repository suite without transient scopes, remove the user-bus environment:
-`env -u XDG_RUNTIME_DIR -u DBUS_SESSION_BUS_ADDRESS npm test`. The real systemd isolation cases are unavailable under that invocation.
+Coordinator or Gateway tests. Since #179 those real-scope suites skip unless `ENDO_REAL_SCOPES=1`, so a default `npm test` creates no
+transient units.

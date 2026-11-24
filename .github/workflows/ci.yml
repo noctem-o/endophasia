@@ -147,12 +147,14 @@ jobs:
         run: |
           # A live scope is collected as soon as its session ends, and a count taken from the runner's journal afterwards read 0 here, so
           # watch the manager while the suites run and count the distinct live scopes it listed.
+          # One file at a time: several of these build studio-ui/dist and a parallel run failed once reading a file another build had
+          # removed (and once failed a steer-cli apply that passed on the run before).
           seen="$RUNNER_TEMP/live-scopes-seen.txt"
           : > "$seen"
           (while :; do systemctl --user list-units --type=scope --all --plain --no-legend --no-pager 'endo-live-*' | awk '{print $1}' >> "$seen"; sleep 0.1; done) &
           poller=$!
           status=0
-          npm test -- tests/develop-tasks-cli.test.ts tests/develop-ux-001.test.ts tests/develop-ux-002-cli.test.ts tests/steer-cli.test.ts tests/prime-runtime-ingress.test.ts tests/endo-workbench-cli.test.ts tests/endo-workbench-attempts-cli.test.ts tests/endo-workbench-attempt-page.test.ts || status=$?
+          npm test -- --no-file-parallelism tests/develop-tasks-cli.test.ts tests/develop-ux-001.test.ts tests/develop-ux-002-cli.test.ts tests/steer-cli.test.ts tests/prime-runtime-ingress.test.ts tests/endo-workbench-cli.test.ts tests/endo-workbench-attempts-cli.test.ts tests/endo-workbench-attempt-page.test.ts || status=$?
           kill "$poller" || true
           started="$(grep -E '^endo-live-[0-9a-f]{24}[.]scope$' "$seen" | sort -u | wc -l)"
           echo "distinct live scopes the manager listed during the CLI suites: $started"

@@ -13,7 +13,8 @@ import { receiptAt, taskIn } from "./studio-attention-fixtures.ts";
 
 export const BRIEF_FIXTURES = {
 	healthy: {
-		expected: "One operator-completed task and a clean HEAD; no recorded current failure",
+		expected:
+			"One operator-completed task and a clean HEAD; verification not re-read, so no current failure can be claimed",
 		prohibited: "The task is correct or fully verified",
 	},
 	review: {

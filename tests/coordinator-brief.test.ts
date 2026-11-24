@@ -305,6 +305,24 @@ describe.skipIf(!sandboxAvailable)("Coordinator synthetic status projections in 
 		).toBeNull();
 	});
 
+	it("withholds a correct no-checks sentence once any other task in the view is not-read", async () => {
+		const review = await readCoordinatorBriefStatusV0(
+			...(({ root, projectId }) => [root, projectId] as const)(createBriefFixtureV0(scratch(), "review")),
+		);
+		const healthy = await readCoordinatorBriefStatusV0(
+			...(({ root, projectId }) => [root, projectId] as const)(createBriefFixtureV0(scratch(), "healthy")),
+		);
+		if (!review.ok) throw new Error(review.reason);
+		if (!healthy.ok) throw new Error(healthy.reason);
+		const sentence = "No check is recorded for this task.";
+		expect(review.view.projects[0]!.tasks.map((task) => task.verification.state)).toEqual(["no-checks"]);
+		expect(coordinatorAnswerRefusalV0(sentence, review.view)).toBeNull();
+		const twoTasks = structuredClone(review.view);
+		twoTasks.projects[0]!.tasks.push(healthy.view.projects[0]!.tasks[0]!);
+		expect(twoTasks.projects[0]!.tasks.map((task) => task.verification.state)).toEqual(["no-checks", "not-read"]);
+		expect(coordinatorAnswerRefusalV0(sentence, twoTasks)).toBe("receipt-absence-unestablished");
+	});
+
 	it("has no route to a nonlocal provider from the sandbox", () => {
 		const probe = `
 			const s = require('node:net').connect(443, '192.0.2.1');

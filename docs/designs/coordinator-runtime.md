@@ -61,11 +61,23 @@ It can miss paraphrases or withhold a correct answer that quotes a prohibited cl
 **Absence of checks.** The trimmed view does not carry `verification.receiptReadComplete`. The brief relays `no-checks` as stated
 rather than surfacing that fact, because the canonical validator (GEO-26) runs on every read before the view is built and refuses a
 `no-checks` record unless `receiptReadComplete` is true, `incomplete` is false, no receipt-read gap is present, and the result list
-is empty. A `no-checks` the model sees therefore follows a complete receipt read; an incomplete read arrives as `incomplete` with a
-read gap, and an older `endo` without the field is refused as version skew. The instructions tell the model to say "no check is
-recorded for this task" for `no-checks` only, and the backstop still withholds absence wording when any task's read is incomplete or
-unavailable. This relies on the worker and validator coming from the same Endophasia build. Absence of a record is still not evidence
-about the work, and a surviving pass is still not proof of complete receipt history.
+is empty. A `no-checks` the model sees therefore follows a projection that reports a complete read: the validator checks the
+projection's self-report, not the read itself, and the truth of that report rests on the GEO-26 projection. An incomplete read
+arrives as `incomplete` with a read gap. The version-skew refusal of a pre-GEO-26 `endo` applies to the standalone plugin, which
+calls a separately installed `endo`. The brief does not use the plugin bundle: it imports the validator and view builder from source
+and runs the projection worker from the same code root, so no separate `endo` exists on that path. The instructions tell the model
+to say "no check is recorded for this task" for `no-checks` only. Absence of a record is still not evidence about the work, and a
+surviving pass is still not proof of complete receipt history.
+
+**Project-wide backstop triggers.** The absence checks look at every task in the view, not at the task a sentence is about, so they
+cost availability, not truth. Every completed task is `not-read`, so any project that also contains a completed task has a correctly
+worded `no-checks` briefing withheld as `receipt-absence-unestablished`. The twelve fixtures are single-task and cannot show this;
+a deterministic two-task test pins it. Attributing each claim to its task is out of scope for this change.
+
+**Keep the `not-current` trigger.** It looks redundant after GEO-26, because `not-current` now implies a complete read, and it
+withheld a supported historical-failure answer. But removing it was simulated in review and released false sentences: "No receipt
+is recorded for this task" over a view where a failed receipt is recorded, and "No check is recorded at current HEAD" over a view
+holding a pass at HEAD and a failure at an earlier HEAD. A `not-current` task has results, so absence wording about it is usually false.
 
 The status reader is read-only, has an output/deadline bound and uses existing bounded source reads. The model relay bounds body
 size, bytes, connections, generation (one choice), and the number of upstream exchanges; the embedded process has a deadline.
@@ -138,8 +150,23 @@ six answers were released and none made a false claim. Stale-session now says no
 Two released answers understate what is known (review calls session activity unknown; out-of-scope calls a current-HEAD failure
 unestablished), and current-failure lists a fresh at-HEAD failure as possibly stale. The backstop withheld three of twelve: healthy
 (no current failure claimed over an unread verification) and missing-sources (no activity claimed over an unavailable event log) were
-correct; historical-failure was withheld for "no check at current head", which a `not-current` read now supports. The same prompt
-and seed gave different review wording in the smoke and the matrix, so output is not reproducible run to run. These remain in-sample.
+correct; historical-failure was withheld for "no check at current head", which is supported for that view, but the trigger stays
+(see the threat model). These remain in-sample.
+
+Each fixture run registers a fresh project, and the prompt embeds its id, so the smoke and matrix `review` turns had different
+prompts, project ids and read times. The harness cannot present the same input twice. The records are reproducible as records; each
+answer is one in-sample answer for its own input; run-to-run reproducibility at fixed input is untested either way.
+
+The `unsupportedClaims` labels in the rows and in [coordinator-runtime-trials-annotations.jsonl](coordinator-runtime-trials-annotations.jsonl)
+are the author's own reading of the answers, written after each run. They are commentary, not a model-checked or independent result;
+the mechanical fields (`originalRefusal`, `releaseReplayRefusal`, digests, usage) are the evidence. The `healthy` rubric
+originally expected "no recorded current failure"; it now says verification was not re-read and no current failure can be claimed,
+which is what the withholding is right about. Archived rows keep the rubric their run used.
+
+Two recording limits. Final-turn completions used 529–1651 of the 2048-token cap for answers of at most 160 words, so most of the
+budget goes to output that never reaches `finalAnswer`, and a longer deliberation could hit the cap and be withheld as truncated.
+`toolCalled` is a boolean: the tool name is enforced by the relay gate (`adapters/coordinator/wire.ts`, which refuses any other
+name as `tool-not-permitted`) but not recorded per row, so "only `endophasia_status` was called" rests on the gate's refusal being null.
 
 The deterministic suite creates twelve standalone Git scenarios and fingerprints all project and store files recursively before
 and after reads. The opt-in installed-harness cases use an in-process disposable provider:
@@ -153,7 +180,7 @@ node tests/coordinator-brief-evidence.ts - "matrix=$HOME/.capy/work/brief-eviden
 
 The live command uses the local model and writes raw trials for the named fixtures only. The assembly command writes the JSONL
 format from those raw trials without making any model requests. Instead of `-`, supply a JSONL file containing
-`phase`, `fixture`, and hand-written `unsupportedClaims` to include the qualitative review. The published rows contain those
+`phase`, `fixture`, and hand-written `unsupportedClaims` (the committed annotations file) to include the qualitative review. The published rows contain those
 annotations; the assembler recomputes the mechanical replay decision separately.
 The unmodified baseline and first full suite exercised the repository's pre-existing transient-scope tests; they were not
 Coordinator or Gateway tests. Since #179 those real-scope suites skip unless `ENDO_REAL_SCOPES=1`, so a default `npm test` creates no

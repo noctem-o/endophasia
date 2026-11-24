@@ -145,10 +145,18 @@ jobs:
         env:
           ENDO_REAL_SCOPES: "1"
         run: |
-          since="$(date '+%Y-%m-%d %H:%M:%S')"
-          npm test -- tests/develop-tasks-cli.test.ts tests/develop-ux-001.test.ts tests/develop-ux-002-cli.test.ts tests/steer-cli.test.ts tests/prime-runtime-ingress.test.ts tests/endo-workbench-cli.test.ts tests/endo-workbench-attempts-cli.test.ts tests/endo-workbench-attempt-page.test.ts
-          started="$(journalctl --user --since "$since" --no-pager -o cat | grep -c '^Started endo live session' || true)"
-          echo "live scopes started by the CLI suites: $started"
+          # The scopes are collected as soon as their session ends and the runner's journal is not readable by its user, so watch the
+          # manager while the suites run and count the distinct live scopes it listed.
+          seen="$RUNNER_TEMP/live-scopes-seen.txt"
+          : > "$seen"
+          (while :; do systemctl --user list-units --type=scope --all --plain --no-legend --no-pager 'endo-live-*' | awk '{print $1}' >> "$seen"; sleep 0.1; done) &
+          poller=$!
+          status=0
+          npm test -- tests/develop-tasks-cli.test.ts tests/develop-ux-001.test.ts tests/develop-ux-002-cli.test.ts tests/steer-cli.test.ts tests/prime-runtime-ingress.test.ts tests/endo-workbench-cli.test.ts tests/endo-workbench-attempts-cli.test.ts tests/endo-workbench-attempt-page.test.ts || status=$?
+          kill "$poller" || true
+          started="$(grep -E '^endo-live-[0-9a-f]{24}[.]scope$' "$seen" | sort -u | wc -l)"
+          echo "distinct live scopes the manager listed during the CLI suites: $started"
+          test "$status" -eq 0
           test "$started" -gt 0
       - name: Run the live-scope suite and require its exact real coverage
         env:

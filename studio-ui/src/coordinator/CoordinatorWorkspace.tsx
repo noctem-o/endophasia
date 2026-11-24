@@ -1,4 +1,4 @@
-import { type ReactElement, useLayoutEffect, useRef, useState } from "react";
+import { type ReactElement, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
 	ENDO_COORDINATOR_AUTHORITY_V0,
 	ENDO_COORDINATOR_NOT_ESTABLISHED_V0,
@@ -22,6 +22,15 @@ const PHASE_LABELS = {
 	completed: "Completed",
 } satisfies Record<EndoCoordinatorPhaseV0, string>;
 
+const FINDING_SEVERITY_LABELS = {
+	contradiction: "Contradiction",
+	integrity: "Integrity",
+	stale: "Stale",
+	incomplete: "Incomplete",
+	unavailable: "Unavailable",
+	info: "Info",
+} satisfies Record<EndoCoordinatorStatusV0["findings"][number]["severity"], string>;
+
 const PROBLEMS = {
 	"grant-required": "This page no longer holds the grant. Pair again in Develop.",
 	forbidden: "The workspace no longer permits this project scope. Previous records were discarded.",
@@ -38,6 +47,9 @@ interface Filters {
 	project: string | null;
 	phase: EndoCoordinatorPhaseV0 | null;
 }
+
+type ViewMode = "list" | "columns";
+type Density = "standard" | "compact";
 
 const NO_FILTERS: Filters = { project: null, phase: null };
 
@@ -65,14 +77,91 @@ function SignalList({
 	);
 }
 
+function SummaryStrip({ status, filters }: { status: EndoCoordinatorStatusV0; filters: Filters }): ReactElement {
+	const tasksReady = status.sources.tasks.state === "ready";
+	const selected = status.projects.find((project) => project.id === filters.project);
+	const projects = selected === undefined ? status.projects : [selected];
+	const tasks = projects.flatMap((project) => project.tasks);
+	const taskIds = new Set(tasks.map((task) => task.taskId));
+	const sessions =
+		selected === undefined
+			? status.sessions
+			: status.sessions.filter((session) => session.links.some((link) => taskIds.has(link.taskId)));
+	const subjects = new Set([selected?.id, ...taskIds, ...sessions.map((session) => session.sessionId)]);
+	const inView = (item: { subject: string | null }) =>
+		selected === undefined || item.subject === null || subjects.has(item.subject);
+	const countsKnown = tasksReady && projects.length > 0;
+	const awaitingReview = projects.reduce((total, project) => total + project.counts["awaiting-review"], 0);
+	const failingTasks = tasks.filter((task) => task.verification.state === "failing").length;
+	const contradictionCount = status.findings.filter(
+		(finding) => finding.severity === "contradiction" && inView(finding),
+	).length;
+	const activeSessions = sessions.filter((session) => session.observation === "active").length;
+	const lastObservedSessions = sessions.length - activeSessions;
+	const sourceList = [status.sources.tasks, status.sources.attempts, status.sources.events];
+	const readySources = sourceList.filter((source) => source.state === "ready").length;
+	const alertCount = failingTasks + contradictionCount;
+	return (
+		<dl className="coordinator-summary" data-testid="coordinator-summary">
+			<div className="coordinator-metric">
+				<dt>Scope</dt>
+				<dd>
+					{selected === undefined
+						? `${status.projects.length} ${status.projects.length === 1 ? "project" : "projects"}`
+						: selected.name || "Unnamed project"}
+				</dd>
+			</div>
+			<div className="coordinator-metric">
+				<dt>Recorded tasks</dt>
+				<dd>{countsKnown ? tasks.length : "Unavailable"}</dd>
+			</div>
+			<div className="coordinator-metric" data-tone={awaitingReview > 0 ? "info" : undefined}>
+				<dt>Awaiting review</dt>
+				<dd>{countsKnown ? awaitingReview : "—"}</dd>
+			</div>
+			<div className="coordinator-metric" data-tone={alertCount > 0 ? "fault" : undefined}>
+				<dt>Failing / contradictions</dt>
+				<dd>
+					{failingTasks} failing · {contradictionCount}{" "}
+					{contradictionCount === 1 ? "contradiction" : "contradictions"}
+				</dd>
+			</div>
+			<div className="coordinator-metric">
+				<dt>Listed sessions</dt>
+				<dd>
+					{activeSessions} recorded active · {lastObservedSessions} last observed
+				</dd>
+			</div>
+			<div className="coordinator-metric" data-tone={readySources < 3 ? "attention" : undefined}>
+				<dt>Record sources</dt>
+				<dd>{readySources === 3 ? "3 of 3 fresh" : `${readySources} of 3 fresh · degraded`}</dd>
+			</div>
+		</dl>
+	);
+}
+
 function Board({
 	status,
 	filters,
 	onFilters,
+	viewMode,
+	onViewMode,
+	density,
+	onDensity,
+	highlightedTaskId,
+	onJumpToTask,
+	onClearHighlight,
 }: {
 	status: EndoCoordinatorStatusV0;
 	filters: Filters;
 	onFilters(filters: Filters): void;
+	viewMode: ViewMode;
+	onViewMode(mode: ViewMode): void;
+	density: Density;
+	onDensity(density: Density): void;
+	highlightedTaskId: string | null;
+	onJumpToTask(taskId: string): void;
+	onClearHighlight(): void;
 }): ReactElement {
 	const tasksReady = status.sources.tasks.state === "ready";
 	const selected = status.projects.find((project) => project.id === filters.project);
@@ -102,7 +191,9 @@ function Board({
 					<h2 id="coordinator-scope-title">Project scope</h2>
 				</header>
 				<div className="coordinator-scope-group">
-					<h3>Projects</h3>
+					<h3>
+						Projects <span className="coordinator-count">{status.projects.length}</span>
+					</h3>
 					{status.projects.length > 1 ? (
 						<button
 							className="coordinator-filter"
@@ -110,38 +201,51 @@ function Board({
 							aria-pressed={selected === undefined}
 							onClick={() => onFilters({ ...filters, project: null })}
 						>
-							All reported projects <span className="coordinator-count">{status.projects.length}</span>
+							<span>All reported projects</span>
+							<span className="coordinator-count">{status.projects.length}</span>
 						</button>
 					) : null}
-					{status.projects.map((project) => (
-						<div className="coordinator-project" key={project.id}>
-							{status.projects.length > 1 ? (
-								<button
-									className="coordinator-filter"
-									type="button"
-									aria-pressed={selected?.id === project.id}
-									data-testid="coordinator-project"
-									onClick={() => onFilters({ ...filters, project: project.id })}
-								>
-									<span>{project.name || "Unnamed project"}</span>
-								</button>
-							) : (
-								<strong>{project.name || "Unnamed project"}</strong>
-							)}
-							<div className="coordinator-project-meta">
-								{project.head === null ? (
-									<span>HEAD unavailable</span>
+					<div className="coordinator-project-list">
+						{status.projects.map((project) => (
+							<div
+								className="coordinator-project"
+								key={project.id}
+								data-selected={selected?.id === project.id ? "true" : undefined}
+							>
+								{status.projects.length > 1 ? (
+									<button
+										className="coordinator-filter"
+										type="button"
+										aria-pressed={selected?.id === project.id}
+										data-testid="coordinator-project"
+										onClick={() => onFilters({ ...filters, project: project.id })}
+									>
+										<span className="coordinator-project-title">{project.name || "Unnamed project"}</span>
+										<span className="coordinator-count">{project.tasks.length}</span>
+									</button>
 								) : (
-									<span>
-										HEAD <code title={project.head.commit}>{project.head.commit.slice(0, 12)}</code> ·{" "}
-										{project.head.clean ? "clean" : "changed tree"}
-									</span>
+									<div className="coordinator-project-single">
+										<strong>{project.name || "Unnamed project"}</strong>
+										<span className="coordinator-count">{project.tasks.length}</span>
+									</div>
 								)}
-								<Freshness state={project.freshness.state} />
-								{project.freshness.reason === null ? null : <p>{project.freshness.reason}</p>}
+								<div className="coordinator-project-meta">
+									{project.head === null ? (
+										<span className="coordinator-head-missing">HEAD unavailable</span>
+									) : (
+										<span className="coordinator-head-ref">
+											HEAD <code title={project.head.commit}>{project.head.commit.slice(0, 12)}</code> ·{" "}
+											<span data-clean={project.head.clean ? "true" : "false"}>
+												{project.head.clean ? "clean" : "changed tree"}
+											</span>
+										</span>
+									)}
+									<Freshness state={project.freshness.state} />
+									{project.freshness.reason === null ? null : <p>{project.freshness.reason}</p>}
+								</div>
 							</div>
-						</div>
-					))}
+						))}
+					</div>
 					{status.scope.unknown.length > 0 ? (
 						<p className="coordinator-muted">
 							{status.scope.unknown.length} requested{" "}
@@ -191,12 +295,16 @@ function Board({
 					<dl className="coordinator-sources">
 						{(["tasks", "attempts", "events"] as const).map((key) => {
 							const source = status.sources[key];
+							const note = source.detail ?? source.freshness.reason;
 							return (
 								<div key={key} data-source={key} data-source-state={source.state}>
 									<dt>{key === "events" ? "Event log" : key === "tasks" ? "Tasks" : "Attempts"}</dt>
 									<dd>
 										<Freshness state={source.freshness.state} />
 										{source.state === "missing" ? <span>Records missing</span> : null}
+										{source.state !== "ready" && note !== null ? (
+											<span className="coordinator-source-note">{note}</span>
+										) : null}
 									</dd>
 								</div>
 							);
@@ -204,24 +312,130 @@ function Board({
 					</dl>
 				</div>
 			</section>
-			<section className="coordinator-panel coordinator-mission" aria-labelledby="coordinator-mission-title">
-				<header className="coordinator-panel-head">
-					<span className="coordinator-index">02 / TASKS</span>
-					<h2 id="coordinator-mission-title">Task board</h2>
-					<output className="coordinator-muted">
-						{countsKnown
-							? `${visibleCount} of ${tasks.length} recorded tasks · ${filters.phase === null ? "All phases" : PHASE_LABELS[filters.phase]}`
-							: "No reliable task count for this read"}
-					</output>
+			<section
+				className="coordinator-panel coordinator-mission"
+				aria-labelledby="coordinator-mission-title"
+				data-view={viewMode}
+				data-density={density}
+			>
+				<header className="coordinator-panel-head coordinator-mission-head">
+					<div className="coordinator-mission-title">
+						<span className="coordinator-index">02 / TASKS</span>
+						<h2 id="coordinator-mission-title">Task board</h2>
+						<output className="coordinator-muted">
+							{countsKnown
+								? `${visibleCount} of ${tasks.length} recorded tasks · ${filters.phase === null ? "All phases" : PHASE_LABELS[filters.phase]}${viewMode === "columns" ? " · Grouped by operator phase (read-only)" : ""}`
+								: "No reliable task count for this read"}
+						</output>
+					</div>
+					<div className="coordinator-toolbar">
+						<fieldset className="coordinator-segmented">
+							<legend className="sr-only">Task view mode</legend>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-list"
+								aria-pressed={viewMode === "list"}
+								onClick={() => onViewMode("list")}
+							>
+								List
+							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-columns"
+								aria-pressed={viewMode === "columns"}
+								onClick={() => onViewMode("columns")}
+							>
+								Columns
+							</button>
+						</fieldset>
+						<fieldset className="coordinator-segmented">
+							<legend className="sr-only">Task card density</legend>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-density-standard"
+								aria-pressed={density === "standard"}
+								onClick={() => onDensity("standard")}
+							>
+								Standard
+							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-density-compact"
+								aria-pressed={density === "compact"}
+								onClick={() => onDensity("compact")}
+							>
+								Compact
+							</button>
+						</fieldset>
+					</div>
 				</header>
 				{visibleCount === 0 ? (
-					<p className="coordinator-empty">
-						{!countsKnown
-							? "Tasks could not be established for this scope. This does not mean there are no tasks."
-							: tasks.length === 0
-								? "No tasks are recorded in the selected project scope."
-								: "No recorded tasks match this phase."}
-					</p>
+					<div className="coordinator-empty coordinator-empty-board">
+						<p className="coordinator-index">
+							{!countsKnown
+								? "RECORDS NOT ESTABLISHED"
+								: tasks.length === 0
+									? "NO RECORDED TASKS"
+									: "NO MATCHING PHASE"}
+						</p>
+						<p className="coordinator-empty-title">
+							{!countsKnown
+								? "Tasks could not be established for this scope. This does not mean there are no tasks."
+								: tasks.length === 0
+									? "No tasks are recorded in the selected project scope."
+									: "No recorded tasks match this phase."}
+						</p>
+						{countsKnown && tasks.length === 0 ? (
+							<p className="coordinator-muted">
+								Project scope and record sources are readable. Tasks recorded by the operator in Develop appear
+								here on refresh.
+							</p>
+						) : null}
+					</div>
+				) : viewMode === "columns" ? (
+					<div className="coordinator-columns" data-testid="coordinator-board-columns">
+						{(filters.phase === null ? PHASES : [filters.phase]).map((columnPhase) => {
+							const columnTasks = tasks.filter((task) => task.phase === columnPhase);
+							const projectNames = new Map(projects.map((p) => [p.id, p.name || "Unnamed project"]));
+							return (
+								<section
+									key={columnPhase}
+									className="coordinator-column"
+									data-column-phase={columnPhase}
+									aria-label={`${PHASE_LABELS[columnPhase]} phase column`}
+								>
+									<header className="coordinator-column-head">
+										<span className="coordinator-phase-tag" data-phase={columnPhase}>
+											{PHASE_LABELS[columnPhase]}
+										</span>
+										<span className="coordinator-count">{columnTasks.length}</span>
+									</header>
+									{columnTasks.length === 0 ? (
+										<p className="coordinator-column-empty">No recorded tasks</p>
+									) : (
+										<div className="coordinator-column-cards">
+											{columnTasks.map((task) => (
+												<TaskCard
+													key={task.taskId}
+													task={task}
+													phaseLabel={PHASE_LABELS[task.phase]}
+													projectLabel={projects.length > 1 ? projectNames.get(task.projectId) : undefined}
+													inColumn={true}
+													highlighted={highlightedTaskId === task.taskId}
+													findings={findings.filter((finding) => finding.subject === task.taskId)}
+													attemptsReady={status.sources.attempts.state === "ready"}
+												/>
+											))}
+										</div>
+									)}
+								</section>
+							);
+						})}
+					</div>
 				) : (
 					projects.map((project) => {
 						const visible = project.tasks.filter(
@@ -231,21 +445,37 @@ function Board({
 						return (
 							<div key={project.id} className="coordinator-task-group">
 								{projects.length > 1 ? (
-									<p className="coordinator-index">{project.name || "Unnamed project"}</p>
+									<div className="coordinator-group-head">
+										<p className="coordinator-index">{project.name || "Unnamed project"}</p>
+										<span className="coordinator-count">{visible.length} shown</span>
+									</div>
 								) : null}
-								{visible.map((task) => (
-									<TaskCard
-										key={task.taskId}
-										task={task}
-										phaseLabel={PHASE_LABELS[task.phase]}
-										findings={findings.filter((finding) => finding.subject === task.taskId)}
-										attemptsReady={status.sources.attempts.state === "ready"}
-									/>
-								))}
+								<div className="coordinator-task-list">
+									{visible.map((task) => (
+										<TaskCard
+											key={task.taskId}
+											task={task}
+											phaseLabel={PHASE_LABELS[task.phase]}
+											highlighted={highlightedTaskId === task.taskId}
+											findings={findings.filter((finding) => finding.subject === task.taskId)}
+											attemptsReady={status.sources.attempts.state === "ready"}
+										/>
+									))}
+								</div>
 							</div>
 						);
 					})
 				)}
+				{highlightedTaskId !== null && taskIds.has(highlightedTaskId) ? (
+					<div className="coordinator-highlight-bar">
+						<span className="coordinator-muted">
+							Focused task: <strong>{taskTitles.get(highlightedTaskId) || highlightedTaskId}</strong>
+						</span>
+						<button type="button" className="coordinator-link-btn" onClick={onClearHighlight}>
+							Clear focus (Esc)
+						</button>
+					</div>
+				) : null}
 			</section>
 			<aside className="coordinator-panel coordinator-context" aria-labelledby="coordinator-attention-title">
 				<header className="coordinator-panel-head">
@@ -261,15 +491,35 @@ function Board({
 						<p className="coordinator-empty">No attention items were reported for this view.</p>
 					) : (
 						<SignalList label="attention items" testId="coordinator-attention">
-							{attention.map((item, i) => (
-								<li key={`${item.kind}:${item.subject}:${i}`} data-kind={item.kind}>
-									<strong>{ATTENTION_LABELS[item.kind]}</strong>
-									{item.subject !== null && taskTitles.has(item.subject) ? (
-										<p className="coordinator-signal-name">{taskTitles.get(item.subject)}</p>
-									) : null}
-									<p>{item.text}</p>
-								</li>
-							))}
+							{attention.map((item, i) => {
+								const targetId = item.subject !== null && taskTitles.has(item.subject) ? item.subject : null;
+								return (
+									<li
+										key={`${item.kind}:${item.subject}:${i}`}
+										data-kind={item.kind}
+										data-highlighted={
+											targetId !== null && highlightedTaskId === targetId ? "true" : undefined
+										}
+									>
+										<strong>{ATTENTION_LABELS[item.kind]}</strong>
+										{targetId !== null ? (
+											<button
+												type="button"
+												className="coordinator-signal-jump"
+												data-testid="coordinator-attention-jump"
+												data-target-task={targetId}
+												onClick={() => onJumpToTask(targetId)}
+											>
+												<span className="coordinator-signal-name">{taskTitles.get(targetId)}</span>
+												<span className="coordinator-jump-cue" aria-hidden="true">
+													Inspect →
+												</span>
+											</button>
+										) : null}
+										<p>{item.text}</p>
+									</li>
+								);
+							})}
 						</SignalList>
 					)}
 				</div>
@@ -285,7 +535,14 @@ function Board({
 								: "No session records with an explicit link to tasks in this view were listed."}
 						</p>
 					) : (
-						sessions.map((session) => <SessionCard key={session.sessionId} session={session} />)
+						sessions.map((session) => (
+							<SessionCard
+								key={session.sessionId}
+								session={session}
+								taskTitles={taskTitles}
+								onJumpToTask={onJumpToTask}
+							/>
+						))
 					)}
 					{unlistedSessions.unknownRelationship > 0 || unlistedSessions.outOfScope > 0 ? (
 						<div className="coordinator-unlisted" data-testid="coordinator-unlisted-sessions">
@@ -310,16 +567,36 @@ function Board({
 						<p className="coordinator-muted">No findings were reported for this view.</p>
 					) : (
 						<SignalList label="read findings" testId="coordinator-findings">
-							{findings.map((finding, i) => (
-								<li
-									key={`${finding.code}:${finding.subject}:${i}`}
-									data-kind={finding.severity}
-									data-finding={finding.code}
-								>
-									<strong>{finding.severity}</strong>
-									<p>{finding.text}</p>
-								</li>
-							))}
+							{findings.map((finding, i) => {
+								const targetId =
+									finding.subject !== null && taskTitles.has(finding.subject) ? finding.subject : null;
+								return (
+									<li
+										key={`${finding.code}:${finding.subject}:${i}`}
+										data-kind={finding.severity}
+										data-finding={finding.code}
+										data-highlighted={
+											targetId !== null && highlightedTaskId === targetId ? "true" : undefined
+										}
+									>
+										<strong>{FINDING_SEVERITY_LABELS[finding.severity]}</strong>
+										{targetId !== null ? (
+											<button
+												type="button"
+												className="coordinator-signal-jump"
+												data-target-task={targetId}
+												onClick={() => onJumpToTask(targetId)}
+											>
+												<span className="coordinator-signal-name">{taskTitles.get(targetId)}</span>
+												<span className="coordinator-jump-cue" aria-hidden="true">
+													Inspect →
+												</span>
+											</button>
+										) : null}
+										<p>{finding.text}</p>
+									</li>
+								);
+							})}
 						</SignalList>
 					)}
 				</div>
@@ -351,15 +628,20 @@ export function CoordinatorWorkspace({
 }): ReactElement {
 	const isHost = workbench.availability === "workspace";
 	const grant = isHost ? workbench.grant : null;
+	const workspaceRef = useRef<HTMLDivElement>(null);
 	const refreshButton = useRef<HTMLButtonElement>(null);
 	const pairingButton = useRef<HTMLButtonElement>(null);
 	const focusPairing = useRef(false);
 	const [grantRefused, setGrantRefused] = useState(false);
 	const [filters, setFilters] = useState(NO_FILTERS);
+	const [viewMode, setViewMode] = useState<ViewMode>("list");
+	const [density, setDensity] = useState<Density>("standard");
+	const [highlightedTask, setHighlightedTask] = useState<{ id: string; seq: number } | null>(null);
 	const { reply, busy, refresh } = useCoordinator(grant, workbench.launchId, () => {
 		focusPairing.current = refreshButton.current === document.activeElement;
 		setGrantRefused(true);
 		setFilters(NO_FILTERS);
+		setHighlightedTask(null);
 		onGrantRequired();
 	});
 	useLayoutEffect(() => {
@@ -368,6 +650,7 @@ export function CoordinatorWorkspace({
 			return;
 		}
 		setFilters(NO_FILTERS);
+		setHighlightedTask(null);
 		if (!focusPairing.current) return;
 		focusPairing.current = false;
 		pairingButton.current?.focus();
@@ -375,9 +658,41 @@ export function CoordinatorWorkspace({
 	const status = reply?.kind === "status" ? reply.status : null;
 	const problem = reply?.kind === "failure" ? reply.problem : null;
 	useLayoutEffect(() => {
-		if (problem === "forbidden") setFilters(NO_FILTERS);
+		if (problem === "forbidden") {
+			setFilters(NO_FILTERS);
+			setHighlightedTask(null);
+		}
 	}, [problem]);
 	const reduced = useReducedMotion();
+	useLayoutEffect(() => {
+		if (highlightedTask === null || workspaceRef.current === null) return;
+		const cards = workspaceRef.current.querySelectorAll<HTMLElement>("[data-testid='coordinator-task']");
+		for (const card of cards) {
+			if (card.dataset.taskId === highlightedTask.id) {
+				card.scrollIntoView({ block: "nearest", behavior: reduced ? "instant" : "smooth" });
+				const summary = card.querySelector<HTMLElement>("[data-testid='coordinator-task-evidence'] > summary");
+				summary?.focus();
+				break;
+			}
+		}
+	}, [highlightedTask, reduced]);
+	useEffect(() => {
+		if (highlightedTask === null) return;
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setHighlightedTask(null);
+		};
+		document.addEventListener("keydown", onKey);
+		return () => document.removeEventListener("keydown", onKey);
+	}, [highlightedTask]);
+	const jumpToTask = (taskId: string) => {
+		if (status !== null) {
+			const target = status.projects.flatMap((project) => project.tasks).find((task) => task.taskId === taskId);
+			if (target !== undefined && filters.phase !== null && filters.phase !== target.phase) {
+				setFilters({ ...filters, phase: null });
+			}
+		}
+		setHighlightedTask((current) => ({ id: taskId, seq: (current?.seq ?? 0) + 1 }));
+	};
 	const field = appearance === "field";
 	const still = reduced || paused;
 	const signal: FieldSignal = {
@@ -418,48 +733,82 @@ export function CoordinatorWorkspace({
 						? "Checking whether this Studio is connected to a workspace host."
 						: "Studio could not confirm the host type. Check the host again to continue."
 					: "Coordinator is available only from a paired workspace host opened with endo workspace open. This Studio host does not support it.";
+	const gateTone =
+		problem === "invalid" || problem === "forbidden" || problem === "unavailable"
+			? "fault"
+			: isHost && grant === null
+				? "attention"
+				: problem !== null
+					? "attention"
+					: "info";
+	const gateEyebrow = busy
+		? "STATUS / READING WORKSPACE"
+		: problem === "invalid"
+			? "STATUS / RESPONSE REJECTED"
+			: problem === "forbidden"
+				? "STATUS / SCOPE FORBIDDEN"
+				: problem !== null
+					? "STATUS / READ UNAVAILABLE"
+					: isHost
+						? grantRefused
+							? "STATUS / GRANT REVOKED"
+							: "STATUS / PAIRING REQUIRED"
+						: hostUnknown
+							? "STATUS / CHECKING HOST"
+							: "STATUS / WORKSPACE HOST REQUIRED";
 	return (
-		<div className="coordinator" data-testid="coordinator-workspace" data-appearance={appearance} data-state={mode}>
+		<div
+			ref={workspaceRef}
+			className="coordinator"
+			data-testid="coordinator-workspace"
+			data-appearance={appearance}
+			data-atmosphere={field ? atmosphere : undefined}
+			data-state={mode}
+		>
 			{field ? <FieldLayer signal={signal} atmosphere={atmosphere} paused={paused} /> : null}
 			<div className="coordinator-content">
 				<header className="coordinator-hero">
-					<div>
-						<p className="coordinator-index">COORDINATOR / WORKSPACE RECORDS</p>
-						<h1>Mission Board</h1>
-						<p className="coordinator-intro">
-							Read task status, check evidence and review recorded activity across the paired workspace.
-						</p>
-					</div>
-					<div className="coordinator-read">
-						<div className="coordinator-tags">
-							<span className="coordinator-readonly">Read-only</span>
-							{grant !== null ? (
-								<button
-									type="button"
-									className="btn"
-									ref={refreshButton}
-									data-testid="coordinator-refresh"
-									aria-disabled={busy}
-									onClick={refresh}
-								>
-									{busy ? "Reading…" : "Refresh"}
-								</button>
-							) : null}
+					<div className="coordinator-hero-top">
+						<div className="coordinator-hero-title">
+							<p className="coordinator-index">COORDINATOR / WORKSPACE RECORDS</p>
+							<h1>Mission Board</h1>
+							<p className="coordinator-intro">
+								Read-only projection of task status, check evidence, and recorded sessions.
+							</p>
 						</div>
-						<p className="coordinator-muted">
-							{status === null ? (
-								"No snapshot shown"
-							) : (
-								<>
-									Snapshot · <Timestamp ms={status.readAtMs} />
-								</>
-							)}
-						</p>
+						<div className="coordinator-read">
+							<div className="coordinator-tags">
+								<span className="coordinator-readonly">Read-only</span>
+								{grant !== null ? (
+									<button
+										type="button"
+										className="btn"
+										ref={refreshButton}
+										data-testid="coordinator-refresh"
+										aria-disabled={busy}
+										onClick={refresh}
+									>
+										{busy ? "Reading…" : "Refresh"}
+									</button>
+								) : null}
+							</div>
+							<p className="coordinator-muted">
+								{status === null ? (
+									"No snapshot shown"
+								) : (
+									<>
+										Snapshot · <Timestamp ms={status.readAtMs} />
+									</>
+								)}
+							</p>
+						</div>
 					</div>
+					{status !== null ? <SummaryStrip status={status} filters={filters} /> : null}
 				</header>
 				<output className="sr-only">{status === null ? emptyNote : "Coordinator snapshot ready."}</output>
 				{status === null ? (
-					<div className="coordinator-panel coordinator-gate">
+					<div className="coordinator-panel coordinator-gate" data-gate-tone={gateTone}>
+						<p className="coordinator-index">{gateEyebrow}</p>
 						<h2>
 							{busy
 								? "Reading workspace"
@@ -485,7 +834,18 @@ export function CoordinatorWorkspace({
 					</div>
 				) : (
 					<>
-						<Board status={status} filters={filters} onFilters={setFilters} />
+						<Board
+							status={status}
+							filters={filters}
+							onFilters={setFilters}
+							viewMode={viewMode}
+							onViewMode={setViewMode}
+							density={density}
+							onDensity={setDensity}
+							highlightedTaskId={highlightedTask?.id ?? null}
+							onJumpToTask={jumpToTask}
+							onClearHighlight={() => setHighlightedTask(null)}
+						/>
 						<details className="coordinator-limits coordinator-panel" data-testid="coordinator-limits">
 							<summary>
 								Reading limits <span>· Decisions stay with the operator</span>

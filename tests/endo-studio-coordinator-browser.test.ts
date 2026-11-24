@@ -90,6 +90,7 @@ describe.skipIf(!haveGit || (executable === null && !requireBrowser))("Studio Co
 		for (const [appearance, width, height] of [
 			["field", 1440, 900],
 			["instrument", 1920, 1080],
+			["instrument", 3840, 2160],
 			["instrument", 820, 900],
 			["field", 390, 844],
 		] as const) {
@@ -104,9 +105,45 @@ describe.skipIf(!haveGit || (executable === null && !requireBrowser))("Studio Co
 				writeFileSync(join(captureDir, `${appearance}-${width}x${height}.png`), await page.screenshot());
 			}
 		}
+		// Field + Storm atmosphere keeps the topbar interactive above .field-layer with zero horizontal overflow.
+		await page.resize(1440, 900);
+		await page.click("[data-testid=appearance-field]");
+		await page.waitFor("document.querySelector('[data-testid=atmosphere]')");
+		await page.eval(`(() => {
+			const sel = document.querySelector('[data-testid=atmosphere]');
+			Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(sel, 'storm');
+			sel.dispatchEvent(new Event('change', { bubbles: true }));
+		})()`);
+		await page.waitFor(`document.querySelector('${board}[data-appearance=field][data-atmosphere=storm]')`);
+		expect(await page.eval("document.documentElement.scrollWidth <= window.innerWidth")).toBe(true);
+		expect(
+			await page.eval(`(() => {
+				const btn = document.querySelector('[data-workspace=coordinator]');
+				const r = btn.getBoundingClientRect();
+				const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+				return hit === btn || btn.contains(hit);
+			})()`),
+		).toBe(true);
+		// Read-only phase columns and compact density toggles work cleanly with zero drag-to-mutate controls.
+		await page.click("[data-testid=coordinator-view-columns]");
+		await page.waitFor("document.querySelector('[data-testid=coordinator-board-columns]')");
+		expect(await page.eval("document.querySelectorAll('[data-column-phase]').length")).toBe(5);
+		expect(await page.eval("document.querySelectorAll('[draggable=true]').length")).toBe(0);
+		expect(await page.eval("document.documentElement.scrollWidth <= window.innerWidth")).toBe(true);
+		await page.click("[data-testid=coordinator-density-compact]");
+		expect(await page.eval("document.querySelector('.coordinator-mission').dataset.density")).toBe("compact");
+		await page.click("[data-testid=coordinator-density-standard]");
+		await page.click("[data-testid=coordinator-view-list]");
+		await page.click("[data-testid=appearance-instrument]");
 		await page.click("button.coordinator-filter[data-phase=blocked]");
 		expect(await page.eval(`document.querySelectorAll('${task}[data-phase=blocked]').length`)).toBe(1);
 		expect(await page.eval(`document.querySelectorAll('${task}').length`)).toBe(1);
+		// Jumping from an Attention item reveals a filtered-out task, highlights it, focuses its evidence control, and Escape clears highlight.
+		await page.click("[data-testid=coordinator-attention-jump]");
+		await page.waitFor(`document.querySelector('${task}[data-highlighted=true]')`);
+		expect(await page.eval("document.activeElement?.tagName")).toBe("SUMMARY");
+		await page.press("Escape");
+		await page.waitFor(`!document.querySelector('${task}[data-highlighted=true]')`);
 		await page.click("button.coordinator-filter[data-phase=all]");
 		await page.click(".coordinator-project:last-child [data-testid=coordinator-project]");
 		expect(await page.eval(`document.querySelectorAll('${task}').length`)).toBe(0);
@@ -129,9 +166,11 @@ describe.skipIf(!haveGit || (executable === null && !requireBrowser))("Studio Co
 		reply = { status: 403, body: { error: "forbidden" } };
 		await page.click(refresh);
 		await page.waitFor(withState("forbidden"));
+		await page.eval(`document.querySelector('${refresh}').focus()`);
 		reply = { status: 401, body: { error: "grant-required" } };
 		await page.click(refresh);
 		await page.waitFor(withState("unpaired"));
+		expect(await page.eval("document.activeElement?.textContent?.trim()")).toBe("Open Develop to pair");
 		expect(await page.eval(`document.querySelectorAll('${task}').length`)).toBe(0);
 	}, 90_000);
 });

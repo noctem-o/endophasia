@@ -63,31 +63,57 @@ const VERIFICATION = {
 	unavailable: "Verification unavailable",
 } satisfies Record<EndoCoordinatorVerificationStateV0, string>;
 
-export function SessionLinks({ links, by }: { links: EndoCoordinatorLinkV0[]; by: "task" | "session" }): ReactElement {
+export function SessionLinks({
+	links,
+	by,
+	taskTitles,
+	onJumpToTask,
+}: {
+	links: EndoCoordinatorLinkV0[];
+	by: "task" | "session";
+	taskTitles?: Map<string, string>;
+	onJumpToTask?: (taskId: string) => void;
+}): ReactElement {
 	return links.length === 0 ? (
 		<p className="coordinator-muted">Relationship unknown. No explicit link was found in the records read.</p>
 	) : (
 		<ul className="coordinator-records">
-			{links.map((link, i) => (
-				<li key={`${by === "task" ? link.sessionId : link.taskId}:${link.via}:${i}`}>
-					<code>{by === "task" ? link.sessionId : link.taskId}</code>
-					<p>
-						{link.via === "operator-linked" ? "Operator link" : "Recorded send authorization"} · {link.source}
-					</p>
-					<div className="coordinator-tags">
-						<Basis basis={link.basis} />
-						<span className="coordinator-muted">
-							{link.inLog === "yes"
-								? "Present in event log"
-								: link.inLog === "no"
-									? "Not found in event log"
-									: link.inLog === "unknown"
-										? "Event-log presence unknown"
-										: "Event-log presence not applicable"}
-						</span>
-					</div>
-				</li>
-			))}
+			{links.map((link, i) => {
+				const canJump = by === "session" && onJumpToTask !== undefined && taskTitles?.has(link.taskId) === true;
+				return (
+					<li key={`${by === "task" ? link.sessionId : link.taskId}:${link.via}:${i}`}>
+						{canJump ? (
+							<button
+								type="button"
+								className="coordinator-signal-jump"
+								data-target-task={link.taskId}
+								onClick={() => onJumpToTask(link.taskId)}
+							>
+								<span className="coordinator-signal-name">{taskTitles.get(link.taskId)}</span>
+								<span className="coordinator-jump-cue" aria-hidden="true">
+									Inspect →
+								</span>
+							</button>
+						) : null}
+						<code>{by === "task" ? link.sessionId : link.taskId}</code>
+						<p>
+							{link.via === "operator-linked" ? "Operator link" : "Recorded send authorization"} · {link.source}
+						</p>
+						<div className="coordinator-tags">
+							<Basis basis={link.basis} />
+							<span className="coordinator-muted">
+								{link.inLog === "yes"
+									? "Present in event log"
+									: link.inLog === "no"
+										? "Not found in event log"
+										: link.inLog === "unknown"
+											? "Event-log presence unknown"
+											: "Event-log presence not applicable"}
+							</span>
+						</div>
+					</li>
+				);
+			})}
 		</ul>
 	);
 }
@@ -106,7 +132,9 @@ function CheckReceipts({ verification }: { verification: EndoCoordinatorTaskV0["
 					{verification.results.map((result, i) => (
 						<li key={`${result.receiptId ?? result.attemptId}:${i}`} data-relation={result.relation ?? undefined}>
 							<div className="coordinator-tags">
-								<strong>{RESULT_LABELS[result.outcome]}</strong>
+								<strong className="coordinator-outcome" data-outcome={result.outcome}>
+									{RESULT_LABELS[result.outcome]}
+								</strong>
 								{result.relation !== null &&
 								result.relation !== "at-head" &&
 								result.relation !== "unavailable" ? (
@@ -154,11 +182,17 @@ function CheckReceipts({ verification }: { verification: EndoCoordinatorTaskV0["
 export function TaskCard({
 	task,
 	phaseLabel,
+	projectLabel,
+	inColumn = false,
+	highlighted = false,
 	findings,
 	attemptsReady,
 }: {
 	task: EndoCoordinatorTaskV0;
 	phaseLabel: string;
+	projectLabel?: string;
+	inColumn?: boolean;
+	highlighted?: boolean;
 	findings: EndoCoordinatorFindingV0[];
 	attemptsReady: boolean;
 }): ReactElement {
@@ -169,20 +203,34 @@ export function TaskCard({
 		<article
 			className="coordinator-task"
 			data-testid="coordinator-task"
+			data-task-id={task.taskId}
 			data-phase={task.phase}
 			data-verification={verification.state}
+			data-contradiction={contradictions.length > 0 ? "true" : undefined}
+			data-highlighted={highlighted ? "true" : undefined}
 		>
 			<div className="coordinator-task-overview">
-				<div className="coordinator-tags">
-					<span className="coordinator-phase-tag">{phaseLabel}</span>
-					<Basis basis={task.statusSource} />
+				<div className="coordinator-task-head">
+					<div className="coordinator-tags">
+						{inColumn ? null : (
+							<span className="coordinator-phase-tag" data-phase={task.phase}>
+								{phaseLabel}
+							</span>
+						)}
+						<Basis basis={task.statusSource} />
+						{projectLabel !== undefined ? <span className="coordinator-task-project">{projectLabel}</span> : null}
+					</div>
+					<div className="coordinator-task-state coordinator-tags">
+						<strong data-verification={verification.state}>{VERIFICATION[verification.state]}</strong>
+						<Freshness state={verification.freshness.state} />
+					</div>
 				</div>
 				<h3>{task.title || "Untitled task"}</h3>
-				<div className="coordinator-task-state coordinator-tags">
-					<strong data-verification={verification.state}>{VERIFICATION[verification.state]}</strong>
-					<Freshness state={verification.freshness.state} />
-				</div>
-				{task.phase === "completed" ? <p>The operator marked this complete. The board did not verify it.</p> : null}
+				{task.phase === "completed" ? (
+					<p className="coordinator-completed-note">
+						The operator marked this complete. The board did not verify it.
+					</p>
+				) : null}
 				<div className="coordinator-task-note">
 					<span>
 						{latest === null
@@ -190,6 +238,9 @@ export function TaskCard({
 								? "No recorded attempt"
 								: "Attempt evidence unknown"
 							: ATTEMPT_LABELS[latest.state]}
+					</span>
+					<span className="coordinator-sep" aria-hidden="true">
+						·
 					</span>
 					<span>
 						{association === "explicit"
@@ -205,70 +256,86 @@ export function TaskCard({
 			</div>
 			<details className="coordinator-evidence" data-testid="coordinator-task-evidence">
 				<summary>
-					Task evidence{" "}
-					<span>
+					<span className="coordinator-evidence-label">Task evidence</span>
+					<span className="coordinator-evidence-counts">
 						{verification.results.length} shown · {task.gaps.length} gaps
 					</span>
 				</summary>
 				<div className="coordinator-evidence-body">
-					<p className="coordinator-muted">
+					<p className="coordinator-evidence-meta coordinator-muted">
 						<code>{task.taskId}</code> · Revision {task.revision} · Updated <Timestamp ms={task.updatedAtMs} />
 					</p>
-					<section className="coordinator-evidence-group">
-						<h4>
-							Latest attempt <span>· Operator-declared</span>
-						</h4>
-						<p>
-							{attempts.count}{" "}
-							{attemptsReady ? "attempts recorded" : "attempts visible in an incomplete or unavailable source"}.
-						</p>
-						{latest === null ? null : (
+					<div className="coordinator-evidence-grid">
+						<CheckReceipts verification={verification} />
+						<section className="coordinator-evidence-group">
+							<h4>Evidence gaps</h4>
+							{task.gaps.length === 0 ? (
+								<p className="coordinator-muted">No gaps reported by this read.</p>
+							) : (
+								<ul className="coordinator-records">
+									{task.gaps.map((gap, i) => (
+										<li key={`${gap.code}:${i}`} data-gap={gap.code}>
+											{gap.text}
+										</li>
+									))}
+								</ul>
+							)}
+						</section>
+						<section className="coordinator-evidence-group">
+							<h4>
+								Latest attempt <span>· Operator-declared</span>
+							</h4>
 							<p>
-								<code>{latest.id}</code>
-								<br />
-								{ATTEMPT_LABELS[latest.state]} ·{" "}
-								{latest.sendAuthorized
-									? "Send authorization recorded"
-									: "No send authorization recorded in this attempt"}
+								{attempts.count}{" "}
+								{attemptsReady
+									? "attempts recorded"
+									: "attempts visible in an incomplete or unavailable source"}
+								.
 							</p>
-						)}
-					</section>
-					<CheckReceipts verification={verification} />
-					<section className="coordinator-evidence-group">
-						<h4>Evidence gaps</h4>
-						{task.gaps.length === 0 ? (
-							<p className="coordinator-muted">No gaps reported by this read.</p>
-						) : (
-							<ul className="coordinator-records">
-								{task.gaps.map((gap, i) => (
-									<li key={`${gap.code}:${i}`} data-gap={gap.code}>
-										{gap.text}
-									</li>
-								))}
-							</ul>
-						)}
-					</section>
-					<section className="coordinator-evidence-group">
-						<h4>
-							Session association <span>· {association === "explicit" ? "Explicit" : "Unknown"}</span>
-						</h4>
-						<SessionLinks links={task.sessions} by="task" />
-					</section>
+							{latest === null ? null : (
+								<p>
+									<code>{latest.id}</code>
+									<br />
+									{ATTEMPT_LABELS[latest.state]} ·{" "}
+									{latest.sendAuthorized
+										? "Send authorization recorded"
+										: "No send authorization recorded in this attempt"}
+								</p>
+							)}
+						</section>
+						<section className="coordinator-evidence-group">
+							<h4>
+								Session association <span>· {association === "explicit" ? "Explicit" : "Unknown"}</span>
+							</h4>
+							<SessionLinks links={task.sessions} by="task" />
+						</section>
+					</div>
 				</div>
 			</details>
 		</article>
 	);
 }
 
-export function SessionCard({ session }: { session: EndoCoordinatorSessionV0 }): ReactElement {
+export function SessionCard({
+	session,
+	taskTitles,
+	onJumpToTask,
+}: {
+	session: EndoCoordinatorSessionV0;
+	taskTitles?: Map<string, string>;
+	onJumpToTask?: (taskId: string) => void;
+}): ReactElement {
 	return (
 		<details className="coordinator-session" data-testid="coordinator-session" data-observation={session.observation}>
 			<summary>
 				<span className="coordinator-session-name">
-					{session.runtime ?? "Runtime unknown"} <code>{session.sessionId}</code>
+					<span className="coordinator-session-runtime">{session.runtime ?? "Runtime unknown"}</span>{" "}
+					<code>{session.sessionId}</code>
 				</span>
 				<span className="coordinator-tags">
-					<strong>{session.observation === "active" ? "Recorded active" : "Last observed"}</strong>
+					<strong className="coordinator-obs-label" data-observation={session.observation}>
+						{session.observation === "active" ? "Recorded active" : "Last observed"}
+					</strong>
 					<Freshness state={session.freshness.state} />
 				</span>
 				<span className="coordinator-tags coordinator-muted">
@@ -280,7 +347,27 @@ export function SessionCard({ session }: { session: EndoCoordinatorSessionV0 }):
 			</summary>
 			<div className="coordinator-evidence-body">
 				{session.freshness.reason === null ? null : <p>{session.freshness.reason}</p>}
-				<p>This record does not establish whether the session is alive now.</p>
+				<p className="coordinator-muted">This record does not establish whether the session is alive now.</p>
+				<dl className="coordinator-session-counts">
+					<div>
+						<dt>Events</dt>
+						<dd>{session.counts.events}</dd>
+					</div>
+					<div>
+						<dt>Observed</dt>
+						<dd>{session.counts.controllerObserved}</dd>
+					</div>
+					<div>
+						<dt>Reported</dt>
+						<dd>{session.counts.agentReported}</dd>
+					</div>
+					{session.counts.anomalies > 0 ? (
+						<div data-tone="fault">
+							<dt>Anomalies</dt>
+							<dd>{session.counts.anomalies}</dd>
+						</div>
+					) : null}
+				</dl>
 				{session.openRun === null ? null : (
 					<p>
 						Open run recorded · {session.openRun.turns} turns · <Basis basis={session.openRun.basis} />
@@ -310,7 +397,7 @@ export function SessionCard({ session }: { session: EndoCoordinatorSessionV0 }):
 				)}
 				{session.moreActivity > 0 ? <p>{session.moreActivity} older events not shown.</p> : null}
 				<h4>{session.association === "explicit" ? "Explicit task links" : "Task association unknown"}</h4>
-				<SessionLinks links={session.links} by="session" />
+				<SessionLinks links={session.links} by="session" taskTitles={taskTitles} onJumpToTask={onJumpToTask} />
 			</div>
 		</details>
 	);

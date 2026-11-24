@@ -59,6 +59,9 @@ export function readCoordinatorStatus(value: unknown): EndoCoordinatorStatusV0 |
 function displayFieldsValid(status: EndoCoordinatorStatusV0): boolean {
 	return (
 		time(status.readAtMs) &&
+		(["tasks", "attempts", "events"] as const).every(
+			(key) => status.sources[key].detail === null || text(status.sources[key].detail),
+		) &&
 		Object.values(status.unlistedSessions).every(count) &&
 		status.attention.every((item) => hasLabel(ATTENTION_LABELS, item.kind)) &&
 		status.findings.every((finding) => text(finding.text)) &&
@@ -113,6 +116,11 @@ function displayFieldsValid(status: EndoCoordinatorStatusV0): boolean {
 				(session.openRun === null ||
 					(count(session.openRun.turns) && ENDO_COORDINATOR_BASES_V0.includes(session.openRun.basis))) &&
 				session.activity.every((item) => text(item.kind) && text(item.eventId) && time(item.atMs)) &&
+				count(session.counts.events) &&
+				count(session.counts.agentReported) &&
+				count(session.counts.controllerObserved) &&
+				count(session.counts.unclassified) &&
+				count(session.counts.anomalies) &&
 				session.links.every((link) => link.source === "pi-live" || link.source === "omp-saved"),
 		)
 	);

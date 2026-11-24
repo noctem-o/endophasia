@@ -130,6 +130,14 @@ describe.skipIf(!haveGit)("paired Coordinator read", () => {
 		badAuthority.authority.decisionAuthority = "agent";
 		expect(() => validateEndoCoordinatorStatusV0(badAuthority)).toThrow();
 		expect(readCoordinatorStatus(badAuthority)).toBeNull();
+
+		const badCounts = structuredClone(status) as unknown as { sessions: { counts: unknown }[] };
+		badCounts.sessions[0]!.counts = { events: "oops" };
+		expect(readCoordinatorStatus(badCounts)).toBeNull();
+
+		const badDetail = structuredClone(status) as unknown as { sources: { tasks: { detail: unknown } } };
+		badDetail.sources.tasks.detail = { crash: true };
+		expect(readCoordinatorStatus(badDetail)).toBeNull();
 	});
 
 	it("bounds negative directory limits and charges temporary receipt entries across attempts", async () => {

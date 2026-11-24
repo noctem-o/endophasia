@@ -30,7 +30,9 @@ And every section carries `freshness: { state: fresh | stale | unavailable | inc
 
 Contradictions are findings, never silent overrides: `status-contradicts-verification` (in review while a check at the current HEAD fails), `session-lifecycle-anomalies` and `session-link-not-in-log`. A recorded report plus a failing check is **not** a contradiction. The attempt record says the operator recorded that a report exists, not what result the agent claimed, so the gap `report-recorded-unverified` keeps the record's source (`operator-declared`) and draws no inference.
 
-The validator re-derives labels rather than trusting them. It recomputes every `ageMs` from `readAtMs`, refuses observations after the read, and re-checks `fresh`, `stale` and `active` against `staleAfterMs`, the recorded state and whether the log was read whole. It checks `failing`, `inconclusive` against the current-HEAD results and the observed HEAD. It reconciles `scope` with the request and refuses an unavailable or partial source that lacks its finding, or a completed or not-current task that lacks its gap. An event dated after the read is left out of freshness, its session is not reported active (`incomplete`), and the read raises `event-time-in-future`.
+`verification.receiptReadComplete` says the read covered every applicable attempt and surviving receipt file without omissions or problems. A complete read of an empty receipt folder gives `no-checks` and `no-check-recorded` when there are no planned checks to account for. A skipped, truncated or unreadable source gives `incomplete` with the corresponding read gap, unless a current failure or inconclusive result was actually read; those results keep their state and are marked incomplete. A complete read is not proof that every historical receipt still exists.
+
+The validator re-derives labels rather than trusting them. It recomputes every `ageMs` from `readAtMs`, refuses observations after the read, and re-checks `fresh`, `stale` and `active` against `staleAfterMs`, the recorded state and whether the log was read whole. It checks `failing`, `inconclusive` against the current-HEAD results and the observed HEAD, and refuses `no-checks` or `no-check-recorded` without a complete, empty receipt read. It reconciles `scope` with the request and refuses an unavailable or partial source that lacks its finding, or a completed or not-current task that lacks its gap. An event dated after the read is left out of freshness, its session is not reported active (`incomplete`), and the read raises `event-time-in-future`.
 
 ## 3. Interface
 
@@ -68,7 +70,7 @@ JSON (same read, abbreviated):
     "tasks": [{
       "taskId": "endo.task.43ecae8d…", "status": "review", "phase": "awaiting-review", "statusSource": "operator-declared",
       "attempts": { "count": 1, "latest": { "state": "prepared", "stateBasis": "operator-declared", "sendAuthorized": false } },
-      "verification": { "state": "incomplete", "basis": "controller-observed-host-check", "incomplete": true,
+      "verification": { "state": "incomplete", "basis": "controller-observed-host-check", "receiptReadComplete": true, "incomplete": true,
         "freshness": { "state": "incomplete" },
         "results": [{ "command": "node ok.mjs", "outcome": "passed", "relation": "at-head", "freshness": "fresh", "basis": "controller-observed" }] },
       "gaps": [{ "code": "receipt-history-unverifiable", "text": "…" }], "sessions": [], "association": "unknown"

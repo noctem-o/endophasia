@@ -15,7 +15,6 @@ import { launchProtectedAttemptV0 } from "../adapters/develop/protected-attempt.
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { flagsOf } from "./develop-tasks.ts";
 import { runProtectedExperimentV0 } from "./experiment-protected.ts";
-import { requireWorkbenchTerminalV0 } from "./workbench.ts";
 
 export const ATTEMPT_PROTECTED_RUN_USAGE_V0 =
 	"usage: endo attempt protected-run [<root> | --root dir] --attempt <id> --template <spec.json> --out <new dir>";
@@ -44,7 +43,7 @@ export async function attemptProtectedRunCommandV0(argv: readonly string[]): Pro
 	if (attemptId === undefined || templatePath === undefined || out === undefined)
 		throw new TypeError(ATTEMPT_PROTECTED_RUN_USAGE_V0);
 	try {
-		requireWorkbenchTerminalV0();
+		(await import("./workbench.ts")).requireWorkbenchTerminalV0();
 	} catch (error) {
 		throw new TypeError(
 			"attempt protected-run is approved only on this process's controlling terminal (stdin and stderr), never from a pipe, a file or a script: " +

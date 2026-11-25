@@ -40,7 +40,7 @@ import { endoInterventionCaptureSourceV0 } from "./intervention-capture.ts";
 import { attachSummaryV0, ENDO_PROMPT_COST_NOTICE_V0 } from "./loop-hints.ts";
 import { describeProcessCleanupV0, liveContainmentV0 } from "./process-cleanup.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
-import { requireWorkbenchTerminalV0, startWorkbenchV0, type WorkbenchHandleV0 } from "./workbench.ts";
+import type { WorkbenchHandleV0 } from "./workbench.ts";
 
 interface ParsedV0 {
 	root: string;
@@ -278,7 +278,7 @@ async function attach(argv: readonly string[], everyday: boolean): Promise<void>
 		throw new TypeError("--confirm is phrase or short");
 	const mode = (modeFlag ?? (everyday ? "everyday" : "strict")) as EndoWorkbenchModeV0;
 	let protection = hostExecutionProtectionV0();
-	if (parsed.switches.has("--workbench")) requireWorkbenchTerminalV0();
+	if (parsed.switches.has("--workbench")) (await import("./workbench.ts")).requireWorkbenchTerminalV0();
 	// Protected is a promise about the AGENT. Where it cannot be kept, nothing is started: running Strict instead would hand an
 	// unrestricted agent to an operator who asked for a restricted one. (Everyday falls back to Strict: that only keeps authority here.)
 	if (mode === "protected") {
@@ -374,7 +374,7 @@ async function attachWithControl(
 	try {
 		server = await startEndoControlServerV0(parsed.root, desk);
 		if (parsed.switches.has("--workbench"))
-			workbench = await startWorkbenchV0(session, desk, {
+			workbench = await (await import("./workbench.ts")).startWorkbenchV0(session, desk, {
 				// The directory Pi was actually started in: one source, the attachment's own.
 				cwd: control.isolatedWorkspace ?? resolve(session.owner.options.cwd ?? process.cwd()),
 				...(control.isolatedWorkspace === undefined ? {} : { isolated: true }),

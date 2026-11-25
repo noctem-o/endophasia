@@ -245,7 +245,6 @@ const BENIGN_STATUS_NOTIFICATIONS = new Set([
 	"thread/settings/updated",
 	"thread/queue/changed",
 	"remoteControl/status/changed",
-	"mcpServer/startupStatus/updated",
 	"item/commandExecution/outputDelta",
 	"item/commandExecution/terminalInteraction",
 	"item/fileChange/outputDelta",
@@ -613,6 +612,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				disabledMcpServers,
 				unsafeEnabledMcpServers,
 				unexpectedMcpStartups: [...this.#unexpectedMcpStartups].sort(),
+				expectedSandboxMode: this.#sandboxMode,
 			});
 			if (!policyCheck.ok) {
 				const startedThreadId =
@@ -1177,8 +1177,10 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		}
 
 		// Always evaluate against the authoritative pending request received from Codex (never caller-supplied fields),
-		// always enforce activeTurnId (even when idle -> null), and restrict accepted kinds to interactive v0 kinds.
+		// always enforce an active non-null turn (refusing idle-state `null === null` bypasses), and restrict accepted
+		// kinds to interactive v0 kinds.
 		const authoritativeRequest = pending.parsed.normalized;
+		const activeTurn = this.#activeTurn;
 		const outcome: EndoDevelopNativeApprovalOutcomeV0 = !pending.parsed.interactiveAcceptSupported
 			? {
 					resolution: "declined",
@@ -1190,22 +1192,33 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					reason: `Native approval method ${pending.parsed.nativeMethod} is declined fail-closed in v0.`,
 					grantsEndophasiaAuthority: false,
 				}
-			: endoEvaluateNativeApprovalV0({
-					request: authoritativeRequest,
-					decision: decision ?? null,
-					current: {
-						source: "codex-live",
-						sessionKey: endoAdapterSessionKeyV0(this.#sessionIdentity()),
-						instanceId: this.#instanceId,
-						connected: this.#connected && !this.#closed,
-						activeTurnId: this.#activeTurn?.turnId ?? null,
-						knownKinds: CODEX_INTERACTIVE_APPROVAL_KINDS_V0,
-						mode: "server-initiated-requests",
-						nowMs: options.nowMs ?? this.#now(),
-						// Codex v0 NEVER allows session-wide or policy-amendment native approval scope.
-						allowSessionOrPolicyScope: false,
-					},
-				});
+			: activeTurn === null ||
+					authoritativeRequest.turnId === null ||
+					authoritativeRequest.turnId !== activeTurn.turnId
+				? {
+						resolution: "cancelled",
+						requestId: authoritativeRequest.requestId,
+						code: "binding-mismatch",
+						reason:
+							"Interactive Codex native approval requires an active turn matching a non-null request turnId.",
+						grantsEndophasiaAuthority: false,
+					}
+				: endoEvaluateNativeApprovalV0({
+						request: authoritativeRequest,
+						decision: decision ?? null,
+						current: {
+							source: "codex-live",
+							sessionKey: endoAdapterSessionKeyV0(this.#sessionIdentity()),
+							instanceId: this.#instanceId,
+							connected: this.#connected && !this.#closed,
+							activeTurnId: activeTurn.turnId,
+							knownKinds: CODEX_INTERACTIVE_APPROVAL_KINDS_V0,
+							mode: "server-initiated-requests",
+							nowMs: options.nowMs ?? this.#now(),
+							// Codex v0 NEVER allows session-wide or policy-amendment native approval scope.
+							allowSessionOrPolicyScope: false,
+						},
+					});
 
 		// Unified single-use cleanup, protocol reply, canonical record, and observation emission.
 		this.#consumedNativeApprovals.add(authoritativeRequest.requestId);
@@ -1440,7 +1453,32 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			const serverName = sanitizeOptional(params.name, 128) ?? "(unknown)";
 			if (!this.#allowedMcpServers.has(serverName)) {
 				this.#unexpectedMcpStartups.add(serverName);
+				// Fail closed even when an unallowlisted MCP server starts asynchronously AFTER open() returned!
+				if (this.#connected) {
+					const reason = `Unwanted MCP server "${serverName}" attempted startup during live session (fail-closed).`;
+					this.#recordCanonical(
+						"codex.transport-fault",
+						{
+							instanceId: this.#instanceId,
+							threadId: this.#threadId,
+							faultKind: "unexpected-mcp-startup",
+							detail: reason,
+						},
+						"runtime-fact",
+					);
+					this.#emitObservation(
+						{
+							kind: "evidence-gap",
+							gap: "unrecognized-runtime-event",
+							reason,
+						},
+						"controller-observed",
+					);
+					this.invalidateEvidence(reason);
+					this.markDisconnected(reason);
+				}
 			}
+			return;
 		}
 
 		// Owned-thread isolation: extract threadId from threadId / conversationId / thread.id, and refuse

@@ -30,6 +30,11 @@ const VALUE_FLAGS = new Set(["--attachment", "--executable", "--cwd", "--model",
 const BOOL_FLAGS = new Set(["--ephemeral"]);
 const VALID_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
 type CodexReasoningEffortV0 = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+const sanitizeTerminalField = (value: string, max = 256): string =>
+	value
+		.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ")
+		.trim()
+		.slice(0, max);
 
 function parseReasoningEffort(raw: string | undefined): CodexReasoningEffortV0 | undefined {
 	if (raw === undefined) return undefined;
@@ -139,9 +144,11 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 	const write = (text: string) => process.stderr.write(text);
 
 	// Serialize EVERY terminal readline prompt through a single queue so REPL `codex>`, `approval>`, and async
-	// `native-approval>` never overlap on stdin. Urgent prompts preempt an idle REPL prompt cleanly.
+	// `native-approval>` never overlap on stdin. Urgent prompts preempt an idle REPL prompt cleanly, including
+	// when an urgent prompt arrives in the microtask window before the REPL prompt begins awaiting stdin.
 	let promptQueue: Promise<unknown> = Promise.resolve();
 	let replPromptAbort: AbortController | null = null;
+	let pendingUrgentPrompts = 0;
 	let shuttingDown = false;
 	const onSignal = (): void => {
 		shuttingDown = true;
@@ -153,9 +160,17 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 
 	const enqueuePrompt = <T>(fn: () => Promise<T>, preemptRepl: boolean): Promise<T> => {
 		if (preemptRepl) {
+			pendingUrgentPrompts += 1;
 			replPromptAbort?.abort();
 		}
-		const task = promptQueue.then(fn);
+		const run = async (): Promise<T> => {
+			try {
+				return await fn();
+			} finally {
+				if (preemptRepl) pendingUrgentPrompts = Math.max(0, pendingUrgentPrompts - 1);
+			}
+		};
+		const task = promptQueue.then(run);
 		promptQueue = task.catch(() => {});
 		return task;
 	};
@@ -187,11 +202,11 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 			if (shuttingDown || signal.aborted) return null;
 			write(
 				`\n[NATIVE CODEX APPROVAL REQUEST]\n` +
-					`  Request: ${request.requestId}\n` +
-					`  Kind:    ${request.approvalKind} (${request.nativeMethod})\n` +
-					`  Scope:   ${request.requestedScope} (Endophasia v0 permits one-time only)\n` +
-					`  Turn:    ${request.turnId ?? "(none)"} | Item: ${request.itemId ?? "(none)"}\n` +
-					`  Summary: ${request.summary}\n` +
+					`  Request: ${sanitizeTerminalField(request.requestId, 128)}\n` +
+					`  Kind:    ${sanitizeTerminalField(request.approvalKind, 64)} (${sanitizeTerminalField(request.nativeMethod, 128)})\n` +
+					`  Scope:   ${sanitizeTerminalField(request.requestedScope, 32)} (Endophasia v0 permits one-time only)\n` +
+					`  Turn:    ${request.turnId === null ? "(none)" : sanitizeTerminalField(request.turnId, 128)} | Item: ${request.itemId === null ? "(none)" : sanitizeTerminalField(request.itemId, 128)}\n` +
+					`  Summary: ${sanitizeTerminalField(request.summary, 256)}\n` +
 					`  Type "ALLOW ONCE" to accept once, "CANCEL" to cancel, or anything else to decline:\n`,
 			);
 			try {
@@ -249,6 +264,7 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 			const result = await enqueuePrompt(
 				async (): Promise<{ kind: "line"; line: string } | { kind: "preempted" } | { kind: "eof" }> => {
 					if (shuttingDown) return { kind: "eof" };
+					if (pendingUrgentPrompts > 0) return { kind: "preempted" };
 					const ac = new AbortController();
 					replPromptAbort = ac;
 					try {

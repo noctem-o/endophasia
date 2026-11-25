@@ -401,6 +401,56 @@ describe("DEVELOP-CODEX-LIVE-001: D1 transport & D2 identity/policy", () => {
 		} finally {
 			await roAdapter.close();
 		}
+
+		// Requested read-only sandbox MUST fail closed if Codex broadens effective sandbox to workspaceWrite (Review #8).
+		const roBroadenAdapter = new CodexDevelopAdapterV0({
+			root: makeTempDir("endo-ro-broaden-"),
+			attachmentId: "codex.ro",
+			projectScope: childWs,
+			executable: FAKE_CODEX,
+			sandboxMode: "read-only",
+			env: {
+				PATH: process.env.PATH ?? "",
+				HOME: process.env.HOME ?? "",
+				FAKE_CODEX_SCENARIO: "broaden-readonly-to-workspace",
+			},
+			fingerprint: roCheck.fingerprint,
+			capabilityState: roCheck.capabilityState,
+		});
+		await expect(roBroadenAdapter.open()).rejects.toThrow(/broadened to "workspaceWrite"/i);
+
+		// Late unexpected MCP startup arriving AFTER open() MUST fail closed (Review #1).
+		const fxLateMcp = await createCheckedFixture({ scenario: "late-unexpected-mcp-startup" });
+		try {
+			await fxLateMcp.adapter.open();
+			await expect
+				.poll(() => fxLateMcp.adapter.snapshot().connection.state, { timeout: 2_000 })
+				.toBe("disconnected");
+			const ctrl = new CodexLiveControllerV0({
+				adapter: fxLateMcp.adapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			expect(await ctrl.requestPrompt("should fail after late rogue MCP")).toMatchObject({
+				status: "refused",
+				stage: "admission",
+			});
+		} finally {
+			await fxLateMcp.adapter.close();
+		}
+
+		// baseEnv omitting CODEX_HOME must NOT leak host process.env.CODEX_HOME, and empty "" must NOT link ./auth.json (Review #3).
+		const cleanHome = makeTempDir("endo-clean-home-");
+		const isoClean = prepareCodexIsolatedHomeV0({
+			root: makeTempDir("endo-iso-clean-"),
+			cwd: childWs,
+			baseEnv: { PATH: process.env.PATH ?? "", HOME: cleanHome },
+			sourceCodexHome: "",
+		});
+		try {
+			expect(isoClean.authLinked).toBe(false);
+		} finally {
+			isoClean.cleanup();
+		}
 	});
 
 	it("handles malformed/oversized frames, unknown response IDs, and separates stderr diagnostics", async () => {
@@ -1031,6 +1081,30 @@ describe("DEVELOP-CODEX-LIVE-001: D5 fail-closed native approvals", () => {
 				.toEqual({ decision: "cancel" });
 		} finally {
 			await fxIdle.adapter.close();
+		}
+
+		// 4. Idle-state native approval with OMITTED turnId (`null === null` bypass check, Review #7) MUST fail closed!
+		const logIdleNull = join(makeTempDir(), "wire-idle-null-turn.json");
+		const fxIdleNull = await createCheckedFixture({
+			scenario: "native-approval-idle-null-turn",
+			logFile: logIdleNull,
+			onNativeApprovalRequest: async (req) =>
+				buildCodexNativeApprovalDecisionV0({ request: req, decision: "accept" }),
+		});
+		try {
+			await fxIdleNull.adapter.open();
+			await expect
+				.poll(() => {
+					if (!existsSync(logIdleNull)) return null;
+					const wire = JSON.parse(readFileSync(logIdleNull, "utf8")) as {
+						direction: string;
+						result?: Record<string, unknown>;
+					}[];
+					return wire.find((w) => w.direction === "server-request-reply")?.result ?? null;
+				})
+				.toEqual({ decision: "cancel" });
+		} finally {
+			await fxIdleNull.adapter.close();
 		}
 	});
 });

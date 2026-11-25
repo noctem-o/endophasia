@@ -193,6 +193,9 @@ function handleMessage(msg) {
 		if (scenarios.has("permissive-network-access")) {
 			sandbox = { type: "workspaceWrite", writableRoots: [], networkAccess: true };
 		}
+		if (scenarios.has("broaden-readonly-to-workspace")) {
+			sandbox = { type: "workspaceWrite", writableRoots: [], networkAccess: false };
+		}
 
 		const thread = {
 			id: threadId,
@@ -249,6 +252,31 @@ function handleMessage(msg) {
 					cwd: "/tmp/fixture",
 				},
 			});
+		}
+		if (scenarios.has("native-approval-idle-null-turn")) {
+			setTimeout(() => {
+				send({
+					id: "srv-idle-null-turn-1",
+					method: "item/commandExecution/requestApproval",
+					params: {
+						kind: "command",
+						threadId,
+						itemId: "item-idle-null-1",
+						startedAtMs: Date.now(),
+						environmentId: null,
+						command: "echo idle-null-turn",
+						cwd: "/tmp/fixture",
+					},
+				});
+			}, 25);
+		}
+		if (scenarios.has("late-unexpected-mcp-startup")) {
+			setTimeout(() => {
+				send({
+					method: "mcpServer/startupStatus/updated",
+					params: { threadId, name: "late_rogue_mcp", environmentId: null, status: "starting", error: null },
+				});
+			}, 30);
 		}
 		return;
 	}

@@ -142,6 +142,7 @@ export function verifyCodexEffectivePolicyV0(
 		readonly disabledMcpServers?: readonly string[];
 		readonly unsafeEnabledMcpServers?: readonly string[];
 		readonly unexpectedMcpStartups?: readonly string[];
+		readonly expectedSandboxMode?: CodexSandboxModeV0;
 		readonly allowNetworkAccess?: boolean;
 	} = {},
 ): CodexEffectivePolicyVerificationV0 {
@@ -178,6 +179,10 @@ export function verifyCodexEffectivePolicyV0(
 		if (sandbox.type !== "workspaceWrite" && sandbox.type !== "readOnly") {
 			reasons.push(
 				`effective sandbox policy is "${sandbox.type}", which is not in the allowlisted workspaceWrite/readOnly set`,
+			);
+		} else if (options.expectedSandboxMode === "read-only" && sandbox.type !== "readOnly") {
+			reasons.push(
+				`effective sandbox policy broadened to "${sandbox.type}" despite requested read-only sandbox mode`,
 			);
 		}
 		if (options.allowNetworkAccess !== true && sandbox.networkAccess !== false) {
@@ -285,17 +290,8 @@ export async function runCodexLocalProtocolCheckV0(
 	}
 
 	let ephemeralDir: string | null = null;
-	if (options.checkCwd === undefined) {
-		ephemeralDir = mkdtempSync(join(tmpdir(), "endo-codex-check-"));
-	}
-	const workDir = options.checkCwd ?? ephemeralDir!;
-	const isolatedHome = prepareCodexIsolatedHomeV0({
-		root: options.root,
-		cwd: workDir,
-		sandboxMode,
-		...(options.env === undefined ? {} : { baseEnv: options.env }),
-		...(options.sourceCodexHome === undefined ? {} : { sourceCodexHome: options.sourceCodexHome }),
-	});
+	let isolatedHome: ReturnType<typeof prepareCodexIsolatedHomeV0> | null = null;
+	let client: CodexAppServerClientV0 | null = null;
 	const configOverrides = [
 		...CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0.filter((entry) => !entry.startsWith("sandbox_mode=")),
 		`sandbox_mode="${sandboxMode}"`,
@@ -303,22 +299,6 @@ export async function runCodexLocalProtocolCheckV0(
 	];
 	const timeoutMs = options.timeoutMs ?? 15_000;
 	const unexpectedMcpStartups = new Set<string>();
-
-	const client = new CodexAppServerClientV0({
-		executable: executablePath,
-		...(options.args === undefined ? { configOverrides } : { args: options.args }),
-		cwd: workDir,
-		env: isolatedHome.childEnv,
-		...(options.scope === undefined ? {} : { scope: options.scope }),
-		requestTimeoutMs: timeoutMs,
-		onNotification: (notification) => {
-			if (notification.method === "mcpServer/startupStatus/updated") {
-				const rawName = notification.params?.name;
-				const name = typeof rawName === "string" && rawName.trim().length > 0 ? rawName.trim() : "(unknown)";
-				unexpectedMcpStartups.add(name);
-			}
-		},
-	});
 
 	let initResult: CodexInitializeResultV0;
 	let configReadRaw: Record<string, unknown>;
@@ -328,9 +308,38 @@ export async function runCodexLocalProtocolCheckV0(
 	let threadReadOk = false;
 	let unsubscribeOk = false;
 	let threadId: string | null = null;
-	let cleanup: ProcessCleanupV0;
+	let cleanup: ProcessCleanupV0 = { boundary: "process-group", result: "unverified" };
+	let stderrDiagnostics: { readonly text: string; readonly truncated: boolean } = { text: "", truncated: false };
 
 	try {
+		if (options.checkCwd === undefined) {
+			ephemeralDir = mkdtempSync(join(tmpdir(), "endo-codex-check-"));
+		}
+		const workDir = options.checkCwd ?? ephemeralDir!;
+		isolatedHome = prepareCodexIsolatedHomeV0({
+			root: options.root,
+			cwd: workDir,
+			sandboxMode,
+			...(options.env === undefined ? {} : { baseEnv: options.env }),
+			...(options.sourceCodexHome === undefined ? {} : { sourceCodexHome: options.sourceCodexHome }),
+		});
+
+		client = new CodexAppServerClientV0({
+			executable: executablePath,
+			...(options.args === undefined ? { configOverrides } : { args: options.args }),
+			cwd: workDir,
+			env: isolatedHome.childEnv,
+			...(options.scope === undefined ? {} : { scope: options.scope }),
+			requestTimeoutMs: timeoutMs,
+			onNotification: (notification) => {
+				if (notification.method === "mcpServer/startupStatus/updated") {
+					const rawName = notification.params?.name;
+					const name = typeof rawName === "string" && rawName.trim().length > 0 ? rawName.trim() : "(unknown)";
+					unexpectedMcpStartups.add(name);
+				}
+			},
+		});
+
 		initResult = await client.initialize(
 			{
 				clientInfo: { name: "endophasia-codex-check", version: "0.1.0" },
@@ -381,8 +390,11 @@ export async function runCodexLocalProtocolCheckV0(
 			}
 		}
 	} finally {
-		cleanup = await client.close();
-		isolatedHome.cleanup();
+		if (client !== null) {
+			cleanup = await client.close();
+			stderrDiagnostics = client.stderrDiagnostics();
+		}
+		isolatedHome?.cleanup();
 		if (ephemeralDir !== null) {
 			try {
 				rmSync(ephemeralDir, { recursive: true, force: true });
@@ -396,6 +408,7 @@ export async function runCodexLocalProtocolCheckV0(
 		disabledMcpServers,
 		unsafeEnabledMcpServers,
 		unexpectedMcpStartups: [...unexpectedMcpStartups].sort(),
+		expectedSandboxMode: sandboxMode,
 	});
 	const configurationDigest = codexConfigurationDigestV0({
 		approvalPolicy: effectivePolicy.effective.approvalPolicy,
@@ -532,6 +545,6 @@ export async function runCodexLocalProtocolCheckV0(
 		capabilityState,
 		cleanup,
 		threadId,
-		stderrDiagnostics: client.stderrDiagnostics(),
+		stderrDiagnostics,
 	};
 }

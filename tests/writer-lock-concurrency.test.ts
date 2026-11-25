@@ -372,5 +372,13 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 		expect((e4Err as EndoStoreLockedErrorV0).holder).toContain("e4-per-attachment-store");
 		expect((e4Err as EndoStoreLockedErrorV0).recoveryHint).toContain(lockPath);
 		expect(existsSync(lockPath)).toBe(true);
+
+		// 4. Out-of-range PID (> 32-bit pid_t max 0x7fffffff) fails closed instead of treating EINVAL/RangeError as dead!
+		writeFileSync(
+			lockPath,
+			JSON.stringify({ pid: 9_000_000_000, attachment: "bogus.pid", at: "2026-01-01T00:00:00Z" }),
+		);
+		expect(() => acquireEndoEventStoreWriterLockV0(root, "codex.test")).toThrow(EndoStoreLockedErrorV0);
+		expect(existsSync(lockPath)).toBe(true);
 	});
 });

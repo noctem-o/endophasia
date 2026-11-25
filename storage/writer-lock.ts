@@ -87,7 +87,10 @@ function readLock(lockPath: string): ReadLockResult {
 			return { state: "malformed", raw };
 		}
 		const rec = parsed as { pid?: unknown; attachment?: unknown; token?: unknown };
-		const pid = typeof rec.pid === "number" && Number.isSafeInteger(rec.pid) && rec.pid > 0 ? rec.pid : undefined;
+		const pid =
+			typeof rec.pid === "number" && Number.isSafeInteger(rec.pid) && rec.pid > 0 && rec.pid <= 0x7fffffff
+				? rec.pid
+				: undefined;
 		return {
 			state: "ok",
 			raw,
@@ -104,11 +107,13 @@ function readLock(lockPath: string): ReadLockResult {
 
 function isPidAlive(pid: number): boolean {
 	if (pid === process.pid) return true;
+	if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 0x7fffffff) return true;
 	try {
 		process.kill(pid, 0);
 		return true;
 	} catch (probe) {
-		return (probe as NodeJS.ErrnoException).code === "EPERM";
+		// Fail closed: ONLY ESRCH proves the process does not exist; EPERM/EINVAL/other errors treat PID as held.
+		return (probe as NodeJS.ErrnoException).code !== "ESRCH";
 	}
 }
 
@@ -206,16 +211,23 @@ export function acquireEndoEventStoreWriterLockV0(
 		const rechecked = readLock(path);
 		if (rechecked.state === "ok") {
 			if (rechecked.raw !== observed.raw || rechecked.holder.pid === undefined || isPidAlive(rechecked.holder.pid)) {
-				const holderDesc =
-					rechecked.holder.pid === undefined
-						? `non-PID lock barrier (${rechecked.holder.attachment})`
-						: `pid ${String(rechecked.holder.pid)}, ${rechecked.holder.attachment}`;
-				throw new EndoStoreLockedErrorV0(path, holderDesc);
+				if (rechecked.holder.pid === undefined) {
+					throw new EndoStoreLockedErrorV0(
+						path,
+						`non-PID lock barrier (${rechecked.holder.attachment})`,
+						`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
+					);
+				}
+				throw new EndoStoreLockedErrorV0(
+					path,
+					`pid ${String(rechecked.holder.pid)}, ${rechecked.holder.attachment}`,
+				);
 			}
 			rmSync(path, { force: true });
 			options.testHooks?.onAfterStaleUnlink?.();
 		} else if (rechecked.state === "malformed") {
-			throw new EndoStoreLockedErrorV0(path, "unreadable lock", manualRecoveryHint(path, recoverPath));
+			// `.recover` is removed by `finally` below, so only `path` needs manual inspection/removal.
+			throw new EndoStoreLockedErrorV0(path, "unreadable lock", manualRecoveryHint(path));
 		}
 		// Now either `path` was missing or we just unlinked the verified dead lock. Attempt one atomic `wx`.
 		try {
@@ -224,6 +236,13 @@ export function acquireEndoEventStoreWriterLockV0(
 		} catch (claimErr) {
 			if ((claimErr as NodeJS.ErrnoException).code === "EEXIST") {
 				const winner = readLock(path);
+				if (winner.state === "ok" && winner.holder.pid === undefined) {
+					throw new EndoStoreLockedErrorV0(
+						path,
+						`non-PID lock barrier (${winner.holder.attachment})`,
+						`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
+					);
+				}
 				const holderDesc =
 					winner.state === "ok"
 						? `pid ${String(winner.holder.pid)}, ${winner.holder.attachment}`

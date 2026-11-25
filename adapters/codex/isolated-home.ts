@@ -20,7 +20,16 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	realpathSync,
+	rmSync,
+	statSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -52,20 +61,33 @@ function normalizePath(pathStr: string): string {
 	}
 }
 
-/** Collect `cwd` plus every ancestor directory containing a `.codex` folder so project-local MCPs cannot leak in. */
+/**
+ * Collect `cwd` (both logical `resolve(cwd)` and physical `realpathSync(cwd)`) plus every ancestor along either
+ * chain containing a `.codex` or `.git` marker so neither symlinked project roots nor ancestor `.codex/config.toml`
+ * layers can leak project-local MCP servers or hooks into Codex.
+ */
 function collectUntrustedProjectPaths(cwd: string): string[] {
-	const normalizedCwd = normalizePath(cwd);
-	const out = new Set<string>([normalizedCwd]);
-	let current = normalizedCwd;
-	for (;;) {
-		if (existsSync(join(current, ".codex"))) {
-			out.add(current);
+	const logicalCwd = resolve(cwd);
+	const physicalCwd = normalizePath(cwd);
+	const out = new Set<string>([logicalCwd, physicalCwd]);
+	for (const start of [logicalCwd, physicalCwd]) {
+		let current = start;
+		for (;;) {
+			if (existsSync(join(current, ".codex")) || existsSync(join(current, ".git"))) {
+				out.add(current);
+			}
+			const parent = dirname(current);
+			if (parent === current) break;
+			current = parent;
 		}
-		const parent = dirname(current);
-		if (parent === current) break;
-		current = parent;
 	}
 	return [...out].sort();
+}
+
+function nonEmpty(value: string | undefined): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const trimmed = value.trim();
+	return trimmed.length > 0 ? trimmed : undefined;
 }
 
 export interface PrepareCodexIsolatedHomeOptionsV0 {
@@ -127,16 +149,26 @@ export function prepareCodexIsolatedHomeV0(options: PrepareCodexIsolatedHomeOpti
 						Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
 					);
 
+		// When `options.baseEnv` is explicitly provided, do NOT leak the host process's `process.env.CODEX_HOME`.
+		// Treat empty strings as unset so `join("", "auth.json")` never resolves a relative `./auth.json`.
+		const envCodexHome =
+			options.baseEnv !== undefined ? nonEmpty(baseEnv.CODEX_HOME) : nonEmpty(process.env.CODEX_HOME);
+		const envHome = nonEmpty(baseEnv.HOME) ?? nonEmpty(homedir());
 		const sourceCodexHome =
-			options.sourceCodexHome ??
-			baseEnv.CODEX_HOME ??
-			process.env.CODEX_HOME ??
-			join(baseEnv.HOME ?? homedir(), ".codex");
+			nonEmpty(options.sourceCodexHome) ??
+			envCodexHome ??
+			(envHome !== undefined ? join(envHome, ".codex") : undefined);
 
 		let authLinked = false;
-		if (options.linkAuth !== false) {
+		if (options.linkAuth !== false && sourceCodexHome !== undefined) {
 			const sourceAuthPath = join(sourceCodexHome, "auth.json");
-			if (existsSync(sourceAuthPath)) {
+			let isRegularFile = false;
+			try {
+				isRegularFile = statSync(sourceAuthPath).isFile();
+			} catch {
+				isRegularFile = false;
+			}
+			if (isRegularFile) {
 				// Symlink ONLY — never read, parse, copy, or extract credentials.
 				const target = normalizePath(sourceAuthPath);
 				symlinkSync(target, join(dir, "auth.json"));

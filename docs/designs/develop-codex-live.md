@@ -177,3 +177,68 @@ An independent read-only adversarial code review (`82169716-f337-4b4a-bd31-f8cad
   16. **Runtime `reasoningEffort` validation (`cli/codex.ts`, `adapters/codex/develop-adapter.ts`):** Validated against `low | medium | high | xhigh | max | ultra` in both CLI flag parsing and adapter constructor/`open()`.
   17. **Duplicate-server-request & idle/missing-thread hardening (`adapters/codex/develop-adapter.ts`):** Verified single fail-closed handling and duplicate rejection without leaking state.
   18. **Expanded deterministic regression suite (`tests/develop-codex-live.test.ts`, `tests/fixtures/fake-codex-app-server.mjs`):** Added 30 total tests including real `PiAttachmentV0.openSession()` ↔ `CodexDevelopAdapterV0.open()` bidirectional contention, `duplicate-server-req`, `turn/steer`, all remaining fail-closed `ServerRequest` methods, `serverRequest/resolved`, sealed-store refusal, same-chunk `turn/completed(failed)`, concurrent prompt dispatch, pre-aborted `AbortSignal`, mock `ProcessScopeV0` cleanup, allowlist policy rejection variants, and `presentLiveCodex` edge states.
+
+---
+
+## 8. Focused remediation (PR #182 operator review)
+
+Following operator review of head `7d01719597fd412bb1aa20e4120753d319bf6a80`, four focused areas were investigated empirically, remediated, and audited by a second fresh read-only adversarial reviewer.
+
+### 8.1 Startup isolation & inherited MCP startup prevention (Concern 1)
+
+* **Empirical finding on real `/usr/bin/codex` (`codex-cli 0.171.0`):**
+  1. Disabling user MCP servers (`firecrawl`, `node_repl`) only on `thread/start` was insufficient: Codex still initialized built-in MCP servers (`cua_repl` via `features.computer_use = true`, `codex_apps` via `features.apps = true`) and touched SQLite WAL/config timestamps inside `~/.codex/`.
+  2. Even when Codex logged a `configWarning` stating project-local `.codex/config.toml` was disabled until trusted, `thread/start` in `0.171.0` **still spawned** a synthetic stdio MCP canary defined in `<ws>/.codex/config.toml` unless `[projects."<path>"] trust_level = "untrusted"` was explicitly written in `config.toml`.
+* **Remediation (`adapters/codex/isolated-home.ts`, `checks.ts`, `develop-adapter.ts`, `cli/codex.ts`):**
+  * Before spawning `codex app-server` (for both `endo codex check` and `CodexDevelopAdapterV0.open()`), `prepareCodexIsolatedHomeV0` creates an ephemeral `0o700` `CODEX_HOME` directory under `<root>/tmp/codex-home-*` with an explicit conservative `config.toml` (`approval_policy = "on-request"`, `approvals_reviewer = "user"`, `sandbox_mode ∈ {"workspace-write", "read-only"}`, `network_access = false`, `writable_roots = []`, `web_search = "disabled"`, `analytics.enabled = false`, `features.{hooks,memories,remote_control,remote_plugin,apps,computer_use,browser_use,browser_use_external} = false`).
+  * Marks `cwd` (both logical `resolve(cwd)` and physical `realpathSync(cwd)`) plus every ancestor containing `.codex` or `.git` as `trust_level = "untrusted"`.
+  * Preserves operator authentication without reading or copying credentials: symlinks `<sourceCodexHome>/auth.json` (only if it is a regular file) into the isolated home; `rmSync` cleanup unlinks the symlink without touching `~/.codex/auth.json`. Env-var (`OPENAI_API_KEY`) and keyring auth remain supported. *(Known tradeoff: if Codex performs an in-place `O_TRUNC` write on `CODEX_HOME/auth.json` during OAuth refresh rather than atomic rename, the symlink would pass that refresh through to `~/.codex/auth.json`.)*
+  * Verifies `initialize.codexHome === isolatedHome.realDir` fail-closed before `config/read` or `thread/start`, enforces `expectedSandboxMode === "read-only" ⇒ sandbox.type === "readOnly"`, and fails closed on ANY unallowlisted `mcpServer/startupStatus/updated` notification both during `open()`/`check()` and asynchronously after `open()` returns (recording `codex.transport-fault`, emitting `evidence-gap`, invalidating evidence, and disconnecting).
+* **Synthetic 4-canary real-binary proof (zero model turns, `/usr/bin/codex` `0.171.0`):**
+  * Placed four live stdio MCP canaries in synthetic user `CODEX_HOME/config.toml` (`user_canary`, `"dotted.canary"`), workspace `<wt>/.codex/config.toml` (`project_canary`), and parent ancestor `<parent>/.codex/config.toml` (`ancestor_canary`).
+  * Observed across both `runCodexLocalProtocolCheckV0` and `CodexDevelopAdapterV0.open()`: `canariesSpawned = { user: false, dotted: false, project: false, ancestor: false }`, `mcpStartupNotifs = []` (zero built-in or user MCP notifications), `effectivePolicy.ok = true`, and `~/.codex/config.toml` mtime unchanged (`true`).
+
+### 8.2 Shared writer-lock TOCTOU remediation (Concern 2)
+
+* **Substantiated race:** The previous `renameSync(path, stalePath)` + restore logic in `storage/writer-lock.ts` allowed a 5-step POSIX path race: Process A observes dead lock → Process B replaces it with live lock B → Process A renames B's live lock to `stalePath` → Process C acquires vacant `path` → Process A restores `stalePath` over C's live lock via `renameSync`, leaving both B and C holding concurrent locks.
+* **Remediation (`storage/writer-lock.ts`, `adapters/pi/attachment.ts`):**
+  * Eliminated all `renameSync` / restore paths. Primary acquisition remains single-syscall atomic `O_CREAT | O_EXCL` (`flag: "wx"`).
+  * Stale dead-PID recovery is serialized behind an exclusive, non-stealable recovery barrier (`<lockPath>.recover`, `flag: "wx"`). Inside `.recover`, `<lockPath>` is re-read and unlinked **only** if byte-for-byte identical to the earlier dead-PID observation and its PID (`<= 0x7fffffff`) still fails `kill(pid, 0)` with `ESRCH` (non-`ESRCH` errors fail closed). After unlink, a single `wx` create is attempted (if another process wins `wx`, the recoverer releases `.recover` and fails closed without touching the winner's lock).
+  * Stuck `.recover` barriers, malformed locks, and future E4 non-PID store-format barriers all fail closed with explicit `recoveryHint` instructions (forwarded through `PiStoreLockedErrorV0`).
+* **Deterministic multi-process regression suite (`tests/writer-lock-concurrency.test.ts`):** Spawns real separate OS Node processes synchronized with barrier files (3 consecutive passing runs verified):
+  1. 3-process deterministic reproduction of the exact 5-step interleaving (Process A pauses before `.recover`, Process B recovers & holds live lock, Process A resumes & fails closed without touching B's lock, Process C fails closed).
+  2. 2-process post-unlink interleaving (Process A pauses after unlinking dead lock while Process C wins `wx`; Process A gets `EEXIST`, cleans `.recover`, and fails closed without touching C's lock).
+  3. 6 real OS processes simultaneously contesting a dead-PID lock from a synchronized ready/start barrier → strictly 1 winner, 5 `EndoStoreLockedErrorV0` losers.
+  4. Stuck `.recover` barrier, malformed lock, E4 non-PID sentinel, and out-of-range PID (`> 0x7fffffff`) all fail closed with explicit recovery hints.
+
+### 8.3 Stage C — Bounded real native approval denial trial & pending operator procedure (Concern 3)
+
+* **Tested commit SHA:** `df104c3e8ea75c2aa2144977a63e4bf1197804c1`
+* **Configuration:** Disposable synthetic git repository (`/tmp/endo-codex-approval-trial-*/repo`) with one harmless file (`greeting.txt`: `"hello world\n"`), `sandboxMode: "read-only"`, `approvalPolicy: "on-request"`, `approvalsReviewer: "user"`, isolated `CODEX_HOME`, `ephemeral: true`, `model: "gpt-6.2-sol"`, `reasoningEffort: "low"`, unattended fail-closed native approval (NO programmatic `accept` — zero operator impersonation).
+* **Observed results (1 single turn, `7.2 s`, `35,310` total tokens / `28,416` cached, `costUsd: null`):**
+  * **Startup isolation confirmed live:** `mcpStartupNotifications: []`, `disabledMcpServers: []`, `realCodexConfigMtimeUnchanged: true`.
+  * **Genuine real `ServerRequest` reached Endophasia:** `item/commandExecution/requestApproval` (`requestId: "codex-req:number:0"`, `approvalKind: "command-execution"`, `itemId: "exec-e3e73680-8a8b-44ae-88e9-fbe8c14ab6df"`, `proposesBroadening: true`).
+  * **Prompt authority was NOT inherited & denial prevented execution:** Endophasia immediately declined fail-closed (`resolution: "declined"`, `code: "no-operator-decision"`), Codex emitted `serverRequest/resolved` and `commandExecution -> phase: "declined"`, and independent filesystem checks confirmed `greeting.txt === "hello world\n"` and `git status --porcelain === ""`.
+  * **Canonical audit & replay:** `23` events recorded including `codex.native-approval-requested` (`source: "runtime-fact"`) and `codex.native-approval-resolved` (`source: "authority-decision"`); `reduceEndoSessionOverviewV0` reported `runs: 1, completed: 1, state: "detached", anomalies: []`; `replayEndoEventRecordV0` verified `events: "exact"`, `derived: "exact"`; zero prompt/code/`payloadDigest` leakage; writer lock released cleanly.
+* **Pending human interactive one-time acceptance (`ALLOW ONCE`) procedure:**
+  To verify explicit one-time human acceptance on a real controlling terminal (without impersonating the operator), run on a disposable synthetic repository:
+  ```bash
+  TMP=$(mktemp -d /tmp/endo-codex-human-approval-XXXXXX)
+  git init -q "$TMP/repo" && git -C "$TMP/repo" config user.email test@example.invalid && git -C "$TMP/repo" config user.name Test
+  printf 'hello world\n' > "$TMP/repo/greeting.txt"
+  git -C "$TMP/repo" add greeting.txt && git -C "$TMP/repo" commit -q -m init
+  node cli/index.ts codex session --root "$TMP/store" --cwd "$TMP/repo" --sandbox read-only --model gpt-6.2-sol --effort low --ephemeral
+  ```
+  1. At `codex>`, enter: `prompt Edit greeting.txt so its sole line is "hello endophasia" using your tool.`
+  2. At `approval>`, type the exact `APPROVE PROMPT <6-hex>` phrase to authorize prompt dispatch only.
+  3. Confirm `[NATIVE CODEX APPROVAL REQUEST]` prints `Request`, `Kind`, `Scope`, `Turn`, `Item`, and `Summary`.
+  4. **Denial pass:** Type `NO` at `native-approval>` → verify `cat "$TMP/repo/greeting.txt"` remains `hello world`.
+  5. **One-time acceptance pass:** Repeat step 1–2, then type `ALLOW ONCE` at `native-approval>` → verify `cat "$TMP/repo/greeting.txt"` becomes `hello endophasia`, and confirm `<TMP>/store/events/events.log` records `codex.native-approval-requested`, `codex.native-approval-resolved` (`resolution: "accepted"`, `scope: "once"`), and separate tool-execution events.
+  6. Type `quit` and remove `"$TMP"`.
+
+### 8.4 Second independent adversarial review (`042a37be-3e0f-4cb2-8282-743cb842dd36`)
+
+Audited commit `df104c3e8ea75c2aa2144977a63e4bf1197804c1` across Concerns 1–3. Verified the writer-lock concurrency design had **zero multi-process TOCTOU flaws**, and raised **10 substantiated findings (`2 HIGH`, `3 MEDIUM`, `5 LOW`)**, all remediated and regression-tested:
+* **HIGH (2/2):** (1) Fail closed on late `mcpServer/startupStatus/updated` arriving after `open()` returns (`develop-adapter.ts`); (2) refuse idle-state interactive native approvals when server omits `turnId` (`null === null` bypass, `develop-adapter.ts`).
+* **MEDIUM (3/3):** (3) Enforce `expectedSandboxMode === "read-only" ⇒ sandbox.type === "readOnly"` (`checks.ts`, `develop-adapter.ts`); (4) walk both logical `resolve(cwd)` and physical `realpathSync(cwd)` ancestors marking `.codex` and `.git` roots `trust_level = "untrusted"` (`isolated-home.ts`); (5) prevent `baseEnv` omitting `CODEX_HOME` from leaking host `process.env.CODEX_HOME`, treat empty `""` as unset, and verify `statSync(auth.json).isFile()` (`isolated-home.ts`).
+* **LOW (5/5):** (6) `isPidAlive` treats only `ESRCH` as dead and bounds PIDs to `<= 0x7fffffff` (`writer-lock.ts`); (7) accurate `recoveryHint`/holder formatting on recovery-race branches (`writer-lock.ts`); (8) wrap `ephemeralDir`/`isolatedHome`/`client` creation inside `try/finally` in `runCodexLocalProtocolCheckV0` (`checks.ts`); (9) sanitize terminal-printed `request.requestId` (`cli/codex.ts`); (10) track `pendingUrgentPrompts` counter in `cli/codex.ts` to eliminate the microtask preemption stall between `codex>` and `native-approval>`.

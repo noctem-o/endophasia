@@ -19,7 +19,7 @@ import {
 } from "react";
 import type { ActivityDescriptor, DescriptorBasis } from "../../../protocol/private-activity.ts";
 import { nextStep, requestWords, shortAttempt } from "../model/attempt-request.ts";
-import { presentLivePi } from "../model/develop-session.ts";
+import { presentLiveWorkbenchSession } from "../model/develop-session.ts";
 import { REASON_WORDS } from "../model/project.ts";
 import {
 	type Disclosure,
@@ -35,18 +35,22 @@ import {
 	commandOpen,
 	commandWords,
 	controlCovers,
+	harnessDisplayName,
 	interventionOpen,
 	interventionWords,
 	MODE_WORDS,
 	OPERATION_WORDS,
+	operationWordsFor,
 	REFUSAL_WORDS,
-	RUN_END_WORDS,
+	runEndWordsFor,
 	runStripWords,
 	stopInFlight,
 	terminalCommandIn,
 	terminalCommandWords,
 } from "../model/workbench.ts";
 import type {
+	CodexStatusInfo,
+	CodexUsageSummary,
 	MessagePart,
 	OpenMessage,
 	TranscriptItem,
@@ -84,6 +88,8 @@ export function LiveRow({
 }): ReactElement {
 	const { status, unreachable } = wb.state;
 	const connection = status === null || unreachable ? "unknown" : status.connection;
+	const harness = harnessDisplayName(status?.harness);
+	const fallbackName = status?.harness === "codex" ? "codex session" : "pi session";
 	return (
 		<button
 			type="button"
@@ -94,7 +100,7 @@ export function LiveRow({
 			onClick={onSelect}
 		>
 			<span className="session-name mono">
-				{status?.session === null || status === null ? "pi session" : shortSession(status.session)}
+				{status?.session === null || status === null ? fallbackName : shortSession(status.session)}
 			</span>
 			<span className="session-state">
 				<span className="state state-life" data-conn={connection}>
@@ -102,13 +108,13 @@ export function LiveRow({
 					<span>{runStripWords(status, unreachable)}</span>
 				</span>
 			</span>
-			<SurfaceTag session={presentLivePi(status, unreachable)} />
+			<SurfaceTag session={presentLiveWorkbenchSession(status, unreachable)} />
 			<span className="session-meta">
 				{connection === "connected"
-					? "Pi · admitted by this broker"
+					? `${harness} · admitted by this broker`
 					: connection === "disconnected"
-						? "Pi · no admitted connection now"
-						: "Pi · connection unknown"}{" "}
+						? `${harness} · no admitted connection now`
+						: `${harness} · connection unknown`}{" "}
 				· live text is private
 			</span>
 		</button>
@@ -439,7 +445,10 @@ function OpenTurn({
 }
 
 function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }): ReactElement {
-	const { name } = OPERATION_WORDS[i.operation];
+	const harness = wb.state.status?.harness;
+	const runtimeName = harnessDisplayName(harness);
+	const isCodex = harness === "codex";
+	const { name } = operationWordsFor(i.operation, harness);
 	const text = wb.sentText[i.proposalId];
 	const reached =
 		i.state === "sent" || i.state === "accepted" || i.state === "unknown" || i.reason === "runtime-refused";
@@ -457,7 +466,7 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 			<span className="turn-role">{i.operation}</span>
 			<div className="turn-body">
 				<p className="intervention-head">
-					<strong>{interventionWords(i)}</strong>
+					<strong>{interventionWords(i, harness)}</strong>
 					{i.state === "refused" && i.reason !== null && i.reason !== "runtime-refused" ? (
 						<span>: {REFUSAL_WORDS[i.reason] ?? i.reason}</span>
 					) : null}
@@ -472,10 +481,20 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 					<li data-done={i.approved} data-by={i.authorizedBy ?? ""}>
 						{authorisedStepWords(i.authorizedBy)}
 					</li>
-					<li data-done={reached}>sent to Pi</li>
-					<li data-done={replied}>{i.reason === "runtime-refused" ? "Pi refused" : "Pi replied"}</li>
-					{message ? <li data-done={i.consumption?.status === "observed"}>consumption observed</li> : null}
-					<li data-done={i.runEnded !== null}>run ended</li>
+					<li data-done={reached}>sent to {runtimeName}</li>
+					<li data-done={replied}>
+						{i.reason === "runtime-refused"
+							? `${runtimeName} refused`
+							: isCodex && i.operation === "stop"
+								? "Codex acknowledged interrupt"
+								: `${runtimeName} replied`}
+					</li>
+					{message && !isCodex ? (
+						<li data-done={i.consumption?.status === "observed"}>consumption observed</li>
+					) : null}
+					<li data-done={i.runEnded !== null}>
+						{isCodex && i.operation === "stop" ? "turn interruption observed" : "run ended"}
+					</li>
 				</ol>
 				{i.state === "awaiting-approval" ? (
 					<>
@@ -495,7 +514,7 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 						</button>
 					</>
 				) : null}
-				{message && i.state === "accepted" ? (
+				{message && !isCodex && i.state === "accepted" ? (
 					<div className="small" data-testid="consumption">
 						{i.consumption === null ? (
 							<p>
@@ -542,13 +561,18 @@ function InterventionCard({ wb, i }: { wb: Workbench; i: WorkbenchIntervention }
 				) : null}
 				{i.runEnded === null ? null : (
 					<p className="small dim" data-testid="run-ended">
-						The run this was made in {RUN_END_WORDS[i.runEnded]}. That is not shown to be caused by this request.
+						{isCodex ? "The turn this targeted" : "The run this was made in"}{" "}
+						{runEndWordsFor(i.runEnded, harness)}. That is not shown to be caused by this request.
 					</p>
 				)}
 				{i.state === "accepted" && i.operation === "stop" && i.runEnded === null ? (
-					<p className="small dim">Pi replied, but no end of the run has been seen yet.</p>
+					<p className="small dim">
+						{isCodex
+							? "Codex acknowledged turn/interrupt, but turn completion has not been observed yet."
+							: "Pi replied, but no end of the run has been seen yet."}
+					</p>
 				) : null}
-				{interventionOpen(i) ? null : i.state === "accepted" || i.state === "unknown" ? (
+				{interventionOpen(i) ? null : !isCodex && (i.state === "accepted" || i.state === "unknown") ? (
 					<p className="small dim">The effect and the consequence are recorded when the session closes.</p>
 				) : null}
 			</div>
@@ -821,10 +845,103 @@ const COVERED_HINT: Readonly<Record<(typeof MODES)[number]["id"], string>> = {
  * not, whether session control is on, what it permits, where and until when. It displays what the broker said. It asks for nothing:
  * the only control here REDUCES what this page may do, and a new grant is a code from the terminal, typed below like any pairing code.
  */
+/** Read-only display of pending native Codex approvals. Never offers an Approve/Allow button in the browser. */
+function CodexNativeApprovals({ codex }: { codex: CodexStatusInfo | undefined }): ReactElement | null {
+	if (codex === undefined || codex.pendingNativeApprovals.length === 0) return null;
+	return (
+		<section
+			className="codex-approval-banner"
+			data-testid="codex-native-approvals"
+			aria-label="Pending native Codex approvals"
+			aria-live="polite"
+		>
+			<div className="codex-approval-head">
+				<span className="chip-ref">Terminal action required</span>
+				<strong>
+					{codex.pendingNativeApprovals.length === 1
+						? "1 native Codex approval waiting on the attached terminal"
+						: `${codex.pendingNativeApprovals.length} native Codex approvals waiting on the attached terminal`}
+				</strong>
+			</div>
+			<ul className="plain codex-approval-list">
+				{codex.pendingNativeApprovals.map((req) => (
+					<li key={req.requestId} className="codex-approval-item" data-testid="codex-native-approval-item">
+						<p className="small">
+							<span className="mono">{req.approvalKind}</span> <span className="dim">({req.nativeMethod})</span>{" "}
+							· scope: <span>one-time only (Endophasia does not allow session or policy broadening)</span>
+						</p>
+						<p className="codex-approval-summary">
+							<code>{req.summary}</code>
+						</p>
+					</li>
+				))}
+			</ul>
+			<p className="dim small">
+				Resolve on the attached terminal (<span className="mono">ALLOW ONCE</span>,{" "}
+				<span className="mono">CANCEL</span>, or decline). This page is read-only and cannot approve native Codex
+				requests.
+			</p>
+		</section>
+	);
+}
+
+function formatTokenCount(n: number | null | undefined): string {
+	return n === null || n === undefined ? "unavailable" : n.toLocaleString("en-US");
+}
+
+function CodexUsageFacts({
+	usage,
+	contextWindow,
+}: {
+	usage: CodexUsageSummary | null;
+	contextWindow: number | null;
+}): ReactElement {
+	if (usage === null) {
+		return (
+			<p className="dim small" data-testid="codex-usage-unavailable">
+				Token usage: unavailable (not reported by Codex yet). Cost: unavailable.
+			</p>
+		);
+	}
+	return (
+		<dl className="facts" data-testid="codex-usage">
+			<div className="fact">
+				<dt>input</dt>
+				<dd className="mono">{formatTokenCount(usage.inputTokens)}</dd>
+			</div>
+			<div className="fact">
+				<dt>cached input</dt>
+				<dd className="mono">{formatTokenCount(usage.cachedInputTokens)}</dd>
+			</div>
+			<div className="fact">
+				<dt>output</dt>
+				<dd className="mono">{formatTokenCount(usage.outputTokens)}</dd>
+			</div>
+			<div className="fact">
+				<dt>reasoning</dt>
+				<dd className="mono">{formatTokenCount(usage.reasoningTokens)}</dd>
+			</div>
+			<div className="fact">
+				<dt>total</dt>
+				<dd className="mono">{formatTokenCount(usage.totalTokens)}</dd>
+			</div>
+			<div className="fact">
+				<dt>context window</dt>
+				<dd className="mono">{formatTokenCount(contextWindow)}</dd>
+			</div>
+			<div className="fact">
+				<dt>cost</dt>
+				<dd className="dim">unavailable (not reported)</dd>
+			</div>
+		</dl>
+	);
+}
+
 function AuthorityStrip({ wb }: { wb: Workbench }): ReactElement | null {
 	const { status, grant } = wb.state;
 	if (status === null || status.connection !== "connected") return null;
-	const { mode, protection, sessionControl: control } = status;
+	const { mode, protection, sessionControl: control, codex } = status;
+	const isCodex = status.harness === "codex";
 	const until =
 		control.expiresAtMs === null ? "" : new Date(control.expiresAtMs).toLocaleTimeString([], { hour12: false });
 	const held = control.state === "active" && control.holder && grant !== null;
@@ -842,6 +959,15 @@ function AuthorityStrip({ wb }: { wb: Workbench }): ReactElement | null {
 				<span className="chip-ref" data-testid="authority-mode">
 					Mode: {MODE_WORDS[mode.effective]}
 				</span>{" "}
+				{isCodex && codex !== undefined ? (
+					<span className="dim small" data-testid="codex-policy-strip">
+						Codex{codex.model ? ` · ${codex.model}` : ""}
+						{codex.reasoningEffort ? ` · effort ${codex.reasoningEffort}` : ""}
+						{codex.sandbox ? ` · sandbox ${codex.sandbox}` : ""}
+						{codex.approvalPolicy ? ` · policy ${codex.approvalPolicy}` : ""}
+						{" · "}
+					</span>
+				) : null}
 				{held ? (
 					<strong data-testid="authority-control">
 						Session control on · {control.operations.join(", ")} · until {until} (browser clock) ·{" "}
@@ -849,11 +975,13 @@ function AuthorityStrip({ wb }: { wb: Workbench }): ReactElement | null {
 					</strong>
 				) : (
 					<span data-testid="authority-control">
-						{mode.effective === "strict"
-							? "Every prompt, steer, queue and stop is approved in the attached terminal."
-							: control.state === "active"
-								? `Session control is held by another page until ${until} (browser clock). This page can read and ask.`
-								: `Session control off${control.ended === null ? "" : ` (the last grant ended: ${CONTROL_END_WORDS[control.ended] ?? control.ended})`}. Every request waits for the terminal.`}
+						{isCodex
+							? "Strict-only: every prompt, turn interruption and native Codex approval is confirmed on the attached terminal."
+							: mode.effective === "strict"
+								? "Every prompt, steer, queue and stop is approved in the attached terminal."
+								: control.state === "active"
+									? `Session control is held by another page until ${until} (browser clock). This page can read and ask.`
+									: `Session control off${control.ended === null ? "" : ` (the last grant ended: ${CONTROL_END_WORDS[control.ended] ?? control.ended})`}. Every request waits for the terminal.`}
 					</span>
 				)}
 				{held ? (
@@ -912,8 +1040,15 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 	const ok = offer.offered && !sending && !promptOpen && asCommand === null && draft.trim() !== "";
 	const label = MODES.find((m) => m.id === mode)!.label;
 	// Words only: whether a request is authorised by the grant is the broker's decision when it arrives.
+	const isCodex = wb.state.status?.harness === "codex";
 	const covered = controlCovers(wb.state.status, mode);
-	const hint = covered ? COVERED_HINT[mode] : MODE_HINT[mode];
+	const hint = covered
+		? COVERED_HINT[mode]
+		: isCodex && mode === "steer"
+			? `${operationWordsFor("steer", "codex").delivery} Requested here; approved in the attached terminal. Ctrl+Enter requests it.`
+			: isCodex && mode === "queue"
+				? operationWordsFor("queue", "codex").delivery
+				: MODE_HINT[mode];
 	const send = async () => {
 		if (!ok) return;
 		setSending(true);
@@ -1018,6 +1153,10 @@ function Composer({ wb }: { wb: Workbench }): ReactElement {
 /** STOP: in the run strip, because it is a control on the run, not a message. It only requests; Pi answers once the run is idle. */
 function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 	const { status, grant } = wb.state;
+	const harness = status?.harness;
+	const isCodex = harness === "codex";
+	const runtimeName = harnessDisplayName(harness);
+	const stopWords = operationWordsFor("stop", harness);
 	const stop = stopInFlight(wb.state);
 	if (status === null || status.connection !== "connected") return null;
 	if (stop !== null) {
@@ -1029,9 +1168,11 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 						? "Stop requested · awaiting terminal approval"
 						: st === "dispatching"
 							? stop.authorizedBy === "session-grant"
-								? "Stop authorised by the session grant · dispatching to Pi"
-								: "Stop approved · dispatching to Pi"
-							: "Stop dispatched to Pi · reply pending until the run is idle"}
+								? `Stop authorised by the session grant · dispatching to ${runtimeName}`
+								: `Stop approved · dispatching to ${runtimeName}`
+							: isCodex
+								? "Targeted turn/interrupt sent to Codex · waiting for acknowledgement"
+								: "Stop dispatched to Pi · reply pending until the run is idle"}
 				</strong>
 				{st === "awaiting-approval" ? (
 					<button
@@ -1079,13 +1220,13 @@ function StopControl({ wb }: { wb: Workbench }): ReactElement | null {
 				id="stop-reason"
 				data-testid="stop-reason"
 				data-offered={grant !== null && offer.offered}
-				title={offer.offered ? OPERATION_WORDS.stop.delivery : (offer.reason ?? "")}
+				title={offer.offered ? stopWords.delivery : (offer.reason ?? "")}
 				data-supersedes={superseded?.operation ?? ""}
 			>
 				{grant === null
 					? "Pair this page to request a stop."
 					: offer.offered
-						? `${OPERATION_WORDS.stop.delivery} ${covered ? "This page holds session control, so it is sent at once, without a terminal approval, and recorded as authorised by the session grant." : "You approve it in the terminal."}${
+						? `${stopWords.delivery} ${covered ? "This page holds session control, so it is sent at once, without a terminal approval, and recorded as authorised by the session grant." : "You approve it in the terminal."}${
 								superseded === undefined
 									? ""
 									: ` Requesting it cancels the ${superseded.operation} now waiting for approval: that ${superseded.operation} will not be sent.`
@@ -1407,6 +1548,7 @@ export function LiveConversation({
 						request={(attempt) => <AttemptRequest wb={wb} attempt={attempt} onSettled={workspace.refresh} />}
 					/>
 				</div>
+				<CodexNativeApprovals codex={state.status?.codex} />
 				<AuthorityStrip wb={wb} />
 				{state.grant === null ? <Pairing wb={wb} /> : <Composer wb={wb} />}
 			</section>
@@ -1427,6 +1569,9 @@ export function LiveContext({
 	onObserve(): void;
 }): ReactElement {
 	const { status } = wb.state;
+	const isCodex = status?.harness === "codex";
+	const runtimeName = harnessDisplayName(status?.harness);
+	const codex = status?.codex;
 	const paired = wb.state.grant !== null;
 	const connected = status?.connection === "connected" && !wb.state.unreachable;
 	const view = projectView(project, paired);
@@ -1457,7 +1602,7 @@ export function LiveContext({
 						api={project}
 						paired={paired}
 						connected={connected}
-						basis="the directory Pi was launched in"
+						basis={`the directory ${runtimeName} was launched in`}
 					/>
 				)}
 				{shown === null || shown.worktrees.length < 2 ? null : (
@@ -1492,8 +1637,51 @@ export function LiveContext({
 				<dl className="facts">
 					<div className="fact">
 						<dt>harness</dt>
-						<dd>Pi</dd>
+						<dd data-testid="context-harness">{runtimeName}</dd>
 					</div>
+					{isCodex && codex !== undefined ? (
+						<>
+							<div className="fact">
+								<dt>version</dt>
+								<dd className="mono">{codex.version ?? "unavailable"}</dd>
+							</div>
+							<div className="fact">
+								<dt>model</dt>
+								<dd className="mono" data-testid="context-model">
+									{codex.model ?? "unavailable"}
+								</dd>
+							</div>
+							<div className="fact">
+								<dt>reasoning effort</dt>
+								<dd className="mono">{codex.reasoningEffort ?? "default"}</dd>
+							</div>
+							<div className="fact">
+								<dt>sandbox</dt>
+								<dd className="mono" data-testid="context-sandbox">
+									{codex.sandbox ?? "unavailable"}
+								</dd>
+							</div>
+							<div className="fact">
+								<dt>approval policy</dt>
+								<dd className="mono" data-testid="context-approval-policy">
+									{codex.approvalPolicy ?? "unavailable"}
+									{codex.approvalsReviewer ? ` (${codex.approvalsReviewer})` : ""}
+								</dd>
+							</div>
+							{codex.threadId !== null ? (
+								<div className="fact">
+									<dt>thread</dt>
+									<dd className="mono">{codex.threadId}</dd>
+								</div>
+							) : null}
+							{codex.activeTurnId !== null ? (
+								<div className="fact">
+									<dt>active turn</dt>
+									<dd className="mono">{codex.activeTurnId}</dd>
+								</div>
+							) : null}
+						</>
+					) : null}
 					<div className="fact">
 						<dt>attachment</dt>
 						<dd className="mono">{status?.attachment ?? "unknown"}</dd>
@@ -1525,12 +1713,38 @@ export function LiveContext({
 				</button>
 				<p className="dim small">What was recorded about this session (structure, never its text) is in Observe.</p>
 			</section>
+			{isCodex && codex !== undefined && paired ? (
+				<section className="block" data-testid="context-codex-usage">
+					<h3>Token usage (session total)</h3>
+					<CodexUsageFacts
+						usage={codex.usage?.total ?? codex.usage?.last ?? null}
+						contextWindow={codex.usage?.modelContextWindow ?? null}
+					/>
+					{codex.recentNativeApprovals.length > 0 ? (
+						<details className="more" data-testid="codex-recent-approvals">
+							<summary>Recent native approvals ({codex.recentNativeApprovals.length})</summary>
+							<p className="dim small">
+								Terminal-resolved native Codex approval decisions (distinct from observed tool execution).
+							</p>
+							<ul className="plain">
+								{codex.recentNativeApprovals.map((r) => (
+									<li key={`${r.requestId}:${r.resolvedAtMs}`} className="small">
+										<span className="mono">{r.approvalKind}</span> · <strong>{r.resolution}</strong>
+										{r.code ? <span className="dim"> ({r.code})</span> : null}
+									</li>
+								))}
+							</ul>
+						</details>
+					) : null}
+				</section>
+			) : null}
 			<details className="more block" data-testid="controls">
 				<summary>Controls: what the broker offers</summary>
 				<ul className="plain">
 					{(["prompt", "steer", "queue", "stop"] as const).map((op) => {
 						const o = status?.offers[op];
-						const gist = op === "prompt" ? "a new prompt" : OPERATION_WORDS[op].name.toLowerCase();
+						const gist =
+							op === "prompt" ? "a new prompt" : operationWordsFor(op, status?.harness).name.toLowerCase();
 						return (
 							<li key={op} data-testid={`offer-${op}`}>
 								<strong>{op === "prompt" ? "Prompt" : OPERATION_WORDS[op].name}</strong> —{" "}
@@ -1546,18 +1760,20 @@ export function LiveContext({
 			</details>
 			<details className="more block" data-testid="source-capabilities">
 				<summary>Source and capabilities</summary>
-				<SurfaceView session={presentLivePi(status, wb.state.unreachable)} />
+				<SurfaceView session={presentLiveWorkbenchSession(status, wb.state.unreachable)} />
 				<ActivityDescriptorView descriptor={wb.state.activityDescriptor} />
 				<h4>Where the text lives</h4>
 				<p className="dim small">
 					The conversation is held in the attached process's memory only, bounded, and cleared when the session
-					ends. It is not written to the event store or any read view. Pi keeps its own session file as it always
-					does; that is Pi's retention, not Endophasia's evidence.
+					ends. It is not written to the event store or any read view. {runtimeName} keeps its own session state as
+					it always does; that is {runtimeName}&apos;s retention, not Endophasia&apos;s evidence.
 				</p>
 			</details>
 			{connected ? null : (
 				<p className="dim small" data-testid="context-disconnected">
-					No admitted connection now: the worktree shown is what was last read.
+					No admitted connection now
+					{codex?.connectionReason ? ` (${codex.connectionReason.replace(/\.+$/, "")})` : ""}: the worktree shown
+					is what was last read.
 				</p>
 			)}
 		</Panel>

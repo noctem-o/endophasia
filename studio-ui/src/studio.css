@@ -9278,3 +9278,44 @@ body:has(.coordinator[data-appearance="field"][data-atmosphere="storm"]) .topbar
 		flex-basis: 80%;
 	}
 }
+
+/* Codex read-only native approval banner: restrained amber hairline plate, no bright buttons, OLED-friendly. */
+.codex-approval-banner {
+	margin: 0 14px 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--line);
+	border-left: 3px solid var(--attention);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+	display: grid;
+	gap: 6px;
+}
+
+.codex-approval-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.codex-approval-list {
+	display: grid;
+	gap: 6px;
+}
+
+.codex-approval-item {
+	display: grid;
+	gap: 3px;
+}
+
+.codex-approval-summary {
+	padding: 6px 8px;
+	border-radius: var(--radius);
+	background: var(--surface-1);
+	border: 1px solid var(--line-subtle);
+	overflow-x: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+	max-height: 7.5rem;
+	overflow-y: auto;
+}

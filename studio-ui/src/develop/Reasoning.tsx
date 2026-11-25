@@ -17,6 +17,8 @@ import {
 	isLong,
 	preview,
 	type ReasoningMode,
+	reasoningDisclaimer,
+	reasoningLabel,
 	traceMeta,
 	visibleText,
 	wordCount,
@@ -104,12 +106,13 @@ export function ReasoningBlock({
 		if (partial) grow?.();
 	}, [revealed]);
 	const meta = traceMeta(part, ordinal, count);
+	const label = reasoningLabel(part);
 	if (part.state !== "supplied")
 		return (
 			<div className="reasoning" data-state={part.state} data-testid="reasoning" data-partial={partial}>
 				<p className="reasoning-line">
 					<Strata />
-					<span className="reasoning-label">Model-provided reasoning</span>
+					<span className="reasoning-label">{label}</span>
 					<span className="reasoning-meta">{meta}</span>
 				</p>
 			</div>
@@ -122,6 +125,7 @@ export function ReasoningBlock({
 		<div
 			className="reasoning"
 			data-state={part.state}
+			data-provenance={part.provenance ?? "default"}
 			data-disclosure={disclosure}
 			data-partial={partial}
 			data-testid="reasoning"
@@ -136,7 +140,7 @@ export function ReasoningBlock({
 			>
 				<span className="reasoning-chevron" aria-hidden="true" />
 				<Strata />
-				<span className="reasoning-label">Model-provided reasoning</span>
+				<span className="reasoning-label">{label}</span>
 				<span className="reasoning-meta">
 					{meta}
 					{partial ? " · being written, as of the last read" : ""}
@@ -167,7 +171,7 @@ export function ReasoningBlock({
 						) : null}
 						<p className="reasoning-note">
 							{part.truncated ? "Cut at the workbench's limit: the rest was not kept. " : ""}
-							Relayed as the model sent it; not a record of how the answer was produced.
+							{reasoningDisclaimer(part)}
 						</p>
 					</>
 				) : null}

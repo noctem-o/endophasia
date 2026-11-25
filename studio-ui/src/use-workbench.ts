@@ -60,7 +60,9 @@ export function useWorkbench(active: boolean, discoverHost = false) {
 		const reply = await fetchWorkbench(request, latest.current.grant, abort.signal);
 		if (abort.signal.aborted || !generation.current.accept(since, latest.current, reply))
 			return { kind: "failure", status: 0, code: "", message: "Request superseded", retrySeconds: null };
-		dispatch({ type: "reply", reply, at: new Date() });
+		const at = new Date();
+		latest.current = reduceWorkbench(latest.current, { type: "reply", reply, at });
+		dispatch({ type: "reply", reply, at });
 		return reply;
 	}, []);
 
@@ -210,6 +212,7 @@ export function useWorkbench(active: boolean, discoverHost = false) {
 		setView: (view: "live" | "recorded") => dispatch({ type: "view", view }),
 		unpair: () => {
 			generation.current.invalidate();
+			latest.current = reduceWorkbench(latest.current, { type: "unpair" });
 			dispatch({ type: "unpair" });
 		},
 		/** Give up this page's session control. The page stays paired: every request waits for the terminal again. */

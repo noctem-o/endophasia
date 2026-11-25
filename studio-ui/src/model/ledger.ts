@@ -188,8 +188,9 @@ export function ledger(input: LedgerInput): Ledger {
 			yours,
 		};
 
+	const harnessName = status?.harness === "codex" ? "Codex" : "Pi";
 	const name = status?.session == null ? null : short(status.session);
-	// The time is when THIS PAGE read the status (the browser's clock), never when Pi said anything.
+	// The time is when THIS PAGE read the status (the browser's clock), never when the runtime said anything.
 	const at = input.statusAt === null ? "" : ` (read at ${input.statusAt}, browser clock)`;
 	// Not being re-read, the status is what the last read said, and the sentence is in the past.
 	const now = input.following;
@@ -208,7 +209,7 @@ export function ledger(input: LedgerInput): Ledger {
 		const state = status?.run === "active" ? ", with a run open" : status?.run === "idle" ? " and idle" : "";
 		statement = {
 			before: "",
-			mono: name ?? "A Pi session",
+			mono: name ?? `A ${harnessName} session`,
 			after: now
 				? ` is connected${state}.`
 				: ` was connected${state}${status?.run === "active" ? "," : ""} at the last read.`,
@@ -235,10 +236,10 @@ export function ledger(input: LedgerInput): Ledger {
 				basis: "reported",
 				text:
 					status.run === "active"
-						? `Pi reported a run open${at}.`
+						? `${harnessName} reported a run open${at}.`
 						: status.run === "idle"
-							? `Pi reported the session idle${at}.`
-							: "Pi has not reported a run state.",
+							? `${harnessName} reported the session idle${at}.`
+							: `${harnessName} has not reported a run state.`,
 			});
 	}
 	if (input.project.kind === "ready") {

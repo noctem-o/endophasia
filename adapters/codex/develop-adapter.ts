@@ -22,6 +22,7 @@ import {
 	type EndoAdapterCapabilityEntryV0,
 	type EndoAdapterConnectionStateV0,
 	type EndoAdapterCoordinationRefsV0,
+	type EndoAdapterNativeApprovalKindV0,
 	type EndoAdapterProcessCleanupV0,
 	type EndoAdapterReasoningKindV0,
 	type EndoAdapterSessionIdentityV0,
@@ -128,6 +129,26 @@ export interface CodexLiveActivityItemV0 {
 	readonly exitCode: number | null;
 }
 
+export interface CodexTranscriptDeltaV0 {
+	readonly instanceId: string;
+	readonly turnId: string | null;
+	readonly itemId: string | null;
+	readonly contentKind: "text" | "reasoning";
+	readonly reasoningKind: EndoAdapterReasoningKindV0 | null;
+	readonly delta: string;
+}
+
+export interface CodexRecentNativeApprovalV0 {
+	readonly requestId: string;
+	readonly approvalKind: EndoAdapterNativeApprovalKindV0;
+	readonly nativeMethod: string;
+	readonly turnId: string | null;
+	readonly itemId: string | null;
+	readonly resolution: "accepted" | "declined" | "cancelled";
+	readonly code: string | null;
+	readonly resolvedAtMs: number;
+}
+
 /** Memory-only live view of a Codex session (never persisted into canonical evidence). */
 export interface CodexLiveViewV0 {
 	readonly threadId: string | null;
@@ -140,6 +161,7 @@ export interface CodexLiveViewV0 {
 	readonly totalUsage: EndoAdapterUsageReportV0 | null;
 	readonly modelContextWindow: number | null;
 	readonly pendingApprovals: readonly EndoDevelopNativeApprovalRequestV0[];
+	readonly recentApprovals: readonly CodexRecentNativeApprovalV0[];
 	readonly observedNotifications: readonly string[];
 }
 
@@ -376,6 +398,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	readonly #pendingApprovals = new Map<string, PendingApprovalEntry>();
 	readonly #guard: EndoObservationGuardV0;
 	readonly #listeners = new Set<(observation: EndoDevelopObservationV0) => void>();
+	readonly #deltaListeners = new Set<(delta: CodexTranscriptDeltaV0) => void>();
+	readonly #recentApprovals: CodexRecentNativeApprovalV0[] = [];
 	readonly #coordination: EndoAdapterCoordinationRefsV0 = {
 		parentSession: null,
 		children: [],
@@ -459,6 +483,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			totalUsage: this.#totalUsage,
 			modelContextWindow: this.#modelContextWindow,
 			pendingApprovals: [...this.#pendingApprovals.values()].map((entry) => entry.parsed.normalized),
+			recentApprovals: [...this.#recentApprovals],
 			observedNotifications: [...this.#observedNotificationMethods].sort(),
 		};
 	}
@@ -731,6 +756,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		if (!this.#connected && this.#disconnectedReason === reason) return;
 		this.#connected = false;
 		this.#disconnectedReason = reason;
+		this.#transcript.length = 0;
 		this.#cancelAllPendingApprovals(reason);
 		this.#notifyAllTurnWaiters("disconnected");
 		this.#emitObservation(
@@ -1247,6 +1273,16 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			"authority-decision",
 			pending.parsed.turnId,
 		);
+		this.#recordRecentApproval({
+			requestId: authoritativeRequest.requestId,
+			approvalKind: authoritativeRequest.approvalKind,
+			nativeMethod: pending.parsed.nativeMethod,
+			turnId: pending.parsed.turnId,
+			itemId: pending.parsed.itemId,
+			resolution: outcome.resolution,
+			code: outcome.resolution === "accepted" ? null : outcome.code,
+			resolvedAtMs: this.#now(),
+		});
 		this.#emitObservation(
 			{
 				kind: "native-approval",
@@ -1265,6 +1301,14 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		this.#listeners.add(listener);
 		return () => {
 			this.#listeners.delete(listener);
+		};
+	}
+
+	/** Subscribe to memory-only streaming text and reasoning deltas for live workbench display. */
+	subscribeTranscriptDeltas(listener: (delta: CodexTranscriptDeltaV0) => void): () => void {
+		this.#deltaListeners.add(listener);
+		return () => {
+			this.#deltaListeners.delete(listener);
 		};
 	}
 
@@ -1294,6 +1338,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				this.#cleanup = summarizeCleanup(rawCleanup);
 			}
 			this.#connected = false;
+			this.#transcript.length = 0;
 			if (wasConnected || this.#disconnectedReason === null) {
 				this.#disconnectedReason = "Codex adapter closed.";
 			}
@@ -1603,8 +1648,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			}
 			case "item/agentMessage/delta": {
 				const delta = typeof params.delta === "string" ? params.delta : "";
-				const itemId = typeof params.itemId === "string" ? params.itemId : null;
-				const turnId = typeof params.turnId === "string" ? params.turnId : (this.#activeTurn?.turnId ?? null);
+				const itemId = sanitizeOptional(params.itemId, 256);
+				const turnId = sanitizeOptional(params.turnId, 256) ?? this.#activeTurn?.turnId ?? null;
 				if (delta.length > 0) {
 					this.#appendTranscriptDelta({
 						itemId,
@@ -1619,8 +1664,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			}
 			case "item/reasoning/summaryTextDelta": {
 				const delta = typeof params.delta === "string" ? params.delta : "";
-				const itemId = typeof params.itemId === "string" ? params.itemId : null;
-				const turnId = typeof params.turnId === "string" ? params.turnId : (this.#activeTurn?.turnId ?? null);
+				const itemId = sanitizeOptional(params.itemId, 256);
+				const turnId = sanitizeOptional(params.turnId, 256) ?? this.#activeTurn?.turnId ?? null;
 				if (delta.length > 0) {
 					// NEVER relabel reasoning summary as raw thinking!
 					this.#appendTranscriptDelta({
@@ -1636,8 +1681,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			}
 			case "item/reasoning/textDelta": {
 				const delta = typeof params.delta === "string" ? params.delta : "";
-				const itemId = typeof params.itemId === "string" ? params.itemId : null;
-				const turnId = typeof params.turnId === "string" ? params.turnId : (this.#activeTurn?.turnId ?? null);
+				const itemId = sanitizeOptional(params.itemId, 256);
+				const turnId = sanitizeOptional(params.turnId, 256) ?? this.#activeTurn?.turnId ?? null;
 				if (delta.length > 0) {
 					this.#appendTranscriptDelta({
 						itemId,
@@ -1750,6 +1795,16 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 							"runtime-fact",
 							entry.parsed.turnId,
 						);
+						this.#recordRecentApproval({
+							requestId: reqId,
+							approvalKind: entry.parsed.approvalKind,
+							nativeMethod: entry.parsed.nativeMethod,
+							turnId: entry.parsed.turnId,
+							itemId: entry.parsed.itemId,
+							resolution: "cancelled",
+							code: "server-resolved",
+							resolvedAtMs: this.#now(),
+						});
 						this.#emitObservation(
 							{
 								kind: "native-approval",
@@ -1969,6 +2024,26 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 							{ turnId, itemId },
 						);
 					}
+					if (summary.length === 0 && rawContent.length === 0) {
+						const encrypted =
+							(typeof item.encryptedContent === "string" && item.encryptedContent.length > 0) ||
+							(typeof item.encrypted_content === "string" && item.encrypted_content.length > 0) ||
+							item.redacted === true;
+						const reasoningKind: EndoAdapterReasoningKindV0 = encrypted ? "redacted" : "unavailable";
+						this.#emitObservation(
+							{
+								kind: "transcript",
+								role: "assistant",
+								contentKind: "reasoning",
+								reasoningKind,
+								text: null,
+								truncated: false,
+								stopReason: null,
+							},
+							"runtime-reported",
+							{ turnId, itemId },
+						);
+					}
 				}
 				break;
 			}
@@ -2139,6 +2214,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		const wasConnected = this.#connected;
 		this.#connected = false;
 		this.#disconnectedReason = info.reason;
+		this.#transcript.length = 0;
 		this.#cancelAllPendingApprovals(info.reason);
 		this.#notifyAllTurnWaiters("disconnected");
 
@@ -2351,6 +2427,15 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		reasoningKind: EndoAdapterReasoningKindV0 | null;
 		delta: string;
 	}): void {
+		const deltaEvent: CodexTranscriptDeltaV0 = {
+			instanceId: this.#instanceId,
+			turnId: args.turnId,
+			itemId: args.itemId,
+			contentKind: args.contentKind,
+			reasoningKind: args.reasoningKind,
+			delta: args.delta,
+		};
+		for (const listener of this.#deltaListeners) listener(deltaEvent);
 		const existing =
 			args.itemId !== null
 				? this.#transcript.find(
@@ -2436,6 +2521,16 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				if (reply.kind === "result") this.#client?.respondServerRequest(entry.parsed.rpcId, reply.result);
 				else this.#client?.rejectServerRequest(entry.parsed.rpcId, reply.code, reply.message);
 			}
+			this.#recordRecentApproval({
+				requestId: reqId,
+				approvalKind: entry.parsed.approvalKind,
+				nativeMethod: entry.parsed.nativeMethod,
+				turnId: entry.parsed.turnId,
+				itemId: entry.parsed.itemId,
+				resolution: "cancelled",
+				code: "stale-attachment",
+				resolvedAtMs: this.#now(),
+			});
 			this.#emitObservation(
 				{
 					kind: "native-approval",
@@ -2447,6 +2542,13 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				"controller-observed",
 				{ turnId: entry.parsed.turnId, itemId: entry.parsed.itemId },
 			);
+		}
+	}
+
+	#recordRecentApproval(entry: CodexRecentNativeApprovalV0): void {
+		this.#recentApprovals.push(entry);
+		if (this.#recentApprovals.length > 20) {
+			this.#recentApprovals.splice(0, this.#recentApprovals.length - 20);
 		}
 	}
 

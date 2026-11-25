@@ -410,13 +410,51 @@ async function attachWithControl(
 	summarize(parsed, session.piSessionId, disposition === null ? null : { disposition, settled: null }, 0);
 }
 
+const DEVELOP_VALUE_FLAGS = new Set([...VALUE_FLAGS, "--root", "--harness", "--executable", "--effort", "--sandbox"]);
+const DEVELOP_CODEX_DISALLOWED_FLAGS = new Set(["--pi", "--provider", "--tools", "--prompt", "--wait"]);
+
+function extractDevelopHarness(argv: readonly string[]): { harness: "pi" | "codex"; rest: string[] } {
+	let harness: "pi" | "codex" = "pi";
+	const rest: string[] = [];
+	for (let i = 0; i < argv.length; i += 1) {
+		const token = argv[i]!;
+		if (token === "--harness") {
+			const val = argv[i + 1];
+			if (val === undefined) throw new TypeError("the flag --harness needs a value (pi or codex)");
+			if (val !== "pi" && val !== "codex")
+				throw new TypeError(`unknown --harness value "${val}" (expected pi or codex)`);
+			harness = val;
+			i += 1;
+			continue;
+		}
+		rest.push(token);
+		if (DEVELOP_VALUE_FLAGS.has(token) && i + 1 < argv.length) {
+			rest.push(argv[i + 1]!);
+			i += 1;
+		}
+	}
+	return { harness, rest };
+}
+
 /**
- * `endo develop [...]`: the everyday spelling of `endo harness attach [...] --control --workbench` (DEVELOP-UX-001): the same parser, the
- * same controlling-terminal check before anything runs, the same broker, pairing and typed approvals. One difference, and it is
- * stricter: no `--prompt` at launch. `--project` stays optional, so a session needs no registered project and no task.
+ * `endo develop [...]`: the everyday spelling of `endo harness attach [...] --control --workbench` (DEVELOP-UX-001) for Pi,
+ * or with `--harness codex`, a Strict-only live Codex workbench (`endo codex session --workbench`).
+ * One-word `endo develop` remains Pi unchanged; `--harness codex` refuses Everyday/Protected modes explicitly.
  */
-export function developCommand(argv: readonly string[]): Promise<void> {
-	return attach(argv, true);
+export async function developCommand(argv: readonly string[]): Promise<void> {
+	const { harness, rest } = extractDevelopHarness(argv);
+	if (harness === "codex") {
+		for (let i = 0; i < rest.length; i += 1) {
+			const token = rest[i]!;
+			if (DEVELOP_CODEX_DISALLOWED_FLAGS.has(token)) {
+				throw new TypeError(`flag ${token} is not supported with \`endo develop --harness codex\``);
+			}
+			if (DEVELOP_VALUE_FLAGS.has(token)) i += 1;
+		}
+		const { codexSessionCommand } = await import("./codex.ts");
+		return codexSessionCommand([...rest, "--workbench"]);
+	}
+	return attach(rest, true);
 }
 
 export const HARNESS_COMMANDS_V0: Readonly<Record<string, (argv: readonly string[]) => Promise<void>>> = {

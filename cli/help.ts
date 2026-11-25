@@ -126,10 +126,12 @@ Commands that write to a store:
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:
-  develop [<root> | --root dir] [--cwd dir] [--project id] [--pi path] ...
+  develop [<root> | --root dir] [--harness pi|codex] [--cwd dir] [--project id] [--pi path] ...
                                      the live workbench, in one word: "harness attach ... --control --workbench", without --prompt.
-                                     Needs no registered project and no task; every prompt, steer and stop is approved on this terminal
-                                     [--mode everyday|protected|strict] the mode asked for (default everyday). Everyday is in effect only
+                                     Needs no registered project and no task; every prompt, steer and stop is approved on this terminal.
+                                     With --harness codex (or "codex session --workbench"), launches a Strict-only live Codex workbench
+                                     (no Everyday grants; every prompt, turn interruption and native Codex approval is confirmed on this terminal)
+                                     [--mode everyday|protected|strict] the mode asked for (default everyday for Pi; Codex is strict only). Everyday is in effect only
                                      while an execution boundary around the agent is observed as enforced; otherwise Strict runs and the
                                      terminal says why. Protected starts nothing where it cannot be enforced
                                      [--confirm phrase|short] short: a request may be approved by the four-character code this terminal

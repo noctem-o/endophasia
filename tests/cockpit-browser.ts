@@ -278,10 +278,10 @@ export class Page {
 	}
 
 	/** Change the viewport of this tab, as a window resize does. */
-	async resize(width: number, height: number): Promise<void> {
+	async resize(width: number, height: number, deviceScaleFactor = 1): Promise<void> {
 		await this.browser.send(
 			"Emulation.setDeviceMetricsOverride",
-			{ width, height, deviceScaleFactor: 1, mobile: false },
+			{ width, height, deviceScaleFactor, mobile: false },
 			this.sessionId,
 		);
 	}

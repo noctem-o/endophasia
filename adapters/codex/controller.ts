@@ -38,6 +38,7 @@ export interface CodexApprovalPromptV0 {
 export type CodexOperationApproverV0 = (
 	prompt: CodexApprovalPromptV0,
 	signal: AbortSignal,
+	context?: unknown,
 ) => Promise<
 	| { readonly approved: true; readonly mechanism: "terminal-phrase" | "terminal-code" }
 	| { readonly approved: false; readonly reason: string }
@@ -160,25 +161,31 @@ export class CodexLiveControllerV0 {
 	}
 
 	/** Request operator terminal approval and dispatch a prompt (`turn/start`). */
-	requestPrompt(message: string, signal?: AbortSignal): Promise<EndoDevelopDispatchOutcomeV0> {
-		return this.#requestGoverned({ kind: "prompt", message }, signal);
+	requestPrompt(message: string, signal?: AbortSignal, context?: unknown): Promise<EndoDevelopDispatchOutcomeV0> {
+		return this.#requestGoverned({ kind: "prompt", message }, signal, context);
 	}
 
 	/** Request operator terminal approval and dispatch a targeted interruption (`turn/interrupt`). */
-	requestStop(targetTurnId: string, signal?: AbortSignal): Promise<EndoDevelopDispatchOutcomeV0> {
-		return this.#requestGoverned({ kind: "stop", targetTurnId }, signal);
+	requestStop(targetTurnId: string, signal?: AbortSignal, context?: unknown): Promise<EndoDevelopDispatchOutcomeV0> {
+		return this.#requestGoverned({ kind: "stop", targetTurnId }, signal, context);
 	}
 
 	/** Request operator terminal approval and dispatch a targeted steer (`turn/steer`, only when admitted). */
-	requestSteer(message: string, targetTurnId: string, signal?: AbortSignal): Promise<EndoDevelopDispatchOutcomeV0> {
-		return this.#requestGoverned({ kind: "steer", message, targetTurnId }, signal);
+	requestSteer(
+		message: string,
+		targetTurnId: string,
+		signal?: AbortSignal,
+		context?: unknown,
+	): Promise<EndoDevelopDispatchOutcomeV0> {
+		return this.#requestGoverned({ kind: "steer", message, targetTurnId }, signal, context);
 	}
 
 	#requestGoverned(
 		request: Extract<EndoDevelopOperationRequestV0, { kind: "prompt" | "steer" | "stop" }>,
 		signal?: AbortSignal,
+		context?: unknown,
 	): Promise<EndoDevelopDispatchOutcomeV0> {
-		const task = this.#approvalQueue.then(() => this.#runGoverned(request, signal));
+		const task = this.#approvalQueue.then(() => this.#runGoverned(request, signal, context));
 		this.#approvalQueue = task.catch(() => {});
 		return task;
 	}
@@ -186,6 +193,7 @@ export class CodexLiveControllerV0 {
 	async #runGoverned(
 		request: Extract<EndoDevelopOperationRequestV0, { kind: "prompt" | "steer" | "stop" }>,
 		signal?: AbortSignal,
+		context?: unknown,
 	): Promise<EndoDevelopDispatchOutcomeV0> {
 		const d = this.adapter.describe();
 		const s = this.adapter.snapshot();
@@ -270,7 +278,7 @@ export class CodexLiveControllerV0 {
 		}
 
 		const abort = new AbortController();
-		const onExternalAbort = () => abort.abort();
+		const onExternalAbort = () => abort.abort(signal?.reason);
 		signal?.addEventListener("abort", onExternalAbort, { once: true });
 		try {
 			const decision = await this.#approve(
@@ -286,6 +294,7 @@ export class CodexLiveControllerV0 {
 					requiredPhrase,
 				},
 				abort.signal,
+				context,
 			);
 			if (signal?.aborted || abort.signal.aborted) {
 				return {

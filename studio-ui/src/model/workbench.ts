@@ -180,7 +180,9 @@ export const interventionOpen = (i: WorkbenchIntervention): boolean =>
 /** An evidence check still running: the page reads again until it ends. */
 export const checkRunning = (i: WorkbenchIntervention): boolean => i.consumption?.status === "checking";
 export const anyOpen = (s: WorkbenchState): boolean =>
-	commandOpen(s.command) || s.interventions.some((i) => interventionOpen(i) || checkRunning(i));
+	commandOpen(s.command) ||
+	s.interventions.some((i) => interventionOpen(i) || checkRunning(i)) ||
+	(s.status?.codex?.pendingNativeApprovals.length ?? 0) > 0;
 /** The STOP in flight, if any. */
 export const stopInFlight = (s: WorkbenchState): WorkbenchIntervention | null =>
 	s.interventions.find((i) => i.operation === "stop" && interventionOpen(i)) ?? null;
@@ -467,28 +469,75 @@ export const OPERATION_WORDS: Readonly<Record<InterventionOperation, { name: str
 	},
 };
 
+export const harnessDisplayName = (harness: "pi" | "codex" | undefined): string =>
+	harness === "codex" ? "Codex" : "Pi";
+
+export function operationWordsFor(
+	op: InterventionOperation,
+	harness: "pi" | "codex" | undefined = "pi",
+): { name: string; delivery: string } {
+	if (harness !== "codex") return OPERATION_WORDS[op];
+	if (op === "stop")
+		return {
+			name: "Stop",
+			delivery:
+				"Sends a targeted turn/interrupt for the active Codex turn. Acknowledgement means Codex accepted the interrupt; turn interruption is reported separately when the turn completes.",
+		};
+	if (op === "steer")
+		return {
+			name: "Steer",
+			delivery:
+				"Sends a targeted turn/steer bound to the active Codex turn (only when admitted). It does not start a new turn.",
+		};
+	return {
+		name: "Queue",
+		delivery: "Unsupported for Codex: Codex App Server exposes no Pi-equivalent follow-up queue.",
+	};
+}
+
 /** One line for an intervention's state, saying no more than is known. */
-export function interventionWords(i: WorkbenchIntervention): string {
+export function interventionWords(i: WorkbenchIntervention, harness: "pi" | "codex" | undefined = "pi"): string {
+	const name = harnessDisplayName(harness);
 	const state: InterventionState = i.state;
 	switch (state) {
 		case "awaiting-approval":
 			return "Requested. Waiting for you to approve it in the attached terminal";
 		case "dispatching":
 			return i.authorizedBy === "session-grant"
-				? "Authorised by the session grant. Being sent to Pi"
-				: "Approved in the terminal. Being sent to Pi";
+				? `Authorised by the session grant. Being sent to ${name}`
+				: `Approved in the terminal. Being sent to ${name}`;
 		case "sent":
 			return i.operation === "stop"
-				? "Sent to Pi. Waiting for its reply (Pi answers a stop once the run is idle)"
-				: "Sent to Pi. Waiting for its reply";
+				? harness === "codex"
+					? "Sent targeted turn/interrupt to Codex. Waiting for acknowledgement"
+					: "Sent to Pi. Waiting for its reply (Pi answers a stop once the run is idle)"
+				: `Sent to ${name}. Waiting for its reply`;
 		case "accepted":
 			return i.operation === "stop"
-				? "Pi acknowledged the stop request"
-				: "Pi accepted it. That is a reply, not proof the message was used";
+				? harness === "codex"
+					? "Codex acknowledged the targeted turn/interrupt request"
+					: "Pi acknowledged the stop request"
+				: `${name} accepted it. That is a reply, not proof the message was used`;
 		case "refused":
-			return i.reason === "runtime-refused" ? "Pi refused it" : "Not sent";
+			return i.reason === "runtime-refused" ? `${name} refused it` : "Not sent";
 		case "unknown":
-			return "Outcome unknown: it was sent, and Pi's reply was not seen. It may have taken effect";
+			return `Outcome unknown: it was sent, and ${name}'s reply was not seen. It may have taken effect`;
+	}
+}
+export function runEndWordsFor(
+	end: "completed" | "aborted" | "failed" | "unclassified",
+	harness: "pi" | "codex" | undefined = "pi",
+): string {
+	if (harness !== "codex") return RUN_END_WORDS[end];
+	switch (end) {
+		case "completed":
+			return "has ended: completed, as Codex reported";
+		case "aborted":
+			return "has ended: interrupted, as Codex reported";
+		case "failed":
+			return "has ended: failed, as Codex reported";
+		case "unclassified":
+			return "has ended with no classified outcome: Codex reported no terminal status";
 	}
 }
 export const RUN_END_WORDS: Readonly<Record<"completed" | "aborted" | "failed" | "unclassified", string>> = {

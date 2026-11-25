@@ -29,19 +29,34 @@
 //    in `evicted`, so a reader sees a gap as a gap;
 //  - one page: at most PAGE items and PAGE_BYTES (always at least one item, so a reader makes progress).
 
+import {
+	LIVE_TRANSCRIPT_MAX_BYTES_V0,
+	LIVE_TRANSCRIPT_MAX_ITEMS_V0,
+	LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
+	LIVE_TRANSCRIPT_MAX_PARTS_V1,
+	LIVE_TRANSCRIPT_MAX_REASONING_BLOCK_BYTES_V1,
+	LIVE_TRANSCRIPT_MAX_REASONING_MESSAGE_BYTES_V1,
+	LIVE_TRANSCRIPT_PAGE_BYTES_V1,
+	LIVE_TRANSCRIPT_PAGE_V0,
+	LIVE_TRANSCRIPT_SCHEMA_V3,
+	type LiveTranscriptReasoningV1,
+} from "../../protocol/live-transcript.ts";
 import type { ActivityDescriptor, DescriptorBasis, PrivateActivity } from "../../protocol/private-activity.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
 import { endFields, startFields } from "./live-tool-fields.ts";
 
-export const LIVE_TRANSCRIPT_SCHEMA_V3 = "endo.workbench-transcript.v3";
-export const LIVE_TRANSCRIPT_MAX_ITEMS_V0 = 400;
-export const LIVE_TRANSCRIPT_MAX_BYTES_V0 = 2 * 1024 * 1024;
-export const LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0 = 32 * 1024;
-export const LIVE_TRANSCRIPT_MAX_REASONING_BLOCK_BYTES_V1 = 64 * 1024;
-export const LIVE_TRANSCRIPT_MAX_REASONING_MESSAGE_BYTES_V1 = 96 * 1024;
-export const LIVE_TRANSCRIPT_MAX_PARTS_V1 = 32;
-export const LIVE_TRANSCRIPT_PAGE_V0 = 200;
-export const LIVE_TRANSCRIPT_PAGE_BYTES_V1 = 512 * 1024;
+export {
+	LIVE_TRANSCRIPT_MAX_BYTES_V0,
+	LIVE_TRANSCRIPT_MAX_ITEMS_V0,
+	LIVE_TRANSCRIPT_MAX_MESSAGE_BYTES_V0,
+	LIVE_TRANSCRIPT_MAX_PARTS_V1,
+	LIVE_TRANSCRIPT_MAX_REASONING_BLOCK_BYTES_V1,
+	LIVE_TRANSCRIPT_MAX_REASONING_MESSAGE_BYTES_V1,
+	LIVE_TRANSCRIPT_PAGE_BYTES_V1,
+	LIVE_TRANSCRIPT_PAGE_V0,
+	LIVE_TRANSCRIPT_SCHEMA_V3,
+	type LiveTranscriptReasoningV1,
+};
 
 /** One part of a message, in the order the runtime gave it. */
 export type LiveTranscriptPartV1 =
@@ -84,16 +99,6 @@ export interface LiveTranscriptOpenV1 {
 	/** The transcript's highest sequence number when the message began: it belongs after that item. */
 	afterSeq: number;
 	parts: LiveTranscriptPartV1[];
-}
-
-/**
- * What this source relays of model-provided reasoning, harness-neutrally. `relayed`: reasoning the runtime supplies in structured form is
- * shown (a turn without any had none supplied). `withheld`: the source has it and does not pass it on. `unsupported`: the source does not
- * provide it. Pi relays.
- */
-export interface LiveTranscriptReasoningV1 {
-	relay: "relayed" | "withheld" | "unsupported";
-	reason: string | null;
 }
 
 export interface LiveTranscriptViewV0 {

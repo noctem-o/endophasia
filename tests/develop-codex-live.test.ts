@@ -462,20 +462,35 @@ describe("DEVELOP-CODEX-LIVE-001: D1 transport & D2 identity/policy", () => {
 		});
 		try {
 			await lateAdapter.open();
+			// Start an active turn BEFORE the late rogue MCP startup fires (30ms), then confirm automatic teardown
+			// stops the scope, releases the writer lock, AND records `codex.connection-lost` (`expected: false`)
+			// so durable `reduceEndoSessionOverviewV0()` reports `state: "interrupted"` rather than `"running"`.
+			const lateCtrl = new CodexLiveControllerV0({
+				adapter: lateAdapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			await lateCtrl.requestPrompt("run slow turn before late rogue MCP");
 			// Even WITHOUT calling lateAdapter.close(), the late rogue MCP startup MUST stop the scope and release the lock!
 			await expect.poll(() => lateScopeStops, { timeout: 3_000 }).toBeGreaterThanOrEqual(1);
 			await expect
 				.poll(() => existsSync(join(lateRoot, "events", "session-attachment.lock")), { timeout: 3_000 })
 				.toBe(false);
 			expect(lateAdapter.snapshot().connection.state).toBe("disconnected");
-			const ctrl = new CodexLiveControllerV0({
-				adapter: lateAdapter,
-				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
-			});
-			expect(await ctrl.requestPrompt("should fail after late rogue MCP")).toMatchObject({
+			expect(await lateCtrl.requestPrompt("should fail after late rogue MCP")).toMatchObject({
 				status: "refused",
 				stage: "admission",
 			});
+			const roLateStore = createEndoDurableEventStoreV0(lateRoot, { readOnly: true });
+			try {
+				const lateEvents = roLateStore.page({ limit: 1000 }).events;
+				const connLost = lateEvents.find((e) => e.kind === "codex.connection-lost");
+				expect(connLost?.payload).toMatchObject({ expected: false });
+				const lateOverview = reduceEndoSessionOverviewV0(lateEvents);
+				expect(lateOverview.state).toBe("interrupted");
+				expect(lateOverview.anomalies).toEqual([]);
+			} finally {
+				roLateStore.close();
+			}
 		} finally {
 			await lateAdapter.close();
 		}

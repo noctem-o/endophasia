@@ -357,6 +357,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	#connected = false;
 	#disconnectedReason: string | null = "Codex adapter has not opened a live App Server connection yet.";
 	#closed = false;
+	#policyViolationTeardown = false;
 	#closing: Promise<EndoDevelopCloseOutcomeV0> | null = null;
 	#cleanup: EndoAdapterProcessCleanupV0 = {
 		boundary: "unverified",
@@ -1299,18 +1300,20 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			this.#notifyAllTurnWaiters("disconnected");
 
 			if (this.#store !== null) {
-				// Only record an expected detach if we were still connected; do not overwrite a prior unexpected crash's
-				// `lifecycle.interrupted` state with `lifecycle.detached`.
-				if (wasConnected) {
+				// Record expected detach on normal close, or unexpected connection-loss when tearing down for a
+				// policy violation (e.g. late unallowlisted MCP startup) so durable overview reflects the interruption.
+				if (wasConnected || this.#policyViolationTeardown) {
+					const expected = wasConnected && !this.#policyViolationTeardown;
 					try {
 						this.#recordCanonical("codex.connection-lost", {
 							instanceId: this.#instanceId,
 							threadId: this.#threadId,
-							expected: true,
+							expected,
 							cleanupBoundary: this.#cleanup.boundary,
 							cleanupResult: this.#cleanup.result,
 							remainingProcesses: this.#cleanup.remainingProcesses,
 							scopeName: this.#cleanup.scopeName,
+							...(expected ? {} : { reason: this.#disconnectedReason }),
 						});
 					} catch {
 						// Never mask cleanup if store is dead.
@@ -1477,6 +1480,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 						"controller-observed",
 					);
 					this.invalidateEvidence(reason);
+					this.#policyViolationTeardown = true;
 					this.markDisconnected(reason);
 					// Tear down the App Server process / scope immediately so an active turn and rogue MCP server
 					// cannot keep running after the policy violation.

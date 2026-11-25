@@ -193,6 +193,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	#retryExhausted = false;
 	#lastKnownFingerprintId: string | null = null;
 	#lastSeenConnectionInstance: string | null = null;
+	readonly #pendingNativeApprovals = new Set<string>();
 	readonly #guard: EndoObservationGuardV0;
 	readonly #listeners = new Set<(observation: EndoDevelopObservationV0) => void>();
 	readonly #coordination: EndoAdapterCoordinationRefsV0 = {
@@ -231,6 +232,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			this.#disconnectedReason = null;
 			this.#lastStopReason = null;
 			this.#retryExhausted = false;
+			this.#pendingNativeApprovals.clear();
 			// Refresh the fingerprint baseline when adopting a reidentified reconnect; `#evidenceFreshness()`
 			// still verifies that `capabilityState.fingerprintId` matches the new fingerprint observation.
 			this.#lastKnownFingerprintId = this.#o.session.fingerprint?.id ?? null;
@@ -258,6 +260,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		this.#disconnectedReason = null;
 		this.#lastStopReason = null;
 		this.#retryExhausted = false;
+		this.#pendingNativeApprovals.clear();
 		this.#lastKnownFingerprintId = this.#o.session.fingerprint?.id ?? null;
 		this.#guard.rotateInstance(newInstanceId, endoAdapterSessionKeyV0(this.#sessionIdentity()));
 		return newInstanceId;
@@ -266,6 +269,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	/** Explicitly mark the connection lost without claiming process termination or session end. */
 	markDisconnected(reason: string): void {
 		this.#disconnectedReason = reason;
+		this.#pendingNativeApprovals.clear();
 		this.#emit(
 			{
 				kind: "lifecycle",
@@ -493,7 +497,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				connected && this.#o.session.runActive
 					? { turnId: null, state: "in-progress", basis: "runtime-reported" }
 					: null,
-			pendingNativeApprovalCount: 0,
+			pendingNativeApprovalCount: connected ? this.#pendingNativeApprovals.size : 0,
 			processCleanup: this.#cleanup,
 			coordination: this.#coordination,
 		};
@@ -533,6 +537,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			switch (request.kind) {
 				case "prompt": {
 					const disposition = await this.#o.session.prompt(request.message);
+					this.#syncRuntimeObservation();
 					if (this.#instanceId !== dispatchedInstance) {
 						return {
 							status: "unknown",
@@ -563,6 +568,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 						};
 					}
 					const disposition = await this.#o.session.steer(request.message);
+					this.#syncRuntimeObservation();
 					if (this.#instanceId !== dispatchedInstance) {
 						return {
 							status: "unknown",
@@ -593,6 +599,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 						};
 					}
 					const disposition = await this.#o.session.followUp(request.message);
+					this.#syncRuntimeObservation();
 					if (this.#instanceId !== dispatchedInstance) {
 						return {
 							status: "unknown",
@@ -623,6 +630,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 						};
 					}
 					await this.#o.session.stop();
+					this.#syncRuntimeObservation();
 					if (this.#instanceId !== dispatchedInstance) {
 						return {
 							status: "unknown",
@@ -920,6 +928,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			}
 			const rawId = typeof record.id === "string" ? sanitizeRuntimeText(record.id, 256).trim() : "";
 			const reqId = rawId.length > 0 ? rawId : `pi-ui-${this.#now()}`;
+			this.#pendingNativeApprovals.add(reqId);
 			// Emit pending request only: cancellation resolution is emitted only after `PiSessionAttachmentV0` confirms
 			// delivery of `{ cancelled: true }` via `observePiDialogCancelled()`.
 			this.#emit(
@@ -959,6 +968,9 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		const sourceInstanceId = event.instanceId ?? this.#instanceId;
 		const rawId = sanitizeRuntimeText(event.id, 256).trim();
 		const reqId = rawId.length > 0 ? rawId : `pi-ui-${this.#now()}`;
+		if (sourceInstanceId === this.#instanceId) {
+			this.#pendingNativeApprovals.delete(reqId);
+		}
 		this.#emit(
 			{
 				kind: "native-approval",
@@ -1023,6 +1035,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	async close(): Promise<EndoDevelopCloseOutcomeV0> {
 		if (!this.#closed) {
 			this.#closed = true;
+			this.#pendingNativeApprovals.clear();
 			if (this.#o.session.close !== undefined) {
 				await this.#o.session.close();
 			}

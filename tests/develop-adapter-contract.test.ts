@@ -1596,18 +1596,25 @@ describe("production Pi integration: WorkbenchBrokerV0 and real PiSessionAttachm
 			type: "extension_ui_request",
 			record: { id: "dlg-1", method: "confirm" },
 		});
+		expect(adapter.snapshot().pendingNativeApprovalCount).toBe(1);
 		// 4. Non-dialog UI notification emits nothing (not a false approval resolution).
 		adapter.observePiLiveEvent({
 			type: "extension_ui_request",
 			record: { id: "note-1", method: "notify" },
 		});
-		// 5. Unknown UI method emits pending `unknown` (never falsely cancelled).
+		expect(adapter.snapshot().pendingNativeApprovalCount).toBe(1);
+		// 5. Unknown UI method emits pending `unknown` (never falsely cancelled) and increments snapshot pending count.
 		adapter.observePiLiveEvent({
 			type: "extension_ui_request",
 			record: { id: "unk-1", method: "future_modal" },
 		});
-		// 6. Only after attachment confirms dialog cancellation does `resolved` / `cancelled` emit.
+		expect(adapter.snapshot().pendingNativeApprovalCount).toBe(2);
+		// 6. Only after attachment confirms dialog cancellation does `resolved` / `cancelled` emit and decrement count.
 		adapter.observePiDialogCancelled({ id: "dlg-1", method: "confirm" });
+		expect(adapter.snapshot().pendingNativeApprovalCount).toBe(1);
+		// Rotating connection instance clears superseded pending approvals.
+		adapter.rotateInstance();
+		expect(adapter.snapshot().pendingNativeApprovalCount).toBe(0);
 
 		expect(observations.map((o) => o.sequence)).toEqual([1, 2, 3, 4, 5]);
 		expect(observations[0]?.body).toMatchObject({
@@ -1640,6 +1647,39 @@ describe("production Pi integration: WorkbenchBrokerV0 and real PiSessionAttachm
 			requestId: "dlg-1",
 			approvalKind: "extension-dialog",
 			resolution: "cancelled",
+		});
+	});
+
+	it("returns unknown when session connectionInstance rotates while dispatch is awaiting its reply", async () => {
+		let connInstance = "conn-before";
+		let resolvePrompt: ((disposition: string) => void) | null = null;
+		const session = new FakeSession();
+		Object.defineProperty(session, "connectionInstance", { get: () => connInstance, configurable: true });
+		session.prompt = () =>
+			new Promise<string>((resolve) => {
+				resolvePrompt = resolve;
+			});
+
+		const adapter = new PiDevelopAdapterV0({
+			session,
+			attachmentId: "pi.default",
+			launchId: "pi-dispatch-sync",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "in-flight" };
+		const proof = buildOperatorProofV0({ adapter, request: req, nowMs: NOW });
+
+		const pending = adapter.dispatch(req, proof, { mode: "production", nowMs: NOW });
+		// Rotate connectionInstance mid-flight WITHOUT calling any getter or live event on adapter first.
+		connInstance = "conn-after";
+		resolvePrompt!("started");
+
+		expect(await pending).toMatchObject({
+			status: "unknown",
+			operation: "prompt",
+			instanceId: "conn-before",
+			dispatched: true,
 		});
 	});
 

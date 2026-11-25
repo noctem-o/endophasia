@@ -37,6 +37,16 @@ const sanitizeTerminalField = (value: string, max = 256): string =>
 		.trim()
 		.slice(0, max);
 
+const TERMINAL_MULTILINE_UNSAFE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+
+/** Escape terminal control sequences (CSI/OSC/ESC/BEL/C0/C1/DEL/bidi) in multiline output while preserving `\n` and `\t`. */
+export function sanitizeCodexTerminalMultilineV0(value: string): string {
+	return value.replace(/\r\n/g, "\n").replace(TERMINAL_MULTILINE_UNSAFE, (ch) => {
+		const code = ch.charCodeAt(0);
+		return code <= 0xff ? `\\x${code.toString(16).padStart(2, "0")}` : `\\u${code.toString(16).padStart(4, "0")}`;
+	});
+}
+
 function parseReasoningEffort(raw: string | undefined): CodexReasoningEffortV0 | undefined {
 	if (raw === undefined) return undefined;
 	if (!VALID_EFFORTS.has(raw)) {
@@ -242,13 +252,14 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 		if (obs.body.kind === "transcript" && obs.body.role === "assistant") {
 			const label =
 				obs.body.contentKind === "reasoning" ? `[${obs.body.reasoningKind ?? "reasoning"}]` : "[assistant]";
-			write(`\n${label} ${obs.body.text ?? ""}\n`);
+			write(`\n${label} ${sanitizeCodexTerminalMultilineV0(obs.body.text ?? "")}\n`);
 		} else if (obs.body.kind === "tool-activity") {
 			write(
-				`\n[activity:${obs.body.activityKind}] ${obs.body.name} -> ${obs.body.phase}${obs.body.exitCode !== null ? ` (exit=${obs.body.exitCode})` : ""}\n`,
+				`\n[activity:${obs.body.activityKind}] ${sanitizeTerminalField(obs.body.name, 160)} -> ${obs.body.phase}${obs.body.exitCode !== null ? ` (exit=${obs.body.exitCode})` : ""}\n`,
 			);
 		} else if (obs.body.kind === "lifecycle") {
-			write(`\n[lifecycle] ${obs.body.event}${obs.body.detail ? `: ${obs.body.detail}` : ""}\n`);
+			const safeDetail = obs.body.detail ? sanitizeTerminalField(obs.body.detail, 256) : "";
+			write(`\n[lifecycle] ${obs.body.event}${safeDetail ? `: ${safeDetail}` : ""}\n`);
 		} else if (obs.body.kind === "usage" && obs.body.usage.status === "reported") {
 			const u = obs.body.usage.value;
 			write(

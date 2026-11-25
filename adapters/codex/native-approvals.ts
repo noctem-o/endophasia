@@ -65,8 +65,21 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
 const UNSAFE_TERMINAL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+const EXTRA_UNSAFE_ESCAPED = /[\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
 
 const sanitize = (value: string, max: number): string => value.replace(UNSAFE_TERMINAL_CHARS, " ").trim().slice(0, max);
+
+/**
+ * Faithfully and unambiguously render a shell command for operator review without mutating its visible semantics:
+ * `JSON.stringify` escapes `\`, `"`, `\n`, `\r`, `\t`, and C0 controls (so `# comment\nrm -rf` stays unmistakably
+ * `# comment\nrm -rf` rather than appearing commented out), and C1/line-separator/bidi characters are rendered as `\uXXXX`.
+ */
+export function escapeCodexCommandForDisplayV0(rawCommand: string): string {
+	return JSON.stringify(rawCommand).replace(
+		EXTRA_UNSAFE_ESCAPED,
+		(ch) => `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`,
+	);
+}
 
 const optStr = (value: unknown, max = 256): string | null => {
 	if (typeof value !== "string") return null;
@@ -110,12 +123,12 @@ export function parseCodexServerRequestV0(args: {
 			if (rawCommand !== undefined && rawCommand !== null) {
 				if (typeof rawCommand !== "string") {
 					commandUndisplayable = true;
-				} else {
-					const cleaned = rawCommand.replace(UNSAFE_TERMINAL_CHARS, " ").trim();
-					if (cleaned.length > CODEX_MAX_DISPLAYABLE_COMMAND_CHARS_V0) {
+				} else if (rawCommand.length > 0) {
+					const escaped = escapeCodexCommandForDisplayV0(rawCommand);
+					if (escaped.length > CODEX_MAX_DISPLAYABLE_COMMAND_CHARS_V0) {
 						commandUndisplayable = true;
-					} else if (cleaned.length > 0) {
-						completeCmd = cleaned;
+					} else {
+						completeCmd = escaped;
 					}
 				}
 			}

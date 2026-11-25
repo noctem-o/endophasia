@@ -44,8 +44,10 @@ import {
 	validateCodexSandboxModeV0,
 	verifyCodexIsolatedHomeV0,
 } from "../adapters/codex/isolated-home.ts";
+import { escapeCodexCommandForDisplayV0, parseCodexServerRequestV0 } from "../adapters/codex/native-approvals.ts";
 import { PiAttachmentV0, PiStoreLockedErrorV0 } from "../adapters/pi/attachment.ts";
 import type { ProcessScopeV0 } from "../adapters/rpc-jsonl/process-group.ts";
+import { sanitizeCodexTerminalMultilineV0 } from "../cli/codex.ts";
 import { type EndoDevelopObservationV0, endoAdapterSessionKeyV0 } from "../protocol/develop-adapter.ts";
 import { endoDevelopSessionProblemV0, endoDevelopSurfaceProblemV0 } from "../protocol/develop-session.ts";
 import { replayEndoEventRecordV0 } from "../runtime/contracts/event-replay.ts";
@@ -419,15 +421,55 @@ describe("DEVELOP-CODEX-LIVE-001: D1 transport & D2 identity/policy", () => {
 		});
 		await expect(roBroadenAdapter.open()).rejects.toThrow(/broadened to "workspaceWrite"/i);
 
-		// Late unexpected MCP startup arriving AFTER open() MUST fail closed (Review #1).
-		const fxLateMcp = await createCheckedFixture({ scenario: "late-unexpected-mcp-startup" });
+		// Late unexpected MCP startup arriving AFTER open() MUST fail closed AND immediately tear down the runtime/scope!
+		const lateRoot = makeTempDir("endo-late-mcp-store-");
+		const lateCheck = await runCodexLocalProtocolCheckV0({
+			root: lateRoot,
+			attachment: "codex.late",
+			executable: FAKE_CODEX,
+			checkCwd: childWs,
+			env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", FAKE_CODEX_SCENARIO: "default" },
+		});
+		let lateScopeStops = 0;
+		const lateEnv = {
+			PATH: process.env.PATH ?? "",
+			HOME: process.env.HOME ?? "",
+			FAKE_CODEX_SCENARIO: "late-unexpected-mcp-startup,slow-turn",
+		};
+		const lateMockScope: ProcessScopeV0 = {
+			unit: "endo-late-mcp-mock.scope",
+			wrap(command) {
+				return { command: command[0]!, args: command.slice(1), env: lateEnv };
+			},
+			stopWithoutWaiting: ["/usr/bin/true"],
+			async stop() {
+				lateScopeStops += 1;
+				return "confirmed";
+			},
+			remaining() {
+				return 0;
+			},
+		};
+		const lateAdapter = new CodexDevelopAdapterV0({
+			root: lateRoot,
+			attachmentId: "codex.late",
+			projectScope: childWs,
+			executable: FAKE_CODEX,
+			env: lateEnv,
+			scope: lateMockScope,
+			fingerprint: lateCheck.fingerprint,
+			capabilityState: lateCheck.capabilityState,
+		});
 		try {
-			await fxLateMcp.adapter.open();
+			await lateAdapter.open();
+			// Even WITHOUT calling lateAdapter.close(), the late rogue MCP startup MUST stop the scope and release the lock!
+			await expect.poll(() => lateScopeStops, { timeout: 3_000 }).toBeGreaterThanOrEqual(1);
 			await expect
-				.poll(() => fxLateMcp.adapter.snapshot().connection.state, { timeout: 2_000 })
-				.toBe("disconnected");
+				.poll(() => existsSync(join(lateRoot, "events", "session-attachment.lock")), { timeout: 3_000 })
+				.toBe(false);
+			expect(lateAdapter.snapshot().connection.state).toBe("disconnected");
 			const ctrl = new CodexLiveControllerV0({
-				adapter: fxLateMcp.adapter,
+				adapter: lateAdapter,
 				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
 			});
 			expect(await ctrl.requestPrompt("should fail after late rogue MCP")).toMatchObject({
@@ -435,7 +477,7 @@ describe("DEVELOP-CODEX-LIVE-001: D1 transport & D2 identity/policy", () => {
 				stage: "admission",
 			});
 		} finally {
-			await fxLateMcp.adapter.close();
+			await lateAdapter.close();
 		}
 
 		// baseEnv omitting CODEX_HOME must NOT leak host process.env.CODEX_HOME, and empty "" must NOT link ./auth.json (Review #3).
@@ -1185,6 +1227,35 @@ describe("DEVELOP-CODEX-LIVE-001: D5 fail-closed native approvals", () => {
 		} finally {
 			await fxRaw.adapter.close();
 		}
+
+		// 7. Multiline command preserves visible `\n` escape (never collapses `# comment\nrm -rf` into a single comment),
+		// and CLI multiline output sanitizer neutralizes ANSI CSI / OSC / C1 / bidi sequences while preserving `\n`.
+		const multilineCmd = 'echo safe # comment\nrm -rf "$HOME/Documents"';
+		const parsedMulti = parseCodexServerRequestV0({
+			request: {
+				id: "srv-multi-1",
+				method: "item/commandExecution/requestApproval",
+				instanceId: "inst-1",
+				params: { threadId: "t1", turnId: "turn-1", itemId: "item-1", command: multilineCmd },
+			},
+			source: "codex-live",
+			sessionKey: "codex-live:codex.test:t1",
+		});
+		expect(parsedMulti.interactiveAcceptSupported).toBe(true);
+		expect(parsedMulti.normalized.summary).toContain(escapeCodexCommandForDisplayV0(multilineCmd));
+		expect(parsedMulti.normalized.summary).toContain("\\nrm -rf");
+		expect(parsedMulti.normalized.summary).not.toContain("# comment rm -rf");
+
+		const sanitizedTranscript = sanitizeCodexTerminalMultilineV0(
+			"line1\n\u001b[2J\u001b]52;c;YWJj\u0007\u009b31m\u202ehijack\tline2",
+		);
+		expect(sanitizedTranscript).toContain("line1\n");
+		expect(sanitizedTranscript).toContain("\tline2");
+		expect(sanitizedTranscript).not.toContain("\u001b");
+		expect(sanitizedTranscript).not.toContain("\u0007");
+		expect(sanitizedTranscript).not.toContain("\u009b");
+		expect(sanitizedTranscript).not.toContain("\u202e");
+		expect(sanitizedTranscript).toContain("\\x1b");
 	});
 });
 

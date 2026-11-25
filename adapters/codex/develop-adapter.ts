@@ -1293,7 +1293,9 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				this.#cleanup = summarizeCleanup(rawCleanup);
 			}
 			this.#connected = false;
-			this.#disconnectedReason = "Codex adapter closed.";
+			if (wasConnected || this.#disconnectedReason === null) {
+				this.#disconnectedReason = "Codex adapter closed.";
+			}
 			this.#notifyAllTurnWaiters("disconnected");
 
 			if (this.#store !== null) {
@@ -1476,6 +1478,9 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					);
 					this.invalidateEvidence(reason);
 					this.markDisconnected(reason);
+					// Tear down the App Server process / scope immediately so an active turn and rogue MCP server
+					// cannot keep running after the policy violation.
+					void this.close();
 				}
 			}
 			return;
@@ -2188,7 +2193,9 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	}
 
 	#connectionState(): { state: EndoAdapterConnectionStateV0; reason: string | null } {
-		if (this.#closed) return { state: "disconnected", reason: "Codex adapter is closed." };
+		if (this.#closed) {
+			return { state: "disconnected", reason: this.#disconnectedReason ?? "Codex adapter is closed." };
+		}
 		if (!this.#connected) {
 			return { state: "disconnected", reason: this.#disconnectedReason ?? "Codex App Server is disconnected." };
 		}

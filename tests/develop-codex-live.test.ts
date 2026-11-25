@@ -1106,6 +1106,85 @@ describe("DEVELOP-CODEX-LIVE-001: D5 fail-closed native approvals", () => {
 		} finally {
 			await fxIdleNull.adapter.close();
 		}
+
+		// 5. Long command (>200 chars, <=4096) displays the COMPLETE command in summary (no silent truncation);
+		// oversized command (>4096 chars) refuses interactive accept fail-closed!
+		const logLong = join(makeTempDir(), "wire-cmd-long.json");
+		let seenLongSummary = "";
+		const fxLong = await createCheckedFixture({
+			scenario: "native-approval-cmd-long",
+			logFile: logLong,
+			onNativeApprovalRequest: async (req) => {
+				seenLongSummary = req.summary;
+				return buildCodexNativeApprovalDecisionV0({ request: req, decision: "accept" });
+			},
+		});
+		try {
+			await fxLong.adapter.open();
+			const ctrl = new CodexLiveControllerV0({
+				adapter: fxLong.adapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			const sent = await ctrl.requestPrompt("run long command");
+			if (sent.status === "accepted" && sent.turnId) await fxLong.adapter.waitForTurnCompletion(sent.turnId, 5_000);
+			expect(seenLongSummary).toContain("VISIBLE_TAIL_320_CHARS");
+			const wire = JSON.parse(readFileSync(logLong, "utf8")) as {
+				direction: string;
+				result?: Record<string, unknown>;
+			}[];
+			expect(wire.find((w) => w.direction === "server-request-reply")?.result).toEqual({ decision: "accept" });
+		} finally {
+			await fxLong.adapter.close();
+		}
+
+		const logOver = join(makeTempDir(), "wire-cmd-oversized.json");
+		const fxOver = await createCheckedFixture({
+			scenario: "native-approval-cmd-oversized",
+			logFile: logOver,
+			onNativeApprovalRequest: async (req) =>
+				buildCodexNativeApprovalDecisionV0({ request: req, decision: "accept" }),
+		});
+		try {
+			await fxOver.adapter.open();
+			const ctrl = new CodexLiveControllerV0({
+				adapter: fxOver.adapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			const sent = await ctrl.requestPrompt("run oversized command");
+			if (sent.status === "accepted" && sent.turnId) await fxOver.adapter.waitForTurnCompletion(sent.turnId, 5_000);
+			const wire = JSON.parse(readFileSync(logOver, "utf8")) as {
+				direction: string;
+				result?: Record<string, unknown>;
+			}[];
+			expect(wire.find((w) => w.direction === "server-request-reply")?.result).toEqual({ decision: "decline" });
+		} finally {
+			await fxOver.adapter.close();
+		}
+
+		// 6. Streamed raw reasoning (`item/reasoning/textDelta`) + `item/completed` updates the same item in-place
+		// (1 completed `raw-thinking` entry, zero duplicate unfinished copy; sibling `reasoning-summary` stays distinct).
+		const fxRaw = await createCheckedFixture({ scenario: "raw-reasoning-delta" });
+		try {
+			await fxRaw.adapter.open();
+			const ctrl = new CodexLiveControllerV0({
+				adapter: fxRaw.adapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			const sent = await ctrl.requestPrompt("check raw reasoning completion");
+			if (sent.status === "accepted" && sent.turnId) await fxRaw.adapter.waitForTurnCompletion(sent.turnId, 5_000);
+			const rawEntries = fxRaw.adapter
+				.liveView()
+				.transcript.filter((t) => t.contentKind === "reasoning" && t.reasoningKind === "raw-thinking");
+			const summaryEntries = fxRaw.adapter
+				.liveView()
+				.transcript.filter((t) => t.contentKind === "reasoning" && t.reasoningKind === "reasoning-summary");
+			expect(rawEntries).toHaveLength(1);
+			expect(rawEntries[0]).toMatchObject({ completed: true, text: "Raw step 1 complete." });
+			expect(summaryEntries).toHaveLength(1);
+			expect(summaryEntries[0]).toMatchObject({ completed: true, text: "Checking fixture safely." });
+		} finally {
+			await fxRaw.adapter.close();
+		}
 	});
 });
 

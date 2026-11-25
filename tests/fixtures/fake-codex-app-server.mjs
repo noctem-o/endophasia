@@ -358,6 +358,8 @@ function handleMessage(msg) {
 
 		if (
 			scenarios.has("native-approval-cmd") ||
+			scenarios.has("native-approval-cmd-long") ||
+			scenarios.has("native-approval-cmd-oversized") ||
 			scenarios.has("native-approval-file") ||
 			scenarios.has("native-approval-permissions") ||
 			scenarios.has("native-approval-unknown") ||
@@ -393,6 +395,12 @@ function handleMessage(msg) {
 			method: "item/reasoning/summaryTextDelta",
 			params: { threadId, turnId, itemId: `item-reason-${turnSeq}`, delta: "Checking fixture ", summaryIndex: 0 },
 		});
+		if (scenarios.has("raw-reasoning-delta")) {
+			send({
+				method: "item/reasoning/textDelta",
+				params: { threadId, turnId, itemId: `item-reason-${turnSeq}`, delta: "Raw step 1 ", contentIndex: 0 },
+			});
+		}
 		send({
 			method: "item/completed",
 			params: {
@@ -403,7 +411,7 @@ function handleMessage(msg) {
 					type: "reasoning",
 					id: `item-reason-${turnSeq}`,
 					summary: ["Checking fixture safely."],
-					content: [],
+					content: scenarios.has("raw-reasoning-delta") ? ["Raw step 1 complete."] : [],
 				},
 			},
 		});
@@ -566,7 +574,17 @@ function runApprovalTurn(turnId) {
 		});
 	};
 
-	if (scenarios.has("native-approval-cmd") || scenarios.has("duplicate-server-req")) {
+	if (
+		scenarios.has("native-approval-cmd") ||
+		scenarios.has("native-approval-cmd-long") ||
+		scenarios.has("native-approval-cmd-oversized") ||
+		scenarios.has("duplicate-server-req")
+	) {
+		const cmd = scenarios.has("native-approval-cmd-oversized")
+			? `${"echo padding ".repeat(400)}&& echo HIDDEN_OVERSIZED_TAIL`
+			: scenarios.has("native-approval-cmd-long")
+				? `${"echo harmless_prefix_".repeat(15)} && echo VISIBLE_TAIL_320_CHARS`
+				: "node --test";
 		const req = {
 			id: reqId,
 			method: "item/commandExecution/requestApproval",
@@ -577,7 +595,7 @@ function runApprovalTurn(turnId) {
 				itemId: `item-appr-${turnSeq}`,
 				startedAtMs: Date.now(),
 				environmentId: null,
-				command: "node --test",
+				command: cmd,
 				cwd: "/tmp/fixture",
 				proposedExecpolicyAmendment: { command: ["node", "--test"] },
 			},

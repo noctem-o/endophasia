@@ -20,6 +20,7 @@ import {
 } from "../adapters/codex/controller.ts";
 import { CodexDevelopAdapterV0, type CodexNativeApprovalHandlerV0 } from "../adapters/codex/develop-adapter.ts";
 import { validateCodexSandboxModeV0 } from "../adapters/codex/isolated-home.ts";
+import { CODEX_MAX_APPROVAL_SUMMARY_CHARS_V0 } from "../adapters/codex/native-approvals.ts";
 import { type EndoContainmentV0, liveScopeV0 } from "../adapters/sandbox/containment.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { liveContainmentV0 } from "./process-cleanup.ts";
@@ -150,8 +151,10 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 	let replPromptAbort: AbortController | null = null;
 	let pendingUrgentPrompts = 0;
 	let shuttingDown = false;
+	const shutdownAbort = new AbortController();
 	const onSignal = (): void => {
 		shuttingDown = true;
+		shutdownAbort.abort();
 		replPromptAbort?.abort();
 		rl.close();
 	};
@@ -177,7 +180,8 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 
 	const approveOperation: CodexOperationApproverV0 = (prompt, signal) =>
 		enqueuePrompt(async () => {
-			if (shuttingDown || signal.aborted) return { approved: false, reason: "aborted" };
+			const combinedSignal = AbortSignal.any([signal, shutdownAbort.signal]);
+			if (shuttingDown || combinedSignal.aborted) return { approved: false, reason: "aborted" };
 			write(
 				`\n[GOVERNED APPROVAL REQUIRED]\n` +
 					`  Operation: ${prompt.operation}\n` +
@@ -187,7 +191,7 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 					`  Type exact phrase to approve: ${prompt.requiredPhrase}\n`,
 			);
 			try {
-				const answer = (await rl.question("approval> ", { signal })).trim();
+				const answer = (await rl.question("approval> ", { signal: combinedSignal })).trim();
 				if (answer === prompt.requiredPhrase) {
 					return { approved: true, mechanism: "terminal-phrase" };
 				}
@@ -199,18 +203,19 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 
 	const handleNativeApproval: CodexNativeApprovalHandlerV0 = (request, signal) =>
 		enqueuePrompt(async () => {
-			if (shuttingDown || signal.aborted) return null;
+			const combinedSignal = AbortSignal.any([signal, shutdownAbort.signal]);
+			if (shuttingDown || combinedSignal.aborted) return null;
 			write(
 				`\n[NATIVE CODEX APPROVAL REQUEST]\n` +
 					`  Request: ${sanitizeTerminalField(request.requestId, 128)}\n` +
 					`  Kind:    ${sanitizeTerminalField(request.approvalKind, 64)} (${sanitizeTerminalField(request.nativeMethod, 128)})\n` +
 					`  Scope:   ${sanitizeTerminalField(request.requestedScope, 32)} (Endophasia v0 permits one-time only)\n` +
 					`  Turn:    ${request.turnId === null ? "(none)" : sanitizeTerminalField(request.turnId, 128)} | Item: ${request.itemId === null ? "(none)" : sanitizeTerminalField(request.itemId, 128)}\n` +
-					`  Summary: ${sanitizeTerminalField(request.summary, 256)}\n` +
+					`  Summary: ${sanitizeTerminalField(request.summary, CODEX_MAX_APPROVAL_SUMMARY_CHARS_V0)}\n` +
 					`  Type "ALLOW ONCE" to accept once, "CANCEL" to cancel, or anything else to decline:\n`,
 			);
 			try {
-				const answer = (await rl.question("native-approval> ", { signal })).trim();
+				const answer = (await rl.question("native-approval> ", { signal: combinedSignal })).trim();
 				const decision = answer === "ALLOW ONCE" ? "accept" : answer === "CANCEL" ? "cancel" : "decline";
 				return buildCodexNativeApprovalDecisionV0({ request, decision });
 			} catch {
@@ -298,13 +303,13 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 					write("No active turn to interrupt.\n");
 					continue;
 				}
-				const out = await controller.requestStop(turnId);
+				const out = await controller.requestStop(turnId, shutdownAbort.signal);
 				write(`${JSON.stringify(out)}\n`);
 				continue;
 			}
 			if (line.startsWith("prompt ")) {
 				const msg = line.slice("prompt ".length).trim();
-				const out = await controller.requestPrompt(msg);
+				const out = await controller.requestPrompt(msg, shutdownAbort.signal);
 				write(`${JSON.stringify(out)}\n`);
 				continue;
 			}

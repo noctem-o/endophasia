@@ -1939,7 +1939,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					if (rawContent.length > 0) {
 						const rawText = rawContent.join("\n");
 						this.#upsertCompletedTranscript({
-							itemId: `${itemId}:raw`,
+							itemId,
 							turnId,
 							role: "assistant",
 							contentKind: "reasoning",

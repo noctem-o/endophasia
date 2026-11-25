@@ -37,6 +37,11 @@ export const CODEX_KNOWN_APPROVAL_KINDS_V0 = [
 	"mcp-elicitation",
 ] as const satisfies readonly Exclude<EndoAdapterNativeApprovalKindV0, "unknown">[];
 
+/** Maximum command length that Endophasia displays in full for interactive one-time approval; longer commands fail closed. */
+export const CODEX_MAX_DISPLAYABLE_COMMAND_CHARS_V0 = 4096;
+/** Maximum complete approval summary length preserved without truncation for interactive display. */
+export const CODEX_MAX_APPROVAL_SUMMARY_CHARS_V0 = 4608;
+
 export interface ParsedCodexServerRequestV0 {
 	readonly rpcId: CodexJsonRpcIdV0;
 	readonly requestId: string;
@@ -99,9 +104,23 @@ export function parseCodexServerRequestV0(args: {
 		case "item/commandExecution/requestApproval": {
 			approvalKind = "command-execution";
 			interactiveAcceptSupported = true;
-			const cmd = optStr(params.command, 200);
-			const cwd = optStr(params.cwd, 120);
-			const reason = optStr(params.reason, 120);
+			const rawCommand = params.command;
+			let completeCmd: string | null = null;
+			let commandUndisplayable = false;
+			if (rawCommand !== undefined && rawCommand !== null) {
+				if (typeof rawCommand !== "string") {
+					commandUndisplayable = true;
+				} else {
+					const cleaned = rawCommand.replace(UNSAFE_TERMINAL_CHARS, " ").trim();
+					if (cleaned.length > CODEX_MAX_DISPLAYABLE_COMMAND_CHARS_V0) {
+						commandUndisplayable = true;
+					} else if (cleaned.length > 0) {
+						completeCmd = cleaned;
+					}
+				}
+			}
+			const cwd = optStr(params.cwd, 160);
+			const reason = optStr(params.reason, 160);
 			const hasExecAmend =
 				params.proposedExecpolicyAmendment !== undefined && params.proposedExecpolicyAmendment !== null;
 			const hasNetAmend =
@@ -112,12 +131,23 @@ export function parseCodexServerRequestV0(args: {
 			requestedScope = "once";
 			const parts = [
 				"Command execution approval",
-				cmd ? `cmd=${cmd}` : null,
+				completeCmd ? `cmd=${completeCmd}` : null,
 				cwd ? `cwd=${cwd}` : null,
 				reason ? `reason=${reason}` : null,
 				proposesBroadening ? "(proposed policy amendment withheld; one-time decision only)" : null,
 			].filter(Boolean);
-			summary = sanitize(parts.join(" | "), 380);
+			const assembled = parts.join(" | ").replace(UNSAFE_TERMINAL_CHARS, " ").trim();
+			// Never silently truncate a command before allowing interactive approval: if the complete command cannot
+			// be displayed safely in full, refuse acceptance fail-closed.
+			if (commandUndisplayable || assembled.length > CODEX_MAX_APPROVAL_SUMMARY_CHARS_V0) {
+				interactiveAcceptSupported = false;
+				summary = sanitize(
+					`Command execution approval (complete command exceeds ${CODEX_MAX_DISPLAYABLE_COMMAND_CHARS_V0}-char safe display limit; declined fail-closed in v0)${cwd ? ` | cwd=${cwd}` : ""}`,
+					380,
+				);
+			} else {
+				summary = assembled;
+			}
 			break;
 		}
 		case "item/fileChange/requestApproval": {

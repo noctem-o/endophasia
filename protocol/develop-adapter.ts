@@ -594,7 +594,8 @@ export type EndoDevelopObservationBodyV0 =
 				| "turn-interrupted"
 				| "turn-aborted"
 				| "turn-failed"
-				| "context-compacted";
+				| "context-compacted"
+				| "context-compaction-failed";
 			sessionState: EndoAdapterSessionStateV0;
 			turnState: EndoAdapterTurnStateV0 | null;
 			detail: string | null;
@@ -689,6 +690,7 @@ const LIFECYCLE_EVENTS_V0 = [
 	"turn-aborted",
 	"turn-failed",
 	"context-compacted",
+	"context-compaction-failed",
 ] as const;
 
 const TOOL_ACTIVITY_KINDS_V0 = [

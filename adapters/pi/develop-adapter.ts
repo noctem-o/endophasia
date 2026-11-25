@@ -715,18 +715,19 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	 * Feed one live Pi RPC event into the neutral observation stream.
 	 * Pass `sourceInstanceId` when forwarding events that may arrive asynchronously from an earlier connection.
 	 */
-	observePiLiveEvent(event: RpcEventV0, sourceInstanceId: string = this.#instanceId): void {
+	observePiLiveEvent(event: RpcEventV0, sourceInstanceId?: string): void {
 		this.#syncRuntimeObservation();
+		const effectiveInstanceId = sourceInstanceId ?? this.#instanceId;
 		// Short-circuit stale-instance events immediately BEFORE mutating any live turn state.
-		if (sourceInstanceId !== this.#instanceId) {
+		if (effectiveInstanceId !== this.#instanceId) {
 			this.#emit(
 				{
 					kind: "evidence-gap",
 					gap: "late-event-from-prior-attachment",
-					reason: `Pi live event (${sanitizeRuntimeText(event.type, 64)}) arrived from superseded instance ${sanitizeRuntimeText(sourceInstanceId, 64)}.`,
+					reason: `Pi live event (${sanitizeRuntimeText(event.type, 64)}) arrived from superseded instance ${sanitizeRuntimeText(effectiveInstanceId, 64)}.`,
 				},
 				"controller-observed",
-				sourceInstanceId,
+				effectiveInstanceId,
 			);
 			return;
 		}
@@ -743,7 +744,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					detail: null,
 				},
 				"runtime-reported",
-				sourceInstanceId,
+				effectiveInstanceId,
 			);
 			return;
 		}
@@ -752,16 +753,25 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			return;
 		}
 		if (event.type === "compaction_end") {
+			const succeeded = isRecord(record.result) && record.aborted !== true;
+			const rawReason = typeof record.reason === "string" ? sanitizeRuntimeText(record.reason, 32).trim() : "";
+			const detail = succeeded
+				? rawReason.length > 0
+					? rawReason
+					: null
+				: record.aborted === true
+					? "aborted"
+					: "failed";
 			this.#emit(
 				{
 					kind: "lifecycle",
-					event: "context-compacted",
+					event: succeeded ? "context-compacted" : "context-compaction-failed",
 					sessionState: this.#o.session.runActive ? "active" : "idle",
 					turnState: null,
-					detail: null,
+					detail,
 				},
 				"runtime-reported",
-				sourceInstanceId,
+				effectiveInstanceId,
 			);
 			return;
 		}
@@ -785,7 +795,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					detail: this.#lastStopReason,
 				},
 				"runtime-reported",
-				sourceInstanceId,
+				effectiveInstanceId,
 			);
 			this.#lastStopReason = null;
 			this.#retryExhausted = false;
@@ -822,7 +832,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 							stopReason,
 						},
 						"runtime-reported",
-						sourceInstanceId,
+						effectiveInstanceId,
 					);
 				} else if (block.type === "text" && typeof block.text === "string") {
 					this.#emit(
@@ -836,7 +846,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 							stopReason,
 						},
 						"runtime-reported",
-						sourceInstanceId,
+						effectiveInstanceId,
 					);
 				}
 			}
@@ -850,7 +860,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 							reason: "Pi assistant message carried no structured thinking block.",
 						},
 						"controller-observed",
-						sourceInstanceId,
+						effectiveInstanceId,
 					);
 				}
 				const usage = parsePiUsage(msg);
@@ -863,7 +873,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 								: { status: "unavailable", reason: "Pi assistant message did not report usage numbers." },
 					},
 					usage !== null ? "runtime-reported" : "controller-observed",
-					sourceInstanceId,
+					effectiveInstanceId,
 				);
 			}
 			return;
@@ -898,7 +908,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					exitCode,
 				},
 				"runtime-reported",
-				sourceInstanceId,
+				effectiveInstanceId,
 			);
 			return;
 		}
@@ -921,7 +931,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					resolution: "pending",
 				},
 				"runtime-reported",
-				sourceInstanceId,
+				effectiveInstanceId,
 			);
 			return;
 		}
@@ -935,7 +945,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				reason: `Unrecognized Pi live event type: ${sanitizeRuntimeText(event.type, 64)}.`,
 			},
 			"controller-observed",
-			sourceInstanceId,
+			effectiveInstanceId,
 		);
 	}
 

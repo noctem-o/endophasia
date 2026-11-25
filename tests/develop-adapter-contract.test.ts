@@ -1441,15 +1441,45 @@ describe("production Pi integration: WorkbenchBrokerV0 and real PiSessionAttachm
 		expect(observations.some((o) => o.body.kind === "lifecycle" && o.body.event === "turn-completed")).toBe(true);
 		expect(observations.some((o) => o.body.kind === "lifecycle" && o.body.event === "turn-failed")).toBe(false);
 
-		// Control characters in tool names are sanitized and `compaction_end` maps to `context-compacted`.
+		// Control characters in tool names are sanitized and `compaction_end` distinguishes success vs abort/failure.
 		adapter.observePiLiveEvent({
 			type: "tool_execution_start",
 			record: { toolName: "bash\u001b[31m\nrm", toolCallId: "tc-1" },
 		});
-		adapter.observePiLiveEvent({ type: "compaction_end", record: {} });
+		adapter.observePiLiveEvent({
+			type: "compaction_end",
+			record: { reason: "threshold", result: { firstKeptEntryId: "e9", tokensBefore: 10 }, aborted: false },
+		});
+		adapter.observePiLiveEvent({
+			type: "compaction_end",
+			record: { reason: "overflow", aborted: true },
+		});
+		adapter.observePiLiveEvent({
+			type: "compaction_end",
+			record: { reason: "overflow", errorMessage: "summary failed" },
+		});
 		const toolObs = observations.find((o) => o.body.kind === "tool-activity");
 		expect(toolObs?.body.kind === "tool-activity" && toolObs.body.name).toBe("bash [31m rm");
-		expect(observations.some((o) => o.body.kind === "lifecycle" && o.body.event === "context-compacted")).toBe(true);
+		const compactions = observations.filter(
+			(o) =>
+				o.body.kind === "lifecycle" &&
+				(o.body.event === "context-compacted" || o.body.event === "context-compaction-failed"),
+		);
+		expect(compactions.map((o) => (o.body.kind === "lifecycle" ? [o.body.event, o.body.detail] : null))).toEqual([
+			["context-compacted", "threshold"],
+			["context-compaction-failed", "aborted"],
+			["context-compaction-failed", "failed"],
+		]);
+
+		// Reconnect BEFORE calling any adapter getter: the first forwarded event (omitting sourceInstanceId)
+		// must adopt the new connectionInstance instead of being falsely dropped as a late event.
+		connInstance = "conn-3";
+		const postReconnect: EndoDevelopObservationV0[] = [];
+		adapter.subscribeObservations((o) => postReconnect.push(o));
+		adapter.observePiLiveEvent({ type: "agent_start", record: {} });
+		expect(postReconnect).toHaveLength(1);
+		expect(postReconnect[0]?.instanceId).toBe("conn-3");
+		expect(postReconnect[0]?.body).toMatchObject({ kind: "lifecycle", event: "turn-started" });
 	});
 
 	it("refreshes fingerprint baseline on reconnect while still enforcing capabilityState match and mid-connection staleness", () => {

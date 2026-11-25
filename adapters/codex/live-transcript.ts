@@ -20,12 +20,6 @@ import type {
 	EndoDevelopAdapterDescriptorV0,
 	EndoDevelopObservationV0,
 } from "../../protocol/develop-adapter.ts";
-import type {
-	ActivityDescriptor,
-	ActivityField,
-	DescriptorBasis,
-	PrivateActivity,
-} from "../../protocol/private-activity.ts";
 import {
 	LIVE_TRANSCRIPT_MAX_BYTES_V0,
 	LIVE_TRANSCRIPT_MAX_ITEMS_V0,
@@ -37,7 +31,13 @@ import {
 	LIVE_TRANSCRIPT_PAGE_V0,
 	LIVE_TRANSCRIPT_SCHEMA_V3,
 	type LiveTranscriptReasoningV1,
-} from "../pi/live-transcript.ts";
+} from "../../protocol/live-transcript.ts";
+import type {
+	ActivityDescriptor,
+	ActivityField,
+	DescriptorBasis,
+	PrivateActivity,
+} from "../../protocol/private-activity.ts";
 import type { CodexTranscriptDeltaV0 } from "./develop-adapter.ts";
 
 export {

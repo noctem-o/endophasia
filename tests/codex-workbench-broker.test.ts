@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { runCodexLocalProtocolCheckV0 } from "../adapters/codex/checks.ts";
 import { buildCodexNativeApprovalDecisionV0 } from "../adapters/codex/controller.ts";
 import { CodexDevelopAdapterV0, type CodexNativeApprovalHandlerV0 } from "../adapters/codex/develop-adapter.ts";
@@ -25,8 +25,22 @@ import { acquireEndoEventStoreWriterLockV0 } from "../storage/writer-lock.ts";
 import { presentLiveWorkbenchSession } from "../studio-ui/src/model/develop-session.ts";
 import { readWorkbenchStatus, readWorkbenchTranscript } from "../studio-ui/src/model/workbench-wire.ts";
 
+const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex-app-server.mjs", import.meta.url));
-const UI_DIR = fileURLToPath(new URL("../dist/studio-ui", import.meta.url));
+const uiScratch = mkdtempSync(join(tmpdir(), "endo-codex-wb-ui-"));
+let UI_DIR = "";
+
+beforeAll(async () => {
+	UI_DIR = join(uiScratch, "ui");
+	const { buildStudioUi } = (await import(join(REPO_ROOT, "scripts/build-studio-ui.mjs"))) as {
+		buildStudioUi(outDir: string): Promise<unknown>;
+	};
+	await buildStudioUi(UI_DIR);
+}, 90_000);
+
+afterAll(() => {
+	rmSync(uiScratch, { recursive: true, force: true });
+});
 
 const tempDirs: string[] = [];
 const cleanups: Array<() => Promise<void> | void> = [];

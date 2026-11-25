@@ -220,7 +220,6 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 	#capabilityOverrides = new Map<EndoAdapterOperationKindV0, EndoAdapterCapabilityEntryV0>();
 	#activeTurn: { turnId: string; state: EndoAdapterTurnStateV0 } | null = null;
 	#turnCounter = 0;
-	#sequence = 0;
 	#closed = false;
 	#nextFault: CodexSpecimenFaultV0 = "none";
 	#pendingApprovals = new Map<string, EndoDevelopNativeApprovalRequestV0>();
@@ -320,7 +319,6 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 	/** Simulate reconnect (new connection instance, optionally new runtime fingerprint). */
 	reconnect(options: { newInstanceId?: string; newFingerprint?: EndoHarnessFingerprintRecordV0 | null } = {}): string {
 		this.#instanceId = options.newInstanceId ?? randomBytes(8).toString("hex");
-		this.#sequence = 0;
 		this.#activeTurn = null;
 		this.#pendingApprovals.clear();
 		if (options.newFingerprint !== undefined) {
@@ -941,7 +939,7 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 		sourceInstanceId: string = this.#instanceId,
 		extraIds: { turnId?: string | null; itemId?: string | null; entryId?: string | null } = {},
 	): void {
-		const seq = sourceInstanceId === this.#instanceId ? ++this.#sequence : 1;
+		const seq = sourceInstanceId === this.#instanceId ? this.#guard.allocateSequence() : 1;
 		const obs: EndoDevelopObservationV0 = {
 			schemaVersion: ENDO_DEVELOP_ADAPTER_OBSERVATION_SCHEMA_V0,
 			observationId: `codex-specimen:${sourceInstanceId}:${seq}`,

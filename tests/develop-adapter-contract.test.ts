@@ -1452,6 +1452,167 @@ describe("production Pi integration: WorkbenchBrokerV0 and real PiSessionAttachm
 		expect(observations.some((o) => o.body.kind === "lifecycle" && o.body.event === "context-compacted")).toBe(true);
 	});
 
+	it("refreshes fingerprint baseline on reconnect while still enforcing capabilityState match and mid-connection staleness", () => {
+		const fp1 = makeStrongPiFingerprint("1.5.2", "1".repeat(64), "2".repeat(64));
+		const fp2 = makeStrongPiFingerprint("1.5.2", "3".repeat(64), "4".repeat(64));
+		const session = Object.assign(new FakeSession(), {
+			fingerprint: fp1,
+			capabilityState: makePiCapabilityState(fp1.id),
+		});
+		let connInstance = "conn-a";
+		Object.defineProperty(session, "connectionInstance", { get: () => connInstance, configurable: true });
+
+		const adapter = new PiDevelopAdapterV0({
+			session,
+			attachmentId: "pi.default",
+			launchId: "pi-reconnect-fp-0001",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "after reconnect" };
+		const oldProof = buildOperatorProofV0({ adapter, request: req, nowMs: NOW });
+
+		// Simulate PiSessionAttachmentV0.reconnect(): new fingerprint observation + matching capabilityState + new connectionInstance.
+		session.fingerprint = fp2;
+		session.capabilityState = makePiCapabilityState(fp2.id);
+		connInstance = "conn-b";
+
+		// Old proof bound to conn-a is refused, while fresh proof on conn-b is admitted (NOT stuck stale).
+		expect(adapter.admitOperation(req, oldProof, { mode: "production", nowMs: NOW })).toMatchObject({
+			admitted: false,
+			code: "stale-attachment",
+		});
+		const newProof = buildOperatorProofV0({ adapter, request: req, nowMs: NOW });
+		expect(adapter.describe().evidenceFreshness.status).toBe("current");
+		expect(adapter.admitOperation(req, newProof, { mode: "production", nowMs: NOW })).toEqual({ admitted: true });
+
+		// Reconnect where capabilityState was NOT refreshed for the new fingerprint still refuses as stale.
+		const fp3 = makeStrongPiFingerprint("1.6.0", "5".repeat(64), "6".repeat(64));
+		session.fingerprint = fp3;
+		connInstance = "conn-c";
+		const staleProof = buildOperatorProofV0({ adapter, request: req, nowMs: NOW });
+		expect(adapter.describe().evidenceFreshness.status).toBe("stale");
+		expect(adapter.admitOperation(req, staleProof, { mode: "production", nowMs: NOW })).toMatchObject({
+			admitted: false,
+			code: "capability-stale",
+		});
+	});
+
+	it("conservatively aggregates processCleanup across reconnected processes (never masks earlier incomplete or unverified teardown)", async () => {
+		const sessionIncomplete = Object.assign(new FakeSession(), {
+			processCleanup: async () => [
+				{ boundary: "scope" as const, unit: "endo-pi-old.scope", result: "incomplete" as const, remaining: 2 },
+				{ boundary: "scope" as const, unit: "endo-pi-new.scope", result: "confirmed" as const },
+			],
+		});
+		const adapter1 = new PiDevelopAdapterV0({
+			session: sessionIncomplete,
+			attachmentId: "pi.default",
+			launchId: "pi-cleanup-1",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+		const closed1 = await adapter1.close();
+		expect(closed1.cleanup).toEqual({
+			boundary: "scope",
+			result: "incomplete",
+			remainingProcesses: 2,
+			scopeName: "endo-pi-old.scope",
+		});
+
+		const sessionUnverified = Object.assign(new FakeSession(), {
+			processCleanup: async () => [
+				{ boundary: "process-group" as const, result: "unverified" as const },
+				{ boundary: "scope" as const, unit: "endo-pi-new.scope", result: "confirmed" as const },
+			],
+		});
+		const adapter2 = new PiDevelopAdapterV0({
+			session: sessionUnverified,
+			attachmentId: "pi.default",
+			launchId: "pi-cleanup-2",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+		const closed2 = await adapter2.close();
+		expect(closed2.cleanup).toEqual({
+			boundary: "process-group",
+			result: "unverified",
+			remainingProcesses: null,
+			scopeName: null,
+		});
+	});
+
+	it("normalizes string message content, keeps extension_ui_request pending until cancellation succeeds, and coordinates gap sequence numbers", () => {
+		const session = new FakeSession();
+		const adapter = new PiDevelopAdapterV0({
+			session,
+			attachmentId: "pi.default",
+			launchId: "pi-obs-codex-fixes",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+		const observations: EndoDevelopObservationV0[] = [];
+		adapter.subscribeObservations((o) => observations.push(o));
+
+		// 1. Normal user message with string-valued content is normalized to text transcript (not dropped).
+		adapter.observePiLiveEvent({
+			type: "message_end",
+			record: { message: { role: "user", content: "string prompt content" } },
+		});
+		// 2. Stale-instance event emits a gap at sequence 2.
+		adapter.observePiLiveEvent({ type: "agent_start", record: {} }, "superseded-instance-id");
+		// 3. Next normal event MUST receive sequence 3 (never colliding with gap sequence 2!).
+		adapter.observePiLiveEvent({
+			type: "extension_ui_request",
+			record: { id: "dlg-1", method: "confirm" },
+		});
+		// 4. Non-dialog UI notification emits nothing (not a false approval resolution).
+		adapter.observePiLiveEvent({
+			type: "extension_ui_request",
+			record: { id: "note-1", method: "notify" },
+		});
+		// 5. Unknown UI method emits pending `unknown` (never falsely cancelled).
+		adapter.observePiLiveEvent({
+			type: "extension_ui_request",
+			record: { id: "unk-1", method: "future_modal" },
+		});
+		// 6. Only after attachment confirms dialog cancellation does `resolved` / `cancelled` emit.
+		adapter.observePiDialogCancelled({ id: "dlg-1", method: "confirm" });
+
+		expect(observations.map((o) => o.sequence)).toEqual([1, 2, 3, 4, 5]);
+		expect(observations[0]?.body).toMatchObject({
+			kind: "transcript",
+			role: "user",
+			contentKind: "text",
+			text: "string prompt content",
+		});
+		expect(observations[1]?.body).toMatchObject({
+			kind: "evidence-gap",
+			gap: "late-event-from-prior-attachment",
+		});
+		expect(observations[2]?.body).toEqual({
+			kind: "native-approval",
+			phase: "requested",
+			requestId: "dlg-1",
+			approvalKind: "extension-dialog",
+			resolution: "pending",
+		});
+		expect(observations[3]?.body).toEqual({
+			kind: "native-approval",
+			phase: "requested",
+			requestId: "unk-1",
+			approvalKind: "unknown",
+			resolution: "pending",
+		});
+		expect(observations[4]?.body).toEqual({
+			kind: "native-approval",
+			phase: "resolved",
+			requestId: "dlg-1",
+			approvalKind: "extension-dialog",
+			resolution: "cancelled",
+		});
+	});
+
 	it("wraps a real PiSessionAttachmentV0 talking to the deterministic fake Pi child process", async () => {
 		const fakePi = installFakePi("1.5.2");
 		const root = mkdtempSync(join(tmpdir(), "endo-adapter-pi-real-"));

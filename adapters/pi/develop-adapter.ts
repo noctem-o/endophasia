@@ -108,6 +108,9 @@ const PI_IGNORED_LIVE_EVENTS = new Set([
 	"entry_appended",
 ]);
 
+const PI_DIALOG_UI_METHODS = new Set(["select", "confirm", "input", "editor"]);
+const PI_NON_DIALOG_UI_METHODS = new Set(["notify", "setStatus", "setWidget", "setTitle", "set_editor_text"]);
+
 function parsePiUsage(message: Record<string, unknown>): EndoAdapterUsageReportV0 | null {
 	const u = message.usage;
 	if (!isRecord(u)) return null;
@@ -124,24 +127,49 @@ function parsePiUsage(message: Record<string, unknown>): EndoAdapterUsageReportV
 	};
 }
 
+/**
+ * Conservatively aggregate cleanup results across every process an attachment started (including earlier
+ * processes prior to reconnects). A confirmed final scope never hides an earlier incomplete or unverified teardown.
+ */
 function summarizeCleanup(cleanups: readonly ProcessCleanupV0[]): EndoAdapterProcessCleanupV0 {
 	if (cleanups.length === 0) {
 		return { boundary: "unverified", result: "unverified", remainingProcesses: null, scopeName: null };
 	}
-	const last = cleanups[cleanups.length - 1]!;
-	if (last.boundary === "scope") {
+	const incompletes = cleanups.filter((c) => c.result === "incomplete");
+	if (incompletes.length > 0) {
+		const allScoped = incompletes.every((c) => c.boundary === "scope");
+		let remaining: number | null = 0;
+		let lastIncompleteUnit: string | null = null;
+		for (const item of incompletes) {
+			if (item.boundary === "scope" && item.result === "incomplete") {
+				lastIncompleteUnit = item.unit;
+				if (item.remaining === null) remaining = null;
+				else if (remaining !== null) remaining += item.remaining;
+			} else {
+				remaining = null;
+			}
+		}
 		return {
-			boundary: "scope",
-			result: last.result,
-			remainingProcesses: last.result === "incomplete" ? last.remaining : 0,
-			scopeName: last.unit,
+			boundary: allScoped ? "scope" : "process-group",
+			result: "incomplete",
+			remainingProcesses: remaining,
+			scopeName: allScoped ? lastIncompleteUnit : null,
 		};
 	}
+	if (cleanups.some((c) => c.result !== "confirmed" || c.boundary !== "scope")) {
+		return {
+			boundary: "process-group",
+			result: "unverified",
+			remainingProcesses: null,
+			scopeName: null,
+		};
+	}
+	const last = cleanups[cleanups.length - 1]!;
 	return {
-		boundary: "process-group",
-		result: last.result,
-		remainingProcesses: null,
-		scopeName: null,
+		boundary: "scope",
+		result: "confirmed",
+		remainingProcesses: 0,
+		scopeName: last.boundary === "scope" ? last.unit : null,
 	};
 }
 
@@ -153,7 +181,6 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	readonly #o: PiDevelopAdapterOptionsV0;
 	readonly #now: () => number;
 	#instanceId: string;
-	#sequence = 0;
 	#closed = false;
 	#disconnectedReason: string | null = null;
 	#cleanup: EndoAdapterProcessCleanupV0 = {
@@ -201,10 +228,12 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		) {
 			this.#lastSeenConnectionInstance = liveConn;
 			this.#instanceId = liveConn;
-			this.#sequence = 0;
 			this.#disconnectedReason = null;
 			this.#lastStopReason = null;
 			this.#retryExhausted = false;
+			// Refresh the fingerprint baseline when adopting a reidentified reconnect; `#evidenceFreshness()`
+			// still verifies that `capabilityState.fingerprintId` matches the new fingerprint observation.
+			this.#lastKnownFingerprintId = this.#o.session.fingerprint?.id ?? null;
 			this.#guard.rotateInstance(liveConn, endoAdapterSessionKeyV0(this.#sessionIdentity()));
 		} else if (liveConn !== null && this.#lastSeenConnectionInstance === null) {
 			this.#lastSeenConnectionInstance = liveConn;
@@ -226,7 +255,6 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	rotateInstance(newInstanceId = randomBytes(8).toString("hex")): string {
 		this.#instanceId = newInstanceId;
 		this.#lastSeenConnectionInstance = this.#o.session.connectionInstance ?? newInstanceId;
-		this.#sequence = 0;
 		this.#disconnectedReason = null;
 		this.#lastStopReason = null;
 		this.#retryExhausted = false;
@@ -770,7 +798,12 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			const rawStop = typeof msg.stopReason === "string" ? sanitizeRuntimeText(msg.stopReason, 32).trim() : "";
 			const stopReason = rawStop.length > 0 ? rawStop : null;
 			if (role === "assistant" && stopReason !== null) this.#lastStopReason = stopReason;
-			const content = Array.isArray(msg.content) ? msg.content : [];
+			const content =
+				typeof msg.content === "string"
+					? [{ type: "text", text: msg.content }]
+					: Array.isArray(msg.content)
+						? msg.content
+						: [];
 			let sawReasoning = false;
 			for (const block of content) {
 				if (!isRecord(block)) continue;
@@ -870,17 +903,24 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			return;
 		}
 		if (event.type === "extension_ui_request") {
+			const method = typeof record.method === "string" ? record.method : "";
+			if (PI_NON_DIALOG_UI_METHODS.has(method)) {
+				// Fire-and-forget UI notifications are not blocking approval dialogs.
+				return;
+			}
 			const rawId = typeof record.id === "string" ? sanitizeRuntimeText(record.id, 256).trim() : "";
-			const reqId = rawId.length > 0 ? rawId : `pi-ui-${this.#sequence + 1}`;
+			const reqId = rawId.length > 0 ? rawId : `pi-ui-${this.#now()}`;
+			// Emit pending request only: cancellation resolution is emitted only after `PiSessionAttachmentV0` confirms
+			// delivery of `{ cancelled: true }` via `observePiDialogCancelled()`.
 			this.#emit(
 				{
 					kind: "native-approval",
-					phase: "resolved",
+					phase: "requested",
 					requestId: reqId,
-					approvalKind: "extension-dialog",
-					resolution: "cancelled",
+					approvalKind: PI_DIALOG_UI_METHODS.has(method) ? "extension-dialog" : "unknown",
+					resolution: "pending",
 				},
-				"controller-observed",
+				"runtime-reported",
 				sourceInstanceId,
 			);
 			return;
@@ -893,6 +933,29 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				kind: "evidence-gap",
 				gap: "unrecognized-runtime-event",
 				reason: `Unrecognized Pi live event type: ${sanitizeRuntimeText(event.type, 64)}.`,
+			},
+			"controller-observed",
+			sourceInstanceId,
+		);
+	}
+
+	/**
+	 * Record a confirmed cancellation of a Pi extension dialog AFTER `answerExtensionUi(id, { cancelled: true })`
+	 * succeeded on the attachment. Never fabricates resolution for non-dialog methods or failed writes.
+	 */
+	observePiDialogCancelled(event: { id: string; method: string; instanceId?: string }): void {
+		this.#syncRuntimeObservation();
+		if (!PI_DIALOG_UI_METHODS.has(event.method)) return;
+		const sourceInstanceId = event.instanceId ?? this.#instanceId;
+		const rawId = sanitizeRuntimeText(event.id, 256).trim();
+		const reqId = rawId.length > 0 ? rawId : `pi-ui-${this.#now()}`;
+		this.#emit(
+			{
+				kind: "native-approval",
+				phase: "resolved",
+				requestId: reqId,
+				approvalKind: "extension-dialog",
+				resolution: "cancelled",
 			},
 			"controller-observed",
 			sourceInstanceId,
@@ -912,7 +975,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		sourceInstanceId: string = this.#instanceId,
 	): void {
 		const safeInstance = sanitizeRuntimeText(sourceInstanceId, 128) || "unknown";
-		const seq = sourceInstanceId === this.#instanceId ? ++this.#sequence : 1;
+		const seq = sourceInstanceId === this.#instanceId ? this.#guard.allocateSequence() : 1;
 		const identity = this.#sessionIdentity();
 		const safeSessionId =
 			this.#o.session.piSessionId !== null ? sanitizeRuntimeText(this.#o.session.piSessionId, 256) || null : null;

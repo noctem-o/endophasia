@@ -136,6 +136,7 @@ export interface WorkbenchSessionV0 {
 		derivedFrom?: readonly string[],
 	): EndoEventV0;
 	onLiveEvent: ((event: RpcEventV0) => void) | null;
+	onExtensionDialogCancelled?: ((event: { id: string; method: string; instanceId: string }) => void) | null;
 }
 
 /** What the operator is shown on the controlling terminal to decide. */
@@ -491,6 +492,11 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			this.#interventions?.observe(event);
 			this.#watchRun(event.type);
 		};
+		if ("onExtensionDialogCancelled" in options.session) {
+			options.session.onExtensionDialogCancelled = (event) => {
+				this.adapter.observePiDialogCancelled(event);
+			};
+		}
 	}
 
 	// --- pairing and grant ---------------------------------------------------------------------------------------------------

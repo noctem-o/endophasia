@@ -957,6 +957,12 @@ export class EndoObservationGuardV0 {
 		return this.#instanceId;
 	}
 
+	/** Allocate the next strictly monotonic sequence number for the current connection instance (coordinated with generated gaps). */
+	allocateSequence(): number {
+		this.#highWaterSequence += 1;
+		return this.#highWaterSequence;
+	}
+
 	#makeGap(
 		gap: Extract<EndoDevelopObservationV0["body"], { kind: "evidence-gap" }>["gap"],
 		reason: string,

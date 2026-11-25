@@ -70,7 +70,7 @@ import {
 	buildCodexDisableMcpConfigV0,
 	CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0,
 	type CodexEffectivePolicyV0,
-	extractCodexMcpServerNamesV0,
+	inspectCodexMcpServersV0,
 	verifyCodexEffectivePolicyV0,
 } from "./checks.ts";
 import {
@@ -82,6 +82,7 @@ import {
 	codexLifecycleStepV0,
 } from "./events.ts";
 import {
+	CODEX_INTERACTIVE_APPROVAL_KINDS_V0,
 	CODEX_KNOWN_APPROVAL_KINDS_V0,
 	encodeCodexNativeApprovalReplyV0,
 	type ParsedCodexServerRequestV0,
@@ -194,10 +195,34 @@ export interface CodexDevelopAdapterOptionsV0 {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isFiniteNonNeg = (value: unknown): value is number =>
-	typeof value === "number" && Number.isFinite(value) && value >= 0;
+const isSafeNonNegInt = (value: unknown): value is number =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
-const sanitizeText = (value: string, max: number): string => value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, max);
+const UNSAFE_TERMINAL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
+
+const sanitizeText = (value: string, max: number): string =>
+	value.replace(UNSAFE_TERMINAL_CHARS, " ").trim().slice(0, max);
+
+const sanitizeOptional = (value: unknown, max: number): string | null => {
+	if (typeof value !== "string") return null;
+	const cleaned = sanitizeText(value, max);
+	return cleaned.length > 0 ? cleaned : null;
+};
+
+const VALID_REASONING_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
+const THREAD_SCOPED_NOTIFICATIONS = new Set([
+	"turn/started",
+	"turn/completed",
+	"item/started",
+	"item/completed",
+	"item/agentMessage/delta",
+	"item/reasoning/summaryTextDelta",
+	"item/reasoning/textDelta",
+	"thread/tokenUsage/updated",
+	"thread/compacted",
+	"serverRequest/resolved",
+	"error",
+]);
 
 const MAX_TRANSCRIPT_TEXT_CHARS = 32_768;
 
@@ -258,13 +283,13 @@ function parseTokenUsageBreakdown(raw: unknown): EndoAdapterUsageReportV0 | null
 	const input = raw.inputTokens;
 	const output = raw.outputTokens;
 	const total = raw.totalTokens;
-	if (!isFiniteNonNeg(input) || !isFiniteNonNeg(output) || !isFiniteNonNeg(total)) return null;
+	if (!isSafeNonNegInt(input) || !isSafeNonNegInt(output) || !isSafeNonNegInt(total)) return null;
 	return {
 		inputTokens: input,
 		outputTokens: output,
-		cachedInputTokens: isFiniteNonNeg(raw.cachedInputTokens) ? raw.cachedInputTokens : null,
-		cacheWriteTokens: isFiniteNonNeg(raw.cacheWriteInputTokens) ? raw.cacheWriteInputTokens : null,
-		reasoningTokens: isFiniteNonNeg(raw.reasoningOutputTokens) ? raw.reasoningOutputTokens : null,
+		cachedInputTokens: isSafeNonNegInt(raw.cachedInputTokens) ? raw.cachedInputTokens : null,
+		cacheWriteTokens: isSafeNonNegInt(raw.cacheWriteInputTokens) ? raw.cacheWriteInputTokens : null,
+		reasoningTokens: isSafeNonNegInt(raw.reasoningOutputTokens) ? raw.reasoningOutputTokens : null,
 		totalTokens: total,
 		// Codex App Server does not report USD cost; NEVER fabricate 0.
 		costUsd: null,
@@ -313,6 +338,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	#threadId: string | null = null;
 	#sessionTreeId: string | null = null;
 	#activeTurn: { turnId: string; state: EndoAdapterTurnStateV0 } | null = null;
+	#promptInFlight = false;
+	readonly #completedTurns = new Map<string, EndoAdapterTurnStateV0>();
 	#connected = false;
 	#disconnectedReason: string | null = "Codex adapter has not opened a live App Server connection yet.";
 	#closed = false;
@@ -350,6 +377,9 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	readonly #turnWaiters = new Map<string, Set<(status: EndoAdapterTurnStateV0) => void>>();
 
 	constructor(options: CodexDevelopAdapterOptionsV0) {
+		if (options.reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(options.reasoningEffort)) {
+			throw new TypeError(`Invalid Codex reasoningEffort: ${String(options.reasoningEffort)}`);
+		}
 		this.#o = options;
 		this.#launchId = options.launchId ?? randomBytes(8).toString("hex");
 		this.#instanceId = randomBytes(8).toString("hex");
@@ -421,9 +451,11 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		turnId: string,
 		timeoutMs = 60_000,
 	): Promise<EndoAdapterTurnStateV0 | "disconnected" | "timeout"> {
+		const recorded = this.#completedTurns.get(turnId);
+		if (recorded !== undefined) return Promise.resolve(recorded);
 		if (!this.#connected) return Promise.resolve("disconnected");
 		if (this.#activeTurn === null || this.#activeTurn.turnId !== turnId) {
-			return Promise.resolve("completed");
+			return Promise.resolve("unclassified");
 		}
 		return new Promise((resolve) => {
 			let settled = false;
@@ -472,15 +504,24 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		});
 
 		try {
-			// Step 2: Open durable event store and scan existing producer sequence.
+			// Step 2: Open durable event store; fail closed immediately if sealed (never run with silent audit bypass).
 			this.#store = createEndoDurableEventStoreV0(this.#o.root, {
 				...(this.#o.eventLogPath === undefined ? {} : { logPath: this.#o.eventLogPath }),
 			});
+			const rec = this.#store.recovery();
+			if (rec.sealed) {
+				throw new Error(
+					`Event store is sealed (frame ${String(rec.corruptAt)} failed verification); refusing to open a live Codex session without durable recording.`,
+				);
+			}
 			this.#seedSequenceFromStore();
 
 			// Step 3: Spawn Codex App Server with conservative config overrides.
 			const extra = [...(this.#o.extraConfigOverrides ?? [])];
 			if (this.#o.reasoningEffort !== undefined) {
+				if (!VALID_REASONING_EFFORTS.has(this.#o.reasoningEffort)) {
+					throw new TypeError(`Invalid Codex reasoningEffort: ${String(this.#o.reasoningEffort)}`);
+				}
 				extra.push(`model_reasoning_effort="${this.#o.reasoningEffort}"`);
 			}
 			const configOverrides = [...CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0, ...extra];
@@ -510,10 +551,13 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			client.notifyInitialized();
 
 			let disabledMcpServers: string[] = [];
+			let unsafeEnabledMcpServers: string[] = [];
 			if (this.#o.disableInheritedMcpServers !== false) {
 				const cfgRaw = await client.configRead({ includeLayers: false, cwd: this.#o.projectScope });
 				const allow = new Set(this.#o.allowMcpServers ?? []);
-				disabledMcpServers = extractCodexMcpServerNamesV0(cfgRaw).filter((name) => !allow.has(name));
+				const mcpInfo = inspectCodexMcpServersV0(cfgRaw);
+				disabledMcpServers = mcpInfo.disableableNames.filter((name) => !allow.has(name));
+				unsafeEnabledMcpServers = mcpInfo.unsafeEnabledNames.filter((name) => !allow.has(name));
 			}
 			const mcpDisableConfig = buildCodexDisableMcpConfigV0(disabledMcpServers);
 
@@ -528,7 +572,10 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			});
 
 			// Step 5: Verify effective policy returned by Codex — fail closed if permissive!
-			const policyCheck = verifyCodexEffectivePolicyV0(threadStartRaw, { disabledMcpServers });
+			const policyCheck = verifyCodexEffectivePolicyV0(threadStartRaw, {
+				disabledMcpServers,
+				unsafeEnabledMcpServers,
+			});
 			if (!policyCheck.ok) {
 				const startedThreadId =
 					isRecord(threadStartRaw.thread) && typeof threadStartRaw.thread.id === "string"
@@ -544,9 +591,16 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				throw new CodexPolicyViolationErrorV0(policyCheck.reasons);
 			}
 
+			if (this.#closed || !client.connected) {
+				throw new Error("Codex transport closed or disconnected before owned thread could be established.");
+			}
+
 			const threadObj = threadStartRaw.thread as Record<string, unknown>;
-			const threadId = threadObj.id as string;
-			const sessionTreeId = typeof threadObj.sessionId === "string" ? threadObj.sessionId : null;
+			const threadId = sanitizeOptional(threadObj.id, 256);
+			if (threadId === null) {
+				throw new Error("Codex thread/start returned an empty or invalid thread.id.");
+			}
+			const sessionTreeId = sanitizeOptional(threadObj.sessionId, 256);
 
 			this.#threadId = threadId;
 			this.#sessionTreeId = sessionTreeId;
@@ -621,9 +675,12 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 
 	/** Rotate connection instance identity (invalidates prior proofs and flags stale observations). */
 	rotateInstance(newInstanceId = randomBytes(8).toString("hex")): string {
+		// Cancel pending approvals under the old instance before rotating `#instanceId` & `#guard` so cancellation
+		// observations are delivered cleanly instead of dropped as late events.
+		this.#cancelAllPendingApprovals("connection instance rotated");
 		this.#instanceId = newInstanceId;
 		this.#activeTurn = null;
-		this.#cancelAllPendingApprovals("connection instance rotated");
+		this.#promptInFlight = false;
 		this.#guard.rotateInstance(newInstanceId, endoAdapterSessionKeyV0(this.#sessionIdentity()));
 		return newInstanceId;
 	}
@@ -827,11 +884,14 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				reason: "Operator authorization proof was already consumed (single-use enforcement).",
 			};
 		}
-		if (request.kind === "prompt" && this.#activeTurn !== null) {
+		if (request.kind === "prompt" && (this.#activeTurn !== null || this.#promptInFlight)) {
 			return {
 				admitted: false,
 				code: "run-active",
-				reason: `Turn ${this.#activeTurn.turnId} is already active on this owned thread.`,
+				reason:
+					this.#activeTurn !== null
+						? `Turn ${this.#activeTurn.turnId} is already active on this owned thread.`
+						: "Another prompt turn/start dispatch is already in flight on this owned thread.",
 			};
 		}
 		return { admitted: true };
@@ -870,43 +930,56 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		try {
 			switch (request.kind) {
 				case "prompt": {
+					// Privacy: omit unkeyed SHA-256 of raw user prompt text from canonical `events/events.log`.
 					this.#recordCanonical(
 						"codex.prompt-dispatched",
 						{
 							instanceId: dispatchedInstance,
 							threadId,
 							authorizationId: authority.authorizationId,
-							payloadDigest: authority.payloadDigest,
 						},
 						"authority-decision",
 					);
-					const res = await this.#client.turnStart({
-						threadId,
-						input: [{ type: "text", text: request.message, text_elements: [] }],
-						...(this.#o.model === undefined ? {} : { model: this.#o.model }),
-						...(this.#o.reasoningEffort === undefined ? {} : { effort: this.#o.reasoningEffort }),
-					});
-					if (this.#instanceId !== dispatchedInstance || !this.#connected) {
-						return this.#unknownOutcome(
-							"prompt",
-							dispatchedInstance,
-							"Codex connection instance changed or disconnected before turn/start reply settled.",
-						);
+					this.#promptInFlight = true;
+					try {
+						const res = await this.#client.turnStart({
+							threadId,
+							input: [{ type: "text", text: request.message, text_elements: [] }],
+							...(this.#o.model === undefined ? {} : { model: this.#o.model }),
+							...(this.#o.reasoningEffort === undefined ? {} : { effort: this.#o.reasoningEffort }),
+						});
+						if (this.#instanceId !== dispatchedInstance || !this.#connected) {
+							return this.#unknownOutcome(
+								"prompt",
+								dispatchedInstance,
+								"Codex connection instance changed or disconnected before turn/start reply settled.",
+							);
+						}
+						const turn = res.turn as Record<string, unknown>;
+						const turnId = sanitizeOptional(turn.id, 256);
+						if (turnId === null) {
+							return this.#unknownOutcome(
+								"prompt",
+								dispatchedInstance,
+								"Codex turn/start returned an invalid turn.id.",
+							);
+						}
+						// Guard against same-chunk turn/start + turn/completed race: never resurrect a finished turn!
+						if (this.#activeTurn === null && !this.#completedTurns.has(turnId)) {
+							this.#activeTurn = { turnId, state: "in-progress" };
+						}
+						return {
+							status: "accepted",
+							operation: "prompt",
+							instanceId: dispatchedInstance,
+							disposition: "turn-started",
+							turnId,
+							receiptId: null,
+							consequenceObserved: false,
+						};
+					} finally {
+						this.#promptInFlight = false;
 					}
-					const turn = res.turn as Record<string, unknown>;
-					const turnId = turn.id as string;
-					if (this.#activeTurn === null) {
-						this.#activeTurn = { turnId, state: "in-progress" };
-					}
-					return {
-						status: "accepted",
-						operation: "prompt",
-						instanceId: dispatchedInstance,
-						disposition: "turn-started",
-						turnId,
-						receiptId: null,
-						consequenceObserved: false,
-					};
 				}
 				case "steer": {
 					const expectedTurnId = request.targetTurnId!;
@@ -917,7 +990,6 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 							threadId,
 							expectedTurnId,
 							authorizationId: authority.authorizationId,
-							payloadDigest: authority.payloadDigest,
 						},
 						"authority-decision",
 						expectedTurnId,
@@ -1032,7 +1104,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 
 	/**
 	 * Fail-closed native approval evaluation (`endoEvaluateNativeApprovalV0`) with single-use consumption,
-	 * pending-request verification, and no policy/session scope broadening.
+	 * authoritative pending-request verification, active-turn enforcement, and no policy/session scope broadening.
 	 */
 	handleNativeApproval(
 		request: EndoDevelopNativeApprovalRequestV0,
@@ -1049,70 +1121,89 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			};
 		}
 		const pending = this.#pendingApprovals.get(request.requestId);
-		if (pending !== undefined && !pending.parsed.interactiveAcceptSupported && decision?.decision === "accept") {
-			this.#consumedNativeApprovals.add(request.requestId);
+		if (pending === undefined) {
+			const isUnknown =
+				request.approvalKind === "unknown" ||
+				!CODEX_INTERACTIVE_APPROVAL_KINDS_V0.includes(request.approvalKind as never);
 			return {
-				resolution: "declined",
+				resolution: isUnknown ? "declined" : "cancelled",
 				requestId: request.requestId,
-				code: "scope-broadening-refused",
-				reason: `Native approval method ${pending.parsed.nativeMethod} is declined fail-closed in v0.`,
+				code: isUnknown ? "unknown-approval-kind" : "binding-mismatch",
+				reason: isUnknown
+					? `Unknown or unsupported native approval kind (${request.approvalKind} / ${request.nativeMethod}) fails closed.`
+					: `No pending Codex server request matches ${request.requestId} (fail-closed).`,
 				grantsEndophasiaAuthority: false,
 			};
 		}
-		const outcome = endoEvaluateNativeApprovalV0({
-			request,
-			decision: decision ?? null,
-			current: {
-				source: "codex-live",
-				sessionKey: endoAdapterSessionKeyV0(this.#sessionIdentity()),
-				instanceId: this.#instanceId,
-				connected: this.#connected,
-				...(this.#activeTurn === null ? {} : { activeTurnId: this.#activeTurn.turnId }),
-				knownKinds: CODEX_KNOWN_APPROVAL_KINDS_V0,
-				mode: "server-initiated-requests",
-				nowMs: options.nowMs ?? this.#now(),
-				// Codex v0 NEVER allows session-wide or policy-amendment native approval scope.
-				allowSessionOrPolicyScope: false,
-			},
-		});
-		if (pending !== undefined) {
-			this.#consumedNativeApprovals.add(request.requestId);
-			this.#pendingApprovals.delete(request.requestId);
-			pending.abort.abort();
-			const reply = encodeCodexNativeApprovalReplyV0(pending.parsed, outcome);
-			if (reply.kind === "result") {
-				this.#client?.respondServerRequest(pending.parsed.rpcId, reply.result);
-			} else {
-				this.#client?.rejectServerRequest(pending.parsed.rpcId, reply.code, reply.message);
-			}
-			this.#recordCanonical(
-				"codex.native-approval-resolved",
-				{
-					instanceId: this.#instanceId,
-					threadId: this.#threadId,
-					turnId: pending.parsed.turnId,
-					itemId: pending.parsed.itemId,
-					requestId: request.requestId,
-					nativeMethod: pending.parsed.nativeMethod,
-					approvalKind: pending.parsed.approvalKind,
-					resolution: outcome.resolution,
-					...(outcome.resolution === "accepted" ? { scope: outcome.scope } : { code: outcome.code }),
-				},
-				"authority-decision",
-				pending.parsed.turnId,
-			);
-			this.#emitObservation(
-				{
-					kind: "native-approval",
-					phase: "resolved",
-					requestId: request.requestId,
-					approvalKind: request.approvalKind,
-					resolution: outcome.resolution,
-				},
-				"controller-observed",
-				{ turnId: pending.parsed.turnId, itemId: pending.parsed.itemId },
-			);
+
+		// Always evaluate against the authoritative pending request received from Codex (never caller-supplied fields),
+		// always enforce activeTurnId (even when idle -> null), and restrict accepted kinds to interactive v0 kinds.
+		const authoritativeRequest = pending.parsed.normalized;
+		const outcome: EndoDevelopNativeApprovalOutcomeV0 = !pending.parsed.interactiveAcceptSupported
+			? {
+					resolution: "declined",
+					requestId: authoritativeRequest.requestId,
+					code:
+						authoritativeRequest.approvalKind === "unknown"
+							? "unknown-approval-kind"
+							: "scope-broadening-refused",
+					reason: `Native approval method ${pending.parsed.nativeMethod} is declined fail-closed in v0.`,
+					grantsEndophasiaAuthority: false,
+				}
+			: endoEvaluateNativeApprovalV0({
+					request: authoritativeRequest,
+					decision: decision ?? null,
+					current: {
+						source: "codex-live",
+						sessionKey: endoAdapterSessionKeyV0(this.#sessionIdentity()),
+						instanceId: this.#instanceId,
+						connected: this.#connected && !this.#closed,
+						activeTurnId: this.#activeTurn?.turnId ?? null,
+						knownKinds: CODEX_INTERACTIVE_APPROVAL_KINDS_V0,
+						mode: "server-initiated-requests",
+						nowMs: options.nowMs ?? this.#now(),
+						// Codex v0 NEVER allows session-wide or policy-amendment native approval scope.
+						allowSessionOrPolicyScope: false,
+					},
+				});
+
+		// Unified single-use cleanup, protocol reply, canonical record, and observation emission.
+		this.#consumedNativeApprovals.add(authoritativeRequest.requestId);
+		this.#pendingApprovals.delete(authoritativeRequest.requestId);
+		pending.abort.abort();
+		const reply = encodeCodexNativeApprovalReplyV0(pending.parsed, outcome);
+		if (reply.kind === "result") {
+			this.#client?.respondServerRequest(pending.parsed.rpcId, reply.result);
+		} else {
+			this.#client?.rejectServerRequest(pending.parsed.rpcId, reply.code, reply.message);
 		}
+		this.#recordCanonical(
+			"codex.native-approval-resolved",
+			{
+				instanceId: this.#instanceId,
+				threadId: this.#threadId,
+				turnId: pending.parsed.turnId,
+				itemId: pending.parsed.itemId,
+				requestId: authoritativeRequest.requestId,
+				nativeMethod: pending.parsed.nativeMethod,
+				approvalKind: pending.parsed.approvalKind,
+				resolution: outcome.resolution,
+				...(outcome.resolution === "accepted" ? { scope: outcome.scope } : { code: outcome.code }),
+			},
+			"authority-decision",
+			pending.parsed.turnId,
+		);
+		this.#emitObservation(
+			{
+				kind: "native-approval",
+				phase: "resolved",
+				requestId: authoritativeRequest.requestId,
+				approvalKind: authoritativeRequest.approvalKind,
+				resolution: outcome.resolution,
+			},
+			"controller-observed",
+			{ turnId: pending.parsed.turnId, itemId: pending.parsed.itemId },
+		);
 		return outcome;
 	}
 
@@ -1142,24 +1233,31 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				rawCleanup = await this.#client.close();
 				this.#client = null;
 			}
-			this.#cleanup = summarizeCleanup(rawCleanup);
+			// Preserve an earlier recorded cleanup result (e.g. from a failed open()) when `#client` was already closed.
+			if (rawCleanup !== null) {
+				this.#cleanup = summarizeCleanup(rawCleanup);
+			}
 			this.#connected = false;
 			this.#disconnectedReason = "Codex adapter closed.";
 			this.#notifyAllTurnWaiters("disconnected");
 
 			if (this.#store !== null) {
-				try {
-					this.#recordCanonical("codex.connection-lost", {
-						instanceId: this.#instanceId,
-						threadId: this.#threadId,
-						expected: true,
-						cleanupBoundary: this.#cleanup.boundary,
-						cleanupResult: this.#cleanup.result,
-						remainingProcesses: this.#cleanup.remainingProcesses,
-						scopeName: this.#cleanup.scopeName,
-					});
-				} catch {
-					// Never mask cleanup if store is sealed/dead.
+				// Only record an expected detach if we were still connected; do not overwrite a prior unexpected crash's
+				// `lifecycle.interrupted` state with `lifecycle.detached`.
+				if (wasConnected) {
+					try {
+						this.#recordCanonical("codex.connection-lost", {
+							instanceId: this.#instanceId,
+							threadId: this.#threadId,
+							expected: true,
+							cleanupBoundary: this.#cleanup.boundary,
+							cleanupResult: this.#cleanup.result,
+							remainingProcesses: this.#cleanup.remainingProcesses,
+							scopeName: this.#cleanup.scopeName,
+						});
+					} catch {
+						// Never mask cleanup if store is dead.
+					}
 				}
 				try {
 					this.#store.close();
@@ -1192,20 +1290,29 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	// -------------------------------------------------------------------------------------------------------------
 
 	#onServerRequest(req: CodexServerRequestV0): void {
-		if (req.instanceId !== this.#instanceId || !this.#connected) {
-			this.#client?.rejectServerRequest(req.id, -32000, "Stale or disconnected connection instance (fail-closed).");
+		if (this.#closed || req.instanceId !== this.#instanceId || !this.#connected) {
+			this.#client?.rejectServerRequest(
+				req.id,
+				-32000,
+				"Stale, closed, or disconnected connection instance (fail-closed).",
+			);
 			return;
 		}
 		const sessionKey = endoAdapterSessionKeyV0(this.#sessionIdentity()) ?? `codex-live:launch:${this.#launchId}`;
 		const parsed = parseCodexServerRequestV0({ request: req, source: "codex-live", sessionKey });
 
-		// Enforce owned-thread isolation: a server request naming another thread ALWAYS fails closed.
-		if (parsed.threadId !== null && this.#threadId !== null && parsed.threadId !== this.#threadId) {
+		// Enforce strict owned-thread isolation: interactive approvals MUST explicitly name our owned `threadId`
+		// (omitting `threadId` or naming another thread fails closed immediately).
+		const wrongOrMissingThread =
+			this.#threadId === null ||
+			(parsed.threadId !== null && parsed.threadId !== this.#threadId) ||
+			(parsed.interactiveAcceptSupported && parsed.threadId !== this.#threadId);
+		if (wrongOrMissingThread) {
 			const outcome: EndoDevelopNativeApprovalOutcomeV0 = {
 				resolution: "cancelled",
 				requestId: parsed.requestId,
 				code: "binding-mismatch",
-				reason: `Server request named foreign thread ${parsed.threadId}, not owned thread ${this.#threadId}.`,
+				reason: `Server request thread (${parsed.threadId ?? "missing"}) does not match owned thread (${this.#threadId ?? "none"}).`,
 				grantsEndophasiaAuthority: false,
 			};
 			const reply = encodeCodexNativeApprovalReplyV0(parsed, outcome);
@@ -1215,7 +1322,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				{
 					kind: "evidence-gap",
 					gap: "unrecognized-runtime-event",
-					reason: `Refused server request for non-owned thread (${parsed.nativeMethod}).`,
+					reason: `Refused server request for non-owned or missing thread (${parsed.nativeMethod}).`,
 				},
 				"controller-observed",
 			);
@@ -1271,28 +1378,38 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	}
 
 	#onNotification(notification: CodexServerNotificationV0): void {
+		if (this.#closed) return;
+		const safeMethod = sanitizeText(notification.method, 128) || "unknown";
 		if (notification.instanceId !== this.#instanceId) {
 			this.#emitObservation(
 				{
 					kind: "evidence-gap",
 					gap: "late-event-from-prior-attachment",
-					reason: `Ignored notification ${notification.method} from prior instance ${notification.instanceId}.`,
+					reason: `Ignored notification ${safeMethod} from prior instance ${sanitizeText(notification.instanceId, 64)}.`,
 				},
 				"controller-observed",
 			);
 			return;
 		}
-		this.#observedNotificationMethods.add(notification.method);
+		this.#observedNotificationMethods.add(safeMethod);
 		const params = notification.params ?? {};
 
-		// Owned-thread isolation: ignore thread-scoped notifications belonging to another thread.
-		const notifThreadId = typeof params.threadId === "string" ? params.threadId : null;
-		if (notifThreadId !== null && this.#threadId !== null && notifThreadId !== this.#threadId) {
+		// Owned-thread isolation: extract threadId from threadId / conversationId / thread.id, and refuse
+		// thread-scoped notifications that arrive before `thread/start` or name a missing/foreign thread.
+		const notifThreadId =
+			sanitizeOptional(params.threadId, 256) ??
+			sanitizeOptional(params.conversationId, 256) ??
+			(isRecord(params.thread) ? sanitizeOptional(params.thread.id, 256) : null);
+		const isThreadScoped = THREAD_SCOPED_NOTIFICATIONS.has(notification.method);
+		if (
+			(notifThreadId !== null && this.#threadId !== null && notifThreadId !== this.#threadId) ||
+			(isThreadScoped && (this.#threadId === null || notifThreadId !== this.#threadId))
+		) {
 			this.#emitObservation(
 				{
 					kind: "evidence-gap",
 					gap: "unrecognized-runtime-event",
-					reason: `Ignored notification ${notification.method} for non-owned thread.`,
+					reason: `Ignored notification ${safeMethod} for non-owned or unestablished thread.`,
 				},
 				"controller-observed",
 			);
@@ -1302,7 +1419,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		switch (notification.method) {
 			case "turn/started": {
 				const turn = isRecord(params.turn) ? params.turn : null;
-				const turnId = turn !== null && typeof turn.id === "string" ? turn.id : null;
+				const turnId = turn !== null ? sanitizeOptional(turn.id, 256) : null;
 				if (turnId === null) break;
 				this.#activeTurn = { turnId, state: "in-progress" };
 				this.#recordCanonical(
@@ -1326,13 +1443,10 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			}
 			case "turn/completed": {
 				const turn = isRecord(params.turn) ? params.turn : null;
-				const turnId = turn !== null && typeof turn.id === "string" ? turn.id : (this.#activeTurn?.turnId ?? null);
-				const status = turn !== null && typeof turn.status === "string" ? turn.status : "unclassified";
+				const turnId = (turn !== null ? sanitizeOptional(turn.id, 256) : null) ?? this.#activeTurn?.turnId ?? null;
+				const status = (turn !== null ? sanitizeOptional(turn.status, 64) : null) ?? "unclassified";
 				const turnError = turn !== null && isRecord(turn.error) ? turn.error : null;
-				const codexErrorInfo =
-					turnError !== null && typeof turnError.codexErrorInfo === "string"
-						? sanitizeText(turnError.codexErrorInfo, 128)
-						: null;
+				const codexErrorInfo = turnError !== null ? sanitizeOptional(turnError.codexErrorInfo, 128) : null;
 
 				const turnState: EndoAdapterTurnStateV0 =
 					status === "completed"
@@ -1351,6 +1465,13 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				const sessionState: EndoAdapterSessionStateV0 = turnState === "interrupted" ? "interrupted" : "idle";
 
 				this.#activeTurn = null;
+				if (turnId !== null) {
+					this.#completedTurns.set(turnId, turnState);
+					if (this.#completedTurns.size > 500) {
+						const oldest = this.#completedTurns.keys().next().value;
+						if (oldest !== undefined) this.#completedTurns.delete(oldest);
+					}
+				}
 				this.#cancelAllPendingApprovals(`turn ${turnId ?? "unknown"} completed (${status})`);
 
 				this.#recordCanonical(
@@ -1439,7 +1560,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				const last = tokenUsage !== null ? parseTokenUsageBreakdown(tokenUsage.last) : null;
 				const total = tokenUsage !== null ? parseTokenUsageBreakdown(tokenUsage.total) : null;
 				const ctxWin =
-					tokenUsage !== null && isFiniteNonNeg(tokenUsage.modelContextWindow)
+					tokenUsage !== null && isSafeNonNegInt(tokenUsage.modelContextWindow)
 						? tokenUsage.modelContextWindow
 						: null;
 				if (ctxWin !== null) this.#modelContextWindow = ctxWin;
@@ -1517,14 +1638,41 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 						this.#consumedNativeApprovals.add(reqId);
 						entry.abort.abort();
 						this.#client?.clearPendingServerRequest(rawId);
+						this.#recordCanonical(
+							"codex.native-approval-resolved",
+							{
+								instanceId: this.#instanceId,
+								threadId: this.#threadId,
+								turnId: entry.parsed.turnId,
+								itemId: entry.parsed.itemId,
+								requestId: reqId,
+								nativeMethod: entry.parsed.nativeMethod,
+								approvalKind: entry.parsed.approvalKind,
+								resolution: "cancelled",
+								code: "server-resolved",
+							},
+							"runtime-fact",
+							entry.parsed.turnId,
+						);
+						this.#emitObservation(
+							{
+								kind: "native-approval",
+								phase: "resolved",
+								requestId: reqId,
+								approvalKind: entry.parsed.approvalKind,
+								resolution: "cancelled",
+							},
+							"runtime-reported",
+							{ turnId: entry.parsed.turnId, itemId: entry.parsed.itemId },
+						);
 					}
 				}
 				break;
 			}
 			case "error": {
-				const turnId = typeof params.turnId === "string" ? params.turnId : (this.#activeTurn?.turnId ?? null);
+				const turnId = sanitizeOptional(params.turnId, 256) ?? this.#activeTurn?.turnId ?? null;
 				const errObj = isRecord(params.error) ? params.error : {};
-				const errInfo = typeof errObj.codexErrorInfo === "string" ? sanitizeText(errObj.codexErrorInfo, 128) : null;
+				const errInfo = sanitizeOptional(errObj.codexErrorInfo, 128);
 				this.#recordCanonical(
 					"codex.error",
 					{
@@ -1544,13 +1692,13 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 					this.#recordCanonical("codex.unrecognized-notification", {
 						instanceId: this.#instanceId,
 						threadId: this.#threadId,
-						method: sanitizeText(notification.method, 128),
+						method: safeMethod,
 					});
 					this.#emitObservation(
 						{
 							kind: "evidence-gap",
 							gap: "unrecognized-runtime-event",
-							reason: `Unrecognized Codex notification method: ${sanitizeText(notification.method, 128)}`,
+							reason: `Unrecognized Codex notification method: ${safeMethod}`,
 						},
 						"controller-observed",
 					);
@@ -1563,9 +1711,10 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	#handleItemLifecycle(completed: boolean, params: Record<string, unknown>): void {
 		const item = isRecord(params.item) ? params.item : null;
 		if (item === null || typeof item.type !== "string" || typeof item.id !== "string") return;
-		const turnId = typeof params.turnId === "string" ? params.turnId : (this.#activeTurn?.turnId ?? null);
-		const itemId = sanitizeText(item.id, 256);
-		const itemType = sanitizeText(item.type, 64);
+		const turnId = sanitizeOptional(params.turnId, 256) ?? this.#activeTurn?.turnId ?? null;
+		const itemId = sanitizeOptional(item.id, 256);
+		const itemType = sanitizeOptional(item.type, 64);
+		if (itemId === null || itemType === null) return;
 		const eventKind = completed ? "codex.item-completed" : "codex.item-started";
 
 		switch (item.type) {
@@ -1810,12 +1959,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			case "mcpToolCall":
 			case "dynamicToolCall": {
 				const phase = completed ? mapItemPhase(item.status) : "started";
-				const toolName =
-					typeof item.tool === "string"
-						? sanitizeText(item.tool, 128)
-						: typeof item.name === "string"
-							? sanitizeText(item.name, 128)
-							: itemType;
+				const toolName = sanitizeOptional(item.tool, 128) ?? sanitizeOptional(item.name, 128) ?? itemType;
 				const activityKind = item.type === "mcpToolCall" ? "mcp-tool" : "tool-call";
 				this.#recordCanonical(
 					eventKind,
@@ -2043,7 +2187,7 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		source: "runtime-fact" | "authority-decision" = "runtime-fact",
 		turnId: string | null = null,
 	): void {
-		if (this.#store === null || this.#store.recovery().sealed) return;
+		if (this.#store === null) return;
 		const ctx: CodexEventContextV0 = {
 			attachment: this.#o.attachmentId,
 			instanceId: this.#instanceId,

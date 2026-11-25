@@ -31,7 +31,8 @@ import { buildCodexNativeApprovalDecisionV0, CodexLiveControllerV0 } from "../ad
 import { CodexDevelopAdapterV0, CodexPolicyViolationErrorV0 } from "../adapters/codex/develop-adapter.ts";
 import { fingerprintCodexRuntimeV0 } from "../adapters/codex/identity.ts";
 import { PiAttachmentV0, PiStoreLockedErrorV0 } from "../adapters/pi/attachment.ts";
-import type { EndoDevelopObservationV0 } from "../protocol/develop-adapter.ts";
+import type { ProcessScopeV0 } from "../adapters/rpc-jsonl/process-group.ts";
+import { type EndoDevelopObservationV0, endoAdapterSessionKeyV0 } from "../protocol/develop-adapter.ts";
 import { endoDevelopSessionProblemV0, endoDevelopSurfaceProblemV0 } from "../protocol/develop-session.ts";
 import { replayEndoEventRecordV0 } from "../runtime/contracts/event-replay.ts";
 import { reduceEndoSessionOverviewV0 } from "../runtime/contracts/session-overview.ts";
@@ -39,6 +40,7 @@ import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { acquireEndoEventStoreWriterLockV0, EndoStoreLockedErrorV0 } from "../storage/writer-lock.ts";
 import { developSurface, presentLiveCodex } from "../studio-ui/src/model/develop-session.ts";
+import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 import { buildOperatorProofV0, runDevelopAdapterConformanceSuiteV0 } from "./helpers/develop-adapter-conformance.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex-app-server.mjs", import.meta.url));
@@ -231,14 +233,56 @@ describe("DEVELOP-CODEX-LIVE-001: D1 transport & D2 identity/policy", () => {
 
 	it.each([
 		["permissive-approval-never", 'approvalPolicy is "never"'],
+		["permissive-approval-object", "is not the allowlisted"],
 		["permissive-auto-reviewer", 'approvalsReviewer is "auto_review"'],
 		["permissive-danger-sandbox", 'sandbox policy is "dangerFullAccess"'],
+		["permissive-external-sandbox", "not in the allowlisted"],
+		["permissive-writable-roots", "writableRoots"],
+		["permissive-network-access", "networkAccess"],
+		["unsafe-mcp-name", "could not be safely disabled"],
 	])("fails closed on open() when Codex returns %s and releases the writer lock", async (scenario, expectedMsg) => {
 		const fx = await createCheckedFixture({ scenario });
 		await expect(fx.adapter.open()).rejects.toThrow(CodexPolicyViolationErrorV0);
 		await expect(fx.adapter.open()).rejects.toThrow(expectedMsg);
 		// Writer lock must have been released after failed open!
 		expect(existsSync(join(fx.root, "events", "session-attachment.lock"))).toBe(false);
+	});
+
+	it("fails closed on open() when the event store is sealed and validates reasoningEffort at runtime", async () => {
+		const fx = await createCheckedFixture();
+		// Write a valid event, then corrupt a byte inside the frame to seal the durable event log.
+		await fx.adapter.open();
+		await fx.adapter.close();
+		const logPath = join(fx.root, "events", "events.log");
+		const buf = Buffer.from(readFileSync(logPath));
+		expect(buf.length).toBeGreaterThan(32);
+		buf[buf.length - 4] = buf[buf.length - 4]! ^ 0xff;
+		writeFileSync(logPath, buf);
+
+		const adapter2 = new CodexDevelopAdapterV0({
+			root: fx.root,
+			attachmentId: fx.attachmentId,
+			projectScope: fx.projectScope,
+			executable: FAKE_CODEX,
+			env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", FAKE_CODEX_SCENARIO: "default" },
+			fingerprint: fx.check.fingerprint,
+			capabilityState: fx.check.capabilityState,
+		});
+		await expect(adapter2.open()).rejects.toThrow(/sealed/i);
+		expect(existsSync(join(fx.root, "events", "session-attachment.lock"))).toBe(false);
+
+		expect(
+			() =>
+				new CodexDevelopAdapterV0({
+					root: fx.root,
+					attachmentId: fx.attachmentId,
+					projectScope: fx.projectScope,
+					executable: FAKE_CODEX,
+					fingerprint: fx.check.fingerprint,
+					capabilityState: fx.check.capabilityState,
+					reasoningEffort: "bogus" as never,
+				}),
+		).toThrow(TypeError);
 	});
 
 	it("handles malformed/oversized frames, unknown response IDs, and separates stderr diagnostics", async () => {
@@ -384,6 +428,8 @@ describe("DEVELOP-CODEX-LIVE-001: D3/D4 governed turns, targeted stop, privacy &
 		expect(rawLog).not.toContain("ASSISTANT_PRIVATE_REPLY_PART1");
 		expect(rawLog).not.toContain("Checking fixture safely");
 		expect(rawLog).not.toContain("SENSITIVE_CMD_SECRET_TOKEN");
+		// Unkeyed prompt/steer payloadDigest must NOT be persisted in canonical event logs.
+		expect(rawLog).not.toContain("payloadDigest");
 
 		const roStore = createEndoDurableEventStoreV0(fx.root, { readOnly: true });
 		try {
@@ -481,6 +527,145 @@ describe("DEVELOP-CODEX-LIVE-001: D3/D4 governed turns, targeted stop, privacy &
 		} finally {
 			await fx2.adapter.close();
 		}
+	});
+
+	it("handles same-chunk turn failure without resurrecting activeTurn, serializes concurrent prompt dispatch, honors pre-aborted AbortSignal, preserves scope cleanup, and gates turn/steer", async () => {
+		// 1. Same-chunk turn/start + turn/completed(failed) must not leave zombie activeTurn and must return "failed".
+		const fxFast = await createCheckedFixture({ scenario: "same-chunk-turn-failed" });
+		try {
+			await fxFast.adapter.open();
+			const ctrl = new CodexLiveControllerV0({
+				adapter: fxFast.adapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			// Pre-aborted AbortSignal must refuse BEFORE invoking approveOperation!
+			let approveCalls = 0;
+			const preAbortedCtrl = new CodexLiveControllerV0({
+				adapter: fxFast.adapter,
+				approveOperation: async () => {
+					approveCalls += 1;
+					return { approved: true, mechanism: "terminal-phrase" };
+				},
+			});
+			const ac = new AbortController();
+			ac.abort();
+			const abortedOut = await preAbortedCtrl.requestPrompt("should not prompt", ac.signal);
+			expect(abortedOut).toMatchObject({ status: "refused", stage: "admission", code: "missing-authority" });
+			expect(approveCalls).toBe(0);
+
+			const res = await ctrl.requestPrompt("fast fail");
+			expect(res.status).toBe("accepted");
+			if (res.status !== "accepted" || !res.turnId) throw new Error("expected turnId");
+			expect(await fxFast.adapter.waitForTurnCompletion(res.turnId, 1_000)).toBe("failed");
+			expect(fxFast.adapter.activeTurnId).toBeNull();
+		} finally {
+			await fxFast.adapter.close();
+		}
+
+		// 2. Concurrent direct adapter.dispatch({ kind: "prompt" }) admits at most one; second refused with run-active.
+		const fxSlow = await createCheckedFixture({ scenario: "slow-turn" });
+		try {
+			await fxSlow.adapter.open();
+			const req1 = { kind: "prompt" as const, message: "first concurrent prompt" };
+			const req2 = { kind: "prompt" as const, message: "second concurrent prompt" };
+			const p1 = buildOperatorProofV0({
+				adapter: fxSlow.adapter,
+				request: req1,
+				nowMs: Date.now(),
+				overrides: { authorizationId: "endo.evidence.conc-1" },
+			});
+			const p2 = buildOperatorProofV0({
+				adapter: fxSlow.adapter,
+				request: req2,
+				nowMs: Date.now(),
+				overrides: { authorizationId: "endo.evidence.conc-2" },
+			});
+			const [o1, o2] = await Promise.all([fxSlow.adapter.dispatch(req1, p1), fxSlow.adapter.dispatch(req2, p2)]);
+			expect(o1.status).toBe("accepted");
+			expect(o2).toMatchObject({ status: "refused", stage: "admission", code: "run-active" });
+
+			// Unverified turn/steer is refused by default capability state.
+			const ctrl = new CodexLiveControllerV0({
+				adapter: fxSlow.adapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			const activeId = fxSlow.adapter.activeTurnId!;
+			expect(await ctrl.requestSteer("redirect", activeId)).toMatchObject({
+				status: "refused",
+				stage: "admission",
+				code: "capability-not-admitted",
+			});
+		} finally {
+			await fxSlow.adapter.close();
+		}
+
+		// 3. Explicit steer admission + targetTurnId mismatch check + mock ProcessScopeV0 cleanup preservation.
+		const fxScope = await createCheckedFixture({ scenario: "slow-turn" });
+		const startCap = fxScope.check.capabilityState.capabilities.find((c) => c.capability === "codex.turn.start")!;
+		const admittedSteerCap = {
+			...fxScope.check.capabilityState,
+			capabilities: fxScope.check.capabilityState.capabilities.map((c) =>
+				c.capability === "codex.turn.steer"
+					? { ...startCap, capability: "codex.turn.steer", reason: "test-admitted" }
+					: c,
+			),
+		};
+		let scopeStops = 0;
+		const scopeEnv = {
+			PATH: process.env.PATH ?? "",
+			HOME: process.env.HOME ?? "",
+			FAKE_CODEX_SCENARIO: "slow-turn",
+		};
+		const mockScope: ProcessScopeV0 = {
+			unit: "endo-mock-codex.scope",
+			wrap(command) {
+				return { command: command[0]!, args: command.slice(1), env: scopeEnv };
+			},
+			stopWithoutWaiting: ["/usr/bin/true"],
+			async stop() {
+				scopeStops += 1;
+				return "confirmed";
+			},
+			remaining() {
+				return 0;
+			},
+		};
+		const scopedAdapter = new CodexDevelopAdapterV0({
+			root: fxScope.root,
+			attachmentId: fxScope.attachmentId,
+			projectScope: fxScope.projectScope,
+			executable: FAKE_CODEX,
+			env: scopeEnv,
+			fingerprint: fxScope.check.fingerprint,
+			capabilityState: admittedSteerCap,
+			scope: mockScope,
+		});
+		await scopedAdapter.open();
+		const scopedCtrl = new CodexLiveControllerV0({
+			adapter: scopedAdapter,
+			approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+		});
+		const started = await scopedCtrl.requestPrompt("start steerable turn");
+		expect(started.status).toBe("accepted");
+		const activeTurnId = scopedAdapter.activeTurnId!;
+		expect(await scopedCtrl.requestSteer("wrong turn", "not-the-turn")).toMatchObject({
+			status: "refused",
+			stage: "admission",
+			code: "target-turn-mismatch",
+		});
+		expect(await scopedCtrl.requestSteer("on-target steer", activeTurnId)).toMatchObject({
+			status: "accepted",
+			operation: "steer",
+			disposition: "steered",
+			turnId: activeTurnId,
+			consequenceObserved: false,
+		});
+		const closed = await scopedAdapter.close();
+		expect(scopeStops).toBeGreaterThanOrEqual(1);
+		expect(closed.cleanup).toMatchObject({
+			boundary: "scope",
+			result: "confirmed",
+		});
 	});
 });
 
@@ -614,6 +799,122 @@ describe("DEVELOP-CODEX-LIVE-001: D5 fail-closed native approvals", () => {
 			await fxFile.adapter.close();
 		}
 	});
+
+	it("exercises duplicate server request IDs, all fail-closed ServerRequest methods, serverRequest/resolved, idle/missing-thread refusal, and non-pending handleNativeApproval refusal", async () => {
+		// 1. Duplicate server request IDs -> exactly one reply + serverRequest/resolved observation.
+		const logDup = join(makeTempDir(), "wire-dup.json");
+		const fxDup = await createCheckedFixture({
+			scenario: "duplicate-server-req,emit-server-request-resolved",
+			logFile: logDup,
+		});
+		const dupObs: EndoDevelopObservationV0[] = [];
+		fxDup.adapter.subscribeObservations((o) => dupObs.push(o));
+		try {
+			await fxDup.adapter.open();
+			const ctrl = new CodexLiveControllerV0({
+				adapter: fxDup.adapter,
+				approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+			});
+			const sent = await ctrl.requestPrompt("dup test");
+			if (sent.status === "accepted" && sent.turnId) await fxDup.adapter.waitForTurnCompletion(sent.turnId, 5_000);
+			const wire = JSON.parse(readFileSync(logDup, "utf8")) as {
+				direction: string;
+				result?: Record<string, unknown>;
+			}[];
+			const replies = wire.filter((w) => w.direction === "server-request-reply");
+			expect(replies).toHaveLength(1);
+			expect(replies[0]?.result).toEqual({ decision: "decline" });
+			expect(dupObs.some((o) => o.body.kind === "native-approval" && o.body.phase === "resolved")).toBe(true);
+
+			// Calling handleNativeApproval for a non-pending requestId MUST refuse fail-closed.
+			const fakeReq = {
+				requestId: "srv-not-pending",
+				source: "codex-live" as const,
+				sessionKey: endoAdapterSessionKeyV0(fxDup.adapter.describe().session)!,
+				instanceId: fxDup.adapter.describe().attachment.instanceId,
+				turnId: null,
+				itemId: null,
+				approvalKind: "command-execution" as const,
+				nativeMethod: "item/commandExecution/requestApproval",
+				summary: "forged",
+				requestedScope: "once" as const,
+			};
+			const bogusDecision = buildCodexNativeApprovalDecisionV0({ request: fakeReq, decision: "accept" });
+			expect(fxDup.adapter.handleNativeApproval(fakeReq, bogusDecision)).toMatchObject({
+				resolution: "cancelled",
+				code: "binding-mismatch",
+				grantsEndophasiaAuthority: false,
+			});
+		} finally {
+			await fxDup.adapter.close();
+		}
+
+		// 2. Remaining fail-closed ServerRequest methods (always fail-closed even if handler tries to accept).
+		const cases: [string, Record<string, unknown>][] = [
+			["native-approval-user-input", { answers: {} }],
+			["native-approval-mcp-elicitation", { action: "decline", content: null, _meta: null }],
+			[
+				"native-approval-legacy-patch",
+				{ decision: { denied: { rejection: "Endophasia v0 declines legacy approval RPCs fail-closed." } } },
+			],
+			[
+				"native-approval-legacy-exec",
+				{ decision: { denied: { rejection: "Endophasia v0 declines legacy approval RPCs fail-closed." } } },
+			],
+			["native-approval-tool-call", { success: false, contentItems: [] }],
+			["native-approval-missing-thread", { decision: "cancel" }],
+		];
+		for (const [scenario, expectedResult] of cases) {
+			const logPath = join(makeTempDir(), `wire-${scenario}.json`);
+			const fx = await createCheckedFixture({
+				scenario,
+				logFile: logPath,
+				onNativeApprovalRequest: async (req) =>
+					buildCodexNativeApprovalDecisionV0({ request: req, decision: "accept" }),
+			});
+			try {
+				await fx.adapter.open();
+				const ctrl = new CodexLiveControllerV0({
+					adapter: fx.adapter,
+					approveOperation: async () => ({ approved: true, mechanism: "terminal-phrase" }),
+				});
+				const sent = await ctrl.requestPrompt(`run ${scenario}`);
+				if (sent.status === "accepted" && sent.turnId) await fx.adapter.waitForTurnCompletion(sent.turnId, 5_000);
+				const wire = JSON.parse(readFileSync(logPath, "utf8")) as {
+					direction: string;
+					result?: Record<string, unknown>;
+				}[];
+				const reply = wire.find((w) => w.direction === "server-request-reply");
+				expect(reply?.result, `scenario ${scenario}`).toEqual(expectedResult);
+			} finally {
+				await fx.adapter.close();
+			}
+		}
+
+		// 3. Idle-state native approval (sent before any turn is active) MUST fail closed even with accepting handler!
+		const logIdle = join(makeTempDir(), "wire-idle.json");
+		const fxIdle = await createCheckedFixture({
+			scenario: "native-approval-idle",
+			logFile: logIdle,
+			onNativeApprovalRequest: async (req) =>
+				buildCodexNativeApprovalDecisionV0({ request: req, decision: "accept" }),
+		});
+		try {
+			await fxIdle.adapter.open();
+			await expect
+				.poll(() => {
+					if (!existsSync(logIdle)) return null;
+					const wire = JSON.parse(readFileSync(logIdle, "utf8")) as {
+						direction: string;
+						result?: Record<string, unknown>;
+					}[];
+					return wire.find((w) => w.direction === "server-request-reply")?.result ?? null;
+				})
+				.toEqual({ decision: "cancel" });
+		} finally {
+			await fxIdle.adapter.close();
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -628,22 +929,49 @@ describe("DEVELOP-CODEX-LIVE-001: cross-harness single-writer event-store exclus
 		await expect(fx.adapter.open()).rejects.toThrow(EndoStoreLockedErrorV0);
 		releasePiLock();
 
-		// 2. Codex opens -> holds `<root>/events/session-attachment.lock` -> Pi attachment MUST refuse (PiStoreLockedErrorV0).
-		await fx.adapter.open();
-		expect(existsSync(join(fx.root, "events", "session-attachment.lock"))).toBe(true);
-		const pi = new PiAttachmentV0({ root: fx.root, attachment: "pi.default" });
-		await expect(async () => {
-			// Directly test shared lock contention via Pi's openSession path or shared lock:
-			acquireEndoEventStoreWriterLockV0(fx.root, "pi.default");
-		}).rejects.toThrow(EndoStoreLockedErrorV0);
-		// Verify PiStoreLockedErrorV0 extends EndoStoreLockedErrorV0.
-		expect(new PiStoreLockedErrorV0("/tmp/lock", "codex.test")).toBeInstanceOf(EndoStoreLockedErrorV0);
-		expect(pi.attachment).toBe("pi.default");
+		// 2. Real PiAttachmentV0.openSession() vs real CodexDevelopAdapterV0.open() mutual exclusion in BOTH directions!
+		const fakePi = installFakePi("1.0.0");
+		try {
+			const pi = new PiAttachmentV0({
+				root: fx.root,
+				cwd: fx.projectScope,
+				executable: fakePi.bin,
+				env: fakePiEnv({ FAKE_PI_STEP_MS: "10" }),
+				requestTimeoutMs: 10_000,
+			});
+			await pi.identify();
+			await pi.checkLocal();
 
-		await fx.adapter.close();
-		expect(existsSync(join(fx.root, "events", "session-attachment.lock"))).toBe(false);
+			// Direction A: Codex holds lock -> PiAttachmentV0.openSession() fails closed with PiStoreLockedErrorV0.
+			await fx.adapter.open();
+			expect(existsSync(join(fx.root, "events", "session-attachment.lock"))).toBe(true);
+			await expect(pi.openSession()).rejects.toThrow(PiStoreLockedErrorV0);
+			expect(new PiStoreLockedErrorV0("/tmp/lock", "codex.test")).toBeInstanceOf(EndoStoreLockedErrorV0);
+			await fx.adapter.close();
+			expect(existsSync(join(fx.root, "events", "session-attachment.lock"))).toBe(false);
 
-		// 3. Stale dead-PID lock is replaced cleanly.
+			// Direction B: Pi holds lock -> fresh CodexDevelopAdapterV0.open() fails closed with EndoStoreLockedErrorV0.
+			const codexAdapter2 = new CodexDevelopAdapterV0({
+				root: fx.root,
+				attachmentId: fx.attachmentId,
+				projectScope: fx.projectScope,
+				executable: FAKE_CODEX,
+				env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", FAKE_CODEX_SCENARIO: "default" },
+				fingerprint: fx.check.fingerprint,
+				capabilityState: fx.check.capabilityState,
+			});
+			const piSession = await pi.openSession();
+			try {
+				await expect(codexAdapter2.open()).rejects.toThrow(EndoStoreLockedErrorV0);
+			} finally {
+				await piSession.close();
+			}
+			expect(existsSync(join(fx.root, "events", "session-attachment.lock"))).toBe(false);
+		} finally {
+			fakePi.remove();
+		}
+
+		// 3. Stale dead-PID lock is replaced cleanly; stale release closure NEVER deletes a newer holder's lock.
 		const lockPath = join(fx.root, "events", "session-attachment.lock");
 		mkdirSync(join(fx.root, "events"), { recursive: true });
 		writeFileSync(
@@ -652,6 +980,12 @@ describe("DEVELOP-CODEX-LIVE-001: cross-harness single-writer event-store exclus
 		);
 		const rel1 = acquireEndoEventStoreWriterLockV0(fx.root, "codex.test");
 		rel1();
+		const rel2 = acquireEndoEventStoreWriterLockV0(fx.root, "codex.test-2");
+		// Calling rel1 again after rel2 owns the lock must NOT remove rel2's lock file!
+		rel1();
+		expect(existsSync(lockPath)).toBe(true);
+		rel2();
+		expect(existsSync(lockPath)).toBe(false);
 
 		// 4. Malformed lock fails closed (never silently stolen).
 		writeFileSync(lockPath, "{not-valid-json");
@@ -703,6 +1037,30 @@ describe("DEVELOP-CODEX-LIVE-001: neutral DEVELOP presentation & source boundari
 			const surface = developSurface(null, [], null, [], { status: ctrl.status(), unreachable: false });
 			expect(endoDevelopSurfaceProblemV0(surface)).toBeNull();
 			expect(surface.sessions).toHaveLength(1);
+
+			// Edge presentation states must also pass protocol validation (Finding #14 regressions):
+			const baseStatus = ctrl.status();
+			const noThread = presentLiveCodex({ ...baseStatus, threadId: null });
+			expect(endoDevelopSessionProblemV0(noThread)).toBeNull();
+			expect(noThread.ownership.status).toBe("unavailable");
+			expect(noThread.capabilities.control.prompt.status).toBe("unavailable");
+			expect(noThread.capabilities.control.stop.status).toBe("unavailable");
+
+			const notApplicable = presentLiveCodex({
+				...baseStatus,
+				connection: "not-applicable",
+				connectionReason: "closed",
+			});
+			expect(endoDevelopSessionProblemV0(notApplicable)).toBeNull();
+			expect(notApplicable.connection.state).toBe("unknown");
+
+			const reconnecting = presentLiveCodex({
+				...baseStatus,
+				connection: "reconnecting",
+				connectionReason: "retry",
+			});
+			expect(endoDevelopSessionProblemV0(reconnecting)).toBeNull();
+			expect(reconnecting.connection.state).toBe("unknown");
 		} finally {
 			await fx.adapter.close();
 		}

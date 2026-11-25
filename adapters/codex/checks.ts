@@ -42,6 +42,8 @@ export const CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0: readonly string[] = Object.
 	'approval_policy="on-request"',
 	'approvals_reviewer="user"',
 	'sandbox_mode="workspace-write"',
+	"sandbox_workspace_write.network_access=false",
+	"sandbox_workspace_write.writable_roots=[]",
 	'web_search="disabled"',
 	"analytics.enabled=false",
 	"features.hooks=false",
@@ -73,34 +75,64 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * Extract user-configured MCP server names from a `config/read` response so Endophasia can disable them explicitly
  * on `thread/start` without mutating the operator's `~/.codex/config.toml`.
+ *
+ * Fail-closed: any enabled MCP server whose name contains dots or special characters (outside `/^[A-Za-z0-9_-]+$/`)
+ * cannot be safely disabled via dotted `mcp_servers.<name>.enabled = false` and is returned in `unsafeEnabledNames`.
  */
-export function extractCodexMcpServerNamesV0(configReadResponse: Record<string, unknown>): string[] {
+export function inspectCodexMcpServersV0(configReadResponse: Record<string, unknown>): {
+	readonly disableableNames: string[];
+	readonly unsafeEnabledNames: string[];
+} {
 	const cfg = isRecord(configReadResponse.config) ? configReadResponse.config : {};
 	const mcp = isRecord(cfg.mcp_servers) ? cfg.mcp_servers : {};
-	return Object.keys(mcp)
-		.filter((name) => /^[A-Za-z0-9._-]+$/.test(name))
-		.sort();
+	const disableableNames: string[] = [];
+	const unsafeEnabledNames: string[] = [];
+	for (const [name, entry] of Object.entries(mcp)) {
+		const isEnabled = !isRecord(entry) || entry.enabled !== false;
+		if (/^[A-Za-z0-9_-]+$/.test(name)) {
+			disableableNames.push(name);
+		} else if (isEnabled) {
+			unsafeEnabledNames.push(name);
+		}
+	}
+	disableableNames.sort();
+	unsafeEnabledNames.sort();
+	return { disableableNames, unsafeEnabledNames };
+}
+
+export function extractCodexMcpServerNamesV0(configReadResponse: Record<string, unknown>): string[] {
+	return inspectCodexMcpServersV0(configReadResponse).disableableNames;
 }
 
 /** Build a `thread/start` `config` override object disabling all discovered inherited MCP servers. */
 export function buildCodexDisableMcpConfigV0(serverNames: readonly string[]): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const name of serverNames) {
+		if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+			throw new TypeError(`Cannot safely disable MCP server name containing dots or special characters: ${name}`);
+		}
 		out[`mcp_servers.${name}.enabled`] = false;
 	}
 	return out;
 }
 
 /**
- * Verify the **effective** policy returned by `thread/start` (never trusting requested parameters alone).
- * Fails closed on:
- * - `approvalPolicy === "never"` or missing
- * - `approvalsReviewer !== "user"` (refuses `auto_review` and `guardian_subagent`)
- * - `sandbox.type === "dangerFullAccess"` or `sandbox.networkAccess === true` (unless explicitly allowed)
+ * Verify the **effective** policy returned by `thread/start` (strict allowlist; never trusting requested parameters).
+ * Fails closed unless ALL hold:
+ * - `approvalPolicy === "on-request"` (refuses `"never"`, unknown strings, and unverified structured objects)
+ * - `approvalsReviewer === "user"` (refuses `auto_review` and `guardian_subagent`)
+ * - `sandbox.type === "workspaceWrite" || sandbox.type === "readOnly"` (refuses `dangerFullAccess`, `externalSandbox`, unknown)
+ * - `sandbox.networkAccess === false` (unless `allowNetworkAccess === true`)
+ * - `sandbox.writableRoots` is empty `[]` for `workspaceWrite` (refuses inherited broad `writable_roots`)
+ * - `unsafeEnabledMcpServers` is empty
  */
 export function verifyCodexEffectivePolicyV0(
 	threadStartResponse: Record<string, unknown>,
-	options: { readonly disabledMcpServers?: readonly string[]; readonly allowNetworkAccess?: boolean } = {},
+	options: {
+		readonly disabledMcpServers?: readonly string[];
+		readonly unsafeEnabledMcpServers?: readonly string[];
+		readonly allowNetworkAccess?: boolean;
+	} = {},
 ): CodexEffectivePolicyVerificationV0 {
 	const reasons: string[] = [];
 	const approvalPolicy = threadStartResponse.approvalPolicy ?? null;
@@ -117,8 +149,10 @@ export function verifyCodexEffectivePolicyV0(
 		reasons.push("effective approvalPolicy is missing from thread/start response");
 	} else if (approvalPolicy === "never") {
 		reasons.push('effective approvalPolicy is "never", which bypasses human approval');
-	} else if (approvalPolicy !== "on-request" && !isRecord(approvalPolicy)) {
-		reasons.push(`effective approvalPolicy (${String(approvalPolicy)}) is not a recognized governed policy`);
+	} else if (approvalPolicy !== "on-request") {
+		reasons.push(
+			`effective approvalPolicy (${JSON.stringify(approvalPolicy)}) is not the allowlisted "on-request" policy`,
+		);
 	}
 
 	if (approvalsReviewer !== "user") {
@@ -130,12 +164,26 @@ export function verifyCodexEffectivePolicyV0(
 	if (!isRecord(sandbox) || typeof sandbox.type !== "string") {
 		reasons.push("effective sandbox policy is missing or malformed in thread/start response");
 	} else {
-		if (sandbox.type === "dangerFullAccess") {
-			reasons.push('effective sandbox policy is "dangerFullAccess", which violates workspace scoping');
+		if (sandbox.type !== "workspaceWrite" && sandbox.type !== "readOnly") {
+			reasons.push(
+				`effective sandbox policy is "${sandbox.type}", which is not in the allowlisted workspaceWrite/readOnly set`,
+			);
 		}
-		if (options.allowNetworkAccess !== true && sandbox.networkAccess === true) {
-			reasons.push("effective sandbox enables networkAccess unexpectedly");
+		if (options.allowNetworkAccess !== true && sandbox.networkAccess !== false) {
+			reasons.push(`effective sandbox networkAccess is ${JSON.stringify(sandbox.networkAccess)}, expected false`);
 		}
+		if (
+			sandbox.type === "workspaceWrite" &&
+			(!Array.isArray(sandbox.writableRoots) || sandbox.writableRoots.length > 0)
+		) {
+			reasons.push("effective workspaceWrite sandbox carries unexpected extra writableRoots");
+		}
+	}
+
+	if ((options.unsafeEnabledMcpServers?.length ?? 0) > 0) {
+		reasons.push(
+			`enabled inherited MCP server(s) could not be safely disabled: ${options.unsafeEnabledMcpServers!.join(", ")}`,
+		);
 	}
 
 	return {
@@ -235,6 +283,7 @@ export async function runCodexLocalProtocolCheckV0(
 	let initResult: CodexInitializeResultV0;
 	let configReadRaw: Record<string, unknown>;
 	let disabledMcpServers: string[] = [];
+	let unsafeEnabledMcpServers: string[] = [];
 	let threadStartRaw: Record<string, unknown> | null = null;
 	let threadReadOk = false;
 	let unsubscribeOk = false;
@@ -252,7 +301,9 @@ export async function runCodexLocalProtocolCheckV0(
 		client.notifyInitialized();
 
 		configReadRaw = await client.configRead({ includeLayers: false, cwd: workDir }, { timeoutMs });
-		disabledMcpServers = extractCodexMcpServerNamesV0(configReadRaw);
+		const mcpInfo = inspectCodexMcpServersV0(configReadRaw);
+		disabledMcpServers = mcpInfo.disableableNames;
+		unsafeEnabledMcpServers = mcpInfo.unsafeEnabledNames;
 		const mcpDisableConfig = buildCodexDisableMcpConfigV0(disabledMcpServers);
 
 		threadStartRaw = await client.threadStart(
@@ -296,7 +347,10 @@ export async function runCodexLocalProtocolCheckV0(
 		}
 	}
 
-	const effectivePolicy = verifyCodexEffectivePolicyV0(threadStartRaw ?? {}, { disabledMcpServers });
+	const effectivePolicy = verifyCodexEffectivePolicyV0(threadStartRaw ?? {}, {
+		disabledMcpServers,
+		unsafeEnabledMcpServers,
+	});
 	const configurationDigest = codexConfigurationDigestV0({
 		approvalPolicy: effectivePolicy.effective.approvalPolicy,
 		approvalsReviewer: effectivePolicy.effective.approvalsReviewer,

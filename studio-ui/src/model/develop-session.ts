@@ -317,6 +317,7 @@ export function presentLiveCodex(
 			: status.threadId !== null
 				? { status: "established", id: `endo.session.codex.${status.threadId}`, scope: "source" }
 				: { status: "established", id: status.launchId, scope: "launch" };
+	const owned = connected && status.threadId !== null;
 	const claim: EndoDevelopStatusClaimV0[] = connected
 		? [{ state: status.activeTurnId !== null ? "active" : "idle", basis: "observed", by: "endophasia", at: null }]
 		: [];
@@ -324,8 +325,8 @@ export function presentLiveCodex(
 		cap: { readonly admitted: boolean; readonly reason: string | null } | undefined,
 		fallback: string,
 	): EndoDevelopCapabilityV0 =>
-		!connected
-			? unavailable("There is no admitted live connection to this Codex thread now.")
+		!owned
+			? unavailable("There is no admitted live connection to an owned Codex thread now.")
 			: cap?.admitted
 				? supported(CODEX_CONTROLLER)
 				: unavailable(cap?.reason ?? fallback);
@@ -333,7 +334,10 @@ export function presentLiveCodex(
 		? { state: "connected", reason: null }
 		: known
 			? {
-					state: status.connection === "reconnecting" ? "unknown" : status.connection,
+					state:
+						status.connection === "reconnecting" || status.connection === "not-applicable"
+							? "unknown"
+							: status.connection,
 					reason: status.connectionReason ?? "The Codex controller reports no active connection.",
 				}
 			: {

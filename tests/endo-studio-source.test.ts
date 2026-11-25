@@ -20,8 +20,8 @@ describe("what loads when", () => {
 	it("the command table loads Studio lazily: cli/index.ts has no static import of it, and one dynamic import", () => {
 		const index = read("cli/index.ts");
 		expect(staticImports(index).filter((s) => /studio|cockpit/.test(s))).toEqual([]);
-		// The workspace host (`endo workspace open`) is long-running too, and likewise loaded only when asked for.
-		expect(dynamicImports(index)).toEqual(["./studio.ts", "./workspace.ts"]);
+		// The Codex live command (`endo codex`) and workspace host (`endo workspace open`) are likewise loaded only when asked for.
+		expect(dynamicImports(index)).toEqual(["./codex.ts", "./studio.ts", "./workspace.ts"]);
 	});
 
 	it("Studio loads HTTP and the cockpit library lazily too: its static imports are small, and the host is imported after validation", () => {

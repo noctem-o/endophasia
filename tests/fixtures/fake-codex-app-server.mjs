@@ -119,6 +119,14 @@ function handleMessage(msg) {
 	}
 
 	if (method === "config/read") {
+		const mcpServers = scenarios.has("unsafe-mcp-name")
+			? {
+					legacy_mcp: { url: "https://example.invalid/mcp", enabled: true },
+					"dotted.mcp.server": { url: "https://example.invalid/bad", enabled: true },
+				}
+			: {
+					legacy_mcp: { url: "https://example.invalid/mcp", enabled: true },
+				};
 		send({
 			id,
 			result: {
@@ -126,9 +134,7 @@ function handleMessage(msg) {
 					approval_policy: "on-request",
 					approvals_reviewer: "user",
 					sandbox_mode: "workspace-write",
-					mcp_servers: {
-						legacy_mcp: { url: "https://example.invalid/mcp", enabled: true },
-					},
+					mcp_servers: mcpServers,
 				},
 				origins: {},
 				layers: null,
@@ -169,8 +175,16 @@ function handleMessage(msg) {
 			excludeSlashTmp: false,
 		};
 		if (scenarios.has("permissive-approval-never")) approvalPolicy = "never";
+		if (scenarios.has("permissive-approval-object")) approvalPolicy = { reject: { sandbox_approval: true } };
 		if (scenarios.has("permissive-auto-reviewer")) approvalsReviewer = "auto_review";
 		if (scenarios.has("permissive-danger-sandbox")) sandbox = { type: "dangerFullAccess" };
+		if (scenarios.has("permissive-external-sandbox")) sandbox = { type: "externalSandbox", networkAccess: "restricted" };
+		if (scenarios.has("permissive-writable-roots")) {
+			sandbox = { type: "workspaceWrite", writableRoots: ["/etc"], networkAccess: false };
+		}
+		if (scenarios.has("permissive-network-access")) {
+			sandbox = { type: "workspaceWrite", writableRoots: [], networkAccess: true };
+		}
 
 		const thread = {
 			id: threadId,
@@ -206,6 +220,22 @@ function handleMessage(msg) {
 			},
 		});
 		send({ method: "thread/started", params: { thread } });
+		if (scenarios.has("native-approval-idle")) {
+			send({
+				id: "srv-idle-1",
+				method: "item/commandExecution/requestApproval",
+				params: {
+					kind: "command",
+					threadId,
+					turnId: "019a0000-0000-7000-8000-000000000099",
+					itemId: "item-idle-1",
+					startedAtMs: Date.now(),
+					environmentId: null,
+					command: "echo idle",
+					cwd: "/tmp/fixture",
+				},
+			});
+		}
 		return;
 	}
 
@@ -236,6 +266,21 @@ function handleMessage(msg) {
 		const turnId = `019a0000-0000-7000-8000-${String(turnSeq).padStart(12, "0")}`;
 		activeTurnId = turnId;
 		const turn = { id: turnId, rootTurnId: turnId, items: [], itemsView: "complete", status: "inProgress", error: null };
+		if (scenarios.has("same-chunk-turn-failed")) {
+			activeTurnId = null;
+			process.stdout.write(
+				`${JSON.stringify({ id, result: { turn } })}\n` +
+					`${JSON.stringify({ method: "turn/started", params: { threadId, turn } })}\n` +
+					`${JSON.stringify({
+						method: "turn/completed",
+						params: {
+							threadId,
+							turn: { ...turn, status: "failed", error: { message: "boom", codexErrorInfo: "other" } },
+						},
+					})}\n`,
+			);
+			return;
+		}
 		send({ id, result: { turn } });
 		send({ method: "turn/started", params: { threadId, turn } });
 
@@ -274,6 +319,12 @@ function handleMessage(msg) {
 			scenarios.has("native-approval-file") ||
 			scenarios.has("native-approval-permissions") ||
 			scenarios.has("native-approval-unknown") ||
+			scenarios.has("native-approval-user-input") ||
+			scenarios.has("native-approval-mcp-elicitation") ||
+			scenarios.has("native-approval-legacy-patch") ||
+			scenarios.has("native-approval-legacy-exec") ||
+			scenarios.has("native-approval-tool-call") ||
+			scenarios.has("native-approval-missing-thread") ||
 			scenarios.has("duplicate-server-req")
 		) {
 			runApprovalTurn(turnId);
@@ -440,6 +491,12 @@ function runApprovalTurn(turnId) {
 	pendingServerReqId = reqId;
 	pendingServerResolve = (reply) => {
 		const accepted = reply.result?.decision === "accept";
+		if (scenarios.has("emit-server-request-resolved")) {
+			send({
+				method: "serverRequest/resolved",
+				params: { threadId, requestId: reqId },
+			});
+		}
 		send({
 			method: "item/completed",
 			params: {
@@ -513,6 +570,48 @@ function runApprovalTurn(turnId) {
 				cwd: "/tmp/fixture",
 				reason: "request network access",
 				permissions: { network: { enabled: true } },
+			},
+		});
+	} else if (scenarios.has("native-approval-user-input")) {
+		send({
+			id: reqId,
+			method: "item/tool/requestUserInput",
+			params: { threadId, turnId, itemId: `item-appr-${turnSeq}`, questions: [] },
+		});
+	} else if (scenarios.has("native-approval-mcp-elicitation")) {
+		send({
+			id: reqId,
+			method: "mcpServer/elicitation/request",
+			params: { threadId, turnId, serverName: "legacy_mcp", mode: "form", message: "enter token" },
+		});
+	} else if (scenarios.has("native-approval-legacy-patch")) {
+		send({
+			id: reqId,
+			method: "applyPatchApproval",
+			params: { conversationId: threadId, callId: `item-appr-${turnSeq}`, fileChanges: {} },
+		});
+	} else if (scenarios.has("native-approval-legacy-exec")) {
+		send({
+			id: reqId,
+			method: "execCommandApproval",
+			params: { conversationId: threadId, callId: `item-appr-${turnSeq}`, command: ["echo", "hi"], cwd: "/tmp" },
+		});
+	} else if (scenarios.has("native-approval-tool-call")) {
+		send({
+			id: reqId,
+			method: "item/tool/call",
+			params: { threadId, turnId, callId: `item-appr-${turnSeq}`, tool: "customTool", arguments: {} },
+		});
+	} else if (scenarios.has("native-approval-missing-thread")) {
+		send({
+			id: reqId,
+			method: "item/commandExecution/requestApproval",
+			params: {
+				kind: "command",
+				turnId,
+				itemId: `item-appr-${turnSeq}`,
+				command: "echo missing-thread",
+				cwd: "/tmp/fixture",
 			},
 		});
 	} else if (scenarios.has("native-approval-unknown")) {

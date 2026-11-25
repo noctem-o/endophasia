@@ -100,7 +100,7 @@ export function buildCodexNativeApprovalDecisionV0(args: {
 
 const sanitizePreview = (text: string, max = 160): string =>
 	text
-		.replace(/[\u0000-\u001f\u007f]/g, " ")
+		.replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g, " ")
 		.trim()
 		.slice(0, max);
 
@@ -259,6 +259,16 @@ export class CodexLiveControllerV0 {
 				? `Interrupt active turn ${targetTurnId ?? "(missing)"}`
 				: sanitizePreview(request.message, 160);
 
+		if (signal?.aborted) {
+			return {
+				status: "refused",
+				operation: request.kind,
+				stage: "admission",
+				code: "missing-authority",
+				reason: "Authorization request aborted before approval.",
+			};
+		}
+
 		const abort = new AbortController();
 		const onExternalAbort = () => abort.abort();
 		signal?.addEventListener("abort", onExternalAbort, { once: true });
@@ -277,6 +287,15 @@ export class CodexLiveControllerV0 {
 				},
 				abort.signal,
 			);
+			if (signal?.aborted || abort.signal.aborted) {
+				return {
+					status: "refused",
+					operation: request.kind,
+					stage: "admission",
+					code: "missing-authority",
+					reason: "Authorization request aborted before dispatch.",
+				};
+			}
 			if (!decision.approved) {
 				return {
 					status: "refused",

@@ -254,7 +254,23 @@ export class CodexAppServerClientV0 {
 					this.#handleFrame(record.value);
 				}
 			}
-			this.#markDisconnected("Codex App Server stdout closed.", this.#lastExit);
+			// Immediately mark transport disconnected so no further writes happen, then wait briefly (50 ms) for
+			// `#group.exited` so the disconnect callback preserves the actual process exit code/signal when available.
+			this.#connected = false;
+			this.#failAllPending(this.#closed ? "closed" : "disconnected", "Codex App Server stdout closed.");
+			void Promise.race([
+				this.#group.exited,
+				new Promise<null>((resolve) => setTimeout(() => resolve(null), 50)),
+			]).then((exit) => {
+				const observedExit = exit ?? this.#lastExit;
+				const reason =
+					observedExit !== null
+						? observedExit.spawnFailed
+							? "Codex App Server executable failed to spawn."
+							: `Codex App Server exited (code=${String(observedExit.code)}, signal=${String(observedExit.signal)}).`
+						: "Codex App Server stdout closed.";
+				this.#markDisconnected(reason, observedExit);
+			});
 		});
 
 		this.#group.stderr?.on("data", (chunk: Buffer) => {

@@ -19,12 +19,24 @@ import {
 	type CodexOperationApproverV0,
 } from "../adapters/codex/controller.ts";
 import { CodexDevelopAdapterV0, type CodexNativeApprovalHandlerV0 } from "../adapters/codex/develop-adapter.ts";
+import { type EndoContainmentV0, liveScopeV0 } from "../adapters/sandbox/containment.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { liveContainmentV0 } from "./process-cleanup.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 import { requireWorkbenchTerminalV0 } from "./workbench.ts";
 
 const VALUE_FLAGS = new Set(["--attachment", "--executable", "--cwd", "--model", "--effort"]);
 const BOOL_FLAGS = new Set(["--ephemeral"]);
+const VALID_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
+type CodexReasoningEffortV0 = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+
+function parseReasoningEffort(raw: string | undefined): CodexReasoningEffortV0 | undefined {
+	if (raw === undefined) return undefined;
+	if (!VALID_EFFORTS.has(raw)) {
+		throw new TypeError(`invalid --effort value "${raw}"; expected one of: ${[...VALID_EFFORTS].join(", ")}`);
+	}
+	return raw as CodexReasoningEffortV0;
+}
 
 function parseFlags(args: readonly string[]): { flags: Map<string, string>; booleans: Set<string> } {
 	const flags = new Map<string, string>();
@@ -55,12 +67,17 @@ export async function codexCheckCommand(argv: readonly string[]): Promise<void> 
 	const attachment = flags.get("--attachment") ?? "codex.default";
 	const executable = flags.get("--executable");
 	const checkCwd = flags.get("--cwd");
+	const effort = parseReasoningEffort(flags.get("--effort"));
+	const live = await liveContainmentV0();
+	for (const note of live.notes) process.stderr.write(`${note}\n`);
 
 	const result = await runCodexLocalProtocolCheckV0({
 		root: taken.root,
 		attachment,
 		...(executable === undefined ? {} : { executable }),
 		...(checkCwd === undefined ? {} : { checkCwd: realpathSync(checkCwd) }),
+		...(effort === undefined ? {} : { extraConfigOverrides: [`model_reasoning_effort="${effort}"`] }),
+		...(live.containment === null ? {} : { scope: liveScopeV0(live.containment as EndoContainmentV0) }),
 	});
 
 	console.log(
@@ -91,15 +108,19 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 	const attachmentId = flags.get("--attachment") ?? "codex.default";
 	const executable = flags.get("--executable");
 	const model = flags.get("--model");
-	const effort = flags.get("--effort") as "low" | "medium" | "high" | "xhigh" | "max" | "ultra" | undefined;
+	const effort = parseReasoningEffort(flags.get("--effort"));
 	const ephemeral = booleans.has("--ephemeral");
 	announceEndoRootV0(taken);
+
+	const live = await liveContainmentV0();
+	for (const note of live.notes) process.stderr.write(`${note}\n`);
 
 	const check = await runCodexLocalProtocolCheckV0({
 		root: taken.root,
 		attachment: attachmentId,
 		...(executable === undefined ? {} : { executable }),
 		checkCwd: projectScope,
+		...(live.containment === null ? {} : { scope: liveScopeV0(live.containment as EndoContainmentV0) }),
 	});
 	if (!check.effectivePolicy.ok) {
 		throw new Error(`Codex offline policy check failed: ${check.effectivePolicy.reasons.join("; ")}`);
@@ -112,41 +133,69 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 	const rl = createInterface({ input: process.stdin, output: process.stderr, terminal: true });
 	const write = (text: string) => process.stderr.write(text);
 
-	const approveOperation: CodexOperationApproverV0 = async (prompt, signal) => {
-		if (signal.aborted) return { approved: false, reason: "aborted" };
-		write(
-			`\n[GOVERNED APPROVAL REQUIRED]\n` +
-				`  Operation: ${prompt.operation}\n` +
-				`  Thread:    ${prompt.threadId} (instance ${prompt.instanceId})\n` +
-				`  Workspace: ${prompt.projectScope}\n` +
-				`  Preview:   ${prompt.preview}\n` +
-				`  Type exact phrase to approve: ${prompt.requiredPhrase}\n`,
-		);
-		const answer = (await rl.question("approval> ", { signal })).trim();
-		if (answer === prompt.requiredPhrase) {
-			return { approved: true, mechanism: "terminal-phrase" };
+	// Serialize EVERY terminal readline prompt through a single queue so REPL `codex>`, `approval>`, and async
+	// `native-approval>` never overlap on stdin. Urgent prompts preempt an idle REPL prompt cleanly.
+	let promptQueue: Promise<unknown> = Promise.resolve();
+	let replPromptAbort: AbortController | null = null;
+	let shuttingDown = false;
+	const onSignal = (): void => {
+		shuttingDown = true;
+		replPromptAbort?.abort();
+		rl.close();
+	};
+	process.on("SIGINT", onSignal);
+	process.on("SIGTERM", onSignal);
+
+	const enqueuePrompt = <T>(fn: () => Promise<T>, preemptRepl: boolean): Promise<T> => {
+		if (preemptRepl) {
+			replPromptAbort?.abort();
 		}
-		return { approved: false, reason: "Approval phrase did not match." };
+		const task = promptQueue.then(fn);
+		promptQueue = task.catch(() => {});
+		return task;
 	};
 
-	const handleNativeApproval: CodexNativeApprovalHandlerV0 = async (request, signal) => {
-		if (signal.aborted) return null;
-		write(
-			`\n[NATIVE CODEX APPROVAL REQUEST]\n` +
-				`  Request: ${request.requestId}\n` +
-				`  Kind:    ${request.approvalKind} (${request.nativeMethod})\n` +
-				`  Turn:    ${request.turnId ?? "(none)"} | Item: ${request.itemId ?? "(none)"}\n` +
-				`  Summary: ${request.summary}\n` +
-				`  Type "ALLOW ONCE" to accept once, "CANCEL" to cancel, or anything else to decline:\n`,
-		);
-		try {
-			const answer = (await rl.question("native-approval> ", { signal })).trim();
-			const decision = answer === "ALLOW ONCE" ? "accept" : answer === "CANCEL" ? "cancel" : "decline";
-			return buildCodexNativeApprovalDecisionV0({ request, decision });
-		} catch {
-			return null;
-		}
-	};
+	const approveOperation: CodexOperationApproverV0 = (prompt, signal) =>
+		enqueuePrompt(async () => {
+			if (shuttingDown || signal.aborted) return { approved: false, reason: "aborted" };
+			write(
+				`\n[GOVERNED APPROVAL REQUIRED]\n` +
+					`  Operation: ${prompt.operation}\n` +
+					`  Thread:    ${prompt.threadId} (instance ${prompt.instanceId})\n` +
+					`  Workspace: ${prompt.projectScope}\n` +
+					`  Preview:   ${prompt.preview}\n` +
+					`  Type exact phrase to approve: ${prompt.requiredPhrase}\n`,
+			);
+			try {
+				const answer = (await rl.question("approval> ", { signal })).trim();
+				if (answer === prompt.requiredPhrase) {
+					return { approved: true, mechanism: "terminal-phrase" };
+				}
+				return { approved: false, reason: "Approval phrase did not match." };
+			} catch {
+				return { approved: false, reason: "aborted" };
+			}
+		}, true);
+
+	const handleNativeApproval: CodexNativeApprovalHandlerV0 = (request, signal) =>
+		enqueuePrompt(async () => {
+			if (shuttingDown || signal.aborted) return null;
+			write(
+				`\n[NATIVE CODEX APPROVAL REQUEST]\n` +
+					`  Request: ${request.requestId}\n` +
+					`  Kind:    ${request.approvalKind} (${request.nativeMethod})\n` +
+					`  Turn:    ${request.turnId ?? "(none)"} | Item: ${request.itemId ?? "(none)"}\n` +
+					`  Summary: ${request.summary}\n` +
+					`  Type "ALLOW ONCE" to accept once, "CANCEL" to cancel, or anything else to decline:\n`,
+			);
+			try {
+				const answer = (await rl.question("native-approval> ", { signal })).trim();
+				const decision = answer === "ALLOW ONCE" ? "accept" : answer === "CANCEL" ? "cancel" : "decline";
+				return buildCodexNativeApprovalDecisionV0({ request, decision });
+			} catch {
+				return null;
+			}
+		}, true);
 
 	const adapter = new CodexDevelopAdapterV0({
 		root: taken.root,
@@ -158,6 +207,7 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 		...(model === undefined ? {} : { model }),
 		...(effort === undefined ? {} : { reasoningEffort: effort }),
 		ephemeral,
+		...(live.containment === null ? {} : { scope: liveScopeV0(live.containment as EndoContainmentV0) }),
 		onNativeApprovalRequest: handleNativeApproval,
 	});
 
@@ -188,13 +238,27 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 				`approvalPolicy=${JSON.stringify(opened.effectivePolicy.approvalPolicy)}, reviewer=${String(opened.effectivePolicy.approvalsReviewer)})\n` +
 				`Commands: prompt <text> | stop | status | view | quit\n`,
 		);
-		for (;;) {
-			let line: string;
-			try {
-				line = (await rl.question("codex> ")).trim();
-			} catch {
-				break;
-			}
+		while (!shuttingDown) {
+			const result = await enqueuePrompt(
+				async (): Promise<{ kind: "line"; line: string } | { kind: "preempted" } | { kind: "eof" }> => {
+					if (shuttingDown) return { kind: "eof" };
+					const ac = new AbortController();
+					replPromptAbort = ac;
+					try {
+						const raw = await rl.question("codex> ", { signal: ac.signal });
+						return { kind: "line", line: raw.trim() };
+					} catch {
+						if (ac.signal.aborted && !shuttingDown) return { kind: "preempted" };
+						return { kind: "eof" };
+					} finally {
+						if (replPromptAbort === ac) replPromptAbort = null;
+					}
+				},
+				false,
+			);
+			if (result.kind === "eof") break;
+			if (result.kind === "preempted") continue;
+			const line = result.line;
 			if (line === "quit" || line === "exit") break;
 			if (line === "") continue;
 			if (line === "status") {
@@ -224,6 +288,8 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 			write("Unknown command. Use: prompt <text> | stop | status | view | quit\n");
 		}
 	} finally {
+		process.off("SIGINT", onSignal);
+		process.off("SIGTERM", onSignal);
 		stopSub();
 		rl.close();
 		const closed = await adapter.close();

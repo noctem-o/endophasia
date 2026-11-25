@@ -59,14 +59,15 @@ export type CodexServerRequestReplyV0 =
 const isRecord = (value: unknown): value is Record<string, unknown> =>
 	typeof value === "object" && value !== null && !Array.isArray(value);
 
-const sanitize = (value: string, max: number): string =>
-	value
-		.replace(/[\u0000-\u001f\u007f]/g, " ")
-		.trim()
-		.slice(0, max);
+const UNSAFE_TERMINAL_CHARS = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/g;
 
-const optStr = (value: unknown, max = 256): string | null =>
-	typeof value === "string" && value.length > 0 ? sanitize(value, max) : null;
+const sanitize = (value: string, max: number): string => value.replace(UNSAFE_TERMINAL_CHARS, " ").trim().slice(0, max);
+
+const optStr = (value: unknown, max = 256): string | null => {
+	if (typeof value !== "string") return null;
+	const cleaned = sanitize(value, max);
+	return cleaned.length > 0 ? cleaned : null;
+};
 
 export function codexServerRequestIdStringV0(id: CodexJsonRpcIdV0): string {
 	return `codex-req:${typeof id}:${String(id)}`;

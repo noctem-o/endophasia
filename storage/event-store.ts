@@ -25,6 +25,7 @@
  */
 
 import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { EndoEventCoordinatesV0, EndoEventV0 } from "../protocol/event.ts";
 import type {
 	EndoEventRecordPageQueryV0,
@@ -70,17 +71,22 @@ export interface EndoDurableEventStoreV0 {
 
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
+export interface EndoDurableEventStoreOptionsV0 extends EndoDurableStoreOptionsV0 {
+	/** Optional explicit event log file path (default: `<root>/events/events.log`). Injectable for future per-attachment logs. */
+	logPath?: string;
+}
+
 /**
  * Create (or reopen) the durable event store under `root`.
  */
 export function createEndoDurableEventStoreV0(
 	root: string,
-	options: EndoDurableStoreOptionsV0 = {},
+	options: EndoDurableEventStoreOptionsV0 = {},
 ): EndoDurableEventStoreV0 {
 	const readOnly = options.readOnly === true;
-	const eventsDir = `${root}/events`;
-	if (!readOnly) mkdirSync(eventsDir, { recursive: true });
-	const log = createEndoFrameLogV0(`${eventsDir}/events.log`, { ...options, readOnly });
+	const logPath = options.logPath ?? `${root}/events/events.log`;
+	if (!readOnly) mkdirSync(dirname(logPath), { recursive: true });
+	const log = createEndoFrameLogV0(logPath, { ...options, readOnly });
 	const read = log.read();
 	const { frames } = read;
 

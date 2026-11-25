@@ -155,7 +155,10 @@ export const endoDevelopKeyV0 = (session: EndoDevelopSessionV0): string | null =
 		: null;
 
 /** Governed paths and the one source each is admitted for. A path not listed here is only a name. */
-const GOVERNED_PATHS: Readonly<Record<string, string>> = { "pi-workbench-broker": "pi-live" };
+const GOVERNED_PATHS: Readonly<Record<string, string>> = {
+	"pi-workbench-broker": "pi-live",
+	"codex-live-controller": "codex-live",
+};
 
 const SOURCE = /^[a-z][a-z0-9-]{0,63}$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;

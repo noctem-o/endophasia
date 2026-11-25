@@ -9,3 +9,4 @@ export * from "./artifacts.ts";
 export * from "./event-store.ts";
 export * from "./ledger.ts";
 export * from "./log.ts";
+export * from "./writer-lock.ts";

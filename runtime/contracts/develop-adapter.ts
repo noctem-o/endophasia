@@ -106,6 +106,7 @@ export const ENDO_GOVERNED_CONTROL_PATHS_V0: Readonly<
 > = Object.freeze(
 	Object.assign(Object.create(null) as Record<string, { readonly source: string; readonly family: string }>, {
 		"pi-workbench-broker": Object.freeze({ source: "pi-live", family: "pi" }),
+		"codex-live-controller": Object.freeze({ source: "codex-live", family: "codex" }),
 	}),
 );
 

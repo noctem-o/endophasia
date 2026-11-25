@@ -411,6 +411,32 @@ export function presentLiveCodex(
 	};
 }
 
+/** Project any live workbench status (`pi` or `codex`) into the neutral `EndoDevelopSessionV0` presentation model. */
+export function presentLiveWorkbenchSession(status: WorkbenchStatus | null, unreachable = false): EndoDevelopSessionV0 {
+	if (status?.harness === "codex") {
+		const c = status.codex;
+		return presentLiveCodex(
+			{
+				source: "codex-live",
+				controlPath: "codex-live-controller",
+				version: c?.version ?? null,
+				connection: status.connection,
+				connectionReason: c?.connectionReason ?? null,
+				launchId: status.launchId,
+				threadId: c?.threadId ?? null,
+				activeTurnId: c?.activeTurnId ?? null,
+				capabilities: {
+					prompt: { admitted: status.offers.prompt.offered, reason: status.offers.prompt.reason },
+					steer: { admitted: status.offers.steer.offered, reason: status.offers.steer.reason },
+					stop: { admitted: status.offers.stop.offered, reason: status.offers.stop.reason },
+				},
+			},
+			unreachable,
+		);
+	}
+	return presentLivePi(status, unreachable);
+}
+
 /** Everything DEVELOP shows, as one surface: no relation is derived, because nothing here establishes one. */
 export function developSurface(
 	live: { status: WorkbenchStatus | null; unreachable: boolean } | null,
@@ -422,7 +448,7 @@ export function developSurface(
 	return {
 		schemaVersion: "endo.develop-session-surface.v0",
 		sessions: [
-			...(live === null ? [] : [presentLivePi(live.status, live.unreachable)]),
+			...(live === null ? [] : [presentLiveWorkbenchSession(live.status, live.unreachable)]),
 			...(codexLive === null ? [] : [presentLiveCodex(codexLive.status, codexLive.unreachable)]),
 			...rows.map((row) => presentRecorded(row, generation)),
 			...omp.map((row) => presentOmpSaved(row)),

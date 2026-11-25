@@ -245,6 +245,7 @@ export function liveCourse(s: WorkbenchState): LiveCourse {
 					: moving.state === "dispatching"
 						? "sending"
 						: "sent";
+	const runtimeName = status?.harness === "codex" ? "Codex" : "Pi";
 	const name = operation === null ? "" : OPERATION_NAME[operation];
 	const requestLane: CourseLane = {
 		id: "request",
@@ -266,7 +267,7 @@ export function liveCourse(s: WorkbenchState): LiveCourse {
 					? `A ${name} waits for your approval in the attached terminal. Nothing has been sent.`
 					: stage === "sending"
 						? `A ${name} was approved in the terminal and is being sent.`
-						: `A ${name} was sent to Pi. Its reply has not been seen.`,
+						: `A ${name} was sent to ${runtimeName}. Its reply has not been seen.`,
 		basis: status === null || stale ? "unavailable" : "observed",
 		status:
 			status === null || stale

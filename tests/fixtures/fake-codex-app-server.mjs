@@ -351,6 +351,171 @@ function handleMessage(msg) {
 			});
 		}
 
+		if (scenarios.has("stream-slow-deltas")) {
+			const userText = Array.isArray(params.input) && params.input[0]?.text ? params.input[0].text : "";
+			send({
+				method: "item/completed",
+				params: {
+					threadId,
+					turnId,
+					completedAtMs: Date.now(),
+					item: {
+						type: "userMessage",
+						id: `item-user-${turnSeq}`,
+						clientId: null,
+						content: [{ type: "text", text: userText, text_elements: [] }],
+					},
+				},
+			});
+			send({
+				method: "item/reasoning/summaryTextDelta",
+				params: { threadId, turnId, itemId: `item-reason-${turnSeq}`, delta: "Inspecting workspace ", summaryIndex: 0 },
+			});
+			setTimeout(() => {
+				if (activeTurnId !== turnId) return;
+				send({
+					method: "item/reasoning/summaryTextDelta",
+					params: { threadId, turnId, itemId: `item-reason-${turnSeq}`, delta: "and verifying tests.", summaryIndex: 0 },
+				});
+				send({
+					method: "item/completed",
+					params: {
+						threadId,
+						turnId,
+						completedAtMs: Date.now(),
+						item: {
+							type: "reasoning",
+							id: `item-reason-${turnSeq}`,
+							summary: ["Inspecting workspace and verifying tests."],
+							content: [],
+						},
+					},
+				});
+				send({
+					method: "item/started",
+					params: {
+						threadId,
+						turnId,
+						startedAtMs: Date.now(),
+						item: {
+							type: "commandExecution",
+							id: `item-cmd-${turnSeq}`,
+							command: "npm test",
+							cwd: "/tmp/fixture",
+							status: "inProgress",
+							exitCode: null,
+						},
+					},
+				});
+				send({
+					method: "item/started",
+					params: {
+						threadId,
+						turnId,
+						startedAtMs: Date.now(),
+						item: {
+							type: "fileChange",
+							id: `item-file-${turnSeq}`,
+							status: "inProgress",
+							changes: [],
+						},
+					},
+				});
+			}, 120);
+			setTimeout(() => {
+				if (activeTurnId !== turnId) return;
+				send({
+					method: "item/completed",
+					params: {
+						threadId,
+						turnId,
+						completedAtMs: Date.now(),
+						item: {
+							type: "commandExecution",
+							id: `item-cmd-${turnSeq}`,
+							command: "npm test",
+							cwd: "/tmp/fixture",
+							status: "completed",
+							exitCode: 0,
+						},
+					},
+				});
+				send({
+					method: "item/completed",
+					params: {
+						threadId,
+						turnId,
+						completedAtMs: Date.now(),
+						item: {
+							type: "fileChange",
+							id: `item-file-${turnSeq}`,
+							status: "completed",
+							changes: [
+								{ path: "src/app.ts", kind: "update" },
+								{ path: "tests/app.test.ts", kind: "update" },
+							],
+						},
+					},
+				});
+				send({
+					method: "item/agentMessage/delta",
+					params: { threadId, turnId, itemId: `item-msg-${turnSeq}`, delta: "Streaming reply part 1. " },
+				});
+			}, 260);
+			setTimeout(() => {
+				if (activeTurnId !== turnId) return;
+				send({
+					method: "item/agentMessage/delta",
+					params: { threadId, turnId, itemId: `item-msg-${turnSeq}`, delta: "Streaming reply part 2." },
+				});
+				send({
+					method: "item/completed",
+					params: {
+						threadId,
+						turnId,
+						completedAtMs: Date.now(),
+						item: {
+							type: "agentMessage",
+							id: `item-msg-${turnSeq}`,
+							text: "Streaming reply part 1. Streaming reply part 2.",
+						},
+					},
+				});
+				send({
+					method: "thread/tokenUsage/updated",
+					params: {
+						threadId,
+						turnId,
+						tokenUsage: {
+							last: {
+								totalTokens: 320,
+								inputTokens: 210,
+								cachedInputTokens: 64,
+								cacheWriteInputTokens: 0,
+								outputTokens: 110,
+								reasoningOutputTokens: 35,
+							},
+							total: {
+								totalTokens: 320 * turnSeq,
+								inputTokens: 210 * turnSeq,
+								cachedInputTokens: 64 * turnSeq,
+								cacheWriteInputTokens: 0,
+								outputTokens: 110 * turnSeq,
+								reasoningOutputTokens: 35 * turnSeq,
+							},
+							modelContextWindow: 200000,
+						},
+					},
+				});
+				activeTurnId = null;
+				send({
+					method: "turn/completed",
+					params: { threadId, turn: { ...turn, status: "completed" } },
+				});
+			}, 450);
+			return;
+		}
+
 		if (scenarios.has("slow-turn")) {
 			// Stay open until turn/interrupt arrives.
 			return;
@@ -407,12 +572,20 @@ function handleMessage(msg) {
 				threadId,
 				turnId,
 				completedAtMs: Date.now(),
-				item: {
-					type: "reasoning",
-					id: `item-reason-${turnSeq}`,
-					summary: ["Checking fixture safely."],
-					content: scenarios.has("raw-reasoning-delta") ? ["Raw step 1 complete."] : [],
-				},
+				item: scenarios.has("redacted-reasoning")
+					? {
+							type: "reasoning",
+							id: `item-reason-${turnSeq}`,
+							summary: [],
+							content: [],
+							encryptedContent: "opaque-encrypted-reasoning-payload",
+						}
+					: {
+							type: "reasoning",
+							id: `item-reason-${turnSeq}`,
+							summary: ["Checking fixture safely."],
+							content: scenarios.has("raw-reasoning-delta") ? ["Raw step 1 complete."] : [],
+						},
 			},
 		});
 		send({
@@ -447,6 +620,9 @@ function handleMessage(msg) {
 				},
 			},
 		});
+		const assistantFinal = scenarios.has("untrusted-html-reply")
+			? '<img src=x onerror="window.__xss=1"><script>window.__xss=2</script> safe text'
+			: "ASSISTANT_PRIVATE_REPLY_PART1 DONE";
 		send({
 			method: "item/agentMessage/delta",
 			params: { threadId, turnId, itemId: `item-msg-${turnSeq}`, delta: "ASSISTANT_PRIVATE_REPLY_PART1 " },
@@ -460,7 +636,7 @@ function handleMessage(msg) {
 				item: {
 					type: "agentMessage",
 					id: `item-msg-${turnSeq}`,
-					text: "ASSISTANT_PRIVATE_REPLY_PART1 DONE",
+					text: assistantFinal,
 				},
 			},
 		});

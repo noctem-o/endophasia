@@ -263,6 +263,7 @@ describe("the activity descriptor is presentation, never authority", () => {
 			),
 		);
 		expect(readers.sort()).toEqual([
+			"adapters/codex/live-transcript.ts",
 			"adapters/pi/live-tool-fields.ts",
 			"adapters/pi/live-transcript.ts",
 			"protocol/private-activity.ts",

@@ -104,6 +104,21 @@ export function reasoningNotice(
 	return "No model-provided reasoning in this conversation so far. It is shown only when the model supplies it as structured reasoning; reasoning written inside an answer (in <think> tags, for example) is part of the answer's text.";
 }
 
+/** Honest provenance label for a reasoning block: never relabels a reasoning summary as raw thinking. */
+export function reasoningLabel(part: ReasoningPart): string {
+	if (part.provenance === "reasoning-summary") return "Reasoning summary";
+	if (part.provenance === "raw-thinking") return "Raw reasoning";
+	return "Model-provided reasoning";
+}
+
+/** Honest provenance note for a reasoning block. */
+export function reasoningDisclaimer(part: ReasoningPart): string {
+	if (part.provenance === "reasoning-summary") {
+		return "Summary relayed by the runtime; not raw model thinking and not a record of how the answer was produced.";
+	}
+	return "Relayed as the model sent it; not a record of how the answer was produced.";
+}
+
 /** One clause for a trace's head: its place among the message's traces, its size, and what is not shown. */
 export function traceMeta(part: ReasoningPart, ordinal: number, count: number): string {
 	const place = count > 1 ? `${ordinal + 1} of ${count} · ` : "";

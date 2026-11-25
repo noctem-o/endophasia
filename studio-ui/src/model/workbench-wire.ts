@@ -128,10 +128,55 @@ export interface Offer {
 	offered: boolean;
 	reason: string | null;
 }
+export interface CodexUsageSummary {
+	inputTokens: number;
+	outputTokens: number;
+	cachedInputTokens: number | null;
+	cacheWriteTokens: number | null;
+	reasoningTokens: number | null;
+	totalTokens: number;
+	costUsd: number | null;
+}
+export interface CodexPendingNativeApproval {
+	requestId: string;
+	approvalKind: string;
+	nativeMethod: string;
+	requestedScope: string;
+	turnId: string | null;
+	itemId: string | null;
+	summary: string;
+}
+export interface CodexRecentNativeApproval {
+	requestId: string;
+	approvalKind: string;
+	nativeMethod: string;
+	resolution: "accepted" | "declined" | "cancelled";
+	code: string | null;
+	resolvedAtMs: number;
+}
+export interface CodexStatusInfo {
+	version: string | null;
+	fingerprintConfidence: "strong" | "reduced" | "unidentified";
+	model: string | null;
+	reasoningEffort: string | null;
+	sandbox: string | null;
+	approvalPolicy: string | null;
+	approvalsReviewer: string | null;
+	threadId: string | null;
+	activeTurnId: string | null;
+	connectionReason: string | null;
+	usage: {
+		last: CodexUsageSummary | null;
+		total: CodexUsageSummary | null;
+		modelContextWindow: number | null;
+	} | null;
+	pendingNativeApprovals: CodexPendingNativeApproval[];
+	recentNativeApprovals: CodexRecentNativeApproval[];
+}
 export interface WorkbenchStatus {
 	schemaVersion: "endo.workbench-status.v0";
 	launchId: string;
-	harness: "pi";
+	harness: "pi" | "codex";
 	connection: "connected" | "disconnected";
 	run: "active" | "idle" | "unknown";
 	session: string | null;
@@ -145,6 +190,7 @@ export interface WorkbenchStatus {
 	command: WorkbenchCommand | null;
 	interventions: WorkbenchIntervention[];
 	transcript: { watermark: number; firstSeq: number };
+	codex?: CodexStatusInfo;
 }
 /**
  * What a workspace host (`endo workspace open`, protocol/workspace-host.ts) answers on the status route: no harness, so no connection, run,
@@ -166,6 +212,8 @@ export type MessagePart =
 			kind: "reasoning";
 			/** `supplied`: text was given. `withheld`: the provider redacted it. `empty`: a block arrived with no text. */
 			state: "supplied" | "withheld" | "empty";
+			/** Optional reasoning provenance when reported by the harness (never relabels summary as raw thinking). */
+			provenance?: "raw-thinking" | "reasoning-summary";
 			text: string;
 			truncated: boolean;
 			/** The block's size as the runtime sent it, in UTF-8 bytes (before any cut). */
@@ -352,43 +400,100 @@ export const readWorkspaceHostStatus = (v: unknown): WorkspaceHostStatus | null 
 		? (v as unknown as WorkspaceHostStatus)
 		: null;
 
+const codexUsage: Check = (u) =>
+	shape(u, {
+		inputTokens: count,
+		outputTokens: count,
+		cachedInputTokens: eitherNull(count),
+		cacheWriteTokens: eitherNull(count),
+		reasoningTokens: eitherNull(count),
+		totalTokens: count,
+		costUsd: eitherNull((n) => typeof n === "number" && Number.isFinite(n) && n >= 0),
+	});
+const codexPendingApproval: Check = (p) =>
+	shape(p, {
+		requestId: text(128),
+		approvalKind: text(64),
+		nativeMethod: text(128),
+		requestedScope: text(32),
+		turnId: eitherNull(text(128)),
+		itemId: eitherNull(text(128)),
+		summary: text(4096),
+	});
+const codexRecentApproval: Check = (r) =>
+	shape(r, {
+		requestId: text(128),
+		approvalKind: text(64),
+		nativeMethod: text(128),
+		resolution: one("accepted", "declined", "cancelled"),
+		code: eitherNull(text(64)),
+		resolvedAtMs: count,
+	});
+const codexInfo: Check = (c) =>
+	shape(c, {
+		version: eitherNull(text(64)),
+		fingerprintConfidence: one("strong", "reduced", "unidentified"),
+		model: eitherNull(text(128)),
+		reasoningEffort: eitherNull(text(32)),
+		sandbox: eitherNull(text(64)),
+		approvalPolicy: eitherNull(text(64)),
+		approvalsReviewer: eitherNull(text(64)),
+		threadId: eitherNull(text(256)),
+		activeTurnId: eitherNull(text(256)),
+		connectionReason: eitherNull(text(300)),
+		usage: eitherNull((u) =>
+			shape(u, {
+				last: eitherNull(codexUsage),
+				total: eitherNull(codexUsage),
+				modelContextWindow: eitherNull(count),
+			}),
+		),
+		pendingNativeApprovals: (x) => Array.isArray(x) && x.length <= 20 && list(codexPendingApproval)(x),
+		recentNativeApprovals: (x) => Array.isArray(x) && x.length <= 20 && list(codexRecentApproval)(x),
+	});
+
+const statusBase = {
+	schemaVersion: one("endo.workbench-status.v0"),
+	launchId: (x: unknown) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
+	connection: one("connected", "disconnected"),
+	run: one("active", "idle", "unknown"),
+	session: eitherNull((x) => typeof x === "string" && x.length <= 269 && /^endo\.session\./.test(x)),
+	attachment: short,
+	offers: (o: unknown) => shape(o, { prompt: offer, attempt: offer, steer: offer, queue: offer, stop: offer }),
+	paired: bool,
+	mode,
+	protection,
+	sessionControl,
+	command: eitherNull(command),
+	interventions: (x: unknown) => Array.isArray(x) && x.length <= 40 && list(intervention)(x),
+	transcript: (t: unknown) => shape(t, { watermark: count, firstSeq: count }),
+};
+
 export const readWorkbenchStatus = (v: unknown): WorkbenchStatus | null =>
-	shape(v, {
-		schemaVersion: one("endo.workbench-status.v0"),
-		launchId: (x) => typeof x === "string" && /^[0-9a-f]{16}$/.test(x),
-		harness: one("pi"),
-		connection: one("connected", "disconnected"),
-		run: one("active", "idle", "unknown"),
-		session: eitherNull((x) => typeof x === "string" && x.length <= 269 && /^endo\.session\./.test(x)),
-		attachment: short,
-		offers: (o) => shape(o, { prompt: offer, attempt: offer, steer: offer, queue: offer, stop: offer }),
-		paired: bool,
-		mode,
-		protection,
-		sessionControl,
-		command: eitherNull(command),
-		interventions: (x) => Array.isArray(x) && x.length <= 40 && list(intervention)(x),
-		transcript: (t) => shape(t, { watermark: count, firstSeq: count }),
-	})
+	shape(v, { ...statusBase, harness: one("pi") }) ||
+	shape(v, { ...statusBase, harness: one("codex"), codex: codexInfo })
 		? (v as unknown as WorkbenchStatus)
 		: null;
 
 // The broker's bounds (adapters/pi/live-transcript.ts) in UTF-16 units: a UTF-8 byte is at most one unit, so these never refuse a body
 // the broker may send, and they stop one it may not.
 const MAX_PARTS = 32;
+const reasoningBase = {
+	kind: one("reasoning"),
+	state: one("supplied", "withheld", "empty"),
+	text: text(64 * 1024),
+	truncated: bool,
+	bytes: count,
+};
 const part: Check = (v) =>
 	shape(v, { kind: one("text"), text: text(32 * 1024), truncated: bool }) ||
-	(shape(v, {
-		kind: one("reasoning"),
-		state: one("supplied", "withheld", "empty"),
-		text: text(64 * 1024),
-		truncated: bool,
-		bytes: count,
-	}) &&
+	((shape(v, reasoningBase) || shape(v, { ...reasoningBase, provenance: one("raw-thinking", "reasoning-summary") })) &&
 		reasoningConsistent(v as unknown as ReasoningPart));
 /** Withheld and empty blocks carry no text and no cut. A supplied block has text, unless the message's reasoning budget ran out first. */
 const reasoningConsistent = (r: ReasoningPart): boolean =>
-	r.state === "supplied" ? r.text.length > 0 || r.truncated : r.text === "" && !r.truncated && r.bytes === 0;
+	r.state === "supplied"
+		? r.text.length > 0 || r.truncated
+		: r.text === "" && !r.truncated && r.bytes === 0 && r.provenance === undefined;
 const parts: Check = (x) => Array.isArray(x) && x.length <= MAX_PARTS && list(part)(x);
 const item: Check = (v) =>
 	shape(v, {

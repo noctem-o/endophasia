@@ -46,6 +46,10 @@ export interface FieldInput {
 	unreachable: boolean;
 	/** The page is re-reading the broker by itself now (Follow is on, or a request or a check is open). */
 	following: boolean;
+	/** Which live harness is attached, when known. Words only; never text from the conversation. */
+	harness?: "pi" | "codex";
+	/** A native harness approval (for example a Codex ServerRequest) is waiting on the attached terminal. */
+	nativeApprovalPending?: boolean;
 	/** What waits for the operator's approval in the attached terminal, if anything. */
 	awaiting: "prompt" | "steer" | "queue" | "stop" | null;
 	/** A stop was approved and sent, and Pi has not answered yet. */
@@ -105,6 +109,7 @@ function describe(input: FieldInput): FieldSignal {
 		responsive: input.surface === "arrival" && !input.paused,
 	};
 	const live = input.workbench === "available";
+	const runtimeName = input.harness === "codex" ? "Codex" : "Pi";
 	// The operator's pause stops what would move and says so: "Flowing" over a still field would be a claim the picture does not make.
 	const moving = (wanted: "drift" | "current", tempo: number, lead: string, rest: string, state: string) =>
 		input.paused
@@ -126,6 +131,15 @@ function describe(input: FieldInput): FieldSignal {
 			attention: true,
 			words: `Held: a ${OPERATION[input.awaiting]} waits for your approval in the attached terminal. This page cannot approve it.`,
 			state: `A ${OPERATION[input.awaiting]} waits for your approval in the attached terminal. This page cannot approve it.`,
+		};
+	if (live && input.nativeApprovalPending)
+		return {
+			...base,
+			motion: "held",
+			tempo: 0,
+			attention: true,
+			words: `Held: a native ${runtimeName} approval waits on the attached terminal. This page cannot approve it.`,
+			state: `A native ${runtimeName} approval waits on the attached terminal. This page cannot approve it.`,
 		};
 	if (input.surface === "changes")
 		return {
@@ -200,8 +214,14 @@ function describe(input: FieldInput): FieldSignal {
 			...base,
 			motion: "held",
 			tempo: 0,
-			words: "Held: a stop was sent to Pi. Pi answers once the run is idle.",
-			state: "A stop was sent to Pi. Pi answers once the run is idle.",
+			words:
+				input.harness === "codex"
+					? "Held: a targeted turn/interrupt was sent to Codex. Waiting for turn completion."
+					: "Held: a stop was sent to Pi. Pi answers once the run is idle.",
+			state:
+				input.harness === "codex"
+					? "A targeted turn/interrupt was sent to Codex. Waiting for turn completion."
+					: "A stop was sent to Pi. Pi answers once the run is idle.",
 		};
 	if (input.run === "active")
 		return input.following
@@ -209,23 +229,25 @@ function describe(input: FieldInput): FieldSignal {
 					"current",
 					0.7,
 					"Flowing",
-					"Pi reports a run open, re-read every few seconds. The motion is not the model's work.",
-					"Pi reports a run open, re-read every few seconds.",
+					`${runtimeName} reports a run open, re-read every few seconds. The motion is not the model's work.`,
+					`${runtimeName} reports a run open, re-read every few seconds.`,
 				)
 			: {
 					...base,
 					motion: "still",
 					tempo: 0,
-					words: "Still: Pi reported a run open at the last read. Not re-reading now; switch Follow on to keep it current.",
-					state: "Pi reported a run open at the last read. Not re-reading now; switch Follow on to keep it current.",
+					words: `Still: ${runtimeName} reported a run open at the last read. Not re-reading now; switch Follow on to keep it current.`,
+					state: `${runtimeName} reported a run open at the last read. Not re-reading now; switch Follow on to keep it current.`,
 				};
 	return moving(
 		"drift",
 		0.3,
 		"Drifting",
 		input.run === "idle"
-			? "Pi reports the session idle. The drift is atmosphere, not activity."
-			: "connected; Pi has not reported a run state. The drift is atmosphere, not activity.",
-		input.run === "idle" ? "Pi reports the session idle." : "Connected; Pi has not reported a run state.",
+			? `${runtimeName} reports the session idle. The drift is atmosphere, not activity.`
+			: `connected; ${runtimeName} has not reported a run state. The drift is atmosphere, not activity.`,
+		input.run === "idle"
+			? `${runtimeName} reports the session idle.`
+			: `Connected; ${runtimeName} has not reported a run state.`,
 	);
 }

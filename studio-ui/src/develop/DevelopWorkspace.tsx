@@ -515,6 +515,8 @@ export function DevelopWorkspace({
 	const signal = fieldSignal({
 		surface,
 		workbench: wbs.availability,
+		harness: wbs.status?.harness,
+		nativeApprovalPending: (wbs.status?.codex?.pendingNativeApprovals.length ?? 0) > 0,
 		connection: wbs.status?.connection ?? null,
 		run: wbs.status?.run ?? null,
 		unreachable: wbs.unreachable,

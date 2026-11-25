@@ -779,6 +779,9 @@ export class PiSessionAttachmentV0 {
 	 */
 	onLiveEvent: ((event: RpcEventV0) => void) | null = null;
 
+	/** Optional in-process observer notified only after an unattended Pi extension dialog cancellation write succeeds. */
+	onExtensionDialogCancelled: ((event: { id: string; method: string; instanceId: string }) => void) | null = null;
+
 	/** The current Pi process id, while one runs. */
 	get pid(): number | undefined {
 		return this.#client?.connection.pid;
@@ -787,6 +790,11 @@ export class PiSessionAttachmentV0 {
 	/** The connection state of the current process, or "disconnected". */
 	get connection(): string {
 		return this.#client === null ? "disconnected" : this.#client.connection.state;
+	}
+
+	/** The current process-connection instance identifier (rotates on every connect/reconnect), or null. */
+	get connectionInstance(): string | null {
+		return this.#context?.instance ?? null;
 	}
 
 	#store(event: EndoEventV0): void {
@@ -1057,8 +1065,19 @@ export class PiSessionAttachmentV0 {
 	#answerDialog(event: RpcEventV0): void {
 		const { id, method } = event.record;
 		if (typeof id !== "string" || !["select", "confirm", "input", "editor"].includes(String(method))) return;
+		const instanceId = this.#context?.instance ?? null;
+		const methodName = String(method);
 		void this.#client?.connection.answerExtensionUi(id, { cancelled: true }).then(
-			() => this.#attachmentEvent("extension.dialog-cancelled", { method: String(method) }),
+			() => {
+				this.#attachmentEvent("extension.dialog-cancelled", { method: methodName });
+				if (instanceId !== null) {
+					try {
+						this.onExtensionDialogCancelled?.({ id, method: methodName, instanceId });
+					} catch {
+						// an observer never changes what is recorded
+					}
+				}
+			},
 			() => {},
 		);
 	}

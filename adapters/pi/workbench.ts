@@ -75,6 +75,7 @@ import {
 } from "../../protocol/workbench.ts";
 import type { EndoCockpitWorkbenchRequestV0, EndoCockpitWorkbenchV0 } from "../../protocol/workbench-http.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
+import { endoDevelopOperationPayloadDigestV0 } from "../../runtime/contracts/develop-adapter.ts";
 import type {
 	DevelopAttemptCandidateV0,
 	DevelopAttemptDispatchRefusalV0,
@@ -99,6 +100,7 @@ import {
 	endoProjectRouteV0,
 } from "../../runtime/contracts/workspace-routes.ts";
 import type { RpcEventV0 } from "../rpc-jsonl/rpc-connection.ts";
+import { PiDevelopAdapterV0 } from "./develop-adapter.ts";
 import { LIVE_TRANSCRIPT_SCHEMA_V3, LiveTranscriptV0 } from "./live-transcript.ts";
 import { piEndoSessionIdV0 } from "./mapping.ts";
 import { PiRpcRefusalV0 } from "./rpc.ts";
@@ -121,6 +123,7 @@ export const ENDO_WORKBENCH_STATUS_SCHEMA_V0 = "endo.workbench-status.v0";
 /** What the broker needs of the attached session (PiSessionAttachmentV0 satisfies it). */
 export interface WorkbenchSessionV0 {
 	readonly piSessionId: string | null;
+	readonly fingerprint?: import("../../protocol/harness.ts").EndoHarnessFingerprintRecordV0;
 	readonly capabilityState?: import("../../protocol/harness.ts").EndoCapabilityStateV0;
 	/** The Pi process is running and can receive a command. */
 	readonly live: boolean;
@@ -133,6 +136,7 @@ export interface WorkbenchSessionV0 {
 		derivedFrom?: readonly string[],
 	): EndoEventV0;
 	onLiveEvent: ((event: RpcEventV0) => void) | null;
+	onExtensionDialogCancelled?: ((event: { id: string; method: string; instanceId: string }) => void) | null;
 }
 
 /** What the operator is shown on the controlling terminal to decide. */
@@ -295,7 +299,11 @@ interface Proposal {
 	/** The message's keyed digest and length, as the proposal recorded them. */
 	ref: { digest: { algorithm: "hmac-sha256"; keyId: string; value: string }; bytes: number };
 	session: string;
+	/** Canonical session coordinate (`piEndoSessionIdV0(piId)`) bound at proposal open for adapter admission checks. */
+	canonicalSession: string;
 	attachment: string;
+	/** The adapter connection instance when this proposal was opened; a reconnect rotates it and invalidates the proposal. */
+	instanceId: string;
 	/** The page grant it was requested under, or null when the operator requested it on the attached terminal itself. */
 	grant: string | null;
 	/** The work attempt whose brief this is, as checked when it was requested; null for a typed prompt. */
@@ -336,6 +344,8 @@ const refuse = (status: number, error: string) => reply(status, { error });
 export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	readonly launchId = randomBytes(8).toString("hex");
 	readonly transcript: LiveTranscriptV0;
+	/** Harness-neutral operational adapter boundary wrapping this Pi session (`endo.develop-adapter.v0`). */
+	readonly adapter: PiDevelopAdapterV0;
 	readonly #transcriptSession: string | null;
 	readonly #o: Required<Pick<WorkbenchOptionsV0, "approvalWindowMs" | "pairingWindowMs" | "grantMs">> &
 		WorkbenchOptionsV0;
@@ -373,6 +383,13 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			...options,
 		};
 		this.#now = options.now ?? Date.now;
+		this.adapter = new PiDevelopAdapterV0({
+			session: options.session,
+			attachmentId: options.attachment,
+			launchId: this.launchId,
+			projectScope: options.control?.workspaceRoot ?? null,
+			now: this.#now,
+		});
 		this.#pairing = new EndoPairingV0({
 			now: this.#now,
 			pairingWindowMs: this.#o.pairingWindowMs,
@@ -471,9 +488,15 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		options.session.onLiveEvent = (event) => {
 			if (options.session.piSessionId !== this.#transcriptSession) this.transcript.clear();
 			this.transcript.push(event);
+			this.adapter.observePiLiveEvent(event);
 			this.#interventions?.observe(event);
 			this.#watchRun(event.type);
 		};
+		if ("onExtensionDialogCancelled" in options.session) {
+			options.session.onExtensionDialogCancelled = (event) => {
+				this.adapter.observePiDialogCancelled(event);
+			};
+		}
 	}
 
 	// --- pairing and grant ---------------------------------------------------------------------------------------------------
@@ -651,6 +674,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 	endSession(): void {
 		if (this.#ended) return;
 		this.#ended = true;
+		this.adapter.markDisconnected("The Pi workbench session ended.");
 		this.#control.runtimeLost();
 		this.#pairing.clear();
 		this.#command?.abort.abort();
@@ -894,7 +918,9 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			message,
 			ref: ref as Proposal["ref"],
 			session: sessionId,
+			canonicalSession: piEndoSessionIdV0(piId),
 			attachment: this.#o.attachment,
+			instanceId: this.adapter.instanceId,
 			grant,
 			attempt,
 			attemptRefusal: null,
@@ -1026,7 +1052,8 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		if (answer === "deny") return settle("authorization-denied", authorized.id);
 		p.view = { ...p.view, approved: true, authorizedBy: covered !== null ? "session-grant" : "terminal" };
 		// The gate is checked again at the moment of sending: what was true when it was proposed may not be.
-		if (this.#now() >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
+		const approvedAtMs = this.#now();
+		if (approvedAtMs >= p.view.expiresAtMs) return settle("authorization-expired", authorized.id);
 		const gate = (): "session-ended" | "not-authorized" | "run-active" | null => {
 			// Withdrawn (by the page before approval, or by closing): never sent, whatever else holds.
 			if (p.abort.signal.aborted) return "not-authorized";
@@ -1040,6 +1067,48 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		};
 		const closed = gate();
 		if (closed !== null) return settle(closed, authorized.id);
+		// Verify the same dispatch through the harness-neutral operational adapter boundary before binding or sending.
+		const adapterPromptCheck = () => {
+			const promptRequest = { kind: "prompt" as const, message: p.message as string };
+			return this.adapter.admitOperation(
+				promptRequest,
+				{
+					authorizationId: authorized.id,
+					operation: "prompt",
+					source: "pi-live",
+					sessionKey: `pi-live:persistent:${p.canonicalSession}`,
+					attachmentId: p.attachment,
+					launchId: this.launchId,
+					instanceId: p.instanceId,
+					controlPath: "pi-workbench-broker",
+					projectScope: this.#o.control?.workspaceRoot ?? null,
+					payloadDigest: endoDevelopOperationPayloadDigestV0(promptRequest),
+					mechanism:
+						covered !== null ? "session-grant" : answer === "allow-code" ? "terminal-code" : "terminal-phrase",
+					sessionGrantId: covered?.grantId ?? null,
+					authorizedAtMs: approvedAtMs,
+					expiresAtMs: p.view.expiresAtMs,
+				},
+				{
+					mode: "production",
+					nowMs: approvedAtMs,
+					...(this.#o.control?.protection === undefined ? {} : { protection: this.#o.control.protection }),
+				},
+			);
+		};
+		const initialAdapterGate = adapterPromptCheck();
+		if (!initialAdapterGate.admitted) {
+			return settle(
+				initialAdapterGate.code === "run-active"
+					? "run-active"
+					: initialAdapterGate.code === "authority-expired"
+						? "authorization-expired"
+						: initialAdapterGate.code === "not-connected" || initialAdapterGate.code === "stale-attachment"
+							? "session-ended"
+							: "not-authorized",
+				authorized.id,
+			);
+		}
 		// For an attempt, the launch directory is observed now, before anything is bound or sent (docs/designs/develop-candidate-provenance.md).
 		// It never decides whether the attempt is sent: a failure is recorded as such, or not at all. The observation takes time, so the gate
 		// is checked again after it (not the approval's expiry: the approval was given in time, and the wait is this process's own).
@@ -1048,6 +1117,17 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			before = await this.#o.provenance.take().catch(() => null);
 			const still = gate();
 			if (still !== null) return settle(still, authorized.id);
+			const stillAdmitted = adapterPromptCheck();
+			if (!stillAdmitted.admitted) {
+				return settle(
+					stillAdmitted.code === "run-active"
+						? "run-active"
+						: stillAdmitted.code === "not-connected" || stillAdmitted.code === "stale-attachment"
+							? "session-ended"
+							: "not-authorized",
+					authorized.id,
+				);
+			}
 		}
 		// An attempt is bound to this request now: after the approval and the gate, BEFORE the send is recorded. The attempt is checked again
 		// (its task, project and brief may have changed while the operator read it), and its authorisation is written once. From here a send
@@ -1216,6 +1296,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#disposed = true;
 		this.#pairing.clear();
 		this.#ended = true;
+		this.adapter.markDisconnected("The Pi workbench broker was disposed.");
 		this.#command?.abort.abort();
 		this.#interventions?.beginClose();
 		await this.#command?.done.catch(() => {});

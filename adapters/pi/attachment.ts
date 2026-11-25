@@ -514,8 +514,8 @@ export const PI_RUNTIME_TEXT_DIRECTORY_V0 = "runtime-text";
 
 /** Thrown when another live session attachment already writes the same store root. */
 export class PiStoreLockedErrorV0 extends EndoStoreLockedErrorV0 {
-	constructor(path: string, holder: string) {
-		super(path, holder);
+	constructor(path: string, holder: string, recoveryHint: string | null = null) {
+		super(path, holder, recoveryHint);
 		this.name = "PiStoreLockedErrorV0";
 	}
 }
@@ -529,7 +529,7 @@ function acquireWriterLock(root: string, attachment: string): () => void {
 		return acquireEndoEventStoreWriterLockV0(root, attachment);
 	} catch (error) {
 		if (error instanceof EndoStoreLockedErrorV0) {
-			throw new PiStoreLockedErrorV0(error.path, error.holder);
+			throw new PiStoreLockedErrorV0(error.path, error.holder, error.recoveryHint);
 		}
 		throw error;
 	}

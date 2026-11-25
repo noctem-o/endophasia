@@ -19,13 +19,14 @@ import {
 	type CodexOperationApproverV0,
 } from "../adapters/codex/controller.ts";
 import { CodexDevelopAdapterV0, type CodexNativeApprovalHandlerV0 } from "../adapters/codex/develop-adapter.ts";
+import { validateCodexSandboxModeV0 } from "../adapters/codex/isolated-home.ts";
 import { type EndoContainmentV0, liveScopeV0 } from "../adapters/sandbox/containment.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { liveContainmentV0 } from "./process-cleanup.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 import { requireWorkbenchTerminalV0 } from "./workbench.ts";
 
-const VALUE_FLAGS = new Set(["--attachment", "--executable", "--cwd", "--model", "--effort"]);
+const VALUE_FLAGS = new Set(["--attachment", "--executable", "--cwd", "--model", "--effort", "--sandbox"]);
 const BOOL_FLAGS = new Set(["--ephemeral"]);
 const VALID_EFFORTS = new Set(["low", "medium", "high", "xhigh", "max", "ultra"]);
 type CodexReasoningEffortV0 = "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
@@ -68,6 +69,7 @@ export async function codexCheckCommand(argv: readonly string[]): Promise<void> 
 	const executable = flags.get("--executable");
 	const checkCwd = flags.get("--cwd");
 	const effort = parseReasoningEffort(flags.get("--effort"));
+	const sandboxMode = flags.has("--sandbox") ? validateCodexSandboxModeV0(flags.get("--sandbox")) : undefined;
 	const live = await liveContainmentV0();
 	for (const note of live.notes) process.stderr.write(`${note}\n`);
 
@@ -76,6 +78,7 @@ export async function codexCheckCommand(argv: readonly string[]): Promise<void> 
 		attachment,
 		...(executable === undefined ? {} : { executable }),
 		...(checkCwd === undefined ? {} : { checkCwd: realpathSync(checkCwd) }),
+		...(sandboxMode === undefined ? {} : { sandboxMode }),
 		...(effort === undefined ? {} : { extraConfigOverrides: [`model_reasoning_effort="${effort}"`] }),
 		...(live.containment === null ? {} : { scope: liveScopeV0(live.containment as EndoContainmentV0) }),
 	});
@@ -109,6 +112,7 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 	const executable = flags.get("--executable");
 	const model = flags.get("--model");
 	const effort = parseReasoningEffort(flags.get("--effort"));
+	const sandboxMode = flags.has("--sandbox") ? validateCodexSandboxModeV0(flags.get("--sandbox")) : undefined;
 	const ephemeral = booleans.has("--ephemeral");
 	announceEndoRootV0(taken);
 
@@ -120,6 +124,7 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 		attachment: attachmentId,
 		...(executable === undefined ? {} : { executable }),
 		checkCwd: projectScope,
+		...(sandboxMode === undefined ? {} : { sandboxMode }),
 		...(live.containment === null ? {} : { scope: liveScopeV0(live.containment as EndoContainmentV0) }),
 	});
 	if (!check.effectivePolicy.ok) {
@@ -184,6 +189,7 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 				`\n[NATIVE CODEX APPROVAL REQUEST]\n` +
 					`  Request: ${request.requestId}\n` +
 					`  Kind:    ${request.approvalKind} (${request.nativeMethod})\n` +
+					`  Scope:   ${request.requestedScope} (Endophasia v0 permits one-time only)\n` +
 					`  Turn:    ${request.turnId ?? "(none)"} | Item: ${request.itemId ?? "(none)"}\n` +
 					`  Summary: ${request.summary}\n` +
 					`  Type "ALLOW ONCE" to accept once, "CANCEL" to cancel, or anything else to decline:\n`,
@@ -206,6 +212,7 @@ export async function codexSessionCommand(argv: readonly string[]): Promise<void
 		capabilityState: check.capabilityState,
 		...(model === undefined ? {} : { model }),
 		...(effort === undefined ? {} : { reasoningEffort: effort }),
+		...(sandboxMode === undefined ? {} : { sandboxMode }),
 		ephemeral,
 		...(live.containment === null ? {} : { scope: liveScopeV0(live.containment as EndoContainmentV0) }),
 		onNativeApprovalRequest: handleNativeApproval,

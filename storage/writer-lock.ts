@@ -4,31 +4,53 @@
  * Host infrastructure: node:fs, node:crypto, and node:path only. Shared across Pi (`adapters/pi/attachment.ts`) and
  * Codex (`adapters/codex/develop-adapter.ts`) so two live attachments never concurrently write `<root>/events/events.log`.
  *
- * Fail-closed rules preserved identically from Pi's original lock, plus TOCTOU hardening:
- * - Exclusive atomic create (`flag: "wx"`) embedding a per-lock random `token`.
- * - Unreadable or malformed lock files are treated as held (never silently stolen).
- * - Locks without a finite positive integer `pid` (including any future non-PID format sentinel) are treated as held.
- * - Live PIDs (including EPERM or this process's own PID) are refused with `EndoStoreLockedErrorV0`.
- * - Stale dead-PID lock cleanup uses atomic `renameSync(path, staleTmp)` followed by re-checking the moved lock's PID
- *   before unlinking `staleTmp`, preventing a concurrent winner's new lock from ever being unlinked.
- * - Release verifies ownership (`token`) before unlinking `path`.
+ * Concurrency & fail-closed invariants (Remediation #2 — zero-rename, zero-overwrite stale recovery):
+ * - Primary acquisition is a single kernel-atomic create (`flag: "wx"`) embedding a per-lock random `token`.
+ * - Unreadable or malformed lock files fail closed (never silently stolen) with explicit recovery instructions.
+ * - Locks without a finite positive integer `pid` (including any future E4 non-PID store-format barrier) fail closed
+ *   (never stolen).
+ * - Live PIDs (including `EPERM` or this process's own PID) fail closed with `EndoStoreLockedErrorV0`.
+ * - Dead-PID stale recovery NEVER renames or overwrites `lockPath` (eliminating the rename-and-restore TOCTOU race
+ *   where Process A could move Process B's live replacement lock and overwrite Process C's lock):
+ *     1. Acquire a dedicated exclusive recovery barrier (`<lockPath>.recover`, `flag: "wx"`). If `.recover` already
+ *        exists, fail closed immediately (NEVER automatically steal `.recover`) with explicit recovery instructions.
+ *     2. While holding `.recover`, re-read `<lockPath>`. Only if `<lockPath>` is byte-for-byte identical to the
+ *        observed dead-PID lock AND its PID is still dead may `<lockPath>` be unlinked.
+ *     3. Attempt one fresh atomic `wx` create of `<lockPath>`. If another process cleanly won `wx` after unlink,
+ *        fail closed without touching the winner's lock.
+ *     4. Always release `.recover` via token-checked removal in `finally`.
+ * - Release verifies ownership (`token`) before unlinking `<lockPath>`.
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-/** Thrown when another live session attachment already holds the store's writer lock. */
+/** Thrown when another live session attachment already holds the store's writer lock (or recovery is blocked). */
 export class EndoStoreLockedErrorV0 extends Error {
 	readonly path: string;
 	readonly holder: string;
+	readonly recoveryHint: string | null;
 
-	constructor(path: string, holder: string) {
-		super(`another Endophasia session attachment (${holder}) is writing this store; lock ${path}`);
+	constructor(path: string, holder: string, recoveryHint: string | null = null) {
+		super(
+			recoveryHint === null
+				? `another Endophasia session attachment (${holder}) is writing this store; lock ${path}`
+				: `another Endophasia session attachment (${holder}) is writing this store; lock ${path}. ${recoveryHint}`,
+		);
 		this.name = "EndoStoreLockedErrorV0";
 		this.path = path;
 		this.holder = holder;
+		this.recoveryHint = recoveryHint;
 	}
+}
+
+/** Optional synchronization hooks for deterministic multi-process race tests (unused in production). */
+export interface EndoEventStoreWriterLockTestHooksV0 {
+	/** Called after observing a dead-PID stale lock and BEFORE attempting to acquire `<lockPath>.recover`. */
+	readonly onBeforeRecoveryBarrier?: () => void;
+	/** Called inside `<lockPath>.recover` right AFTER unlinking the verified dead lock and BEFORE `wx` create. */
+	readonly onAfterStaleUnlink?: () => void;
 }
 
 export interface EndoEventStoreWriterLockOptionsV0 {
@@ -36,6 +58,8 @@ export interface EndoEventStoreWriterLockOptionsV0 {
 	readonly lockPath?: string;
 	/** Optional clock for deterministic lock timestamps. */
 	readonly now?: () => Date;
+	/** Optional synchronization hooks for deterministic race testing only. */
+	readonly testHooks?: EndoEventStoreWriterLockTestHooksV0;
 }
 
 interface ParsedLockHolder {
@@ -44,19 +68,37 @@ interface ParsedLockHolder {
 	readonly token: string | undefined;
 }
 
-function readLockHolder(lockPath: string): ParsedLockHolder | null {
+type ReadLockResult =
+	| { readonly state: "missing" }
+	| { readonly state: "malformed"; readonly raw: string | null }
+	| { readonly state: "ok"; readonly raw: string; readonly holder: ParsedLockHolder };
+
+function readLock(lockPath: string): ReadLockResult {
+	let raw: string;
 	try {
-		const parsed: unknown = JSON.parse(readFileSync(lockPath, "utf8"));
-		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+		raw = readFileSync(lockPath, "utf8");
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: "missing" };
+		return { state: "malformed", raw: null };
+	}
+	try {
+		const parsed: unknown = JSON.parse(raw);
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+			return { state: "malformed", raw };
+		}
 		const rec = parsed as { pid?: unknown; attachment?: unknown; token?: unknown };
 		const pid = typeof rec.pid === "number" && Number.isSafeInteger(rec.pid) && rec.pid > 0 ? rec.pid : undefined;
 		return {
-			pid,
-			attachment: String(rec.attachment),
-			token: typeof rec.token === "string" ? rec.token : undefined,
+			state: "ok",
+			raw,
+			holder: {
+				pid,
+				attachment: String(rec.attachment),
+				token: typeof rec.token === "string" ? rec.token : undefined,
+			},
 		};
 	} catch {
-		return null;
+		return { state: "malformed", raw };
 	}
 }
 
@@ -68,6 +110,23 @@ function isPidAlive(pid: number): boolean {
 	} catch (probe) {
 		return (probe as NodeJS.ErrnoException).code === "EPERM";
 	}
+}
+
+function makeRelease(path: string, token: string): () => void {
+	let released = false;
+	return () => {
+		if (released) return;
+		released = true;
+		const current = readLock(path);
+		if (current.state === "ok" && current.holder.token === token) {
+			rmSync(path, { force: true });
+		}
+	};
+}
+
+function manualRecoveryHint(lockPath: string, extraPath?: string): string {
+	const files = extraPath === undefined ? lockPath : `${lockPath} and ${extraPath}`;
+	return `Verify no Endophasia session (Pi or Codex) is writing this store before manually removing ${files}.`;
 }
 
 /**
@@ -85,52 +144,98 @@ export function acquireEndoEventStoreWriterLockV0(
 	const token = randomBytes(12).toString("hex");
 	const content = `${JSON.stringify({ pid: process.pid, attachment, at: now().toISOString(), token })}\n`;
 
-	for (let attempt = 0; attempt < 3; attempt += 1) {
+	// Fast path: single atomic O_CREAT|O_EXCL create.
+	try {
+		writeFileSync(path, content, { flag: "wx" });
+		return makeRelease(path, token);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	}
+
+	// Lock exists: inspect without modifying it.
+	const observed = readLock(path);
+	if (observed.state === "missing") {
+		// Disappeared between wx and read; try one clean wx without any unlink.
 		try {
 			writeFileSync(path, content, { flag: "wx" });
-			let released = false;
-			return () => {
-				if (released) return;
-				released = true;
-				const current = readLockHolder(path);
-				if (current !== null && current.token === token) {
-					rmSync(path, { force: true });
-				}
-			};
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-			const holder = readLockHolder(path);
-			if (holder === null) {
-				// An unreadable or malformed lock is treated as held: never silently stolen.
-				throw new EndoStoreLockedErrorV0(path, "unreadable lock");
+			return makeRelease(path, token);
+		} catch (retryErr) {
+			if ((retryErr as NodeJS.ErrnoException).code === "EEXIST") {
+				throw new EndoStoreLockedErrorV0(path, "concurrent writer");
 			}
-			if (holder.pid === undefined || isPidAlive(holder.pid)) {
-				throw new EndoStoreLockedErrorV0(path, `pid ${String(holder.pid)}, ${holder.attachment}`);
-			}
-			// Atomic stale-lock quarantine: rename first so we never unlink a concurrent winner's live lock.
-			const stalePath = `${path}.stale-${process.pid}-${randomBytes(6).toString("hex")}`;
-			try {
-				renameSync(path, stalePath);
-			} catch (renameErr) {
-				if ((renameErr as NodeJS.ErrnoException).code === "ENOENT") {
-					// Another process already cleared the stale lock; retry wx cleanly.
-					continue;
-				}
-				throw new EndoStoreLockedErrorV0(path, "lock contention");
-			}
-			const moved = readLockHolder(stalePath);
-			if (moved !== null && moved.pid !== undefined && !isPidAlive(moved.pid)) {
-				rmSync(stalePath, { force: true });
-			} else {
-				// Restore if a live lock raced in right before rename (best-effort) and fail closed.
-				try {
-					renameSync(stalePath, path);
-				} catch {
-					rmSync(stalePath, { force: true });
-				}
-				throw new EndoStoreLockedErrorV0(path, "lock contention");
-			}
+			throw retryErr;
 		}
 	}
-	throw new EndoStoreLockedErrorV0(path, "lock contention");
+	if (observed.state === "malformed") {
+		// Unreadable or malformed lock is treated as held (never silently stolen).
+		throw new EndoStoreLockedErrorV0(path, "unreadable lock", manualRecoveryHint(path));
+	}
+	if (observed.holder.pid === undefined) {
+		// Non-PID barrier (including future E4 per-attachment format sentinel): never automatically stolen.
+		throw new EndoStoreLockedErrorV0(
+			path,
+			`non-PID lock barrier (${observed.holder.attachment})`,
+			`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
+		);
+	}
+	if (isPidAlive(observed.holder.pid)) {
+		throw new EndoStoreLockedErrorV0(path, `pid ${String(observed.holder.pid)}, ${observed.holder.attachment}`);
+	}
+
+	// Observed PID is dead. Serialize stale-lock cleanup behind an exclusive, non-stealable `.recover` barrier.
+	options.testHooks?.onBeforeRecoveryBarrier?.();
+	const recoverPath = `${path}.recover`;
+	const recoverToken = randomBytes(12).toString("hex");
+	const recoverContent = `${JSON.stringify({ pid: process.pid, attachment, at: now().toISOString(), token: recoverToken, purpose: "stale-lock-recovery" })}\n`;
+	try {
+		writeFileSync(recoverPath, recoverContent, { flag: "wx" });
+	} catch (recoverErr) {
+		if ((recoverErr as NodeJS.ErrnoException).code === "EEXIST") {
+			throw new EndoStoreLockedErrorV0(
+				path,
+				`stale-lock recovery already active (${recoverPath})`,
+				manualRecoveryHint(path, recoverPath),
+			);
+		}
+		throw recoverErr;
+	}
+
+	try {
+		// Re-read `path` while exclusively holding `.recover`. Never touch `path` unless it is still byte-for-byte
+		// identical to the observed dead lock AND its PID is still dead.
+		const rechecked = readLock(path);
+		if (rechecked.state === "ok") {
+			if (rechecked.raw !== observed.raw || rechecked.holder.pid === undefined || isPidAlive(rechecked.holder.pid)) {
+				const holderDesc =
+					rechecked.holder.pid === undefined
+						? `non-PID lock barrier (${rechecked.holder.attachment})`
+						: `pid ${String(rechecked.holder.pid)}, ${rechecked.holder.attachment}`;
+				throw new EndoStoreLockedErrorV0(path, holderDesc);
+			}
+			rmSync(path, { force: true });
+			options.testHooks?.onAfterStaleUnlink?.();
+		} else if (rechecked.state === "malformed") {
+			throw new EndoStoreLockedErrorV0(path, "unreadable lock", manualRecoveryHint(path, recoverPath));
+		}
+		// Now either `path` was missing or we just unlinked the verified dead lock. Attempt one atomic `wx`.
+		try {
+			writeFileSync(path, content, { flag: "wx" });
+			return makeRelease(path, token);
+		} catch (claimErr) {
+			if ((claimErr as NodeJS.ErrnoException).code === "EEXIST") {
+				const winner = readLock(path);
+				const holderDesc =
+					winner.state === "ok"
+						? `pid ${String(winner.holder.pid)}, ${winner.holder.attachment}`
+						: "concurrent writer";
+				throw new EndoStoreLockedErrorV0(path, holderDesc);
+			}
+			throw claimErr;
+		}
+	} finally {
+		const currentRecover = readLock(recoverPath);
+		if (currentRecover.state === "ok" && currentRecover.holder.token === recoverToken) {
+			rmSync(recoverPath, { force: true });
+		}
+	}
 }

@@ -82,6 +82,13 @@ import {
 	codexLifecycleStepV0,
 } from "./events.ts";
 import {
+	type CodexSandboxModeV0,
+	type PreparedCodexIsolatedHomeV0,
+	prepareCodexIsolatedHomeV0,
+	validateCodexSandboxModeV0,
+	verifyCodexIsolatedHomeV0,
+} from "./isolated-home.ts";
+import {
 	CODEX_INTERACTIVE_APPROVAL_KINDS_V0,
 	CODEX_KNOWN_APPROVAL_KINDS_V0,
 	encodeCodexNativeApprovalReplyV0,
@@ -164,6 +171,10 @@ export interface CodexDevelopAdapterOptionsV0 {
 	readonly model?: string;
 	/** Optional conservative reasoning effort (e.g. `"low"`). */
 	readonly reasoningEffort?: "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+	/** Conservative sandbox mode (`workspace-write` or `read-only`). Default: `workspace-write`. */
+	readonly sandboxMode?: CodexSandboxModeV0;
+	/** Optional source Codex home directory used ONLY to symlink `auth.json` when present (never modified). */
+	readonly sourceCodexHome?: string;
 	/** Whether to start the owned thread as ephemeral (`ephemeral: true`). Default: `false`. */
 	readonly ephemeral?: boolean;
 	/** Observed runtime fingerprint for this attachment. */
@@ -324,8 +335,12 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	readonly #launchId: string;
 	readonly #now: () => number;
 	readonly #maxLiveTranscript: number;
+	readonly #sandboxMode: CodexSandboxModeV0;
+	readonly #allowedMcpServers: ReadonlySet<string>;
+	readonly #unexpectedMcpStartups = new Set<string>();
 
 	#instanceId: string;
+	#isolatedHome: PreparedCodexIsolatedHomeV0 | null = null;
 	#client: CodexAppServerClientV0 | null = null;
 	#store: EndoDurableEventStoreV0 | null = null;
 	#releaseLock: (() => void) | null = null;
@@ -380,6 +395,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		if (options.reasoningEffort !== undefined && !VALID_REASONING_EFFORTS.has(options.reasoningEffort)) {
 			throw new TypeError(`Invalid Codex reasoningEffort: ${String(options.reasoningEffort)}`);
 		}
+		this.#sandboxMode = validateCodexSandboxModeV0(options.sandboxMode ?? "workspace-write");
+		this.#allowedMcpServers = new Set(options.allowMcpServers ?? []);
 		this.#o = options;
 		this.#launchId = options.launchId ?? randomBytes(8).toString("hex");
 		this.#instanceId = randomBytes(8).toString("hex");
@@ -516,7 +533,17 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			}
 			this.#seedSequenceFromStore();
 
-			// Step 3: Spawn Codex App Server with conservative config overrides.
+			// Step 3: Establish an isolated conservative `CODEX_HOME` BEFORE spawning Codex App Server.
+			this.#unexpectedMcpStartups.clear();
+			const isolatedHome = prepareCodexIsolatedHomeV0({
+				root: this.#o.root,
+				cwd: this.#o.projectScope,
+				sandboxMode: this.#sandboxMode,
+				...(this.#o.env === undefined ? {} : { baseEnv: this.#o.env }),
+				...(this.#o.sourceCodexHome === undefined ? {} : { sourceCodexHome: this.#o.sourceCodexHome }),
+			});
+			this.#isolatedHome = isolatedHome;
+
 			const extra = [...(this.#o.extraConfigOverrides ?? [])];
 			if (this.#o.reasoningEffort !== undefined) {
 				if (!VALID_REASONING_EFFORTS.has(this.#o.reasoningEffort)) {
@@ -524,13 +551,17 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				}
 				extra.push(`model_reasoning_effort="${this.#o.reasoningEffort}"`);
 			}
-			const configOverrides = [...CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0, ...extra];
+			const configOverrides = [
+				...CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0.filter((entry) => !entry.startsWith("sandbox_mode=")),
+				`sandbox_mode="${this.#sandboxMode}"`,
+				...extra,
+			];
 
 			const client = new CodexAppServerClientV0({
 				executable: this.#o.executable,
 				...(this.#o.args === undefined ? { configOverrides } : { args: this.#o.args }),
 				cwd: this.#o.projectScope,
-				...(this.#o.env === undefined ? {} : { env: this.#o.env }),
+				env: isolatedHome.childEnv,
 				...(this.#o.scope === undefined ? {} : { scope: this.#o.scope }),
 				instanceId: this.#instanceId,
 				requestTimeoutMs: this.#o.requestTimeoutMs ?? 30_000,
@@ -542,11 +573,17 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			});
 			this.#client = client;
 
-			// Step 4: Handshake + config/read + owned thread/start.
+			// Step 4: Handshake + fail-closed isolated-home verification + config/read + owned thread/start.
 			const init = await client.initialize({
 				clientInfo: { name: "endophasia-develop-codex", version: "0.1.0" },
 				capabilities: { experimentalApi: false },
 			});
+			const isolatedCheck = verifyCodexIsolatedHomeV0(init.codexHome, isolatedHome.realDir);
+			if (!isolatedCheck.ok) {
+				throw new CodexPolicyViolationErrorV0([
+					isolatedCheck.reason ?? "Isolated Codex startup home could not be verified.",
+				]);
+			}
 			this.#initializeResult = init;
 			client.notifyInitialized();
 
@@ -565,16 +602,17 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				cwd: this.#o.projectScope,
 				approvalPolicy: "on-request",
 				approvalsReviewer: "user",
-				sandbox: "workspace-write",
+				sandbox: this.#sandboxMode,
 				ephemeral: this.#o.ephemeral === true,
 				...(this.#o.model === undefined ? {} : { model: this.#o.model }),
 				...(Object.keys(mcpDisableConfig).length > 0 ? { config: mcpDisableConfig } : {}),
 			});
 
-			// Step 5: Verify effective policy returned by Codex — fail closed if permissive!
+			// Step 5: Verify effective policy returned by Codex — fail closed if permissive or unwanted MCP started!
 			const policyCheck = verifyCodexEffectivePolicyV0(threadStartRaw, {
 				disabledMcpServers,
 				unsafeEnabledMcpServers,
+				unexpectedMcpStartups: [...this.#unexpectedMcpStartups].sort(),
 			});
 			if (!policyCheck.ok) {
 				const startedThreadId =
@@ -657,6 +695,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				}
 				this.#client = null;
 			}
+			this.#isolatedHome?.cleanup();
+			this.#isolatedHome = null;
 			if (this.#store !== null) {
 				try {
 					this.#store.close();
@@ -1233,6 +1273,8 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				rawCleanup = await this.#client.close();
 				this.#client = null;
 			}
+			this.#isolatedHome?.cleanup();
+			this.#isolatedHome = null;
 			// Preserve an earlier recorded cleanup result (e.g. from a failed open()) when `#client` was already closed.
 			if (rawCleanup !== null) {
 				this.#cleanup = summarizeCleanup(rawCleanup);
@@ -1393,6 +1435,13 @@ export class CodexDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		}
 		this.#observedNotificationMethods.add(safeMethod);
 		const params = notification.params ?? {};
+
+		if (notification.method === "mcpServer/startupStatus/updated") {
+			const serverName = sanitizeOptional(params.name, 128) ?? "(unknown)";
+			if (!this.#allowedMcpServers.has(serverName)) {
+				this.#unexpectedMcpStartups.add(serverName);
+			}
+		}
 
 		// Owned-thread isolation: extract threadId from threadId / conversationId / thread.id, and refuse
 		// thread-scoped notifications that arrive before `thread/start` or name a missing/foreign thread.

@@ -101,7 +101,9 @@ function handleMessage(msg) {
 			id,
 			result: {
 				userAgent: "fake-codex-app-server/0.171.0 (Linux; x86_64)",
-				codexHome: "/tmp/fake-codex-home",
+				codexHome: scenarios.has("ignore-codex-home")
+					? "/tmp/wrong-unisolated-codex-home"
+					: (process.env.CODEX_HOME ?? "/tmp/fake-codex-home"),
 				platformFamily: "unix",
 				platformOs: "linux",
 			},
@@ -167,13 +169,19 @@ function handleMessage(msg) {
 	if (method === "thread/start") {
 		let approvalPolicy = params.approvalPolicy ?? "on-request";
 		let approvalsReviewer = params.approvalsReviewer ?? "user";
-		let sandbox = {
-			type: "workspaceWrite",
-			writableRoots: [],
-			networkAccess: false,
-			excludeTmpdirEnvVar: false,
-			excludeSlashTmp: false,
-		};
+		let sandbox =
+			params.sandbox === "read-only"
+				? {
+						type: "readOnly",
+						networkAccess: false,
+					}
+				: {
+						type: "workspaceWrite",
+						writableRoots: [],
+						networkAccess: false,
+						excludeTmpdirEnvVar: false,
+						excludeSlashTmp: false,
+					};
 		if (scenarios.has("permissive-approval-never")) approvalPolicy = "never";
 		if (scenarios.has("permissive-approval-object")) approvalPolicy = { reject: { sandbox_approval: true } };
 		if (scenarios.has("permissive-auto-reviewer")) approvalsReviewer = "auto_review";
@@ -203,6 +211,12 @@ function handleMessage(msg) {
 			status: { type: "idle" },
 			turns: [],
 		};
+		if (scenarios.has("unexpected-mcp-startup")) {
+			send({
+				method: "mcpServer/startupStatus/updated",
+				params: { threadId, name: "rogue_mcp", environmentId: null, status: "starting", error: null },
+			});
+		}
 		send({
 			id,
 			result: {

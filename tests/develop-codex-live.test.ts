@@ -19,7 +19,16 @@
  * 7. Neutral DEVELOP presentation (`presentLiveCodex` + `developSurface`) and import-boundary source guards.
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +39,11 @@ import { runCodexLocalProtocolCheckV0 } from "../adapters/codex/checks.ts";
 import { buildCodexNativeApprovalDecisionV0, CodexLiveControllerV0 } from "../adapters/codex/controller.ts";
 import { CodexDevelopAdapterV0, CodexPolicyViolationErrorV0 } from "../adapters/codex/develop-adapter.ts";
 import { fingerprintCodexRuntimeV0 } from "../adapters/codex/identity.ts";
+import {
+	prepareCodexIsolatedHomeV0,
+	validateCodexSandboxModeV0,
+	verifyCodexIsolatedHomeV0,
+} from "../adapters/codex/isolated-home.ts";
 import { PiAttachmentV0, PiStoreLockedErrorV0 } from "../adapters/pi/attachment.ts";
 import type { ProcessScopeV0 } from "../adapters/rpc-jsonl/process-group.ts";
 import { type EndoDevelopObservationV0, endoAdapterSessionKeyV0 } from "../protocol/develop-adapter.ts";
@@ -240,6 +254,8 @@ describe("DEVELOP-CODEX-LIVE-001: D1 transport & D2 identity/policy", () => {
 		["permissive-writable-roots", "writableRoots"],
 		["permissive-network-access", "networkAccess"],
 		["unsafe-mcp-name", "could not be safely disabled"],
+		["ignore-codex-home", "isolated startup home"],
+		["unexpected-mcp-startup", "unwanted MCP server"],
 	])("fails closed on open() when Codex returns %s and releases the writer lock", async (scenario, expectedMsg) => {
 		const fx = await createCheckedFixture({ scenario });
 		await expect(fx.adapter.open()).rejects.toThrow(CodexPolicyViolationErrorV0);
@@ -283,6 +299,108 @@ describe("DEVELOP-CODEX-LIVE-001: D1 transport & D2 identity/policy", () => {
 					reasoningEffort: "bogus" as never,
 				}),
 		).toThrow(TypeError);
+	});
+
+	it("prepares isolated conservative CODEX_HOME without mutating operator config, links auth without reading it, blocks ancestor .codex, supports read-only sandbox, and fails closed on check() isolation breach", async () => {
+		const root = makeTempDir("endo-iso-store-");
+		const fakeUserHome = makeTempDir("endo-iso-user-codex-");
+		const parentWs = makeTempDir("endo-iso-parent-");
+		const childWs = join(parentWs, "sub");
+		mkdirSync(join(parentWs, ".codex"), { recursive: true });
+		mkdirSync(childWs, { recursive: true });
+		const sourceAuth = join(fakeUserHome, "auth.json");
+		const sourceConfig = join(fakeUserHome, "config.toml");
+		writeFileSync(sourceAuth, '{"sentinel":"never-mutated"}', { mode: 0o600 });
+		writeFileSync(sourceConfig, 'approval_policy = "never"\n[mcp_servers.canary]\ncommand = "false"\n');
+
+		expect(() => validateCodexSandboxModeV0("danger-full-access")).toThrow(TypeError);
+		expect(validateCodexSandboxModeV0("read-only")).toBe("read-only");
+
+		const iso = prepareCodexIsolatedHomeV0({
+			root,
+			cwd: childWs,
+			sandboxMode: "read-only",
+			sourceCodexHome: fakeUserHome,
+		});
+		try {
+			expect(iso.authLinked).toBe(true);
+			expect(lstatSync(join(iso.dir, "auth.json")).isSymbolicLink()).toBe(true);
+			const cfg = readFileSync(iso.configPath, "utf8");
+			expect(cfg).toContain('approval_policy = "on-request"');
+			expect(cfg).toContain('approvals_reviewer = "user"');
+			expect(cfg).toContain('sandbox_mode = "read-only"');
+			expect(cfg).toContain("apps = false");
+			expect(cfg).toContain("computer_use = false");
+			expect(cfg).toContain("browser_use = false");
+			expect(cfg).toContain('trust_level = "untrusted"');
+			expect(iso.untrustedProjectPaths.length).toBeGreaterThanOrEqual(2);
+			expect(verifyCodexIsolatedHomeV0(iso.realDir, iso.realDir).ok).toBe(true);
+			expect(verifyCodexIsolatedHomeV0("/tmp/not-isolated", iso.realDir).ok).toBe(false);
+		} finally {
+			iso.cleanup();
+		}
+		expect(existsSync(iso.dir)).toBe(false);
+		// Operator's normal auth.json and config.toml MUST remain completely intact!
+		expect(readFileSync(sourceAuth, "utf8")).toBe('{"sentinel":"never-mutated"}');
+		expect(readFileSync(sourceConfig, "utf8")).toContain("[mcp_servers.canary]");
+
+		// Offline check() fails closed when Codex ignores CODEX_HOME or emits unexpected MCP startup.
+		await expect(
+			runCodexLocalProtocolCheckV0({
+				root: makeTempDir("endo-iso-check-ignore-"),
+				attachment: "codex.iso",
+				executable: FAKE_CODEX,
+				checkCwd: childWs,
+				env: {
+					PATH: process.env.PATH ?? "",
+					HOME: process.env.HOME ?? "",
+					FAKE_CODEX_SCENARIO: "ignore-codex-home",
+				},
+			}),
+		).rejects.toThrow(/isolated startup home/i);
+
+		const badMcpCheck = await runCodexLocalProtocolCheckV0({
+			root: makeTempDir("endo-iso-check-mcp-"),
+			attachment: "codex.iso-mcp",
+			executable: FAKE_CODEX,
+			checkCwd: childWs,
+			env: {
+				PATH: process.env.PATH ?? "",
+				HOME: process.env.HOME ?? "",
+				FAKE_CODEX_SCENARIO: "unexpected-mcp-startup",
+			},
+		});
+		expect(badMcpCheck.effectivePolicy.ok).toBe(false);
+		expect(badMcpCheck.effectivePolicy.reasons.join(";")).toContain("rogue_mcp");
+
+		// Adapter supports explicit conservative `sandboxMode: "read-only"`.
+		const roRoot = makeTempDir("endo-ro-store-");
+		const roCheck = await runCodexLocalProtocolCheckV0({
+			root: roRoot,
+			attachment: "codex.ro",
+			executable: FAKE_CODEX,
+			checkCwd: childWs,
+			sandboxMode: "read-only",
+			env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", FAKE_CODEX_SCENARIO: "default" },
+		});
+		expect(roCheck.effectivePolicy.ok).toBe(true);
+		expect(roCheck.effectivePolicy.effective.sandbox).toEqual({ type: "readOnly", networkAccess: false });
+		const roAdapter = new CodexDevelopAdapterV0({
+			root: roRoot,
+			attachmentId: "codex.ro",
+			projectScope: childWs,
+			executable: FAKE_CODEX,
+			sandboxMode: "read-only",
+			env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", FAKE_CODEX_SCENARIO: "default" },
+			fingerprint: roCheck.fingerprint,
+			capabilityState: roCheck.capabilityState,
+		});
+		try {
+			const opened = await roAdapter.open();
+			expect(opened.effectivePolicy.sandbox).toEqual({ type: "readOnly", networkAccess: false });
+		} finally {
+			await roAdapter.close();
+		}
 	});
 
 	it("handles malformed/oversized frames, unknown response IDs, and separates stderr diagnostics", async () => {

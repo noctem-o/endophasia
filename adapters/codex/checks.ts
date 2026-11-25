@@ -36,8 +36,14 @@ import {
 	deriveCodexCapabilityStateV0,
 } from "./capabilities.ts";
 import { type CodexExecutableSelectionV0, codexConfigurationDigestV0, fingerprintCodexRuntimeV0 } from "./identity.ts";
+import {
+	type CodexSandboxModeV0,
+	prepareCodexIsolatedHomeV0,
+	validateCodexSandboxModeV0,
+	verifyCodexIsolatedHomeV0,
+} from "./isolated-home.ts";
 
-/** Conservative CLI `-c` overrides passed to `codex app-server` so user config never silently escalates authority. */
+/** Conservative CLI `-c` overrides passed to `codex app-server` as defense-in-depth over the isolated `CODEX_HOME`. */
 export const CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0: readonly string[] = Object.freeze([
 	'approval_policy="on-request"',
 	'approvals_reviewer="user"',
@@ -50,6 +56,10 @@ export const CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0: readonly string[] = Object.
 	"features.memories=false",
 	"features.remote_control=false",
 	"features.remote_plugin=false",
+	"features.apps=false",
+	"features.computer_use=false",
+	"features.browser_use=false",
+	"features.browser_use_external=false",
 ]);
 
 export interface CodexEffectivePolicyV0 {
@@ -131,6 +141,7 @@ export function verifyCodexEffectivePolicyV0(
 	options: {
 		readonly disabledMcpServers?: readonly string[];
 		readonly unsafeEnabledMcpServers?: readonly string[];
+		readonly unexpectedMcpStartups?: readonly string[];
 		readonly allowNetworkAccess?: boolean;
 	} = {},
 ): CodexEffectivePolicyVerificationV0 {
@@ -185,6 +196,11 @@ export function verifyCodexEffectivePolicyV0(
 			`enabled inherited MCP server(s) could not be safely disabled: ${options.unsafeEnabledMcpServers!.join(", ")}`,
 		);
 	}
+	if ((options.unexpectedMcpStartups?.length ?? 0) > 0) {
+		reasons.push(
+			`unwanted MCP server(s) attempted startup despite isolated configuration: ${options.unexpectedMcpStartups!.join(", ")}`,
+		);
+	}
 
 	return {
 		ok: reasons.length === 0,
@@ -223,6 +239,10 @@ export interface CodexLocalProtocolCheckOptionsV0 extends CodexExecutableSelecti
 	readonly now?: () => Date;
 	/** Pre-collected fingerprint to reuse instead of re-hashing the binary. */
 	readonly fingerprint?: EndoHarnessFingerprintV1;
+	/** Conservative sandbox mode for the offline check (`workspace-write` or `read-only`). Default: `workspace-write`. */
+	readonly sandboxMode?: CodexSandboxModeV0;
+	/** Optional source Codex home used ONLY to symlink `auth.json` when present (never modified). */
+	readonly sourceCodexHome?: string;
 }
 
 export interface CodexLocalProtocolCheckResultV0 {
@@ -245,6 +265,7 @@ export interface CodexLocalProtocolCheckResultV0 {
 export async function runCodexLocalProtocolCheckV0(
 	options: CodexLocalProtocolCheckOptionsV0,
 ): Promise<CodexLocalProtocolCheckResultV0> {
+	const sandboxMode = validateCodexSandboxModeV0(options.sandboxMode ?? "workspace-write");
 	const now = options.now ?? (() => new Date());
 	const fingerprint =
 		options.fingerprint ??
@@ -268,16 +289,35 @@ export async function runCodexLocalProtocolCheckV0(
 		ephemeralDir = mkdtempSync(join(tmpdir(), "endo-codex-check-"));
 	}
 	const workDir = options.checkCwd ?? ephemeralDir!;
-	const configOverrides = [...CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0, ...(options.extraConfigOverrides ?? [])];
+	const isolatedHome = prepareCodexIsolatedHomeV0({
+		root: options.root,
+		cwd: workDir,
+		sandboxMode,
+		...(options.env === undefined ? {} : { baseEnv: options.env }),
+		...(options.sourceCodexHome === undefined ? {} : { sourceCodexHome: options.sourceCodexHome }),
+	});
+	const configOverrides = [
+		...CODEX_CONSERVATIVE_CONFIG_OVERRIDES_V0.filter((entry) => !entry.startsWith("sandbox_mode=")),
+		`sandbox_mode="${sandboxMode}"`,
+		...(options.extraConfigOverrides ?? []),
+	];
 	const timeoutMs = options.timeoutMs ?? 15_000;
+	const unexpectedMcpStartups = new Set<string>();
 
 	const client = new CodexAppServerClientV0({
 		executable: executablePath,
 		...(options.args === undefined ? { configOverrides } : { args: options.args }),
 		cwd: workDir,
-		...(options.env === undefined ? {} : { env: options.env }),
+		env: isolatedHome.childEnv,
 		...(options.scope === undefined ? {} : { scope: options.scope }),
 		requestTimeoutMs: timeoutMs,
+		onNotification: (notification) => {
+			if (notification.method === "mcpServer/startupStatus/updated") {
+				const rawName = notification.params?.name;
+				const name = typeof rawName === "string" && rawName.trim().length > 0 ? rawName.trim() : "(unknown)";
+				unexpectedMcpStartups.add(name);
+			}
+		},
 	});
 
 	let initResult: CodexInitializeResultV0;
@@ -298,6 +338,10 @@ export async function runCodexLocalProtocolCheckV0(
 			},
 			{ timeoutMs },
 		);
+		const isolatedCheck = verifyCodexIsolatedHomeV0(initResult.codexHome, isolatedHome.realDir);
+		if (!isolatedCheck.ok) {
+			throw new Error(isolatedCheck.reason ?? "Isolated Codex startup home could not be verified.");
+		}
 		client.notifyInitialized();
 
 		configReadRaw = await client.configRead({ includeLayers: false, cwd: workDir }, { timeoutMs });
@@ -311,7 +355,7 @@ export async function runCodexLocalProtocolCheckV0(
 				cwd: workDir,
 				approvalPolicy: "on-request",
 				approvalsReviewer: "user",
-				sandbox: "workspace-write",
+				sandbox: sandboxMode,
 				ephemeral: true,
 				...(Object.keys(mcpDisableConfig).length > 0 ? { config: mcpDisableConfig } : {}),
 			},
@@ -338,6 +382,7 @@ export async function runCodexLocalProtocolCheckV0(
 		}
 	} finally {
 		cleanup = await client.close();
+		isolatedHome.cleanup();
 		if (ephemeralDir !== null) {
 			try {
 				rmSync(ephemeralDir, { recursive: true, force: true });
@@ -350,6 +395,7 @@ export async function runCodexLocalProtocolCheckV0(
 	const effectivePolicy = verifyCodexEffectivePolicyV0(threadStartRaw ?? {}, {
 		disabledMcpServers,
 		unsafeEnabledMcpServers,
+		unexpectedMcpStartups: [...unexpectedMcpStartups].sort(),
 	});
 	const configurationDigest = codexConfigurationDigestV0({
 		approvalPolicy: effectivePolicy.effective.approvalPolicy,

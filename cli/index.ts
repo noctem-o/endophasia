@@ -60,6 +60,10 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	ledger: ledgerCommand,
 	artifacts: artifactsCommand,
 	harness: family(HARNESS_COMMANDS_V0, "usage: endo harness <status|overview|identify|check|study|attach> <root> ..."),
+	codex: (argv) =>
+		import("./codex.ts").then((module) =>
+			family(module.CODEX_COMMANDS_V0, "usage: endo codex <check|session> [<root> | --root dir] ...")(argv),
+		),
 	// The live workbench in one word: `harness attach --control --workbench`, unchanged (cli/harness.ts).
 	develop: developCommand,
 	"digest-key": digestKeyCommand,

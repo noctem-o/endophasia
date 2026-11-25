@@ -281,17 +281,145 @@ export function presentOmpSaved(row: EndoOmpSessionRowV0): EndoDevelopSessionV0 
 	};
 }
 
+/** Structural status of a live Codex App Server controller (mirrors `CodexLiveControllerStatusV0` without importing adapters). */
+export interface CodexLivePresentationStatusV0 {
+	readonly source: "codex-live";
+	readonly controlPath: "codex-live-controller";
+	readonly version: string | null;
+	readonly connection: "connected" | "disconnected" | "reconnecting" | "unknown" | "not-applicable";
+	readonly connectionReason: string | null;
+	readonly launchId: string;
+	readonly threadId: string | null;
+	readonly activeTurnId: string | null;
+	readonly capabilities: {
+		readonly prompt: { readonly admitted: boolean; readonly reason: string | null };
+		readonly steer: { readonly admitted: boolean; readonly reason: string | null };
+		readonly stop: { readonly admitted: boolean; readonly reason: string | null };
+	};
+}
+
+const CODEX_CONTROLLER = "codex-live-controller";
+
+/**
+ * One live Codex App Server session, projected into `EndoDevelopSessionV0`.
+ * Preserves Codex's native boundaries explicitly: Strict-only `codex-live-controller`, `queue` and `resume`
+ * unsupported (never faked to look like Pi), and honest connection/ownership standing.
+ */
+export function presentLiveCodex(
+	status: CodexLivePresentationStatusV0 | null,
+	unreachable = false,
+): EndoDevelopSessionV0 {
+	const known = status !== null && !unreachable;
+	const connected = known && status.connection === "connected";
+	const key: EndoDevelopSessionV0["identity"]["key"] =
+		status === null
+			? { status: "unavailable", reason: "No status has been read from the Codex controller yet." }
+			: status.threadId !== null
+				? { status: "established", id: `endo.session.codex.${status.threadId}`, scope: "source" }
+				: { status: "established", id: status.launchId, scope: "launch" };
+	const claim: EndoDevelopStatusClaimV0[] = connected
+		? [{ state: status.activeTurnId !== null ? "active" : "idle", basis: "observed", by: "endophasia", at: null }]
+		: [];
+	const codexControl = (
+		cap: { readonly admitted: boolean; readonly reason: string | null } | undefined,
+		fallback: string,
+	): EndoDevelopCapabilityV0 =>
+		!connected
+			? unavailable("There is no admitted live connection to this Codex thread now.")
+			: cap?.admitted
+				? supported(CODEX_CONTROLLER)
+				: unavailable(cap?.reason ?? fallback);
+	const connection: EndoDevelopSessionV0["connection"] = connected
+		? { state: "connected", reason: null }
+		: known
+			? {
+					state: status.connection === "reconnecting" ? "unknown" : status.connection,
+					reason: status.connectionReason ?? "The Codex controller reports no active connection.",
+				}
+			: {
+					state: "unknown",
+					reason: "The Codex controller could not be reached. That says nothing about the underlying process.",
+				};
+	return {
+		schemaVersion: "endo.develop-session.v0",
+		identity: {
+			source: "codex-live",
+			key,
+			alias: status?.threadId ?? null,
+		},
+		integration: { label: "Codex App Server", type: "harness" },
+		synthetic: false,
+		runtime: {
+			status: "established",
+			value: { name: "Codex", version: status?.version ?? null },
+			basis: "observed",
+			by: "endophasia",
+		},
+		ownership:
+			connected && status.threadId !== null
+				? { status: "established", value: "direct", basis: "observed", by: "endophasia" }
+				: {
+						status: "unavailable",
+						reason:
+							"Direct ownership holds only while Endophasia holds the live connection to its owned Codex thread.",
+					},
+		observation: connected
+			? { mode: "live", reason: null }
+			: {
+					mode: "unavailable",
+					reason: known
+						? (status.connectionReason ?? "The Codex controller reports no active connection.")
+						: "The Codex controller could not be reached, so nothing about the session is current.",
+				},
+		connection,
+		status: claim,
+		capabilities: {
+			observe: {
+				"live-status": connected
+					? supported(CODEX_CONTROLLER)
+					: unavailable("There is no admitted live connection to this Codex thread now."),
+				"live-transcript": connected
+					? supported(CODEX_CONTROLLER)
+					: unavailable("There is no admitted live connection to this Codex thread now."),
+				"live-reasoning": connected
+					? supported(CODEX_CONTROLLER)
+					: unavailable("There is no admitted live connection to this Codex thread now."),
+				lifecycle: unsupported(
+					"A live Codex session is not reduced to a recorded lifecycle; its durable recording is separate.",
+				),
+				activity: unsupported(
+					"A live Codex session's recorded activity is read from its durable recording, which is separate.",
+				),
+			},
+			control: {
+				prompt: codexControl(status?.capabilities.prompt, "Prompt capability is not currently admitted for Codex."),
+				steer: codexControl(status?.capabilities.steer, "Steer capability is not currently admitted for Codex."),
+				queue: unsupported("Codex App Server exposes no Pi-equivalent follow_up queue RPC."),
+				stop: codexControl(
+					status?.capabilities.stop,
+					"Targeted stop capability is not currently admitted for Codex.",
+				),
+				resume: unsupported("DEVELOP-CODEX-LIVE-001 launches explicitly owned fresh threads only."),
+			},
+			coordinate: NO_COORDINATION("Codex"),
+		},
+		evidence: status === null ? [] : [{ kind: "codex-live-status.v0", producedBy: "codex-live", generation: null }],
+	};
+}
+
 /** Everything DEVELOP shows, as one surface: no relation is derived, because nothing here establishes one. */
 export function developSurface(
 	live: { status: WorkbenchStatus | null; unreachable: boolean } | null,
 	rows: readonly EndoCockpitDevelopSessionRowV0[],
 	generation: string | null,
 	omp: readonly EndoOmpSessionRowV0[] = [],
+	codexLive: { status: CodexLivePresentationStatusV0 | null; unreachable: boolean } | null = null,
 ): EndoDevelopSurfaceV0 {
 	return {
 		schemaVersion: "endo.develop-session-surface.v0",
 		sessions: [
 			...(live === null ? [] : [presentLivePi(live.status, live.unreachable)]),
+			...(codexLive === null ? [] : [presentLiveCodex(codexLive.status, codexLive.unreachable)]),
 			...rows.map((row) => presentRecorded(row, generation)),
 			...omp.map((row) => presentOmpSaved(row)),
 		],

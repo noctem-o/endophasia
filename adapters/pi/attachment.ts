@@ -15,7 +15,7 @@
 // It never installs, updates, downgrades, patches or rebuilds Pi, and never edits Pi's configuration.
 
 import { randomBytes } from "node:crypto";
-import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoEventV0 } from "../../protocol/event.ts";
 import {
@@ -35,6 +35,7 @@ import { createEndoArtifactStoreV0 } from "../../storage/artifacts.ts";
 import { endoDigestKeyFromEnvironmentV0 } from "../../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../../storage/event-store.ts";
 import { type EndoHarnessRegistryV0, openEndoHarnessRegistryV0 } from "../../storage/harness-registry.ts";
+import { acquireEndoEventStoreWriterLockV0, EndoStoreLockedErrorV0 } from "../../storage/writer-lock.ts";
 import type { ProcessCleanupV0, ProcessScopeV0 } from "../rpc-jsonl/process-group.ts";
 import {
 	type RpcDiagnosticV0,
@@ -512,56 +513,26 @@ export interface PiSessionCountersV0 {
 export const PI_RUNTIME_TEXT_DIRECTORY_V0 = "runtime-text";
 
 /** Thrown when another live session attachment already writes the same store root. */
-export class PiStoreLockedErrorV0 extends Error {
+export class PiStoreLockedErrorV0 extends EndoStoreLockedErrorV0 {
 	constructor(path: string, holder: string) {
-		super(`another Endophasia session attachment (${holder}) is writing this store; lock ${path}`);
+		super(path, holder);
 		this.name = "PiStoreLockedErrorV0";
 	}
 }
 
 /**
- * Take the store root's writer lock: one session attachment per root at a time, so two writers cannot each extend the
- * event log from a different in-memory view. A lock left by a process that no longer exists is replaced.
+ * Take the store root's writer lock: one session attachment per root at a time, shared across Pi and Codex so two
+ * writers cannot concurrently extend the event log. Delegates to `storage/writer-lock.ts`.
  */
 function acquireWriterLock(root: string, attachment: string): () => void {
-	const path = join(root, "events", "session-attachment.lock");
-	mkdirSync(join(root, "events"), { recursive: true });
-	const content = `${JSON.stringify({ pid: process.pid, attachment, at: new Date().toISOString() })}\n`;
-	for (let attempt = 0; attempt < 2; attempt += 1) {
-		try {
-			writeFileSync(path, content, { flag: "wx" });
-			let released = false;
-			return () => {
-				if (released) return;
-				released = true;
-				rmSync(path, { force: true });
-			};
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-			let holder: { pid?: unknown; attachment?: unknown } = {};
-			try {
-				holder = JSON.parse(readFileSync(path, "utf8")) as typeof holder;
-			} catch {
-				// An unreadable lock is treated as held: never silently stolen.
-				throw new PiStoreLockedErrorV0(path, "unreadable lock");
-			}
-			const pid = typeof holder.pid === "number" ? holder.pid : undefined;
-			let alive = pid === process.pid;
-			if (pid !== undefined && !alive) {
-				try {
-					process.kill(pid, 0);
-					alive = true;
-				} catch (probe) {
-					alive = (probe as NodeJS.ErrnoException).code === "EPERM";
-				}
-			}
-			if (alive || pid === undefined) {
-				throw new PiStoreLockedErrorV0(path, `pid ${String(pid)}, ${String(holder.attachment)}`);
-			}
-			rmSync(path, { force: true });
+	try {
+		return acquireEndoEventStoreWriterLockV0(root, attachment);
+	} catch (error) {
+		if (error instanceof EndoStoreLockedErrorV0) {
+			throw new PiStoreLockedErrorV0(error.path, error.holder);
 		}
+		throw error;
 	}
-	throw new PiStoreLockedErrorV0(path, "lock contention");
 }
 
 /** One recorded Pi session: a persistent Pi session id that survives process restarts. */

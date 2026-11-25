@@ -60,6 +60,7 @@ export interface PiDevelopAdapterSessionV0 {
 	readonly live: boolean;
 	readonly runActive: boolean;
 	readonly connection?: string;
+	readonly connectionInstance?: string | null;
 	readonly fingerprint?: EndoHarnessFingerprintRecordV0;
 	readonly capabilityState?: EndoCapabilityStateV0;
 	prompt(message: string): Promise<string>;
@@ -86,6 +87,26 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isFiniteNonNeg = (value: unknown): value is number =>
 	typeof value === "number" && Number.isFinite(value) && value >= 0;
+
+/** Strip ASCII control characters and bound length so runtime strings never trigger silent observation drops. */
+const sanitizeRuntimeText = (value: string, max: number): string =>
+	value.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, max);
+
+const PI_IGNORED_LIVE_EVENTS = new Set([
+	"message_start",
+	"message_update",
+	"turn_start",
+	"turn_end",
+	"agent_end",
+	"tool_execution_update",
+	"bash_execution_update",
+	"compaction_start",
+	"queue_update",
+	"auto_retry_start",
+	"thinking_level_changed",
+	"session_info_changed",
+	"entry_appended",
+]);
 
 function parsePiUsage(message: Record<string, unknown>): EndoAdapterUsageReportV0 | null {
 	const u = message.usage;
@@ -144,6 +165,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	#lastStopReason: string | null = null;
 	#retryExhausted = false;
 	#lastKnownFingerprintId: string | null = null;
+	#lastSeenConnectionInstance: string | null = null;
 	readonly #guard: EndoObservationGuardV0;
 	readonly #listeners = new Set<(observation: EndoDevelopObservationV0) => void>();
 	readonly #coordination: EndoAdapterCoordinationRefsV0 = {
@@ -155,7 +177,8 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	constructor(options: PiDevelopAdapterOptionsV0) {
 		this.#o = options;
 		this.#now = options.now ?? Date.now;
-		this.#instanceId = options.instanceId ?? randomBytes(8).toString("hex");
+		this.#lastSeenConnectionInstance = options.session.connectionInstance ?? null;
+		this.#instanceId = options.instanceId ?? options.session.connectionInstance ?? randomBytes(8).toString("hex");
 		this.#lastKnownFingerprintId = options.session.fingerprint?.id ?? null;
 		this.#guard = new EndoObservationGuardV0({
 			source: "pi-live",
@@ -165,7 +188,34 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		});
 	}
 
+	/**
+	 * Synchronize with the underlying Pi session's connection instance and fingerprint so an automatic
+	 * `PiSessionAttachmentV0.reconnect()` immediately rotates `instanceId` and invalidates prior proofs.
+	 */
+	#syncRuntimeObservation(): void {
+		const liveConn = this.#o.session.connectionInstance ?? null;
+		if (
+			liveConn !== null &&
+			this.#lastSeenConnectionInstance !== null &&
+			liveConn !== this.#lastSeenConnectionInstance
+		) {
+			this.#lastSeenConnectionInstance = liveConn;
+			this.#instanceId = liveConn;
+			this.#sequence = 0;
+			this.#disconnectedReason = null;
+			this.#lastStopReason = null;
+			this.#retryExhausted = false;
+			this.#guard.rotateInstance(liveConn, endoAdapterSessionKeyV0(this.#sessionIdentity()));
+		} else if (liveConn !== null && this.#lastSeenConnectionInstance === null) {
+			this.#lastSeenConnectionInstance = liveConn;
+		}
+		if (this.#lastKnownFingerprintId === null && this.#o.session.fingerprint !== undefined) {
+			this.#lastKnownFingerprintId = this.#o.session.fingerprint.id;
+		}
+	}
+
 	get instanceId(): string {
+		this.#syncRuntimeObservation();
 		return this.#instanceId;
 	}
 
@@ -175,6 +225,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	 */
 	rotateInstance(newInstanceId = randomBytes(8).toString("hex")): string {
 		this.#instanceId = newInstanceId;
+		this.#lastSeenConnectionInstance = this.#o.session.connectionInstance ?? newInstanceId;
 		this.#sequence = 0;
 		this.#disconnectedReason = null;
 		this.#lastStopReason = null;
@@ -202,10 +253,11 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	#sessionIdentity(): EndoAdapterSessionIdentityV0 {
 		const piId = this.#o.session.piSessionId;
 		if (piId !== null && piId.length > 0) {
+			const alias = sanitizeRuntimeText(piId, 128).trim();
 			return {
 				source: "pi-live",
 				key: { status: "established", id: piEndoSessionIdV0(piId), scope: "persistent" },
-				alias: piId,
+				alias: alias.length > 0 ? alias : null,
 				nativeRef: { kind: "pi-session", sessionId: piId },
 			};
 		}
@@ -273,7 +325,8 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		});
 	}
 
-	descriptor(): EndoDevelopAdapterDescriptorV0 {
+	describe(): EndoDevelopAdapterDescriptorV0 {
+		this.#syncRuntimeObservation();
 		const session = this.#sessionIdentity();
 		this.#guard.setSessionKey(endoAdapterSessionKeyV0(session));
 		const conn = this.#connectionState();
@@ -381,6 +434,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	}
 
 	snapshot(): EndoDevelopSessionSnapshotV0 {
+		this.#syncRuntimeObservation();
 		const identity = this.#sessionIdentity();
 		const sessionKey = endoAdapterSessionKeyV0(identity);
 		const connection = this.#connectionState();
@@ -423,7 +477,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		options?: EndoDevelopAdmissionOptionsV0,
 	): EndoDevelopAdmissionDecisionV0 {
 		return endoEvaluateDevelopAdmissionV0({
-			descriptor: this.descriptor(),
+			descriptor: this.describe(),
 			snapshot: this.snapshot(),
 			request,
 			authority,
@@ -603,6 +657,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		decision: EndoDevelopNativeApprovalDecisionV0 | null = null,
 		options?: { nowMs?: number; allowSessionOrPolicyScope?: boolean },
 	): EndoDevelopNativeApprovalOutcomeV0 {
+		this.#syncRuntimeObservation();
 		return endoEvaluateNativeApprovalV0({
 			request,
 			decision,
@@ -610,6 +665,7 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 				source: "pi-live",
 				sessionKey: endoAdapterSessionKeyV0(this.#sessionIdentity()),
 				instanceId: this.#instanceId,
+				connected: this.#connectionState().state === "connected",
 				knownKinds: ["extension-dialog"],
 				mode: "extension-dialogs-cancelled",
 				nowMs: options?.nowMs ?? this.#now(),
@@ -632,6 +688,20 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 	 * Pass `sourceInstanceId` when forwarding events that may arrive asynchronously from an earlier connection.
 	 */
 	observePiLiveEvent(event: RpcEventV0, sourceInstanceId: string = this.#instanceId): void {
+		this.#syncRuntimeObservation();
+		// Short-circuit stale-instance events immediately BEFORE mutating any live turn state.
+		if (sourceInstanceId !== this.#instanceId) {
+			this.#emit(
+				{
+					kind: "evidence-gap",
+					gap: "late-event-from-prior-attachment",
+					reason: `Pi live event (${sanitizeRuntimeText(event.type, 64)}) arrived from superseded instance ${sanitizeRuntimeText(sourceInstanceId, 64)}.`,
+				},
+				"controller-observed",
+				sourceInstanceId,
+			);
+			return;
+		}
 		const record = event.record;
 		if (event.type === "agent_start") {
 			this.#lastStopReason = null;
@@ -651,6 +721,20 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		}
 		if (event.type === "auto_retry_end") {
 			if (record.success === false) this.#retryExhausted = true;
+			return;
+		}
+		if (event.type === "compaction_end") {
+			this.#emit(
+				{
+					kind: "lifecycle",
+					event: "context-compacted",
+					sessionState: this.#o.session.runActive ? "active" : "idle",
+					turnState: null,
+					detail: null,
+				},
+				"runtime-reported",
+				sourceInstanceId,
+			);
 			return;
 		}
 		if (event.type === "agent_settled") {
@@ -683,7 +767,8 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			const msg = record.message;
 			const role = msg.role;
 			if (role !== "user" && role !== "assistant") return;
-			const stopReason = typeof msg.stopReason === "string" ? msg.stopReason.slice(0, 32) : null;
+			const rawStop = typeof msg.stopReason === "string" ? sanitizeRuntimeText(msg.stopReason, 32).trim() : "";
+			const stopReason = rawStop.length > 0 ? rawStop : null;
 			if (role === "assistant" && stopReason !== null) this.#lastStopReason = stopReason;
 			const content = Array.isArray(msg.content) ? msg.content : [];
 			let sawReasoning = false;
@@ -752,9 +837,11 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		}
 		if (event.type === "tool_execution_start" || event.type === "tool_execution_end") {
 			const start = event.type === "tool_execution_start";
-			const name = typeof record.toolName === "string" && record.toolName.length > 0 ? record.toolName : "unknown";
-			const callId =
-				typeof record.toolCallId === "string" && record.toolCallId.length > 0 ? record.toolCallId : null;
+			const rawName = typeof record.toolName === "string" ? sanitizeRuntimeText(record.toolName, 128).trim() : "";
+			const name = rawName.length > 0 ? rawName : "unknown";
+			const rawCallId =
+				typeof record.toolCallId === "string" ? sanitizeRuntimeText(record.toolCallId, 256).trim() : "";
+			const callId = rawCallId.length > 0 ? rawCallId : null;
 			const exitCode =
 				!start &&
 				isRecord(record.result) &&
@@ -783,8 +870,8 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			return;
 		}
 		if (event.type === "extension_ui_request") {
-			const reqId =
-				typeof record.id === "string" && record.id.length > 0 ? record.id : `pi-ui-${this.#sequence + 1}`;
+			const rawId = typeof record.id === "string" ? sanitizeRuntimeText(record.id, 256).trim() : "";
+			const reqId = rawId.length > 0 ? rawId : `pi-ui-${this.#sequence + 1}`;
 			this.#emit(
 				{
 					kind: "native-approval",
@@ -798,21 +885,14 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 			);
 			return;
 		}
-		if (
-			event.type === "message_start" ||
-			event.type === "message_update" ||
-			event.type === "turn_start" ||
-			event.type === "turn_end" ||
-			event.type === "agent_end" ||
-			event.type === "tool_execution_update"
-		) {
+		if (PI_IGNORED_LIVE_EVENTS.has(event.type)) {
 			return;
 		}
 		this.#emit(
 			{
 				kind: "evidence-gap",
 				gap: "unrecognized-runtime-event",
-				reason: `Unrecognized Pi live event type: ${event.type.slice(0, 64)}.`,
+				reason: `Unrecognized Pi live event type: ${sanitizeRuntimeText(event.type, 64)}.`,
 			},
 			"controller-observed",
 			sourceInstanceId,
@@ -831,20 +911,23 @@ export class PiDevelopAdapterV0 implements EndoDevelopLiveAdapterV0 {
 		basis: EndoDevelopObservationV0["basis"],
 		sourceInstanceId: string = this.#instanceId,
 	): void {
+		const safeInstance = sanitizeRuntimeText(sourceInstanceId, 128) || "unknown";
 		const seq = sourceInstanceId === this.#instanceId ? ++this.#sequence : 1;
 		const identity = this.#sessionIdentity();
+		const safeSessionId =
+			this.#o.session.piSessionId !== null ? sanitizeRuntimeText(this.#o.session.piSessionId, 256) || null : null;
 		const obs: EndoDevelopObservationV0 = {
 			schemaVersion: ENDO_DEVELOP_ADAPTER_OBSERVATION_SCHEMA_V0,
-			observationId: `pi:${sourceInstanceId}:${seq}`,
+			observationId: `pi:${safeInstance}:${seq}`,
 			source: "pi-live",
 			sessionKey: endoAdapterSessionKeyV0(identity),
 			attachmentId: this.#o.attachmentId,
-			instanceId: sourceInstanceId,
+			instanceId: safeInstance,
 			sequence: seq,
 			observedAt: new Date(this.#now()).toISOString(),
 			basis,
 			nativeIds: {
-				sessionId: this.#o.session.piSessionId,
+				sessionId: safeSessionId,
 				turnId: null,
 				itemId: null,
 				entryId: null,

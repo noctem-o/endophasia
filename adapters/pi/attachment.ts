@@ -789,6 +789,11 @@ export class PiSessionAttachmentV0 {
 		return this.#client === null ? "disconnected" : this.#client.connection.state;
 	}
 
+	/** The current process-connection instance identifier (rotates on every connect/reconnect), or null. */
+	get connectionInstance(): string | null {
+		return this.#context?.instance ?? null;
+	}
+
 	#store(event: EndoEventV0): void {
 		const stored = this.store.ingest(event);
 		this.#index(stored);

@@ -50,7 +50,7 @@ export function buildOperatorProofV0(args: {
 	nowMs: number;
 	overrides?: Partial<EndoDevelopAuthorityProofV0>;
 }): EndoDevelopAuthorityProofV0 {
-	const d = args.adapter.descriptor();
+	const d = args.adapter.describe();
 	const sessionKey = endoAdapterSessionKeyV0(d.session);
 	if (sessionKey === null) throw new Error("cannot build proof without an established sessionKey");
 	if (d.controlPath === null) throw new Error("cannot build proof without a controlPath");
@@ -82,7 +82,7 @@ export function runDevelopAdapterConformanceSuiteV0(driver: DevelopAdapterConfor
 		it("publishes a valid closed descriptor and keeps display alias distinct from identity key", async () => {
 			const ctx = await driver.createReady();
 			try {
-				const d = ctx.adapter.descriptor();
+				const d = ctx.adapter.describe();
 				expect(endoDevelopAdapterDescriptorProblemV0(d, { allowSynthetic: driver.mode === "fixture" })).toBeNull();
 				const key = endoAdapterSessionKeyV0(d.session);
 				expect(key).not.toBeNull();
@@ -102,7 +102,7 @@ export function runDevelopAdapterConformanceSuiteV0(driver: DevelopAdapterConfor
 			const ctx = await driver.createReady();
 			try {
 				const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "run task" };
-				expect(ctx.adapter.descriptor().operations.prompt.capability.standing).toMatch(/^admitted/);
+				expect(ctx.adapter.describe().operations.prompt.capability.standing).toMatch(/^admitted/);
 				const decision = ctx.adapter.admitOperation(req, null, { mode: driver.mode, nowMs: ctx.nowMs() });
 				expect(decision).toMatchObject({ admitted: false, code: "missing-authority" });
 				const outcome = await ctx.adapter.dispatch(req, null, { mode: driver.mode, nowMs: ctx.nowMs() });
@@ -144,7 +144,7 @@ export function runDevelopAdapterConformanceSuiteV0(driver: DevelopAdapterConfor
 					ctx.adapter.admitOperation(
 						req,
 						ctx.authorize(req, {
-							sessionKey: `${ctx.adapter.descriptor().session.source}:persistent:other-session`,
+							sessionKey: `${ctx.adapter.describe().session.source}:persistent:other-session`,
 						}),
 						{ mode: driver.mode, nowMs: now },
 					),
@@ -227,7 +227,7 @@ export function runDevelopAdapterConformanceSuiteV0(driver: DevelopAdapterConfor
 		it("never silently converts unsupported native commands (e.g. /voice on) into ordinary prompt text", async () => {
 			const ctx = await driver.createReady();
 			try {
-				const d = ctx.adapter.descriptor();
+				const d = ctx.adapter.describe();
 				expect(d.operations.nativeCommand.allowsArbitraryShell).toBe(false);
 				if (d.operations.nativeCommand.transport === "unsupported") {
 					const req: EndoDevelopOperationRequestV0 = {
@@ -264,7 +264,7 @@ export function runDevelopAdapterConformanceSuiteV0(driver: DevelopAdapterConfor
 				}
 
 				// Inject a valid observation, then a duplicate, then an out-of-order one, then a late event from a stale instance.
-				const d = ctx.adapter.descriptor();
+				const d = ctx.adapter.describe();
 				const baseObs: EndoDevelopObservationV0 = {
 					schemaVersion: "endo.develop-adapter-observation.v0",
 					observationId: "conformance-obs-10",
@@ -313,7 +313,7 @@ export function runDevelopAdapterConformanceSuiteV0(driver: DevelopAdapterConfor
 		it("fails closed on native approval requests with no decision or unknown kind", async () => {
 			const ctx = await driver.createReady();
 			try {
-				const d = ctx.adapter.descriptor();
+				const d = ctx.adapter.describe();
 				const sessionKey = endoAdapterSessionKeyV0(d.session)!;
 				const unknownReq = {
 					requestId: "native-req-unknown-1",
@@ -335,17 +335,26 @@ export function runDevelopAdapterConformanceSuiteV0(driver: DevelopAdapterConfor
 			}
 		});
 
-		it("refuses previously admissible evidence-backed operations when evidence becomes stale", async () => {
+		it("refuses previously admissible operations with capability-stale when evidence becomes stale", async () => {
 			const ctx = await driver.createReady();
 			try {
 				ctx.invalidateEvidence("runtime configuration digest changed");
-				const d = ctx.adapter.descriptor();
+				const d = ctx.adapter.describe();
 				expect(d.evidenceFreshness.status).toBe("stale");
-				// Any evidence-backed operation must fail closed once evidence is stale.
+				// Even baseline prompt must fail closed with `capability-stale` once evidence/runtime is stale.
+				const promptReq: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "after runtime drift" };
+				const promptDecision = ctx.adapter.admitOperation(promptReq, ctx.authorize(promptReq), {
+					mode: driver.mode,
+					nowMs: ctx.nowMs(),
+				});
+				expect(promptDecision).toMatchObject({ admitted: false, code: "capability-stale" });
+
 				const stopReq: EndoDevelopOperationRequestV0 = { kind: "stop" };
-				const proof = ctx.authorize(stopReq);
-				const decision = ctx.adapter.admitOperation(stopReq, proof, { mode: driver.mode, nowMs: ctx.nowMs() });
-				expect(decision.admitted).toBe(false);
+				const stopDecision = ctx.adapter.admitOperation(stopReq, ctx.authorize(stopReq), {
+					mode: driver.mode,
+					nowMs: ctx.nowMs(),
+				});
+				expect(stopDecision).toMatchObject({ admitted: false, code: "capability-stale" });
 			} finally {
 				await ctx.cleanup();
 			}

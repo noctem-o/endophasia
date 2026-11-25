@@ -298,6 +298,8 @@ interface Proposal {
 	/** The message's keyed digest and length, as the proposal recorded them. */
 	ref: { digest: { algorithm: "hmac-sha256"; keyId: string; value: string }; bytes: number };
 	session: string;
+	/** Canonical session coordinate (`piEndoSessionIdV0(piId)`) bound at proposal open for adapter admission checks. */
+	canonicalSession: string;
 	attachment: string;
 	/** The adapter connection instance when this proposal was opened; a reconnect rotates it and invalidates the proposal. */
 	instanceId: string;
@@ -910,6 +912,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 			message,
 			ref: ref as Proposal["ref"],
 			session: sessionId,
+			canonicalSession: piEndoSessionIdV0(piId),
 			attachment: this.#o.attachment,
 			instanceId: this.adapter.instanceId,
 			grant,
@@ -1067,7 +1070,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 					authorizationId: authorized.id,
 					operation: "prompt",
 					source: "pi-live",
-					sessionKey: `pi-live:persistent:${p.session}`,
+					sessionKey: `pi-live:persistent:${p.canonicalSession}`,
 					attachmentId: p.attachment,
 					launchId: this.launchId,
 					instanceId: p.instanceId,
@@ -1084,7 +1087,6 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 					mode: "production",
 					nowMs: approvedAtMs,
 					...(this.#o.control?.protection === undefined ? {} : { protection: this.#o.control.protection }),
-					allowUnidentifiedBaselinePrompt: session.fingerprint === undefined,
 				},
 			);
 		};
@@ -1288,6 +1290,7 @@ export class WorkbenchBrokerV0 implements EndoCockpitWorkbenchV0 {
 		this.#disposed = true;
 		this.#pairing.clear();
 		this.#ended = true;
+		this.adapter.markDisconnected("The Pi workbench broker was disposed.");
 		this.#command?.abort.abort();
 		this.#interventions?.beginClose();
 		await this.#command?.done.catch(() => {});

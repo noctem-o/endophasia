@@ -557,7 +557,7 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 		});
 	}
 
-	descriptor(): EndoDevelopAdapterDescriptorV0 {
+	describe(): EndoDevelopAdapterDescriptorV0 {
 		const session = this.#sessionIdentity();
 		const freshness = this.#evidenceFreshness();
 		return {
@@ -706,7 +706,7 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 		options?: EndoDevelopAdmissionOptionsV0,
 	): EndoDevelopAdmissionDecisionV0 {
 		return endoEvaluateDevelopAdmissionV0({
-			descriptor: this.descriptor(),
+			descriptor: this.describe(),
 			snapshot: this.snapshot(),
 			request,
 			authority,
@@ -873,6 +873,27 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 		decision: EndoDevelopNativeApprovalDecisionV0 | null = null,
 		options?: { nowMs?: number; allowSessionOrPolicyScope?: boolean },
 	): EndoDevelopNativeApprovalOutcomeV0 {
+		const connected = !this.#closed && this.#connection.state === "connected";
+		const pending = this.#pendingApprovals.get(request.requestId);
+		const pendingMatches =
+			pending !== undefined &&
+			pending.source === request.source &&
+			pending.sessionKey === request.sessionKey &&
+			pending.instanceId === request.instanceId &&
+			pending.turnId === request.turnId &&
+			pending.itemId === request.itemId &&
+			pending.approvalKind === request.approvalKind &&
+			pending.nativeMethod === request.nativeMethod &&
+			pending.requestedScope === request.requestedScope;
+		if (!pendingMatches) {
+			return {
+				resolution: "cancelled",
+				requestId: request.requestId,
+				code: "binding-mismatch",
+				reason: "Native approval request is not pending or was already resolved (replay refused).",
+				grantsEndophasiaAuthority: false,
+			};
+		}
 		const outcome = endoEvaluateNativeApprovalV0({
 			request,
 			decision,
@@ -880,6 +901,8 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 				source: "test-codex-specimen",
 				sessionKey: endoAdapterSessionKeyV0(this.#sessionIdentity()),
 				instanceId: this.#instanceId,
+				connected,
+				activeTurnId: this.#activeTurn?.turnId ?? null,
 				knownKinds: CODEX_KNOWN_APPROVAL_KINDS,
 				mode: "server-initiated-requests",
 				nowMs: options?.nowMs ?? this.#now(),
@@ -888,6 +911,7 @@ export class CodexAdapterSpecimenV0 implements EndoDevelopLiveAdapterV0 {
 					: { allowSessionOrPolicyScope: options.allowSessionOrPolicyScope }),
 			},
 		});
+		// JSON-RPC ServerRequest ids are single-use: once a response is sent to the server, remove from pending.
 		this.#pendingApprovals.delete(request.requestId);
 		this.#emit(
 			{

@@ -28,6 +28,7 @@ import {
 	type EndoDevelopOperationRequestV0,
 	endoAdapterSessionKeyV0,
 	endoDevelopAdapterDescriptorProblemV0,
+	endoDevelopObservationProblemV0,
 } from "../protocol/develop-adapter.ts";
 import {
 	endoHarnessIdentityBasisV1,
@@ -37,9 +38,11 @@ import {
 } from "../protocol/harness.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import {
+	EndoObservationGuardV0,
 	endoDevelopCapabilityFromStateV0,
 	endoDevelopOperationPayloadDigestV0,
 	endoEvaluateDevelopAdmissionV0,
+	endoEvaluateNativeApprovalV0,
 } from "../runtime/contracts/develop-adapter.ts";
 import type { EndoExecutionProtectionV0 } from "../runtime/contracts/execution-protection.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
@@ -232,8 +235,8 @@ describe("identity and capability evidence invariants", () => {
 		});
 		codex.initialize();
 
-		const piKey = endoAdapterSessionKeyV0(pi.descriptor().session);
-		const codexKey = endoAdapterSessionKeyV0(codex.descriptor().session);
+		const piKey = endoAdapterSessionKeyV0(pi.describe().session);
+		const codexKey = endoAdapterSessionKeyV0(codex.describe().session);
 		expect(piKey).not.toBe(codexKey);
 		expect(piKey).toContain("pi-live:");
 		expect(codexKey).toContain("test-codex-specimen:");
@@ -261,7 +264,7 @@ describe("identity and capability evidence invariants", () => {
 			projectScope: "/workspace/demo",
 			now: () => NOW,
 		});
-		const d1 = adapter.descriptor();
+		const d1 = adapter.describe();
 		expect(d1.session.key).toEqual({ status: "established", id: "launch-0001", scope: "launch" });
 
 		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "early" };
@@ -389,7 +392,7 @@ describe("Codex non-Pi specimen: explicit turn semantics, faults, reasoning/usag
 			now: () => NOW,
 		});
 		specimen.initialize();
-		const desc = specimen.descriptor();
+		const desc = specimen.describe();
 
 		// Semantic differences explicitly preserved against Pi:
 		expect(desc.operations.prompt.yieldsTurnId).toBe(true);
@@ -539,7 +542,7 @@ describe("Codex non-Pi specimen: explicit turn semantics, faults, reasoning/usag
 		});
 	});
 
-	it("enforces strict native approval boundaries: no prompt inheritance, fail-closed unknown, no scope broadening, no cross-turn reuse", async () => {
+	it("enforces strict native approval boundaries: no prompt inheritance, fail-closed unknown, no scope broadening, no cross-turn reuse, single-use", async () => {
 		const specimen = new CodexAdapterSpecimenV0({ now: () => NOW });
 		specimen.initialize();
 
@@ -553,82 +556,95 @@ describe("Codex non-Pi specimen: explicit turn semantics, faults, reasoning/usag
 		expect(started.status).toBe("accepted");
 		const turnId = started.status === "accepted" ? started.turnId! : "";
 
-		// Server issues a command execution approval request during the turn.
-		const req = specimen.emitNativeApprovalRequest({
-			requestId: "approval-cmd-1",
-			approvalKind: "command-execution",
-			nativeMethod: "item/commandExecution/requestApproval",
-			itemId: "item-cmd-1",
-			requestedScope: "once",
-			summary: "npm test",
-		});
+		const emitCmdApproval = (id: string) =>
+			specimen.emitNativeApprovalRequest({
+				requestId: id,
+				approvalKind: "command-execution",
+				nativeMethod: "item/commandExecution/requestApproval",
+				itemId: `item-${id}`,
+				requestedScope: "once",
+				summary: "npm test",
+			});
+
+		// 1. Missing operator decision fails closed (never inherits prior prompt authorization!) and consumes the request.
+		const req1 = emitCmdApproval("approval-cmd-1");
 		expect(specimen.snapshot().pendingNativeApprovalCount).toBe(1);
 		expect(specimen.snapshot().stateClaims[0]?.state).toBe("waiting-approval");
-
-		// 1. Missing operator decision fails closed (never inherits prior prompt authorization!).
-		expect(specimen.handleNativeApproval(req, null, { nowMs: NOW })).toMatchObject({
+		expect(specimen.handleNativeApproval(req1, null, { nowMs: NOW })).toMatchObject({
 			resolution: "declined",
 			code: "no-operator-decision",
 			grantsEndophasiaAuthority: false,
 		});
+		expect(specimen.snapshot().pendingNativeApprovalCount).toBe(0);
 
 		// 2. Trying to pass a prompt-derived basis fails closed.
+		const req2 = emitCmdApproval("approval-cmd-2");
 		const forgedBasis = {
-			requestId: req.requestId,
-			source: req.source,
-			sessionKey: req.sessionKey,
-			instanceId: req.instanceId,
-			turnId: req.turnId,
-			itemId: req.itemId,
+			requestId: req2.requestId,
+			source: req2.source,
+			sessionKey: req2.sessionKey,
+			instanceId: req2.instanceId,
+			turnId: req2.turnId,
+			itemId: req2.itemId,
 			decision: "accept" as const,
 			approvedScope: "once" as const,
 			basis: "inherited-from-prompt" as unknown as "explicit-operator-native-approval",
 			decidedAtMs: NOW,
 			expiresAtMs: NOW + 60_000,
 		};
-		expect(specimen.handleNativeApproval(req, forgedBasis, { nowMs: NOW })).toMatchObject({
+		expect(specimen.handleNativeApproval(req2, forgedBasis, { nowMs: NOW })).toMatchObject({
 			resolution: "declined",
 			code: "prompt-authority-not-inheritable",
 			grantsEndophasiaAuthority: false,
 		});
 
 		// 3. Scope broadening (`once` -> `session` or `policy-amendment`) fails closed.
+		const req3 = emitCmdApproval("approval-cmd-3");
 		const broadened: EndoDevelopNativeApprovalDecisionV0 = {
-			requestId: req.requestId,
-			source: req.source,
-			sessionKey: req.sessionKey,
-			instanceId: req.instanceId,
-			turnId: req.turnId,
-			itemId: req.itemId,
+			requestId: req3.requestId,
+			source: req3.source,
+			sessionKey: req3.sessionKey,
+			instanceId: req3.instanceId,
+			turnId: req3.turnId,
+			itemId: req3.itemId,
 			decision: "accept",
 			approvedScope: "session",
 			basis: "explicit-operator-native-approval",
 			decidedAtMs: NOW,
 			expiresAtMs: NOW + 60_000,
 		};
-		expect(specimen.handleNativeApproval(req, broadened, { nowMs: NOW })).toMatchObject({
+		expect(specimen.handleNativeApproval(req3, broadened, { nowMs: NOW })).toMatchObject({
 			resolution: "declined",
 			code: "scope-broadening-refused",
 			grantsEndophasiaAuthority: false,
 		});
 
 		// 4. Reusing a decision for another turn fails closed.
+		const req4 = emitCmdApproval("approval-cmd-4");
 		const wrongTurn: EndoDevelopNativeApprovalDecisionV0 = {
-			...broadened,
-			approvedScope: "once",
+			requestId: req4.requestId,
+			source: req4.source,
+			sessionKey: req4.sessionKey,
+			instanceId: req4.instanceId,
 			turnId: "019a0000-0000-7000-8000-otherturn999",
+			itemId: req4.itemId,
+			decision: "accept",
+			approvedScope: "once",
+			basis: "explicit-operator-native-approval",
+			decidedAtMs: NOW,
+			expiresAtMs: NOW + 60_000,
 		};
-		expect(specimen.handleNativeApproval(req, wrongTurn, { nowMs: NOW })).toMatchObject({
+		expect(specimen.handleNativeApproval(req4, wrongTurn, { nowMs: NOW })).toMatchObject({
 			resolution: "declined",
 			code: "binding-mismatch",
 		});
 
 		// 5. Unknown native approval kind fails closed even WITH an explicit accept decision.
 		const unknownReq = specimen.emitNativeApprovalRequest({
-			requestId: "approval-unknown-2",
+			requestId: "approval-unknown-5",
 			approvalKind: "unknown",
 			nativeMethod: "item/futureCapability/requestApproval",
-			itemId: "item-x-2",
+			itemId: "item-x-5",
 			requestedScope: "once",
 			summary: "unknown future action",
 		});
@@ -652,24 +668,112 @@ describe("Codex non-Pi specimen: explicit turn semantics, faults, reasoning/usag
 		});
 
 		// 6. Negative control: exact matching one-time explicit operator decision succeeds AND still grants NO Endophasia authority.
+		const req6 = emitCmdApproval("approval-cmd-6");
 		const exactAccept: EndoDevelopNativeApprovalDecisionV0 = {
-			requestId: req.requestId,
-			source: req.source,
-			sessionKey: req.sessionKey,
-			instanceId: req.instanceId,
+			requestId: req6.requestId,
+			source: req6.source,
+			sessionKey: req6.sessionKey,
+			instanceId: req6.instanceId,
 			turnId,
-			itemId: req.itemId,
+			itemId: req6.itemId,
 			decision: "accept",
 			approvedScope: "once",
 			basis: "explicit-operator-native-approval",
 			decidedAtMs: NOW,
 			expiresAtMs: NOW + 60_000,
 		};
-		expect(specimen.handleNativeApproval(req, exactAccept, { nowMs: NOW })).toEqual({
+		expect(specimen.handleNativeApproval(req6, exactAccept, { nowMs: NOW })).toEqual({
 			resolution: "accepted",
-			requestId: req.requestId,
+			requestId: req6.requestId,
 			scope: "once",
 			grantsEndophasiaAuthority: false,
+		});
+
+		// 7. Replaying the same consumed approval request fails closed (single-use).
+		expect(specimen.handleNativeApproval(req6, exactAccept, { nowMs: NOW })).toMatchObject({
+			resolution: "cancelled",
+			code: "binding-mismatch",
+			grantsEndophasiaAuthority: false,
+		});
+
+		// 8. Pure evaluator fail-closed checks: unknown decision value, unknown approvedScope, NaN/Infinity expiry, disconnected, ended turn.
+		const req8 = emitCmdApproval("approval-cmd-8");
+		const baseAccept: EndoDevelopNativeApprovalDecisionV0 = {
+			requestId: req8.requestId,
+			source: req8.source,
+			sessionKey: req8.sessionKey,
+			instanceId: req8.instanceId,
+			turnId,
+			itemId: req8.itemId,
+			decision: "accept",
+			approvedScope: "once",
+			basis: "explicit-operator-native-approval",
+			decidedAtMs: NOW,
+			expiresAtMs: NOW + 60_000,
+		};
+		const currentCtx = {
+			source: req8.source,
+			sessionKey: req8.sessionKey,
+			instanceId: req8.instanceId,
+			connected: true,
+			activeTurnId: turnId,
+			knownKinds: ["command-execution"] as const,
+			mode: "server-initiated-requests" as const,
+			nowMs: NOW,
+		};
+		expect(
+			endoEvaluateNativeApprovalV0({
+				request: req8,
+				decision: { ...baseAccept, decision: "deny" as unknown as "decline" },
+				current: currentCtx,
+			}),
+		).toMatchObject({ resolution: "declined", code: "operator-declined" });
+
+		expect(
+			endoEvaluateNativeApprovalV0({
+				request: req8,
+				decision: { ...baseAccept, approvedScope: "forever" as unknown as "once" },
+				current: { ...currentCtx, allowSessionOrPolicyScope: true },
+			}),
+		).toMatchObject({ resolution: "declined", code: "scope-broadening-refused" });
+
+		expect(
+			endoEvaluateNativeApprovalV0({
+				request: req8,
+				decision: { ...baseAccept, expiresAtMs: Number.NaN },
+				current: currentCtx,
+			}),
+		).toMatchObject({ resolution: "declined", code: "decision-expired" });
+
+		expect(
+			endoEvaluateNativeApprovalV0({
+				request: req8,
+				decision: { ...baseAccept, expiresAtMs: Number.POSITIVE_INFINITY },
+				current: currentCtx,
+			}),
+		).toMatchObject({ resolution: "declined", code: "decision-expired" });
+
+		expect(
+			endoEvaluateNativeApprovalV0({
+				request: req8,
+				decision: baseAccept,
+				current: { ...currentCtx, connected: false },
+			}),
+		).toMatchObject({ resolution: "cancelled", code: "stale-attachment" });
+
+		expect(
+			endoEvaluateNativeApprovalV0({
+				request: req8,
+				decision: baseAccept,
+				current: { ...currentCtx, activeTurnId: null },
+			}),
+		).toMatchObject({ resolution: "cancelled", code: "binding-mismatch" });
+
+		// Disconnecting specimen cancels pending approval cleanly.
+		specimen.simulateDisconnect("connection-lost");
+		expect(specimen.handleNativeApproval(req8, baseAccept, { nowMs: NOW })).toMatchObject({
+			resolution: "cancelled",
+			code: "stale-attachment",
 		});
 	});
 });
@@ -690,7 +794,7 @@ describe("authority boundaries and negative controls", () => {
 			admitted: false,
 			code: "synthetic-not-admitted",
 		});
-		expect(endoDevelopAdapterDescriptorProblemV0(specimen.descriptor())).toMatch(/synthetic/);
+		expect(endoDevelopAdapterDescriptorProblemV0(specimen.describe())).toMatch(/synthetic/);
 
 		// Negative control: same request and proof succeed ONLY when explicitly in fixture mode.
 		expect(specimen.admitOperation(req, proof, { mode: "fixture", nowMs: NOW })).toEqual({ admitted: true });
@@ -724,7 +828,7 @@ describe("authority boundaries and negative controls", () => {
 		const specimen = new CodexAdapterSpecimenV0({ now: () => NOW });
 		specimen.initialize();
 		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "grant bypass" };
-		const sessionKey = endoAdapterSessionKeyV0(specimen.descriptor().session)!;
+		const sessionKey = endoAdapterSessionKeyV0(specimen.describe().session)!;
 		const enforcedProtection: EndoExecutionProtectionV0 = {
 			observe: () => ({
 				state: "enforced",
@@ -754,7 +858,7 @@ describe("authority boundaries and negative controls", () => {
 		).toMatchObject({ admitted: false, code: "session-grant-not-permitted" });
 
 		// Even if a descriptor tries to forge everydayGrantEligible: true on a codex harness, schema validation rejects it.
-		const forged = { ...specimen.descriptor(), everydayGrantEligible: true };
+		const forged = { ...specimen.describe(), everydayGrantEligible: true };
 		expect(endoDevelopAdapterDescriptorProblemV0(forged, { allowSynthetic: true })).toMatch(/everydayGrantEligible/);
 	});
 
@@ -835,8 +939,8 @@ describe("authority boundaries and negative controls", () => {
 		specimen.initialize();
 		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "tamper" };
 		const proof = buildOperatorProofV0({ adapter: specimen, request: req, nowMs: NOW });
-		const badDescriptor = { ...specimen.descriptor(), extraUnauthorizedField: true } as unknown as ReturnType<
-			CodexAdapterSpecimenV0["descriptor"]
+		const badDescriptor = { ...specimen.describe(), extraUnauthorizedField: true } as unknown as ReturnType<
+			CodexAdapterSpecimenV0["describe"]
 		>;
 		expect(
 			endoEvaluateDevelopAdmissionV0({
@@ -847,6 +951,363 @@ describe("authority boundaries and negative controls", () => {
 				options: { mode: "fixture", nowMs: NOW },
 			}),
 		).toMatchObject({ admitted: false, code: "invalid-request" });
+	});
+
+	it("validates authority timestamps, mechanism, unknown request kinds, and attachment paths (fail-closed)", () => {
+		const specimen = new CodexAdapterSpecimenV0({ now: () => NOW });
+		specimen.initialize();
+		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "hello" };
+		const proof = buildOperatorProofV0({ adapter: specimen, request: req, nowMs: NOW });
+
+		// Non-finite authority timestamps fail closed.
+		expect(
+			specimen.admitOperation(req, { ...proof, expiresAtMs: Number.NaN }, { mode: "fixture", nowMs: NOW }),
+		).toMatchObject({ admitted: false, code: "authority-expired" });
+		expect(
+			specimen.admitOperation(
+				req,
+				{ ...proof, expiresAtMs: Number.POSITIVE_INFINITY },
+				{ mode: "fixture", nowMs: NOW },
+			),
+		).toMatchObject({ admitted: false, code: "authority-expired" });
+		expect(
+			specimen.admitOperation(req, { ...proof, authorizedAtMs: Number.NaN }, { mode: "fixture", nowMs: NOW }),
+		).toMatchObject({ admitted: false, code: "authority-expired" });
+
+		// Forged authority mechanism fails closed.
+		expect(
+			specimen.admitOperation(
+				req,
+				{ ...proof, mechanism: "auto-approved" as unknown as "terminal-code" },
+				{ mode: "fixture", nowMs: NOW },
+			),
+		).toMatchObject({ admitted: false, code: "missing-authority" });
+
+		// Unknown request kind returns explicit refusal (never undefined).
+		const unknownReq = { kind: "eval-shell", command: "id" } as unknown as EndoDevelopOperationRequestV0;
+		expect(
+			endoEvaluateDevelopAdmissionV0({
+				descriptor: specimen.describe(),
+				snapshot: specimen.snapshot(),
+				request: unknownReq,
+				authority: proof,
+				options: { mode: "fixture", nowMs: NOW },
+			}),
+		).toMatchObject({ admitted: false, code: "invalid-request" });
+
+		// Unsafe attachment references (absolute paths, parent traversal) fail closed.
+		for (const badAtt of [
+			{
+				kind: "local-image" as const,
+				delivery: "reference" as const,
+				reference: "/etc/shadow",
+				mediaType: null,
+				bytes: 10,
+			},
+			{
+				kind: "local-image" as const,
+				delivery: "reference" as const,
+				reference: "../secret.png",
+				mediaType: null,
+				bytes: 10,
+			},
+		]) {
+			const attReq: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "hi", attachments: [badAtt] };
+			const attProof = buildOperatorProofV0({ adapter: specimen, request: attReq, nowMs: NOW });
+			expect(specimen.admitOperation(attReq, attProof, { mode: "fixture", nowMs: NOW })).toMatchObject({
+				admitted: false,
+				code: "invalid-request",
+			});
+		}
+
+		// Non-finite attachment bytes fail closed cleanly without throwing.
+		const nanBytesReq: EndoDevelopOperationRequestV0 = {
+			kind: "prompt",
+			message: "hi",
+			attachments: [
+				{
+					kind: "local-image",
+					delivery: "reference",
+					reference: "assets/shot.png",
+					mediaType: null,
+					bytes: Number.NaN,
+				},
+			],
+		};
+		expect(specimen.admitOperation(nanBytesReq, proof, { mode: "fixture", nowMs: NOW })).toMatchObject({
+			admitted: false,
+			code: "invalid-request",
+		});
+
+		// Valid workspace-relative attachment succeeds (negative control).
+		const okAttReq: EndoDevelopOperationRequestV0 = {
+			kind: "prompt",
+			message: "hi",
+			attachments: [
+				{
+					kind: "local-image",
+					delivery: "reference",
+					reference: "assets/shot.png",
+					mediaType: "image/png",
+					bytes: 42,
+				},
+			],
+		};
+		const okAttProof = buildOperatorProofV0({ adapter: specimen, request: okAttReq, nowMs: NOW });
+		expect(specimen.admitOperation(okAttReq, okAttProof, { mode: "fixture", nowMs: NOW })).toEqual({
+			admitted: true,
+		});
+	});
+
+	it("enforces evidence cross-checking, stale baseline prompt refusal, non-Pi evidence requirement, and control-path registry", () => {
+		const specimen = new CodexAdapterSpecimenV0({ now: () => NOW });
+		specimen.initialize();
+		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "check" };
+		const proof = buildOperatorProofV0({ adapter: specimen, request: req, nowMs: NOW });
+
+		// Non-Pi descriptor claiming admitted prompt with `evidenceCapability: null` fails closed.
+		const noEvidenceDesc = {
+			...specimen.describe(),
+			operations: {
+				...specimen.describe().operations,
+				prompt: {
+					...specimen.describe().operations.prompt,
+					capability: { ...specimen.describe().operations.prompt.capability, evidenceCapability: null },
+				},
+			},
+		};
+		expect(
+			endoEvaluateDevelopAdmissionV0({
+				descriptor: noEvidenceDesc,
+				snapshot: specimen.snapshot(),
+				request: req,
+				authority: proof,
+				options: { mode: "fixture", nowMs: NOW },
+			}),
+		).toMatchObject({ admitted: false, code: "capability-not-admitted" });
+
+		// Forged descriptor claiming `admitted` while capabilityState says `unverified` fails closed.
+		const unverifiedState = makeSyntheticCodexCapabilityStateV0({
+			fingerprint: makeSyntheticCodexFingerprintV0({ attachment: "codex.specimen" }),
+			attachment: "codex.specimen",
+			admitted: [],
+		});
+		const curFp = specimen.describe().runtimeFingerprint;
+		const fpId = curFp.status === "identified" ? curFp.fingerprintId : null;
+		expect(
+			endoEvaluateDevelopAdmissionV0({
+				descriptor: {
+					...specimen.describe(),
+					capabilityState: { ...unverifiedState, fingerprintId: fpId },
+				},
+				snapshot: specimen.snapshot(),
+				request: req,
+				authority: proof,
+				options: { mode: "fixture", nowMs: NOW },
+			}),
+		).toMatchObject({ admitted: false, code: "capability-not-admitted" });
+
+		// Non-Pi harness spoofing BOTH `session.source: "pi-live"` and `controlPath: "pi-workbench-broker"` fails closed.
+		const spoofed = {
+			...specimen.describe(),
+			synthetic: false,
+			session: { ...specimen.describe().session, source: "pi-live" },
+			controlPath: "pi-workbench-broker",
+			everydayGrantEligible: false,
+		};
+		const spoofedSessionKey = endoAdapterSessionKeyV0(spoofed.session)!;
+		expect(
+			endoEvaluateDevelopAdmissionV0({
+				descriptor: spoofed,
+				snapshot: { ...specimen.snapshot(), sessionKey: spoofedSessionKey },
+				request: req,
+				authority: {
+					...proof,
+					source: "pi-live",
+					sessionKey: spoofedSessionKey,
+					controlPath: "pi-workbench-broker",
+				},
+				options: { mode: "production", nowMs: NOW },
+			}),
+		).toMatchObject({ admitted: false, code: "cross-source-control" });
+
+		// Unregistered production controlPath fails closed in production mode.
+		const fp = makeStrongPiFingerprint();
+		const session = Object.assign(new FakeSession(), {
+			fingerprint: fp,
+			capabilityState: makePiCapabilityState(fp.id),
+		});
+		const piAdapter = new PiDevelopAdapterV0({
+			session,
+			attachmentId: "pi.default",
+			launchId: "ctrl-path-0001",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+		const piDesc = {
+			...piAdapter.describe(),
+			controlPath: "unregistered-control-path",
+			everydayGrantEligible: false,
+		};
+		const piReq: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "prod check" };
+		const piProof = buildOperatorProofV0({
+			adapter: piAdapter,
+			request: piReq,
+			nowMs: NOW,
+			overrides: { controlPath: "unregistered-control-path" },
+		});
+		expect(
+			endoEvaluateDevelopAdmissionV0({
+				descriptor: piDesc,
+				snapshot: piAdapter.snapshot(),
+				request: piReq,
+				authority: piProof,
+				options: { mode: "production", nowMs: NOW },
+			}),
+		).toMatchObject({ admitted: false, code: "control-path-mismatch" });
+
+		// Stale capability evidence refuses even Pi baseline `prompt` with `capability-stale`.
+		const staleFp = makeStrongPiFingerprint("1.6.0", "c".repeat(64), "d".repeat(64));
+		session.fingerprint = staleFp;
+		const staleProof = buildOperatorProofV0({ adapter: piAdapter, request: piReq, nowMs: NOW });
+		expect(piAdapter.admitOperation(piReq, staleProof, { mode: "production", nowMs: NOW })).toMatchObject({
+			admitted: false,
+			code: "capability-stale",
+		});
+	});
+
+	it("refuses unidentified Pi runtime unconditionally in production (no bypass)", () => {
+		const session = new FakeSession();
+		session.fingerprint = undefined;
+		const adapter = new PiDevelopAdapterV0({
+			session,
+			attachmentId: "pi.default",
+			launchId: "unidentified-0001",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "no fingerprint" };
+		const proof = buildOperatorProofV0({ adapter, request: req, nowMs: NOW });
+		expect(adapter.admitOperation(req, proof, { mode: "production", nowMs: NOW })).toMatchObject({
+			admitted: false,
+			code: "runtime-unidentified",
+		});
+	});
+
+	it("validates observation body fields and rejects spoofed observation metadata with strictly monotonic gap sequences", () => {
+		const baseObs: EndoDevelopObservationV0 = {
+			schemaVersion: "endo.develop-adapter-observation.v0",
+			observationId: "obs-1",
+			source: "pi-live",
+			attachmentId: "pi.default",
+			instanceId: "inst-1",
+			sessionKey: "endo.session.pi.fake-session-1",
+			sequence: 1,
+			observedAt: "2026-11-24T12:00:00.000Z",
+			basis: "runtime-reported",
+			nativeIds: { sessionId: null, turnId: null, itemId: null, entryId: null },
+			body: {
+				kind: "usage",
+				usage: {
+					status: "reported",
+					value: {
+						inputTokens: Number.NaN,
+						outputTokens: 10,
+						cachedInputTokens: null,
+						cacheWriteTokens: null,
+						reasoningTokens: null,
+						totalTokens: 10,
+						costUsd: null,
+					},
+				},
+			},
+		};
+		expect(endoDevelopObservationProblemV0(baseObs)).toMatch(/token counts/);
+
+		expect(
+			endoDevelopObservationProblemV0({
+				...baseObs,
+				body: {
+					kind: "lifecycle",
+					event: "bogus-event" as unknown as "turn-started",
+					sessionState: "active",
+					turnState: "in-progress",
+					detail: null,
+				},
+			}),
+		).toMatch(/lifecycle\.event/);
+
+		expect(
+			endoDevelopObservationProblemV0({
+				...baseObs,
+				body: {
+					kind: "transcript",
+					role: "assistant",
+					contentKind: "reasoning",
+					text: "should be null when redacted",
+					reasoningKind: "redacted",
+					truncated: false,
+					stopReason: null,
+				},
+			}),
+		).toMatch(/redacted/);
+
+		expect(
+			endoDevelopObservationProblemV0({
+				...baseObs,
+				body: {
+					kind: "native-approval",
+					phase: "requested",
+					requestId: "req-1",
+					approvalKind: "command-execution",
+					resolution: "accepted",
+				},
+			}),
+		).toMatch(/resolution/);
+
+		// EndoObservationGuardV0 rejects spoofed source/attachmentId/sessionKey and keeps gap sequences strictly monotonic.
+		const guard = new EndoObservationGuardV0({
+			source: "pi-live",
+			attachmentId: "pi.default",
+			instanceId: "inst-1",
+			sessionKey: "endo.session.pi.fake-session-1",
+		});
+		const valid1: EndoDevelopObservationV0 = {
+			...baseObs,
+			observationId: "obs-v1",
+			sequence: 1,
+			body: {
+				kind: "lifecycle",
+				event: "turn-started",
+				sessionState: "active",
+				turnState: "in-progress",
+				detail: null,
+			},
+		};
+		const valid2: EndoDevelopObservationV0 = { ...valid1, observationId: "obs-v2", sequence: 5 };
+		const spoofedSource: EndoDevelopObservationV0 = {
+			...valid1,
+			observationId: "obs-spoof",
+			sequence: 6,
+			source: "codex-live",
+		};
+		const outOfOrder: EndoDevelopObservationV0 = { ...valid1, observationId: "obs-ooo", sequence: 2 };
+		const duplicate: EndoDevelopObservationV0 = { ...valid1, observationId: "obs-v2", sequence: 7 };
+
+		expect(guard.ingest(valid1).accepted).not.toBeNull();
+		expect(guard.ingest(valid2).accepted).not.toBeNull();
+		const spoofedRes = guard.ingest(spoofedSource);
+		expect(spoofedRes.accepted).toBeNull();
+		expect(spoofedRes.gaps).toEqual([]);
+		const oooRes = guard.ingest(outOfOrder);
+		expect(oooRes.accepted).not.toBeNull();
+		expect(oooRes.gaps[0]?.body).toMatchObject({ kind: "evidence-gap", gap: "out-of-order-event" });
+		const dupRes = guard.ingest(duplicate);
+		expect(dupRes.accepted).toBeNull();
+		expect(dupRes.gaps[0]?.body).toMatchObject({ kind: "evidence-gap", gap: "duplicate-event" });
+		// Emitted gap sequence numbers must be strictly increasing and never collide with previously seen sequences.
+		expect(oooRes.gaps[0]!.sequence).toBe(6);
+		expect(dupRes.gaps[0]!.sequence).toBe(7);
 	});
 });
 
@@ -923,7 +1384,72 @@ describe("production Pi integration: WorkbenchBrokerV0 and real PiSessionAttachm
 		expect(view.body).toMatchObject({ state: "refused", reason: "session-ended" });
 		expect(session.promptCalls).toEqual([]);
 
+		// Broker dispose() disconnects the adapter even if the underlying session object remains live.
+		expect(broker.adapter.snapshot().connection.state).toBe("connected");
 		await broker.dispose();
+		expect(broker.adapter.snapshot().connection.state).toBe("disconnected");
+		expect(broker.adapter.snapshot().connection.reason).toMatch(/disposed/);
+	});
+
+	it("auto-rotates instanceId on Pi connectionInstance reconnect, ignores stale-instance events, sanitizes tool names, and supports long Pi session IDs", async () => {
+		const longPiSessionId = "s".repeat(160);
+		const session = new FakeSession();
+		session.piSessionId = longPiSessionId;
+		let connInstance = "conn-1";
+		Object.defineProperty(session, "connectionInstance", {
+			get: () => connInstance,
+			configurable: true,
+		});
+
+		const adapter = new PiDevelopAdapterV0({
+			session,
+			attachmentId: "pi.default",
+			launchId: "pi-long-0001",
+			projectScope: "/workspace/demo",
+			now: () => NOW,
+		});
+
+		// Long 160-char Pi session ID validates cleanly and passes admission.
+		const d1 = adapter.describe();
+		const s1 = adapter.snapshot();
+		expect(endoDevelopAdapterDescriptorProblemV0(d1)).toBeNull();
+		const req: EndoDevelopOperationRequestV0 = { kind: "prompt", message: "long session id" };
+		const proof1 = buildOperatorProofV0({ adapter, request: req, nowMs: NOW });
+		expect(adapter.admitOperation(req, proof1, { mode: "production", nowMs: NOW })).toEqual({ admitted: true });
+
+		// Simulate PiSessionAttachmentV0.reconnect() rotating connectionInstance without manual rotateInstance().
+		connInstance = "conn-2";
+		const s2 = adapter.snapshot();
+		expect(s2.attachment.instanceId).not.toBe(s1.attachment.instanceId);
+		expect(adapter.admitOperation(req, proof1, { mode: "production", nowMs: NOW })).toMatchObject({
+			admitted: false,
+			code: "stale-attachment",
+		});
+
+		// Stale-instance `auto_retry_end` must NOT corrupt active state on the new instance.
+		const observations: EndoDevelopObservationV0[] = [];
+		adapter.subscribeObservations((o) => observations.push(o));
+		adapter.observePiLiveEvent(
+			{ type: "auto_retry_end", record: { success: false, finalError: "stale error" } },
+			s1.attachment.instanceId,
+		);
+		expect(
+			observations.some((o) => o.body.kind === "evidence-gap" && o.body.gap === "late-event-from-prior-attachment"),
+		).toBe(true);
+		// Subsequent normal turn settlement on the new instance must report `turn-completed` (not `turn-failed`).
+		adapter.observePiLiveEvent({ type: "agent_settled", record: {} });
+		expect(observations.some((o) => o.body.kind === "lifecycle" && o.body.event === "turn-completed")).toBe(true);
+		expect(observations.some((o) => o.body.kind === "lifecycle" && o.body.event === "turn-failed")).toBe(false);
+
+		// Control characters in tool names are sanitized and `compaction_end` maps to `context-compacted`.
+		adapter.observePiLiveEvent({
+			type: "tool_execution_start",
+			record: { toolName: "bash\u001b[31m\nrm", toolCallId: "tc-1" },
+		});
+		adapter.observePiLiveEvent({ type: "compaction_end", record: {} });
+		const toolObs = observations.find((o) => o.body.kind === "tool-activity");
+		expect(toolObs?.body.kind === "tool-activity" && toolObs.body.name).toBe("bash [31m rm");
+		expect(observations.some((o) => o.body.kind === "lifecycle" && o.body.event === "context-compacted")).toBe(true);
 	});
 
 	it("wraps a real PiSessionAttachmentV0 talking to the deterministic fake Pi child process", async () => {
@@ -950,7 +1476,7 @@ describe("production Pi integration: WorkbenchBrokerV0 and real PiSessionAttachm
 					launchId: "real-fake-pi-0001",
 					projectScope: workDir,
 				});
-				const d = adapter.descriptor();
+				const d = adapter.describe();
 				expect(endoDevelopAdapterDescriptorProblemV0(d)).toBeNull();
 				expect(d.synthetic).toBe(false);
 				expect(d.harness).toEqual({ family: "pi", observedVersion: "1.5.2" });
@@ -1037,6 +1563,11 @@ describe("source guards", () => {
 	it("runtime/contracts/develop-adapter.ts imports no adapter, storage, or presentation surface", () => {
 		const specs = importSpecifiers(join(repoRoot, "runtime/contracts/develop-adapter.ts"));
 		expect(specs.filter((s) => /adapters\/|storage\/|develop-session\.ts/.test(s))).toEqual([]);
+	});
+
+	it("protocol/develop-adapter.ts imports only sibling protocol modules", () => {
+		const specs = importSpecifiers(join(repoRoot, "protocol/develop-adapter.ts"));
+		expect(specs.every((s) => /^\.\/[a-z-]+\.ts$/.test(s))).toBe(true);
 	});
 
 	it("payload digest changes deterministically if request payload changes (negative control)", () => {

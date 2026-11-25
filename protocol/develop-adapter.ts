@@ -665,12 +665,43 @@ export interface EndoDevelopObservationV0 {
 // ---------------------------------------------------------------------------------------------------------------
 
 const SOURCE_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
-const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+/** Covers `endo.session.` (13 chars) + full 256-char `ENDO_IDENTIFIER_LOCAL_V0` (protocol/identity.ts). */
+const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,271}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 const isSafeText = (value: unknown, max = 512): value is string =>
 	typeof value === "string" && value.length >= 1 && value.length <= max && !CONTROL_CHARS.test(value);
+
+const isNonNegInt = (value: unknown): value is number =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+const isNonNegFinite = (value: unknown): value is number =>
+	typeof value === "number" && Number.isFinite(value) && value >= 0;
+
+const LIFECYCLE_EVENTS_V0 = [
+	"session-attached",
+	"session-detached",
+	"connection-lost",
+	"turn-started",
+	"turn-completed",
+	"turn-interrupted",
+	"turn-aborted",
+	"turn-failed",
+	"context-compacted",
+] as const;
+
+const TOOL_ACTIVITY_KINDS_V0 = [
+	"tool-call",
+	"command-execution",
+	"file-change",
+	"mcp-tool",
+	"subagent-activity",
+] as const;
+
+const TOOL_ACTIVITY_PHASES_V0 = ["started", "updated", "completed", "failed", "declined", "unknown"] as const;
+const OPERATION_OUTCOMES_V0 = ["consumed", "completed", "interrupted", "failed", "unknown"] as const;
+const NATIVE_APPROVAL_RESOLUTIONS_V0 = ["pending", "accepted", "declined", "cancelled"] as const;
 
 const isOneOf = <T extends string>(list: readonly T[], value: unknown): value is T =>
 	typeof value === "string" && (list as readonly string[]).includes(value);
@@ -740,9 +771,15 @@ export function endoDevelopAdapterDescriptorProblemV0(
 	if (d.controlPath !== null && (typeof d.controlPath !== "string" || !SOURCE_PATTERN.test(d.controlPath)))
 		return "controlPath must be an integration identifier or null";
 	if (typeof d.everydayGrantEligible !== "boolean") return "everydayGrantEligible must be a boolean";
-	// Guard: only real Pi may claim Everyday grant eligibility in v0.
-	if (d.everydayGrantEligible && (d.synthetic || d.harness.family !== "pi"))
-		return "everydayGrantEligible is restricted to non-synthetic pi adapters in v0";
+	// Guard: only real Pi on its governed live broker may claim Everyday grant eligibility in v0.
+	if (
+		d.everydayGrantEligible &&
+		(d.synthetic ||
+			d.harness.family !== "pi" ||
+			d.session?.source !== "pi-live" ||
+			d.controlPath !== "pi-workbench-broker")
+	)
+		return "everydayGrantEligible is restricted to non-synthetic pi-live adapters on pi-workbench-broker in v0";
 
 	// Runtime fingerprint
 	const fp = d.runtimeFingerprint as unknown;
@@ -830,9 +867,13 @@ export function endoDevelopAdapterDescriptorProblemV0(
 	if (d.attachment.projectScope !== null && !isSafeText(d.attachment.projectScope, 4096))
 		return "attachment.projectScope must be text or null";
 
-	// Capability state (reusing protocol/harness.ts validator)
-	if (d.capabilityState !== null && validateEndoCapabilityStateV0(d.capabilityState) === null)
-		return "capabilityState failed endo.capability-state.v0 validation";
+	// Capability state (reusing protocol/harness.ts validator and binding to harness family + attachment)
+	if (d.capabilityState !== null) {
+		const validState = validateEndoCapabilityStateV0(d.capabilityState);
+		if (validState === null) return "capabilityState failed endo.capability-state.v0 validation";
+		if (validState.runtime !== d.harness.family || validState.attachment !== d.attachment.attachmentId)
+			return "capabilityState runtime/attachment does not match adapter descriptor";
+	}
 
 	// Evidence freshness
 	const fresh = d.evidenceFreshness as unknown;
@@ -996,7 +1037,7 @@ export function endoDevelopObservationProblemV0(value: unknown): string | null {
 	const obs = value as unknown as EndoDevelopObservationV0;
 	if (!isSafeText(obs.observationId, 160)) return "observationId is required";
 	if (typeof obs.source !== "string" || !SOURCE_PATTERN.test(obs.source)) return "source is invalid";
-	if (obs.sessionKey !== null && !isSafeText(obs.sessionKey, 256)) return "sessionKey is invalid";
+	if (obs.sessionKey !== null && !isSafeText(obs.sessionKey, 360)) return "sessionKey is invalid";
 	if (typeof obs.attachmentId !== "string" || !isWellFormedKindV0(obs.attachmentId)) return "attachmentId is invalid";
 	if (!isSafeText(obs.instanceId, 128)) return "instanceId is required";
 	if (typeof obs.sequence !== "number" || !Number.isSafeInteger(obs.sequence) || obs.sequence < 1)
@@ -1014,9 +1055,11 @@ export function endoDevelopObservationProblemV0(value: unknown): string | null {
 		case "lifecycle":
 			if (!exactKeys(b, ["kind", "event", "sessionState", "turnState", "detail"]))
 				return "body.lifecycle: unexpected members";
+			if (!isOneOf(LIFECYCLE_EVENTS_V0, b.event)) return "body.lifecycle.event: unknown";
 			if (!isOneOf(ENDO_ADAPTER_SESSION_STATES_V0, b.sessionState)) return "body.lifecycle.sessionState: unknown";
 			if (b.turnState !== null && !isOneOf(ENDO_ADAPTER_TURN_STATES_V0, b.turnState))
 				return "body.lifecycle.turnState: unknown";
+			if (b.detail !== null && !isSafeText(b.detail, 512)) return "body.lifecycle.detail: invalid";
 			return null;
 		case "transcript":
 			if (!exactKeys(b, ["kind", "role", "contentKind", "reasoningKind", "text", "truncated", "stopReason"]))
@@ -1026,14 +1069,25 @@ export function endoDevelopObservationProblemV0(value: unknown): string | null {
 			if (b.contentKind === "reasoning") {
 				if (!isOneOf(ENDO_ADAPTER_REASONING_KINDS_V0, b.reasoningKind))
 					return "body.transcript.reasoningKind is required for reasoning";
+				if ((b.reasoningKind === "redacted" || b.reasoningKind === "unavailable") && b.text !== null)
+					return "body.transcript.text must be null for redacted or unavailable reasoning";
 			} else if (b.reasoningKind !== null) {
 				return "body.transcript.reasoningKind must be null for text";
 			}
+			if (b.text !== null && typeof b.text !== "string") return "body.transcript.text must be string or null";
+			if (typeof b.truncated !== "boolean") return "body.transcript.truncated must be boolean";
+			if (b.stopReason !== null && !isSafeText(b.stopReason, 64)) return "body.transcript.stopReason: invalid";
 			return null;
 		case "tool-activity":
 			if (!exactKeys(b, ["kind", "activityKind", "name", "phase", "callId", "exitCode"]))
 				return "body.tool-activity: unexpected members";
-			return isSafeText(b.name, 128) ? null : "body.tool-activity.name is required";
+			if (!isOneOf(TOOL_ACTIVITY_KINDS_V0, b.activityKind)) return "body.tool-activity.activityKind: unknown";
+			if (!isSafeText(b.name, 128)) return "body.tool-activity.name is required";
+			if (!isOneOf(TOOL_ACTIVITY_PHASES_V0, b.phase)) return "body.tool-activity.phase: unknown";
+			if (b.callId !== null && !isSafeText(b.callId, 256)) return "body.tool-activity.callId: invalid";
+			if (b.exitCode !== null && (typeof b.exitCode !== "number" || !Number.isSafeInteger(b.exitCode)))
+				return "body.tool-activity.exitCode must be a safe integer or null";
+			return null;
 		case "usage": {
 			if (!exactKeys(b, ["kind", "usage"])) return "body.usage: unexpected members";
 			const u = b.usage;
@@ -1056,18 +1110,39 @@ export function endoDevelopObservationProblemV0(value: unknown): string | null {
 				])
 			)
 				return "body.usage.value: unexpected members";
+			if (!isNonNegInt(val.inputTokens) || !isNonNegInt(val.outputTokens) || !isNonNegInt(val.totalTokens))
+				return "body.usage.value token counts must be non-negative integers";
+			if (
+				(val.cachedInputTokens !== null && !isNonNegInt(val.cachedInputTokens)) ||
+				(val.cacheWriteTokens !== null && !isNonNegInt(val.cacheWriteTokens)) ||
+				(val.reasoningTokens !== null && !isNonNegInt(val.reasoningTokens))
+			)
+				return "body.usage.value optional token counts must be non-negative integers or null";
+			if (val.costUsd !== null && !isNonNegFinite(val.costUsd))
+				return "body.usage.value.costUsd must be a finite non-negative number or null";
 			return null;
 		}
 		case "operation-outcome":
 			if (!exactKeys(b, ["kind", "operation", "receiptId", "outcome", "detail"]))
 				return "body.operation-outcome: unexpected members";
-			return isOneOf(ENDO_ADAPTER_OPERATIONS_V0, b.operation) ? null : "body.operation-outcome.operation: unknown";
+			if (!isOneOf(ENDO_ADAPTER_OPERATIONS_V0, b.operation)) return "body.operation-outcome.operation: unknown";
+			if (b.receiptId !== null && !isSafeText(b.receiptId, 256)) return "body.operation-outcome.receiptId: invalid";
+			if (!isOneOf(OPERATION_OUTCOMES_V0, b.outcome)) return "body.operation-outcome.outcome: unknown";
+			if (b.detail !== null && !isSafeText(b.detail, 512)) return "body.operation-outcome.detail: invalid";
+			return null;
 		case "native-approval":
 			if (!exactKeys(b, ["kind", "phase", "requestId", "approvalKind", "resolution"]))
 				return "body.native-approval: unexpected members";
-			return isOneOf(ENDO_ADAPTER_NATIVE_APPROVAL_KINDS_V0, b.approvalKind)
-				? null
-				: "body.native-approval.approvalKind: unknown";
+			if (b.phase !== "requested" && b.phase !== "resolved") return "body.native-approval.phase: unknown";
+			if (!isSafeText(b.requestId, 256)) return "body.native-approval.requestId: invalid";
+			if (!isOneOf(ENDO_ADAPTER_NATIVE_APPROVAL_KINDS_V0, b.approvalKind))
+				return "body.native-approval.approvalKind: unknown";
+			if (!isOneOf(NATIVE_APPROVAL_RESOLUTIONS_V0, b.resolution)) return "body.native-approval.resolution: unknown";
+			if (b.phase === "requested" && b.resolution !== "pending")
+				return "body.native-approval: requested phase must have pending resolution";
+			if (b.phase === "resolved" && b.resolution === "pending")
+				return "body.native-approval: resolved phase cannot have pending resolution";
+			return null;
 		case "evidence-gap":
 			if (!exactKeys(b, ["kind", "gap", "reason"])) return "body.evidence-gap: unexpected members";
 			if (!isOneOf(ENDO_ADAPTER_EVIDENCE_GAP_KINDS_V0, b.gap)) return "body.evidence-gap.gap: unknown";

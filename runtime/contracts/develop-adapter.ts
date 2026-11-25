@@ -16,6 +16,7 @@
 //   and fail closed on unknown approval kinds.
 
 import {
+	ENDO_ADAPTER_AUTHORITY_MECHANISMS_V0,
 	ENDO_DEVELOP_ADAPTER_OBSERVATION_SCHEMA_V0,
 	type EndoAdapterCapabilityEntryV0,
 	type EndoAdapterCapabilityStandingV0,
@@ -44,12 +45,14 @@ import {
 	endoHarnessIdentityBasisNameV0,
 	validateEndoCapabilityStateV0,
 } from "../../protocol/harness.ts";
+import { isPlainJsonObjectV0 } from "../../protocol/primitives.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 import {
 	type EndoExecutionProtectionV0,
 	endoObserveProtectionV0,
 	endoProtectionHoldsV0,
 } from "./execution-protection.ts";
+import { isEndoSessionGrantIdV0 } from "./session-control.ts";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Adapter interface (the smallest practical operational boundary)
@@ -62,11 +65,11 @@ export interface EndoDevelopCloseOutcomeV0 {
 
 /**
  * Operational interface implemented by a live harness adapter beneath the DEVELOP presentation surface.
- * Preserves native runtime semantics via `descriptor().operations` and enforces authority at `dispatch()`.
+ * Preserves native runtime semantics via `describe().operations` and enforces authority at `dispatch()`.
  */
 export interface EndoDevelopLiveAdapterV0 {
 	/** Current identity, ownership, capability standing, and native operation semantics. */
-	descriptor(): EndoDevelopAdapterDescriptorV0;
+	describe(): EndoDevelopAdapterDescriptorV0;
 	/** Current connection, runtime-reported vs controller-observed state, active turn, cleanup, and coordination refs. */
 	snapshot(): EndoDevelopSessionSnapshotV0;
 	/** Deterministic admission check at the operational boundary (pure with respect to side effects). */
@@ -97,14 +100,30 @@ export interface EndoDevelopLiveAdapterV0 {
 // Governed control-path ownership and payload digesting
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Governed control paths and the single integration source each is permitted to serve. */
-export const ENDO_GOVERNED_CONTROL_PATHS_V0: Readonly<Record<string, string>> = Object.freeze({
-	"pi-workbench-broker": "pi-live",
-});
+/** Governed control paths and the single integration source and harness family each is permitted to serve. */
+export const ENDO_GOVERNED_CONTROL_PATHS_V0: Readonly<
+	Record<string, { readonly source: string; readonly family: string }>
+> = Object.freeze(
+	Object.assign(Object.create(null) as Record<string, { readonly source: string; readonly family: string }>, {
+		"pi-workbench-broker": Object.freeze({ source: "pi-live", family: "pi" }),
+	}),
+);
 
 const UNSAFE_TEXT = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/;
 const NATIVE_COMMAND_NAME = /^\/[a-z][a-z0-9_-]{0,63}$/;
 const MAX_PAYLOAD_BYTES = 64 * 1024;
+const MAX_NATIVE_COMMAND_ARGS = 32;
+
+const isSafeBoundedText = (value: unknown, max: number): value is string =>
+	typeof value === "string" && value.length >= 1 && value.length <= max && !UNSAFE_TEXT.test(value);
+
+const isSafeAttachmentRef = (value: unknown): value is string => {
+	if (!isSafeBoundedText(value, 512)) return false;
+	// Never allow arbitrary absolute filesystem paths or parent directory traversal when arbitrary path read is forbidden.
+	if (value.startsWith("/") || value.startsWith("\\") || /^[A-Za-z]:/.test(value)) return false;
+	const segments = value.split(/[\\/]/);
+	return !segments.includes("..");
+};
 
 /** Canonical SHA-256 hex digest of an operational request payload, used to bind operator authorization proofs. */
 export function endoDevelopOperationPayloadDigestV0(request: EndoDevelopOperationRequestV0): string {
@@ -228,12 +247,6 @@ export interface EndoDevelopAdmissionOptionsV0 {
 	nowMs?: number;
 	/** Observed execution protection boundary (required whenever `authority.mechanism === "session-grant"`). */
 	protection?: EndoExecutionProtectionV0;
-	/**
-	 * Narrow compatibility seam for legacy `WorkbenchSessionV0` unit test doubles that supply no fingerprint on
-	 * Pi's baseline `prompt` operation. Never applies when a fingerprint is present, and never applies to any other
-	 * operation or non-Pi runtime. Default `false`.
-	 */
-	allowUnidentifiedBaselinePrompt?: boolean;
 }
 
 const refuse = (code: EndoAdapterRefusalCodeV0, reason: string): EndoDevelopAdmissionDecisionV0 => ({
@@ -246,6 +259,9 @@ function validateRequestShape(
 	request: EndoDevelopOperationRequestV0,
 	descriptor: EndoDevelopAdapterDescriptorV0,
 ): EndoDevelopAdmissionDecisionV0 | null {
+	if (!isPlainJsonObjectV0(request)) {
+		return refuse("invalid-request", "Operation request must be a plain JSON object.");
+	}
 	switch (request.kind) {
 		case "prompt": {
 			if (
@@ -256,29 +272,52 @@ function validateRequestShape(
 			) {
 				return refuse("invalid-request", "Prompt message must be non-empty safe UTF-8 text within size limits.");
 			}
-			if (request.attachments !== undefined && request.attachments.length > 0) {
-				const meta = descriptor.operations.attachments;
-				if (!meta.supported) {
-					return refuse("operation-unsupported", "This adapter does not support attachments.");
+			if (request.attachments !== undefined) {
+				if (!Array.isArray(request.attachments)) {
+					return refuse("invalid-request", "Prompt attachments must be an array when supplied.");
 				}
-				if (meta.maxCount !== null && request.attachments.length > meta.maxCount) {
-					return refuse("invalid-request", `Attachment count exceeds adapter limit (${meta.maxCount}).`);
-				}
-				for (const item of request.attachments) {
-					if (!meta.kinds.includes(item.kind)) {
-						return refuse(
-							"operation-unsupported",
-							`Attachment kind ${item.kind} is not supported by this adapter.`,
-						);
+				if (request.attachments.length > 0) {
+					const meta = descriptor.operations.attachments;
+					if (!meta.supported) {
+						return refuse("operation-unsupported", "This adapter does not support attachments.");
 					}
-					if (!meta.delivery.includes(item.delivery)) {
-						return refuse(
-							"operation-unsupported",
-							`Attachment delivery ${item.delivery} is not supported by this adapter.`,
-						);
+					if (meta.maxCount !== null && request.attachments.length > meta.maxCount) {
+						return refuse("invalid-request", `Attachment count exceeds adapter limit (${meta.maxCount}).`);
 					}
-					if (meta.maxBytesPerItem !== null && item.bytes !== null && item.bytes > meta.maxBytesPerItem) {
-						return refuse("invalid-request", "Attachment exceeds per-item byte limit.");
+					for (const item of request.attachments) {
+						if (!isPlainJsonObjectV0(item)) {
+							return refuse("invalid-request", "Each attachment item must be a plain object.");
+						}
+						if (!meta.kinds.includes(item.kind)) {
+							return refuse(
+								"operation-unsupported",
+								`Attachment kind ${String(item.kind)} is not supported by this adapter.`,
+							);
+						}
+						if (!meta.delivery.includes(item.delivery)) {
+							return refuse(
+								"operation-unsupported",
+								`Attachment delivery ${String(item.delivery)} is not supported by this adapter.`,
+							);
+						}
+						if (!isSafeAttachmentRef(item.reference)) {
+							return refuse(
+								"invalid-request",
+								"Attachment reference must be a bounded opaque or workspace-relative reference (no absolute or traversal paths).",
+							);
+						}
+						if (
+							item.bytes !== null &&
+							(typeof item.bytes !== "number" || !Number.isSafeInteger(item.bytes) || item.bytes < 0)
+						) {
+							return refuse("invalid-request", "Attachment bytes must be a non-negative integer or null.");
+						}
+						if (meta.maxBytesPerItem !== null && item.bytes !== null && item.bytes > meta.maxBytesPerItem) {
+							return refuse("invalid-request", "Attachment exceeds per-item byte limit.");
+						}
+						if (item.mediaType !== null && !isSafeBoundedText(item.mediaType, 128)) {
+							return refuse("invalid-request", "Attachment mediaType must be bounded safe text or null.");
+						}
 					}
 				}
 			}
@@ -302,8 +341,11 @@ function validateRequestShape(
 		case "stop":
 			return null;
 		case "resume": {
-			if (typeof request.targetSessionId !== "string" || request.targetSessionId.trim().length === 0) {
-				return refuse("invalid-request", "Resume requires a non-empty targetSessionId.");
+			if (!isSafeBoundedText(request.targetSessionId, 256) || request.targetSessionId.trim().length === 0) {
+				return refuse("invalid-request", "Resume requires a bounded, safe, non-empty targetSessionId.");
+			}
+			if (request.replayHistory !== undefined && typeof request.replayHistory !== "boolean") {
+				return refuse("invalid-request", "Resume replayHistory must be a boolean when supplied.");
 			}
 			return null;
 		}
@@ -316,12 +358,15 @@ function validateRequestShape(
 			}
 			if (
 				!Array.isArray(request.args) ||
+				request.args.length > MAX_NATIVE_COMMAND_ARGS ||
 				!request.args.every((a) => typeof a === "string" && a.length <= 256 && !UNSAFE_TEXT.test(a))
 			) {
 				return refuse("invalid-request", "Native command arguments must be bounded safe strings.");
 			}
 			return null;
 		}
+		default:
+			return refuse("invalid-request", "Unknown operation kind.");
 	}
 }
 
@@ -388,26 +433,29 @@ export function endoEvaluateDevelopAdmissionV0(args: {
 		return refuse("not-directly-owned", "Control is permitted only on directly owned live sessions.");
 	}
 
-	// 5. Control path ownership: a governed path belongs to one source only.
+	// 5. Control path ownership: a governed path belongs to one source and harness family only.
 	if (descriptor.controlPath === null) {
 		return refuse("control-path-mismatch", "Adapter declares no owning control path.");
 	}
-	const pathOwner = ENDO_GOVERNED_CONTROL_PATHS_V0[descriptor.controlPath];
-	if (pathOwner !== undefined && pathOwner !== descriptor.session.source) {
+	const pathOwner = Object.hasOwn(ENDO_GOVERNED_CONTROL_PATHS_V0, descriptor.controlPath)
+		? ENDO_GOVERNED_CONTROL_PATHS_V0[descriptor.controlPath]
+		: undefined;
+	if (pathOwner !== undefined) {
+		if (pathOwner.source !== descriptor.session.source || pathOwner.family !== descriptor.harness.family) {
+			return refuse(
+				"cross-source-control",
+				`Control path ${descriptor.controlPath} belongs to ${pathOwner.source} (${pathOwner.family}), not ${descriptor.session.source} (${descriptor.harness.family}).`,
+			);
+		}
+	} else if (mode === "production") {
 		return refuse(
-			"cross-source-control",
-			`Control path ${descriptor.controlPath} belongs to ${pathOwner}, not ${descriptor.session.source}.`,
+			"control-path-mismatch",
+			`Control path ${descriptor.controlPath} is not a registered governed production control path.`,
 		);
 	}
 
-	// 6. Runtime identification check.
-	const baselinePromptCompat =
-		args.options?.allowUnidentifiedBaselinePrompt === true &&
-		request.kind === "prompt" &&
-		descriptor.harness.family === "pi" &&
-		!descriptor.synthetic &&
-		descriptor.runtimeFingerprint.status === "unidentified";
-	if (!baselinePromptCompat && descriptor.runtimeFingerprint.status !== "identified") {
+	// 6. Runtime identification check (unconditional: no production bypass for unidentified runtimes).
+	if (descriptor.runtimeFingerprint.status !== "identified") {
 		return refuse("runtime-unidentified", descriptor.runtimeFingerprint.reason);
 	}
 
@@ -428,6 +476,10 @@ export function endoEvaluateDevelopAdmissionV0(args: {
 	if (cap.standing === "unavailable") {
 		return refuse("operation-unavailable", cap.reason ?? `${request.kind} is temporarily unavailable.`);
 	}
+	// Stale evidence (changed binary, changed configuration, or invalidated registry) always fails closed.
+	if (descriptor.evidenceFreshness.status === "stale") {
+		return refuse("capability-stale", descriptor.evidenceFreshness.reason);
+	}
 	if (cap.evidenceCapability !== null && descriptor.evidenceFreshness.status !== "current") {
 		return refuse("capability-stale", descriptor.evidenceFreshness.reason);
 	}
@@ -436,6 +488,47 @@ export function endoEvaluateDevelopAdmissionV0(args: {
 			"capability-not-admitted",
 			cap.reason ?? `${request.kind} standing is ${cap.standing}, which does not admit dispatch.`,
 		);
+	}
+	// Only Pi's baseline prompt may stand without a registry evidenceCapability; every other operation must match
+	// a validated `endo.capability-state.v0` entry bound to the current fingerprint.
+	if (cap.evidenceCapability === null) {
+		const isPiBaselinePrompt =
+			request.kind === "prompt" &&
+			descriptor.harness.family === "pi" &&
+			descriptor.session.source === "pi-live" &&
+			!descriptor.synthetic;
+		if (!isPiBaselinePrompt) {
+			return refuse(
+				"capability-not-admitted",
+				`${request.kind} cannot be admitted without backing capability evidence.`,
+			);
+		}
+	} else {
+		const validState = validateEndoCapabilityStateV0(descriptor.capabilityState);
+		if (
+			validState === null ||
+			descriptor.runtimeFingerprint.status !== "identified" ||
+			validState.runtime !== descriptor.harness.family ||
+			validState.attachment !== descriptor.attachment.attachmentId ||
+			validState.fingerprintId !== descriptor.runtimeFingerprint.fingerprintId
+		) {
+			return refuse(
+				"capability-stale",
+				`Capability state is missing or does not match the current ${descriptor.harness.family} fingerprint.`,
+			);
+		}
+		const stateEntry = validState.capabilities.find((c) => c.capability === cap.evidenceCapability);
+		if (
+			stateEntry === undefined ||
+			stateEntry.status !== cap.standing ||
+			stateEntry.evidenceId === null ||
+			stateEntry.evidenceId !== cap.evidenceId
+		) {
+			return refuse(
+				"capability-not-admitted",
+				`Descriptor capability standing for ${cap.evidenceCapability} is not backed by current capabilityState.`,
+			);
+		}
 	}
 
 	// 9. Lifecycle & targeting semantics (preserving Pi vs Codex differences).
@@ -481,8 +574,17 @@ export function endoEvaluateDevelopAdmissionV0(args: {
 	}
 
 	// 10. Explicit operator authority proof check (completely independent of capability standing).
-	if (authority === null) {
+	if (authority === null || !isPlainJsonObjectV0(authority)) {
 		return refuse("missing-authority", "No operator authorization proof was provided; capability is not authority.");
+	}
+	if (!isSafeBoundedText(authority.authorizationId, 160)) {
+		return refuse("missing-authority", "Authorization proof must carry a valid authorizationId.");
+	}
+	if (!(ENDO_ADAPTER_AUTHORITY_MECHANISMS_V0 as readonly unknown[]).includes(authority.mechanism)) {
+		return refuse("missing-authority", "Authorization proof carries an unrecognized authorization mechanism.");
+	}
+	if (authority.mechanism !== "session-grant" && authority.sessionGrantId !== null) {
+		return refuse("missing-authority", "Non-grant authorization proof must not carry a sessionGrantId.");
 	}
 	if (authority.operation !== request.kind) {
 		return refuse(
@@ -530,30 +632,48 @@ export function endoEvaluateDevelopAdmissionV0(args: {
 			"Authorization project scope does not match the attachment's bound workspace scope.",
 		);
 	}
-	const expectedDigest = endoDevelopOperationPayloadDigestV0(request);
+	let expectedDigest: string;
+	try {
+		expectedDigest = endoDevelopOperationPayloadDigestV0(request);
+	} catch {
+		return refuse("invalid-request", "Operation request could not be canonicalized.");
+	}
 	if (authority.payloadDigest !== expectedDigest) {
 		return refuse("authority-payload-mismatch", "Authorization payload digest does not match the request payload.");
 	}
-	if (authority.authorizedAtMs > authority.expiresAtMs || nowMs >= authority.expiresAtMs) {
-		return refuse("authority-expired", "Operator authorization has expired.");
+	if (
+		typeof nowMs !== "number" ||
+		typeof authority.authorizedAtMs !== "number" ||
+		typeof authority.expiresAtMs !== "number" ||
+		!Number.isFinite(nowMs) ||
+		!Number.isFinite(authority.authorizedAtMs) ||
+		!Number.isFinite(authority.expiresAtMs) ||
+		authority.authorizedAtMs > authority.expiresAtMs ||
+		nowMs >= authority.expiresAtMs
+	) {
+		return refuse("authority-expired", "Operator authorization has expired or carries non-finite timestamps.");
 	}
 
 	// 11. Session-grant guard: Pi Everyday eligibility NEVER generalizes to non-Pi runtimes.
 	if (authority.mechanism === "session-grant") {
-		if (!descriptor.everydayGrantEligible || descriptor.harness.family !== "pi" || descriptor.synthetic) {
+		if (
+			!descriptor.everydayGrantEligible ||
+			descriptor.harness.family !== "pi" ||
+			descriptor.session.source !== "pi-live" ||
+			descriptor.controlPath !== "pi-workbench-broker" ||
+			descriptor.synthetic
+		) {
 			return refuse(
 				"session-grant-not-permitted",
 				"Session-control grants are not admitted for this runtime; explicit per-action terminal approval is required.",
 			);
 		}
-		if (authority.sessionGrantId === null || authority.sessionGrantId.length === 0) {
-			return refuse("missing-authority", "A session-grant authorization must name its grantId.");
+		if (!isEndoSessionGrantIdV0(authority.sessionGrantId)) {
+			return refuse("missing-authority", "A session-grant authorization must name a valid session grant id.");
 		}
 		const protection = endoObserveProtectionV0(args.options?.protection);
 		const nativeSession =
-			descriptor.session.nativeRef?.kind === "pi-session"
-				? `endo.session.pi.${descriptor.session.nativeRef.sessionId}`
-				: currentSessionKey;
+			descriptor.session.key.status === "established" ? descriptor.session.key.id : currentSessionKey;
 		if (
 			descriptor.attachment.projectScope === null ||
 			!endoProtectionHoldsV0(protection, "workspace", {
@@ -575,17 +695,19 @@ export function endoEvaluateDevelopAdmissionV0(args: {
 // Native approval boundary gate
 // ---------------------------------------------------------------------------------------------------------------
 
-const SCOPE_RANK: Readonly<Record<"once" | "session" | "policy-amendment", number>> = {
-	once: 0,
-	session: 1,
-	"policy-amendment": 2,
-};
+const SCOPE_RANK: Readonly<Record<"once" | "session" | "policy-amendment", number>> = Object.freeze(
+	Object.assign(Object.create(null) as Record<"once" | "session" | "policy-amendment", number>, {
+		once: 0,
+		session: 1,
+		"policy-amendment": 2,
+	}),
+);
 
 /**
  * Evaluate a harness-native approval request (such as Codex `item/commandExecution/requestApproval`).
  * - Never inherits Endophasia prompt authority.
  * - Never auto-approves when no explicit operator decision is supplied.
- * - Always fails closed on unknown or unsupported approval kinds.
+ * - Always fails closed on unknown or unsupported approval kinds, unknown decisions, or non-finite expiry.
  * - Never reuses decisions across sessions, turns, items, or connection instances.
  * - Never silently broadens approval scope.
  * - Never grants Endophasia control authority.
@@ -597,6 +719,8 @@ export function endoEvaluateNativeApprovalV0(args: {
 		source: string;
 		sessionKey: string | null;
 		instanceId: string;
+		connected?: boolean;
+		activeTurnId?: string | null;
 		knownKinds: readonly Exclude<EndoAdapterNativeApprovalKindV0, "unknown">[];
 		mode: "server-initiated-requests" | "extension-dialogs-cancelled" | "none";
 		nowMs?: number;
@@ -616,6 +740,16 @@ export function endoEvaluateNativeApprovalV0(args: {
 		};
 	}
 
+	if (current.connected === false) {
+		return {
+			resolution: "cancelled",
+			requestId: request.requestId,
+			code: "stale-attachment",
+			reason: "Adapter is not connected; native approval request cannot be accepted.",
+			grantsEndophasiaAuthority: false,
+		};
+	}
+
 	if (
 		request.source !== current.source ||
 		current.sessionKey === null ||
@@ -631,6 +765,16 @@ export function endoEvaluateNativeApprovalV0(args: {
 		};
 	}
 
+	if (current.activeTurnId !== undefined && request.turnId !== current.activeTurnId) {
+		return {
+			resolution: "cancelled",
+			requestId: request.requestId,
+			code: "binding-mismatch",
+			reason: "Native approval request does not match the currently active turn.",
+			grantsEndophasiaAuthority: false,
+		};
+	}
+
 	if (request.approvalKind === "unknown" || !current.knownKinds.includes(request.approvalKind)) {
 		return {
 			resolution: "declined",
@@ -641,7 +785,7 @@ export function endoEvaluateNativeApprovalV0(args: {
 		};
 	}
 
-	if (decision === null || decision === undefined) {
+	if (decision === null || decision === undefined || !isPlainJsonObjectV0(decision)) {
 		return {
 			resolution: "declined",
 			requestId: request.requestId,
@@ -678,12 +822,21 @@ export function endoEvaluateNativeApprovalV0(args: {
 		};
 	}
 
-	if (decision.decidedAtMs > decision.expiresAtMs || nowMs >= decision.expiresAtMs) {
+	if (
+		typeof nowMs !== "number" ||
+		typeof decision.decidedAtMs !== "number" ||
+		typeof decision.expiresAtMs !== "number" ||
+		!Number.isFinite(nowMs) ||
+		!Number.isFinite(decision.decidedAtMs) ||
+		!Number.isFinite(decision.expiresAtMs) ||
+		decision.decidedAtMs > decision.expiresAtMs ||
+		nowMs >= decision.expiresAtMs
+	) {
 		return {
 			resolution: "declined",
 			requestId: request.requestId,
 			code: "decision-expired",
-			reason: "Native approval decision has expired.",
+			reason: "Native approval decision has expired or carries non-finite timestamps.",
 			grantsEndophasiaAuthority: false,
 		};
 	}
@@ -706,18 +859,29 @@ export function endoEvaluateNativeApprovalV0(args: {
 			grantsEndophasiaAuthority: false,
 		};
 	}
+	if (decision.decision !== "accept") {
+		return {
+			resolution: "declined",
+			requestId: request.requestId,
+			code: "operator-declined",
+			reason: "Unrecognized native approval decision value fails closed.",
+			grantsEndophasiaAuthority: false,
+		};
+	}
 
-	// Scope broadening check.
-	if (request.requestedScope === "unknown") {
+	// Scope broadening check (closed lookup against null-prototype SCOPE_RANK).
+	if (!Object.hasOwn(SCOPE_RANK, request.requestedScope) || !Object.hasOwn(SCOPE_RANK, decision.approvedScope)) {
 		return {
 			resolution: "declined",
 			requestId: request.requestId,
 			code: "scope-broadening-refused",
-			reason: "Native approval with unknown requested scope cannot be accepted.",
+			reason: "Native approval with unknown requested or approved scope cannot be accepted.",
 			grantsEndophasiaAuthority: false,
 		};
 	}
-	if (SCOPE_RANK[decision.approvedScope] > SCOPE_RANK[request.requestedScope]) {
+	const requestedRank = SCOPE_RANK[request.requestedScope as keyof typeof SCOPE_RANK];
+	const approvedRank = SCOPE_RANK[decision.approvedScope as keyof typeof SCOPE_RANK];
+	if (approvedRank > requestedRank) {
 		return {
 			resolution: "declined",
 			requestId: request.requestId,
@@ -764,7 +928,8 @@ export class EndoObservationGuardV0 {
 	#attachmentId: string;
 	#instanceId: string;
 	#sessionKey: string | null;
-	#lastSequence = 0;
+	#lastObservedSequence = 0;
+	#highWaterSequence = 0;
 	#gapCounter = 0;
 	readonly #seenIds = new Set<string>();
 
@@ -779,7 +944,8 @@ export class EndoObservationGuardV0 {
 	rotateInstance(instanceId: string, sessionKey: string | null = this.#sessionKey): void {
 		this.#instanceId = instanceId;
 		this.#sessionKey = sessionKey;
-		this.#lastSequence = 0;
+		this.#lastObservedSequence = 0;
+		this.#highWaterSequence = 0;
 		this.#seenIds.clear();
 	}
 
@@ -797,6 +963,7 @@ export class EndoObservationGuardV0 {
 		observedAt: string,
 	): EndoDevelopObservationV0 {
 		this.#gapCounter += 1;
+		this.#highWaterSequence += 1;
 		return {
 			schemaVersion: ENDO_DEVELOP_ADAPTER_OBSERVATION_SCHEMA_V0,
 			observationId: `gap:${this.#instanceId}:${this.#gapCounter}`,
@@ -804,7 +971,7 @@ export class EndoObservationGuardV0 {
 			sessionKey: this.#sessionKey,
 			attachmentId: this.#attachmentId,
 			instanceId: this.#instanceId,
-			sequence: Math.max(1, this.#lastSequence + 1),
+			sequence: this.#highWaterSequence,
 			observedAt,
 			basis: "controller-observed",
 			nativeIds: { sessionId: null, turnId: null, itemId: null, entryId: null },
@@ -815,6 +982,12 @@ export class EndoObservationGuardV0 {
 	ingest(observation: EndoDevelopObservationV0): EndoObservationIngestResultV0 {
 		const problem = endoDevelopObservationProblemV0(observation);
 		if (problem !== null) {
+			return { accepted: null, gaps: [] };
+		}
+		if (observation.source !== this.#source || observation.attachmentId !== this.#attachmentId) {
+			return { accepted: null, gaps: [] };
+		}
+		if (this.#sessionKey !== null && observation.sessionKey !== null && observation.sessionKey !== this.#sessionKey) {
 			return { accepted: null, gaps: [] };
 		}
 		if (observation.instanceId !== this.#instanceId) {
@@ -843,16 +1016,17 @@ export class EndoObservationGuardV0 {
 		}
 		this.#seenIds.add(observation.observationId);
 		const gaps: EndoDevelopObservationV0[] = [];
-		if (observation.sequence <= this.#lastSequence) {
+		if (observation.sequence <= this.#lastObservedSequence) {
 			gaps.push(
 				this.#makeGap(
 					"out-of-order-event",
-					`Observation ${observation.observationId} arrived with sequence ${observation.sequence} after ${this.#lastSequence}.`,
+					`Observation ${observation.observationId} arrived with sequence ${observation.sequence} after ${this.#lastObservedSequence}.`,
 					observation.observedAt,
 				),
 			);
 		} else {
-			this.#lastSequence = observation.sequence;
+			this.#lastObservedSequence = observation.sequence;
+			this.#highWaterSequence = Math.max(this.#highWaterSequence, observation.sequence);
 		}
 		return { accepted: observation, gaps };
 	}

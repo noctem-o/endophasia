@@ -4,6 +4,12 @@ import type { WorkbenchApprovalRequestV0, WorkbenchApproverV0, WorkbenchSessionV
 import type { WorkbenchDeskV0 } from "../adapters/pi/workbench-interventions.ts";
 import type { RpcEventV0 } from "../adapters/rpc-jsonl/rpc-connection.ts";
 import type { EndoEventV0 } from "../protocol/event.ts";
+import {
+	type EndoHarnessFingerprintRecordV0,
+	endoHarnessIdentityBasisV1,
+	endoHarnessIdentityConfidenceV1,
+	validateEndoHarnessFingerprintV1,
+} from "../protocol/harness.ts";
 import type {
 	EndoInterventionAuthorizationV0,
 	EndoInterventionOperationV0,
@@ -12,6 +18,7 @@ import type {
 } from "../protocol/intervention.ts";
 import type { JsonValueV0 } from "../protocol/primitives.ts";
 import { type EndoWorkbenchKindV0, endoWorkbenchPayloadProblemV0 } from "../protocol/workbench.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	endoInterventionAuthorizationV0,
 	endoInterventionMessageRefV0,
@@ -26,8 +33,59 @@ export interface Recorded {
 	derivedFrom: readonly string[];
 }
 
+const FAKE_PI_FINGERPRINT: EndoHarnessFingerprintRecordV0 = (() => {
+	const local = {
+		requested: "pi",
+		resolvedPath: "/usr/bin/pi",
+		realPath: "/usr/lib/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js",
+		entrypoint: { sha256: "f".repeat(64), bytes: 160 },
+		package: {
+			name: "@earendil-works/pi-coding-agent",
+			version: "1.5.2",
+			root: "/usr/lib/node_modules/@earendil-works/pi-coding-agent",
+		},
+		runtimeContent: {
+			scheme: "endo.runtime-content.v1" as const,
+			scope: "dist/bundle",
+			files: 3,
+			bytes: 1200,
+			sha256: "e".repeat(64),
+		},
+	};
+	const reported = { versionText: "1.5.2", version: "1.5.2" };
+	const body = {
+		schemaVersion: "endo.harness-fingerprint.v1" as const,
+		attachment: "pi.default",
+		runtime: "pi",
+		observedAt: "2026-11-24T00:00:00.000Z",
+		methods: [
+			"path-search" as const,
+			"realpath" as const,
+			"entrypoint-sha256" as const,
+			"package-manifest" as const,
+			"version-command" as const,
+			"runtime-content-sha256" as const,
+		],
+		local,
+		reported,
+		gaps: [],
+		identity: {
+			basis: "runtime-content.v1" as const,
+			digest: sha256HexV0(canonicalEndoJsonV0(endoHarnessIdentityBasisV1({ runtime: "pi", local, reported }))),
+			confidence: endoHarnessIdentityConfidenceV1({ local, reported }),
+		},
+	};
+	const validated = validateEndoHarnessFingerprintV1({
+		...body,
+		id: `endo.evidence.fake-pi-fp.${sha256HexV0(canonicalEndoJsonV0(body))}`,
+	});
+	if (validated === null) throw new Error("FakeSession fixture fingerprint invalid");
+	return validated;
+})();
+
 export class FakeSession implements WorkbenchSessionV0 {
 	piSessionId: string | null = "fake-session-1";
+	fingerprint: EndoHarnessFingerprintRecordV0 | undefined = FAKE_PI_FINGERPRINT;
 	live = true;
 	runActive = false;
 	records: Recorded[] = [];

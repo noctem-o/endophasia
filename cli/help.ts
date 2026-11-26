@@ -131,12 +131,12 @@ Commands that write to a store:
   assign <create|supersede|revoke|close|bind|unbind|link|reconfirm|clear-hazard|list|show> [<root> | --root dir] ...
                                      the operator's coordination intent in develop/coordination.json: which participant is
                                      intended to do a task, in which worktree, with which (operator-declared) session. Every
-                                     change names a revision. An assignment is not an authorisation: nothing is dispatched,
+                                     change names a revision; create, supersede and reconfirm also need --task-revision. An assignment is not an authorisation: nothing is dispatched,
                                      prompted, approved, interrupted, checked out or stopped; ending one stops nothing
   dep <add|decide|withdraw-decision|remove|list> [<root> | --root dir] ...
                                      task dependencies within one project (operator-task-done, candidate-declared,
                                      candidate-has-passing-receipt, operator-decision), cycle-checked; satisfaction is
-                                     computed when read, never stored, and grants nothing
+                                     computed when read, never stored, and grants nothing; decide needs --prerequisite-revision
   candidate <declare|declare-protected|select|list> [<root> | --root dir] ...
                                      immutable candidates: a full commit id resolved to its tree in the project's repository,
                                      or an established protected candidate; the current one is an explicit selection, never

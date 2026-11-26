@@ -51,6 +51,8 @@ describe.skipIf(!haveGit)("endo assign, dep and candidate", () => {
 		const made = run([
 			"assign",
 			"create",
+			"--task-revision",
+			"0",
 			"--root",
 			root,
 			"--project",
@@ -77,6 +79,8 @@ describe.skipIf(!haveGit)("endo assign, dep and candidate", () => {
 			refused([
 				"assign",
 				"create",
+				"--task-revision",
+				"0",
 				"--root",
 				root,
 				"--project",
@@ -99,6 +103,8 @@ describe.skipIf(!haveGit)("endo assign, dep and candidate", () => {
 			refused([
 				"assign",
 				"create",
+				"--task-revision",
+				"0",
 				"--root",
 				root,
 				"--project",

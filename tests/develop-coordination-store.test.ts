@@ -14,6 +14,7 @@ import {
 	validateEndoDevelopCoordinationFileV0,
 } from "../protocol/develop-coordination.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
+import { DevelopAttemptRoutesStoreV0 } from "../storage/develop-attempt-routes.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import {
 	DevelopCoordinationStoreV0,
@@ -84,6 +85,7 @@ function assign(
 	change: Partial<EndoAssignmentSpecV0["workspace"]> = {},
 ) {
 	return w.store.createAssignment({
+		expectedTaskRevision: 0,
 		expectedFileRevision: w.revision(),
 		projectId: w.project.id,
 		taskId: w.build.id,
@@ -148,6 +150,7 @@ describe("assignments", () => {
 		ok(assign(w, "one", { accessIntent: "read-only-intended" }));
 		expect(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: 0,
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -159,6 +162,7 @@ describe("assignments", () => {
 		const other = ok(w.tasks.registerProject({ name: "other", path: "/work/other", observedGitRoot: null }));
 		expect(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.revision(),
 				projectId: other.id,
 				taskId: w.build.id,
@@ -167,6 +171,7 @@ describe("assignments", () => {
 		).toMatchObject({ ok: false, code: "cross-project" });
 		expect(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.revision(),
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -181,6 +186,7 @@ describe("assignments", () => {
 		const base = { expectedFileRevision: w.revision(), projectId: w.project.id, taskId: w.review.id };
 		expect(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				...base,
 				...spec("b"),
 				targetCandidate: { taskId: w.build.id, candidateId: c.candidateId },
@@ -188,6 +194,7 @@ describe("assignments", () => {
 		).toMatchObject({ ok: false, code: "bad-request" });
 		const reviewer = ok(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				...base,
 				...spec("r", { accessIntent: "read-only-intended" }),
 				participant: { participantId: "r", role: "reviewer", intendedHarnessFamily: "pi" },
@@ -202,7 +209,7 @@ describe("assignments", () => {
 		const old = ok(assign(w, "one"));
 		const at = w.revision();
 		const { superseded, replacement } = ok(
-			w.store.supersedeAssignment(old.assignmentId, old.revision, spec("two"), "handover"),
+			w.store.supersedeAssignment(old.assignmentId, old.revision, 0, spec("two"), "handover"),
 		);
 		expect(w.revision()).toBe(at + 1);
 		expect(superseded).toMatchObject({ state: "superseded", supersededByAssignmentId: replacement.assignmentId });
@@ -210,7 +217,9 @@ describe("assignments", () => {
 		expect(replacement).toMatchObject({ state: "active", supersedesAssignmentId: old.assignmentId });
 		// The ended assignment is history: no transition leaves it.
 		expect(w.store.endAssignment(old.assignmentId, superseded.revision, "closed")).toMatchObject({ ok: false });
-		expect(w.store.supersedeAssignment(old.assignmentId, old.revision, spec("three"))).toMatchObject({ ok: false });
+		expect(w.store.supersedeAssignment(old.assignmentId, old.revision, 0, spec("three"))).toMatchObject({
+			ok: false,
+		});
 	});
 
 	it("an ended writer with an associated session stays hazardous; a replacement on its worktree is refused until cleared", () => {
@@ -226,6 +235,10 @@ describe("assignments", () => {
 			}),
 		);
 		expect(bound.session).toMatchObject({ standing: "operator-declared", source: "codex-live" });
+		expect(w.store.associateSession(a.assignmentId, bound.revision, null)).toMatchObject({
+			ok: false,
+			code: "invalid-transition",
+		});
 		const ended = ok(w.store.endAssignment(a.assignmentId, bound.revision, "revoked"));
 		expect(ended.worktreeHazard).toMatchObject({
 			state: "liveness-unverified",
@@ -287,13 +300,67 @@ describe("assignments", () => {
 		});
 	});
 
+	it("§12 4a: a linked attempt whose route is claimed leaves the worktree hazardous when the assignment is revoked", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const attempt = ok(service.prepare(w.project.id, w.build.id, { objective: "Build it." }));
+		const a = ok(assign(w, "one"));
+		const linked = ok(w.store.linkAttempt(a.assignmentId, a.revision, attempt.id));
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(attempt.id, "workbench", 1)).toBe("created");
+		const ended = ok(w.store.endAssignment(linked.assignmentId, linked.revision, "revoked"));
+		expect(ended.worktreeHazard).toMatchObject({ state: "liveness-unverified", bases: ["attempt-route-claimed"] });
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+	});
+
+	it("a route claimed after closure blocks the next writer and can be cleared explicitly", () => {
+		const w = world();
+		const a = ok(assign(w, "one"));
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const attempt = ok(service.prepare(w.project.id, w.build.id, { objective: "build" }));
+		const linked = ok(w.store.linkAttempt(a.assignmentId, a.revision, attempt.id));
+		const ended = ok(w.store.endAssignment(a.assignmentId, linked.revision, "closed"));
+		expect(ended.worktreeHazard.state).toBe("none");
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(attempt.id, "workbench", 1)).toBe("created");
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+		ok(w.store.clearHazard(a.assignmentId, ended.revision, "Stopped and checked"));
+		ok(assign(w, "two"));
+	});
+	it("damaged tasks do not prevent revocation", () => {
+		const w = world();
+		const a = ok(assign(w, "one"));
+		writeFileSync(join(w.root, "develop", "tasks.json"), "{");
+		expect(ok(w.store.endAssignment(a.assignmentId, a.revision, "revoked")).state).toBe("revoked");
+	});
+	it("a later task edit cannot be silently confirmed or approved", () => {
+		const w = world();
+		const a = ok(assign(w, "one"));
+		const d = ok(
+			w.store.addDependency({
+				expectedFileRevision: w.revision(),
+				projectId: w.project.id,
+				dependentTaskId: w.review.id,
+				prerequisiteTaskId: w.build.id,
+				condition: "operator-decision",
+			}),
+		);
+		ok(w.tasks.updateTask(w.project.id, w.build.id, 0, { title: "edited" }));
+		const before = coordinationBytes(w.root);
+		for (const r of [
+			assign(w, "two"),
+			w.store.supersedeAssignment(a.assignmentId, 1, 0, spec("two")),
+			w.store.reconfirmTask(a.assignmentId, 1, 0),
+			w.store.decideDependency(d.dependencyId, 1, "ok", 0),
+		])
+			expect(r).toMatchObject({ ok: false, code: "stale-revision" });
+		expect(coordinationBytes(w.root)).toEqual(before);
+	});
 	it("reconfirm binds the task's current revision", () => {
 		const w = world();
 		const a = ok(assign(w, "one"));
 		const edited = ok(w.tasks.updateTask(w.project.id, w.build.id, w.build.revision, { title: "build it well" }));
-		const again = ok(w.store.reconfirmTask(a.assignmentId, a.revision));
+		const again = ok(w.store.reconfirmTask(a.assignmentId, a.revision, 1));
 		expect(again.taskRevisionAtBind).toBe(edited.revision);
-		expect(w.store.reconfirmTask(a.assignmentId, a.revision)).toMatchObject({ ok: false, code: "stale-revision" });
+		expect(w.store.reconfirmTask(a.assignmentId, a.revision, 1)).toMatchObject({ ok: false, code: "stale-revision" });
 	});
 });
 
@@ -327,12 +394,12 @@ describe("dependencies", () => {
 				condition: "operator-decision",
 			}),
 		);
-		const decided = ok(w.store.decideDependency(d.dependencyId, d.revision, "the API is settled"));
+		const decided = ok(w.store.decideDependency(d.dependencyId, d.revision, "the API is settled", 0));
 		expect(decided.operatorDecision).toMatchObject({
 			prerequisiteTaskRevision: w.build.revision,
 			rationale: "the API is settled",
 		});
-		const withdrawn = ok(w.store.decideDependency(d.dependencyId, decided.revision, null));
+		const withdrawn = ok(w.store.decideDependency(d.dependencyId, decided.revision, null, null));
 		expect(withdrawn.operatorDecision).toBeNull();
 		ok(w.store.removeDependency(d.dependencyId, withdrawn.revision));
 		const read = w.store.read();
@@ -350,7 +417,7 @@ describe("dependencies", () => {
 				condition: "operator-task-done",
 			}),
 		);
-		expect(w.store.decideDependency(d.dependencyId, d.revision, "go")).toMatchObject({ ok: false });
+		expect(w.store.decideDependency(d.dependencyId, d.revision, "go", 0)).toMatchObject({ ok: false });
 	});
 
 	it("the cycle check finds a long cycle and passes a DAG", () => {
@@ -412,6 +479,7 @@ describe("a file that cannot be read is never repaired", () => {
 			expect(w.store.read()).toEqual({ ok: false, reason });
 			expect(
 				w.store.createAssignment({
+					expectedTaskRevision: 0,
 					expectedFileRevision: 0,
 					projectId: w.project.id,
 					taskId: w.build.id,
@@ -438,6 +506,7 @@ describe("a file that cannot be read is never repaired", () => {
 		writeFileSync(join(w.root, "develop", "tasks.json"), "{");
 		expect(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: 1,
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -460,6 +529,7 @@ describe("interrupted writes", () => {
 		});
 		expect(
 			crashing.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: 1,
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -480,6 +550,7 @@ describe("interrupted writes", () => {
 		});
 		expect(
 			uncertain.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: 0,
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -500,6 +571,7 @@ describe("interrupted writes", () => {
 		});
 		const a = ok(
 			store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: 0,
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -518,6 +590,7 @@ describe("concurrency", () => {
 		const holder = new DevelopCoordinationStoreV0(w.root, {
 			afterTasksRead: () => {
 				inner = new DevelopCoordinationStoreV0(w.root, { lockWaitMs: 50 }).createAssignment({
+					expectedTaskRevision: 0,
 					expectedFileRevision: 0,
 					projectId: w.project.id,
 					taskId: w.build.id,
@@ -527,6 +600,7 @@ describe("concurrency", () => {
 		});
 		ok(
 			holder.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: 0,
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -549,6 +623,7 @@ describe("concurrency", () => {
 		});
 		ok(
 			holder.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: 0,
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -609,7 +684,7 @@ describe("the file validator", () => {
 				condition: "candidate-has-passing-receipt",
 			}),
 		);
-		ok(w.store.supersedeAssignment(a.assignmentId, a.revision, spec("two")));
+		ok(w.store.supersedeAssignment(a.assignmentId, a.revision, 0, spec("two")));
 		const read = w.store.read();
 		if (!read.ok) throw new Error(read.reason);
 		return read.file;
@@ -662,6 +737,17 @@ describe("the file validator", () => {
 		rejects((f) => {
 			(f.taskCandidates[0] as { currentCandidateId: string }).currentCandidateId =
 				`endo.candidate.${"0".repeat(32)}`;
+		});
+	});
+	it("§12 20: a record that claims anyone but the operator confirmed it is invalid", () => {
+		rejects((f) => {
+			(f.assignments[0] as { origin: { confirmedBy: string } }).origin.confirmedBy = "coordinator";
+		});
+		rejects((f) => {
+			(f.dependencies[0] as { createdBy: string }).createdBy = "agent";
+		});
+		rejects((f) => {
+			(f.taskCandidates[0]?.candidates[0] as { declaredBy: string }).declaredBy = "builder";
 		});
 	});
 	it("an unknown version is reported as such", () => {

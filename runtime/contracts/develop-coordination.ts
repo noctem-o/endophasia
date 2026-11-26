@@ -98,6 +98,18 @@ export function endoTerminalHazardBasesV0(
 	return ENDO_HAZARD_BASES_V0.filter((b) => found.has(b));
 }
 
+export function endoEffectiveAssignmentV0(
+	a: EndoAssignmentV0,
+	evidence: (id: string) => EndoAttemptExecutionEvidenceV0,
+): EndoAssignmentV0 {
+	if (a.state === "active" || a.workspace.accessIntent !== "read-write-intended" || a.worktreeHazard.state !== "none")
+		return a;
+	const bases = endoTerminalHazardBasesV0(a, evidence);
+	return bases.length === 0
+		? a
+		: { ...a, worktreeHazard: { state: "liveness-unverified", sinceMs: a.updatedAtMs, bases } };
+}
+
 // ---- the candidate-bound receipt predicate ----------------------------------------------------------------------------------------
 
 export type EndoReceiptSourceV0 =
@@ -364,11 +376,16 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 
 	// A requested id the task file does not register is a gap, never an (empty) project.
 	const listed = registered === null ? projectIds : projectIds.filter((p) => registered.has(p));
+	const visible = sorted(
+		(file?.assignments ?? [])
+			.filter((a) => listed.includes(a.projectId))
+			.map((a) => endoEffectiveAssignmentV0(a, execution)),
+		(a) => a.assignmentId,
+	);
+	const conflicts = endoWorktreeConflictsV0(visible);
 	const projects: EndoCoordinationProjectViewV0[] = listed.map((projectId) => {
-		const assignments = sorted(
-			(file?.assignments ?? []).filter((a) => a.projectId === projectId),
-			(a) => a.assignmentId,
-		);
+		const assignments = visible.filter((a) => a.projectId === projectId);
+		const ids = new Set(assignments.map((a) => a.assignmentId));
 		const dependencies = sorted(
 			(file?.dependencies ?? []).filter((d) => d.projectId === projectId),
 			(d) => d.dependencyId,
@@ -379,6 +396,7 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 		);
 		const readiness = (taskId: string): EndoCoordinationReadinessV0 => {
 			const edges = dependencies.filter((d) => d.dependentTaskId === taskId);
+			if (source.state === "unreadable") return "unknown";
 			if (edges.length === 0) return "no-dependencies";
 			if (edges.some((d) => d.satisfaction === "unknown")) return "unknown";
 			if (edges.some((d) => d.satisfaction === "unsatisfied")) return "waiting";
@@ -516,7 +534,7 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 			assignments: assignmentViews,
 			dependencies,
 			tasks,
-			conflicts: endoWorktreeConflictsV0(assignments),
+			conflicts: conflicts.filter((c) => c.assignmentIds.some((id) => ids.has(id))),
 		};
 	});
 	return {

@@ -18,7 +18,7 @@ const BUDGET = {
 function parse(argv: readonly string[]) {
 	const [root, id, path, commit, worktree, commonDir, clean] = argv;
 	if (
-		argv.length !== 7 ||
+		(argv.length !== 7 && !(argv.length === 8 && argv[7] === "unsafe-coordination")) ||
 		!root?.startsWith("/") ||
 		id === undefined ||
 		!ENDO_PROJECT_ID_PATTERN_V0.test(id) ||
@@ -61,6 +61,7 @@ export async function projectCoordinationWorkerV0(argv: readonly string[]) {
 		projects: [id],
 		workspace: async (directory) => (head !== null && directory === head.worktree ? head : null),
 		routes: "unknown",
+		...(argv[7] ? { coordination: { ok: false as const, reason: "unsafe-path" as const } } : {}),
 		budget: {
 			attemptEntries: BUDGET.attemptEntries,
 			attemptBytes: BUDGET.attemptBytes,
@@ -74,8 +75,11 @@ export async function projectCoordinationWorkerV0(argv: readonly string[]) {
 if (import.meta.main) {
 	const argv = process.argv.slice(2);
 	const coordinatorStatus = await projectStatusWorkerV0(argv);
-	const coordinatorCoordination = await projectCoordinationWorkerV0(argv);
+	const coordinatorCoordination = await projectCoordinationWorkerV0(argv).catch(() => null);
+	const output = canonicalEndoJsonV0(JSON.parse(JSON.stringify({ coordinatorStatus, coordinatorCoordination })));
 	process.stdout.write(
-		canonicalEndoJsonV0(JSON.parse(JSON.stringify({ coordinatorStatus, coordinatorCoordination }))),
+		Buffer.byteLength(output) < 4 * 1024 * 1024
+			? output
+			: canonicalEndoJsonV0(JSON.parse(JSON.stringify({ coordinatorStatus }))),
 	);
 }

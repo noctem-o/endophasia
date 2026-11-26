@@ -2,12 +2,16 @@
 // two races the lock is designed around happen on demand, in one process, with no sleeps: a contender that takes the lock between another's
 // judgement and its claim, and a slow contender whose number appears above a lock that was just created.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { acquireEndoNumberedLockV0, endoNumberedLockPatternsV0 } from "../storage/numbered-lock.ts";
 
+vi.mock("node:fs", async (original) => {
+	const fs = await original<typeof import("node:fs")>();
+	return { ...fs, renameSync: vi.fn(fs.renameSync) };
+});
 const dirs: string[] = [];
 const fresh = () => {
 	const dir = mkdtempSync(join(tmpdir(), "endo-numbered-lock-"));
@@ -94,6 +98,16 @@ describe("the numbered lock", () => {
 		expect(locks(dir)).toEqual([`${NAME}.2`]);
 	});
 
+	it("a failed release keeps the highest number occupied", () => {
+		const dir = fresh();
+		const release = take(dir);
+		vi.mocked(renameSync).mockImplementationOnce(() => {
+			throw new Error("ENOSPC");
+		});
+		(release as () => void)();
+		expect(locks(dir)).toEqual([`${NAME}.1`]);
+		expect(take(dir)).toBe("busy");
+	});
 	it("an unlistable directory fails rather than pretending to hold", () => {
 		expect(acquireEndoNumberedLockV0(join(fresh(), "missing"), NAME, { waitMs: 0 })).toBe("failed");
 	});

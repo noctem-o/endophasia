@@ -18,6 +18,7 @@ export function pinCoordinatorStoreV0(store: string) {
 	const mounts: string[] = [];
 	const fds: number[] = [];
 	let entries = 0;
+	let coordinationUnsafe = false;
 	const close = () => {
 		for (const fd of fds.splice(0)) closeSync(fd);
 	};
@@ -82,7 +83,11 @@ export function pinCoordinatorStoreV0(store: string) {
 				file(fd, "tasks.json", join(develop, "tasks.json"));
 				// E1: exactly the coordination FILE, descriptor-pinned, when it exists (a pre-E1 store has none). Never its directory, its
 				// writer locks (`coordination.lock.<n>`) or temporaries, and nothing a coordination record names.
-				file(fd, "coordination.json", join(develop, "coordination.json"), true);
+				try {
+					file(fd, "coordination.json", join(develop, "coordination.json"), true);
+				} catch {
+					coordinationUnsafe = true;
+				}
 				const attempts = join(develop, "attempts");
 				const receipts = join(develop, "receipts");
 				dir(fd, "attempts", attempts, (child) => enumerate(child, attempts, false), true);
@@ -91,7 +96,7 @@ export function pinCoordinatorStoreV0(store: string) {
 			dir(root, "events", events, (fd) => file(fd, "events.log", join(events, "events.log"), true), true);
 			return false;
 		});
-		return { mounts, fds, close };
+		return { mounts, fds, close, coordinationUnsafe };
 	} catch (error) {
 		close();
 		throw error;

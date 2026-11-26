@@ -151,7 +151,7 @@ export function acquireEndoNumberedLockV0(
 						if (released) return;
 						released = true;
 						// Marked released, never deleted: the highest number must stay.
-						if (createLock(mine, true) === "failed") rmSync(lockPath(mine), { force: true });
+						createLock(mine, true);
 					};
 				}
 			}

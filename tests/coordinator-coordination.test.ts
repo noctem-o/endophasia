@@ -238,11 +238,35 @@ describe("dependency readiness", () => {
 		expect(dep(mismatch)?.reasons).toContain("candidate-identity-failed");
 	});
 
+	it("§12 10: a builder's claim without a declared candidate satisfies nothing", async () => {
+		const w = world();
+		w.depend("candidate-declared");
+		const v = await w.view();
+		expect(dep(v)).toMatchObject({ satisfaction: "unsatisfied", reasons: ["no-current-candidate"] });
+		expect(taskView(v, w.review.id)?.readiness).toBe("waiting");
+	});
+
+	it("§12 12a: a worktree that moved after a passing receipt keeps the receipt and warns of drift", async () => {
+		const w = world();
+		const a = w.attempt(w.build.id);
+		w.candidate(C1, a);
+		w.depend("candidate-has-passing-receipt");
+		w.ran(a, C1, 0);
+		const v = await w.view(async () => "verified", { ...AT, commit: C2 });
+		expect(dep(v)?.satisfaction).toBe("satisfied");
+		expect(dep(v)?.warnings).toContain("workspace-drifted-from-candidate");
+		expect(taskView(v, w.review.id)?.readiness).toBe("ready-for-pinned-candidate");
+		expect(taskView(v, w.build.id)?.candidates[0]).toMatchObject({
+			workspace: "moved-from-candidate",
+			receipts: "passing",
+		});
+	});
+
 	it("an operator decision goes stale when the prerequisite changes", async () => {
 		const w = world();
 		const d = w.depend("operator-decision");
 		expect(dep(await w.view())).toMatchObject({ satisfaction: "unsatisfied", reasons: ["no-operator-decision"] });
-		ok(w.store.decideDependency(d.dependencyId, d.revision, "settled"));
+		ok(w.store.decideDependency(d.dependencyId, d.revision, "settled", 0));
 		expect(dep(await w.view())).toMatchObject({ satisfaction: "satisfied" });
 		ok(w.tasks.updateTask(w.project.id, w.build.id, w.build.revision, { title: "changed" }));
 		const v = await w.view();
@@ -268,6 +292,7 @@ describe("assignments and conflicts", () => {
 		const w = world();
 		const a = ok(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.rev(),
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -279,16 +304,48 @@ describe("assignments and conflicts", () => {
 		const v = await w.view();
 		expect(only(v).assignments[0]).toMatchObject({ taskBinding: "task-stale" });
 		expect(only(v).assignments[0]?.findings).toContain("assignment-task-stale");
-		ok(w.store.reconfirmTask(a.assignmentId, a.revision));
+		ok(w.store.reconfirmTask(a.assignmentId, a.revision, 1));
 		expect(only(await w.view()).assignments[0]?.taskBinding).toBe("current");
 		const read = w.tasks.read();
 		expect(read.ok && read.file.tasks.find((t) => t.id === w.build.id)?.status).toBe("open");
 	});
 
+	it("reports cross-project conflicts only when both projects are in scope", async () => {
+		const w = world();
+		const p = ok(w.tasks.registerProject({ name: "other", path: "/work/other", observedGitRoot: null }));
+		const t = ok(w.tasks.createTask(p.id, { title: "other" }));
+		const a = ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.rev(),
+				projectId: w.project.id,
+				taskId: w.build.id,
+				...spec("first"),
+			}),
+		);
+		const shared = spec("second");
+		shared.workspace.allowSharedWorktree = true;
+		const b = ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.rev(),
+				projectId: p.id,
+				taskId: t.id,
+				...shared,
+				workspace: { ...shared.workspace, registration: "same-repository-unregistered" },
+			}),
+		);
+		expect(JSON.stringify(await w.view())).not.toContain(b.assignmentId);
+		const v = await w.view(undefined, AT, null);
+		expect(
+			v.projects[0]?.conflicts.find((c) => c.kind === "shared-writable-worktree-acknowledged")?.assignmentIds,
+		).toEqual([a.assignmentId, b.assignmentId].sort());
+	});
 	it("an acknowledged shared writable worktree is reported as a conflict, with path-hint overlap", async () => {
 		const w = world();
 		const one = ok(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.rev(),
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -297,6 +354,7 @@ describe("assignments and conflicts", () => {
 		);
 		const two = ok(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.rev(),
 				projectId: w.project.id,
 				taskId: w.review.id,
@@ -315,12 +373,18 @@ describe("assignments and conflicts", () => {
 		w.depend("operator-task-done");
 		ok(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.rev(),
 				projectId: w.project.id,
 				taskId: w.review.id,
 				...spec("one"),
 			}),
 		);
+		let pre = w.build;
+		for (const next of ["in-progress", "review", "done"] as const)
+			pre = ok(w.tasks.setStatus(w.project.id, pre.id, pre.revision, next, "confirmed"));
+		expect(dep(await w.view())?.satisfaction).toBe("satisfied");
+		ok(w.tasks.setStatus(w.project.id, pre.id, pre.revision, "open", "reopened"));
 		const a = only(await w.view()).assignments[0];
 		expect(a?.state).toBe("active");
 		expect(a?.findings).toContain("prerequisites-not-satisfied");
@@ -331,6 +395,7 @@ describe("assignments and conflicts", () => {
 		const store = new DevelopCoordinationStoreV0(w.root, { now: () => T0 });
 		ok(
 			store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.rev(),
 				projectId: w.project.id,
 				taskId: w.build.id,
@@ -339,6 +404,7 @@ describe("assignments and conflicts", () => {
 		);
 		ok(
 			store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.rev(),
 				projectId: w.project.id,
 				taskId: w.review.id,
@@ -352,10 +418,32 @@ describe("assignments and conflicts", () => {
 		expect(forward.map((c) => c.kind)).toContain("shared-writable-worktree-acknowledged");
 	});
 
+	it("§12 11: a reviewer pinned to a candidate that was superseded is told so", async () => {
+		const w = world();
+		const c1 = w.candidate(C1);
+		ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.rev(),
+				projectId: w.project.id,
+				taskId: w.review.id,
+				participant: { participantId: "reviewer", role: "reviewer", intendedHarnessFamily: "pi" },
+				workspace: { ...spec("reviewer").workspace, accessIntent: "read-only-intended" },
+				targetCandidate: { taskId: w.build.id, candidateId: c1.candidateId },
+			}),
+		);
+		expect(only(await w.view()).assignments[0]?.targetCandidate?.relation).toBe("current-candidate");
+		w.candidate(C2);
+		const a = only(await w.view()).assignments[0];
+		expect(a?.targetCandidate?.relation).toBe("superseded-candidate");
+		expect(a?.findings).toContain("target-candidate-superseded");
+	});
+
 	it("a declared session reads as operator-declared with unknown liveness", async () => {
 		const w = world();
 		const a = ok(
 			w.store.createAssignment({
+				expectedTaskRevision: 0,
 				expectedFileRevision: w.rev(),
 				projectId: w.project.id,
 				taskId: w.build.id,

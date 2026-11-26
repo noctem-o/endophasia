@@ -2,7 +2,7 @@
 // descriptor-pinned like the other files; a store without one reads as absent; an unreadable one is reported and the status still reads;
 // Git and protected runs are not reachable in the sandbox, so candidates read `unavailable` and nothing is satisfied on identity.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -62,6 +62,7 @@ describe.skipIf(!sandboxAvailable)("the coordination projection in bubblewrap", 
 		if (!made.ok) throw new Error(made.code);
 		const store = new DevelopCoordinationStoreV0(f.root);
 		const assignment = store.createAssignment({
+			expectedTaskRevision: prerequisite.revision,
 			expectedFileRevision: 0,
 			projectId: f.projectId,
 			taskId: prerequisite.id,
@@ -115,6 +116,14 @@ describe.skipIf(!sandboxAvailable)("the coordination projection in bubblewrap", 
 		expect(fixtureManifestV0(dir)).toEqual(before);
 	});
 
+	it("a symlink is never mounted and cannot suppress the model status", async () => {
+		const f = createBriefFixtureV0(scratch(), "healthy");
+		symlinkSync("tasks.json", join(f.root, "develop", "coordination.json"));
+		const result = await readCoordinatorBriefStatusV0(f.root, f.projectId);
+		if (!result.ok) throw new Error(result.reason);
+		expect(result.view.projects).toHaveLength(1);
+		expect(result.coordination.source).toMatchObject({ state: "unreadable", reason: "unsafe-path" });
+	});
 	it("an unreadable coordination file is reported and the status still reads", async () => {
 		const dir = scratch();
 		const f = createBriefFixtureV0(dir, "healthy");

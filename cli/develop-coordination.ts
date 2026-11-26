@@ -84,9 +84,9 @@ const need = (flags: Map<string, string>, flag: string, usage: string): string =
 	if (v === undefined || v.length === 0) throw new TypeError(usage);
 	return v;
 };
-const revisionOf = (flags: Map<string, string>, usage: string): number => {
-	const raw = need(flags, "--revision", usage);
-	if (!/^(0|[1-9][0-9]{0,14})$/.test(raw)) throw new TypeError("--revision must be a non-negative integer");
+const revisionOf = (flags: Map<string, string>, usage: string, flag = "--revision"): number => {
+	const raw = need(flags, flag, usage);
+	if (!/^(0|[1-9][0-9]{0,14})$/.test(raw)) throw new TypeError(`${flag} must be a non-negative integer`);
 	return Number(raw);
 };
 const oneOf = <T extends string>(value: string, values: readonly T[], flag: string): T => {
@@ -109,6 +109,7 @@ function projectOf(root: string, projectId: string): EndoDevelopProjectV0 {
 const ASSIGN_USAGE =
 	"usage: endo assign <create|supersede|revoke|close|bind|unbind|link|reconfirm|clear-hazard|list|show> [<root> | --root dir] ... (see endo --help)";
 const SPEC_FLAGS = [
+	"--task-revision",
 	"--participant",
 	"--role",
 	"--harness",
@@ -170,12 +171,13 @@ const describe = (a: { assignmentId: string; projectId: string; taskId: string; 
 
 async function assignCreate(argv: readonly string[]): Promise<void> {
 	const usage =
-		"usage: endo assign create [<root> | --root dir] --project <id> --task <id> --participant <slug> --role <builder|reviewer|investigator> [--harness <pi|codex|claude-code|any>] --worktree <dir> --access <rw|ro> [--path-hints a,b] [--target-task <id> --target-candidate <id>] [--allow-shared-worktree yes] --revision <file revision>";
+		"usage: endo assign create [<root> | --root dir] --project <id> --task <id> --participant <slug> --role <builder|reviewer|investigator> [--harness <pi|codex|claude-code|any>] --worktree <dir> --access <rw|ro> [--path-hints a,b] [--target-task <id> --target-candidate <id>] [--allow-shared-worktree yes] --revision <file revision> --task-revision <task revision>";
 	const { root, flags } = flagsOf(argv, ["--project", "--task", "--revision", ...SPEC_FLAGS], usage);
 	const project = projectOf(root, need(flags, "--project", usage));
 	const spec = await specOf(flags, project, usage);
 	const r = done(
 		new DevelopCoordinationStoreV0(root).createAssignment({
+			expectedTaskRevision: revisionOf(flags, usage, "--task-revision"),
 			expectedFileRevision: revisionOf(flags, usage),
 			projectId: project.id,
 			taskId: need(flags, "--task", usage),
@@ -188,8 +190,8 @@ async function assignCreate(argv: readonly string[]): Promise<void> {
 
 async function assignSupersede(argv: readonly string[]): Promise<void> {
 	const usage =
-		"usage: endo assign supersede [<root> | --root dir] --assignment <id> --revision <assignment revision> --participant ... --role ... --worktree ... --access ... [--reason <text>] (the replacement's flags as for create)";
-	const { root, flags } = flagsOf(argv, ["--assignment", "--revision", "--reason", "--project", ...SPEC_FLAGS], usage);
+		"usage: endo assign supersede [<root> | --root dir] --assignment <id> --revision <assignment revision> --participant ... --role ... --worktree ... --access ... [--reason <text>] (the replacement's flags as for create) --task-revision <task revision>";
+	const { root, flags } = flagsOf(argv, ["--assignment", "--revision", "--reason", ...SPEC_FLAGS], usage);
 	const store = new DevelopCoordinationStoreV0(root);
 	const read = store.read();
 	if (!read.ok) return refuse("unreadable", undefined, read.reason);
@@ -197,7 +199,15 @@ async function assignSupersede(argv: readonly string[]): Promise<void> {
 	const current = read.file.assignments.find((a) => a.assignmentId === id);
 	if (current === undefined) return refuse("not-found", `assignment ${id}`);
 	const spec = await specOf(flags, projectOf(root, current.projectId), usage);
-	const r = done(store.supersedeAssignment(id, revisionOf(flags, usage), spec, flags.get("--reason")));
+	const r = done(
+		store.supersedeAssignment(
+			id,
+			revisionOf(flags, usage),
+			revisionOf(flags, usage, "--task-revision"),
+			spec,
+			flags.get("--reason"),
+		),
+	);
 	print({
 		superseded: r.value.superseded,
 		replacement: r.value.replacement,
@@ -286,10 +296,14 @@ function assignLink(argv: readonly string[]): void {
 
 function assignReconfirm(argv: readonly string[]): void {
 	const usage =
-		"usage: endo assign reconfirm [<root> | --root dir] --assignment <id> --revision <assignment revision>";
-	const { root, flags } = flagsOf(argv, ["--assignment", "--revision"], usage);
+		"usage: endo assign reconfirm [<root> | --root dir] --assignment <id> --revision <assignment revision> --task-revision <task revision>";
+	const { root, flags } = flagsOf(argv, ["--assignment", "--revision", "--task-revision"], usage);
 	const r = done(
-		new DevelopCoordinationStoreV0(root).reconfirmTask(need(flags, "--assignment", usage), revisionOf(flags, usage)),
+		new DevelopCoordinationStoreV0(root).reconfirmTask(
+			need(flags, "--assignment", usage),
+			revisionOf(flags, usage),
+			revisionOf(flags, usage, "--task-revision"),
+		),
 	);
 	print({ assignment: r.value, coordinationRevision: r.revision, commit: r.commit });
 	process.stderr.write(`${describe(r.value)} now names task revision ${r.value.taskRevisionAtBind}.\n`);
@@ -389,10 +403,12 @@ function depDecide(withdraw: boolean) {
 	return (argv: readonly string[]): void => {
 		const usage = withdraw
 			? "usage: endo dep withdraw-decision [<root> | --root dir] --dependency <id> --revision <dependency revision>"
-			: "usage: endo dep decide [<root> | --root dir] --dependency <id> --revision <dependency revision> --rationale <text>";
+			: "usage: endo dep decide [<root> | --root dir] --dependency <id> --revision <dependency revision> --rationale <text> --prerequisite-revision <task revision>";
 		const { root, flags } = flagsOf(
 			argv,
-			withdraw ? ["--dependency", "--revision"] : ["--dependency", "--revision", "--rationale"],
+			withdraw
+				? ["--dependency", "--revision"]
+				: ["--dependency", "--revision", "--rationale", "--prerequisite-revision"],
 			usage,
 		);
 		const r = done(
@@ -400,6 +416,7 @@ function depDecide(withdraw: boolean) {
 				need(flags, "--dependency", usage),
 				revisionOf(flags, usage),
 				withdraw ? null : need(flags, "--rationale", usage),
+				withdraw ? null : revisionOf(flags, usage, "--prerequisite-revision"),
 			),
 		);
 		print({ dependency: r.value, coordinationRevision: r.revision, commit: r.commit });

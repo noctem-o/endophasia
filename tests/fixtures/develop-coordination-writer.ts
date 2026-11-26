@@ -33,6 +33,7 @@ for (let i = 0; i < Number(count); i += 1) {
 			process.exit(1);
 		}
 		const made = store.createAssignment({
+			expectedTaskRevision: 0,
 			expectedFileRevision: read.file.revision,
 			projectId,
 			taskId,

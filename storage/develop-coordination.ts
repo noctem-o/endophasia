@@ -76,6 +76,7 @@ import {
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	type EndoAttemptExecutionEvidenceV0,
+	endoEffectiveAssignmentV0,
 	endoTerminalHazardBasesV0,
 	endoWorktreeWriteConflictsV0,
 } from "../runtime/contracts/develop-coordination.ts";
@@ -155,7 +156,8 @@ const isRevision = (n: unknown): n is number => typeof n === "number" && Number.
 
 interface MutationContext {
 	now: number;
-	tasks: Extract<EndoTasksReadV0, { ok: true }>;
+	/** The task file, read lock-free on first use: a mutation that never needs it is not refused when it is unreadable. */
+	tasks: () => EndoTasksReadV0;
 	attempts: () => EndoAttemptsReadV0;
 	evidence: (attemptId: string) => EndoAttemptExecutionEvidenceV0;
 }
@@ -253,6 +255,12 @@ export class DevelopCoordinationStoreV0 {
 			if (existing === undefined) {
 				mkdirSync(dirname(this.#dir), { recursive: true });
 				mkdirSync(this.#dir, { mode: 0o700 });
+				const parent = openSync(dirname(this.#dir), constants.O_RDONLY | constants.O_DIRECTORY);
+				try {
+					fsyncSync(parent);
+				} finally {
+					closeSync(parent);
+				}
 			}
 			return lstatSync(this.#dir).isDirectory();
 		} catch {
@@ -261,9 +269,9 @@ export class DevelopCoordinationStoreV0 {
 	}
 
 	/** `committed`: renamed and the directory synced. `not-committed`: the old file stands. `uncertain`: renamed, durability not established. */
-	#replace(file: EndoDevelopCoordinationFileV0): "committed" | "not-committed" | "uncertain" {
+	#replace(file: EndoDevelopCoordinationFileV0): "committed" | "not-committed" | "uncertain" | "limit" {
 		const bytes = Buffer.from(`${canonicalEndoJsonV0(file as never)}\n`, "utf8");
-		if (bytes.length > L.maxFileBytes) return "not-committed";
+		if (bytes.length > L.maxFileBytes) return "limit";
 		const temporary = join(this.#dir, `${ENDO_DEVELOP_COORDINATION_FILE_V0}.tmp-${process.pid}-${hex(6)}`);
 		let fd: number | undefined;
 		try {
@@ -335,9 +343,14 @@ export class DevelopCoordinationStoreV0 {
 			const read = this.read();
 			if (!read.ok) return { ok: false, code: "unreadable", reason: read.reason };
 			// Lock-free snapshot of the task file: one atomic read, never under tasks.lock (no nesting, no deadlock), never atomic WITH it.
-			const tasks = new DevelopTasksStoreV0(this.#root).read();
-			if (!tasks.ok) return { ok: false, code: "tasks-unreadable", reason: tasks.reason };
-			this.#options.afterTasksRead?.();
+			let tasksRead: EndoTasksReadV0 | undefined;
+			const tasks = () => {
+				if (tasksRead === undefined) {
+					tasksRead = new DevelopTasksStoreV0(this.#root).read();
+					if (tasksRead.ok) this.#options.afterTasksRead?.();
+				}
+				return tasksRead;
+			};
 			let attempts: EndoAttemptsReadV0 | undefined;
 			const readAttempts = () => {
 				attempts ??= new DevelopAttemptsStoreV0(this.#root).read();
@@ -358,7 +371,10 @@ export class DevelopCoordinationStoreV0 {
 			};
 			const draft = clone(read.file);
 			const made = change(draft, { now: this.#now(), tasks, attempts: readAttempts, evidence });
-			if (!made.ok) return made;
+			if (!made.ok)
+				return made.code === "tasks-unreadable" && tasksRead !== undefined && !tasksRead.ok
+					? { ...made, reason: tasksRead.reason }
+					: made;
 			if (made.unchanged === true) return { ok: true, value: made.value, file: read.file, commit: "unchanged" };
 			draft.revision = read.file.revision + 1;
 			let checked: EndoDevelopCoordinationFileV0;
@@ -368,6 +384,7 @@ export class DevelopCoordinationStoreV0 {
 				return fail("bad-request", "the change would produce an invalid coordination file");
 			}
 			const outcome = this.#replace(checked);
+			if (outcome === "limit") return fail("limit");
 			if (outcome === "not-committed") return fail("storage-failed");
 			if (outcome === "uncertain")
 				return fail(
@@ -383,12 +400,15 @@ export class DevelopCoordinationStoreV0 {
 	// ---- shared checks ---------------------------------------------------------------------------------------------------------------
 
 	static #task(
-		tasks: EndoDevelopTasksFileV1,
+		context: MutationContext,
 		projectId: string,
 		taskId: string,
 	):
 		| { ok: true; revision: number; projectPath: string }
 		| { ok: false; code: EndoCoordinationRefusalV0; detail: string } {
+		const read = context.tasks();
+		if (!read.ok) return { ok: false, code: "tasks-unreadable", detail: "the task file cannot be read" };
+		const tasks: EndoDevelopTasksFileV1 = read.file;
 		const project = tasks.projects.find((p) => p.id === projectId);
 		if (project === undefined) return { ok: false, code: "not-found", detail: `project ${projectId}` };
 		const task = tasks.tasks.find((t) => t.id === taskId);
@@ -433,9 +453,13 @@ export class DevelopCoordinationStoreV0 {
 		taskId: string,
 		spec: EndoAssignmentSpecV0,
 		exclude: ReadonlySet<string>,
+		expectedTaskRevision: number,
 	): { ok: true; assignment: EndoAssignmentV0 } | { ok: false; code: EndoCoordinationRefusalV0; detail?: string } {
-		const task = DevelopCoordinationStoreV0.#task(context.tasks.file, projectId, taskId);
+		const task = DevelopCoordinationStoreV0.#task(context, projectId, taskId);
 		if (!task.ok) return task;
+		// Bound to the task revision the operator READ, never to whatever is on disk at write time.
+		if (task.revision !== expectedTaskRevision)
+			return { ok: false, code: "stale-revision", detail: `task ${taskId} is at revision ${task.revision}` };
 		if (spec.workspace.registration === "project-path" && spec.workspace.worktreePath !== task.projectPath)
 			return {
 				ok: false,
@@ -458,12 +482,22 @@ export class DevelopCoordinationStoreV0 {
 				a.participant.participantId === spec.participant.participantId,
 		);
 		if (twin !== undefined) return { ok: false, code: "duplicate", detail: `assignment ${twin.assignmentId}` };
-		const conflicts = endoWorktreeWriteConflictsV0(draft.assignments, spec.workspace, exclude);
+		const conflicts = endoWorktreeWriteConflictsV0(
+			draft.assignments.map((a) => endoEffectiveAssignmentV0(a, context.evidence)),
+			spec.workspace,
+			exclude,
+		);
 		if (conflicts.length > 0 && !spec.workspace.allowSharedWorktree)
 			return {
 				ok: false,
 				code: "worktree-write-overlap",
-				detail: conflicts.map((c) => `${c.assignmentId} (${c.reason})`).join(", "),
+				detail: conflicts
+					.map((c) =>
+						draft.assignments.some((a) => a.assignmentId === c.assignmentId && a.projectId === projectId)
+							? `${c.assignmentId} (${c.reason})`
+							: "another project occupies this worktree",
+					)
+					.join(", "),
 			};
 		return {
 			ok: true,
@@ -537,10 +571,16 @@ export class DevelopCoordinationStoreV0 {
 
 	/** Confirm a new assignment: the operator's explicit act, decided against the file revision they read. Changes no task. */
 	createAssignment(
-		input: { expectedFileRevision: number; projectId: string; taskId: string } & EndoAssignmentSpecV0,
+		input: {
+			expectedFileRevision: number;
+			expectedTaskRevision: number;
+			projectId: string;
+			taskId: string;
+		} & EndoAssignmentSpecV0,
 	): EndoCoordinationResultV0<EndoAssignmentV0> {
 		if (
 			!isRevision(input.expectedFileRevision) ||
+			!isRevision(input.expectedTaskRevision) ||
 			!ENDO_PROJECT_ID_PATTERN_V0.test(input.projectId) ||
 			!ENDO_TASK_ID_PATTERN_V0.test(input.taskId)
 		)
@@ -557,6 +597,7 @@ export class DevelopCoordinationStoreV0 {
 				input.taskId,
 				input,
 				new Set(),
+				input.expectedTaskRevision,
 			);
 			if (!made.ok) return made;
 			draft.assignments.push(made.assignment);
@@ -571,11 +612,17 @@ export class DevelopCoordinationStoreV0 {
 	supersedeAssignment(
 		assignmentId: string,
 		expectedRevision: number,
+		expectedTaskRevision: number,
 		replacement: EndoAssignmentSpecV0,
 		reason?: unknown,
 	): EndoCoordinationResultV0<{ superseded: EndoAssignmentV0; replacement: EndoAssignmentV0 }> {
 		const why = DevelopCoordinationStoreV0.#reason(reason);
-		if (!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(assignmentId) || !isRevision(expectedRevision) || !why.ok)
+		if (
+			!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(assignmentId) ||
+			!isRevision(expectedRevision) ||
+			!isRevision(expectedTaskRevision) ||
+			!why.ok
+		)
 			return fail("bad-request");
 		const problem = DevelopCoordinationStoreV0.#specProblem(replacement);
 		if (problem !== null) return fail("bad-request", problem);
@@ -592,6 +639,7 @@ export class DevelopCoordinationStoreV0 {
 				old.taskId,
 				replacement,
 				new Set(),
+				expectedTaskRevision,
 			);
 			if (!made.ok) return made;
 			old.supersededByAssignmentId = made.assignment.assignmentId;
@@ -640,6 +688,12 @@ export class DevelopCoordinationStoreV0 {
 			const found = this.#activeAssignment(draft, assignmentId, expectedRevision);
 			if (!found.ok) return found;
 			const a = found.a;
+			// A writable assignment that had a session keeps it until it ends, so the terminal hazard cannot be skipped by unbinding first.
+			if (session === null && a.session !== null && a.workspace.accessIntent === "read-write-intended")
+				return fail(
+					"invalid-transition",
+					"a writable assignment's session stays recorded until the assignment ends; revoke or close it, then clear the hazard",
+				);
 			if (session !== null) {
 				const other = draft.assignments.find(
 					(x) =>
@@ -704,15 +758,25 @@ export class DevelopCoordinationStoreV0 {
 	}
 
 	/** The operator re-confirms an active assignment against the task's CURRENT revision (after reading the edited task). */
-	reconfirmTask(assignmentId: string, expectedRevision: number): EndoCoordinationResultV0<EndoAssignmentV0> {
-		if (!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(assignmentId) || !isRevision(expectedRevision))
+	reconfirmTask(
+		assignmentId: string,
+		expectedRevision: number,
+		expectedTaskRevision: number,
+	): EndoCoordinationResultV0<EndoAssignmentV0> {
+		if (
+			!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(assignmentId) ||
+			!isRevision(expectedRevision) ||
+			!isRevision(expectedTaskRevision)
+		)
 			return fail("bad-request");
 		return this.#mutate((draft, context) => {
 			const found = this.#activeAssignment(draft, assignmentId, expectedRevision);
 			if (!found.ok) return found;
 			const a = found.a;
-			const task = DevelopCoordinationStoreV0.#task(context.tasks.file, a.projectId, a.taskId);
+			const task = DevelopCoordinationStoreV0.#task(context, a.projectId, a.taskId);
 			if (!task.ok) return task;
+			if (task.revision !== expectedTaskRevision)
+				return fail("stale-revision", `task ${a.taskId} is at revision ${task.revision}`);
 			if (task.revision === a.taskRevisionAtBind) return { ok: true, value: a, unchanged: true };
 			a.taskRevisionAtBind = task.revision;
 			a.revision += 1;
@@ -742,6 +806,7 @@ export class DevelopCoordinationStoreV0 {
 			const found = this.#activeAssignment(draft, assignmentId, expectedRevision, { allowEnded: true });
 			if (!found.ok) return found;
 			const a = found.a;
+			a.worktreeHazard = endoEffectiveAssignmentV0(a, context.evidence).worktreeHazard;
 			if (a.worktreeHazard.state !== "liveness-unverified")
 				return fail("invalid-transition", `hazard is ${a.worktreeHazard.state}`);
 			a.worktreeHazard = {
@@ -779,13 +844,9 @@ export class DevelopCoordinationStoreV0 {
 		return this.#mutate((draft, context) => {
 			if (draft.revision !== input.expectedFileRevision)
 				return fail("stale-revision", `coordination file is at revision ${draft.revision}`);
-			const dependent = DevelopCoordinationStoreV0.#task(context.tasks.file, input.projectId, input.dependentTaskId);
+			const dependent = DevelopCoordinationStoreV0.#task(context, input.projectId, input.dependentTaskId);
 			if (!dependent.ok) return dependent;
-			const prerequisite = DevelopCoordinationStoreV0.#task(
-				context.tasks.file,
-				input.projectId,
-				input.prerequisiteTaskId,
-			);
+			const prerequisite = DevelopCoordinationStoreV0.#task(context, input.projectId, input.prerequisiteTaskId);
 			if (!prerequisite.ok) return prerequisite;
 			const same = draft.dependencies.find(
 				(d) => d.dependentTaskId === input.dependentTaskId && d.prerequisiteTaskId === input.prerequisiteTaskId,
@@ -822,11 +883,14 @@ export class DevelopCoordinationStoreV0 {
 		dependencyId: string,
 		expectedRevision: number,
 		rationale: unknown,
+		/** The prerequisite task revision the operator read; required to decide (null only to withdraw). */
+		expectedPrerequisiteRevision: number | null,
 	): EndoCoordinationResultV0<EndoDependencyV0> {
 		const checked = rationale === null ? null : checkEndoDevelopTextV0("note", rationale);
 		if (
 			!ENDO_DEPENDENCY_ID_PATTERN_V0.test(dependencyId) ||
 			!isRevision(expectedRevision) ||
+			(checked !== null && !isRevision(expectedPrerequisiteRevision)) ||
 			(checked !== null && (!checked.ok || checked.text === ""))
 		)
 			return fail("bad-request");
@@ -839,8 +903,10 @@ export class DevelopCoordinationStoreV0 {
 				if (d.operatorDecision === null) return { ok: true, value: d, unchanged: true };
 				d.operatorDecision = null;
 			} else {
-				const pre = DevelopCoordinationStoreV0.#task(context.tasks.file, d.projectId, d.prerequisiteTaskId);
+				const pre = DevelopCoordinationStoreV0.#task(context, d.projectId, d.prerequisiteTaskId);
 				if (!pre.ok) return pre;
+				if (pre.revision !== expectedPrerequisiteRevision)
+					return fail("stale-revision", `prerequisite ${d.prerequisiteTaskId} is at revision ${pre.revision}`);
 				d.operatorDecision = {
 					prerequisiteTaskRevision: pre.revision,
 					rationale: (checked as { text: string }).text,
@@ -887,7 +953,7 @@ export class DevelopCoordinationStoreV0 {
 		return this.#mutate((draft, context) => {
 			if (draft.revision !== input.expectedFileRevision)
 				return fail("stale-revision", `coordination file is at revision ${draft.revision}`);
-			const task = DevelopCoordinationStoreV0.#task(context.tasks.file, input.projectId, input.taskId);
+			const task = DevelopCoordinationStoreV0.#task(context, input.projectId, input.taskId);
 			if (!task.ok) return task;
 			const attemptId = input.candidate.attemptId;
 			if (attemptId !== null) {

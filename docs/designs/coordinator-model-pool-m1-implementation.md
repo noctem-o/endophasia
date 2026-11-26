@@ -258,7 +258,20 @@ path keeps M0's target, gates, policy digest and limits.
 
 ### Verification
 
-VERIFICATION_TOTALS
+| Check | Result |
+| :--- | :--- |
+| `npm run typecheck`, `npm run lint` (biome; one pre-existing warning in `tests/endo-cockpit-eighteenth-review.test.ts`), `npm run build`, `npm run test:package` | pass ("package smoke passed") |
+| `tests/coordinator-model-pool.test.ts` | 131 passed, 6 opt-in skipped |
+| Same + `tests/coordinator-brief.test.ts` with `ENDO_COORDINATOR_OPENCLAW=$HOME/.local/bin/openclaw` (installed OpenClaw 2026.11.7, bubblewrap, fake providers) | 178 passed, 0 skipped: the M0 path's 6 installed cases and M1's 6 |
+| Full `npm test` on the branch (default env; `ENDO_REAL_SCOPES`/`ENDO_REQUIRE_ISOLATION` unset) | 7728 passed, 3 failed, 218 skipped (334 files) |
+| Full `npm test` at baseline `7666b0842` | 7598 passed, 2 failed, 212 skipped (333 files) |
+
+The three branch failures are not M1's. `endo-workspace-cli` ("stops on Ctrl-C, and reopens…") fails at baseline and in isolation on
+the branch. `develop-codex-live` (D5 native approvals) fails at baseline too, and passes in isolation on the branch (3/3).
+`endo-cockpit-http-lifecycle` ("listens on the IPv4 loopback address only…") passes in isolation on the branch (3/3). The flaky set
+varies run to run under full-suite load (an earlier branch run failed `aa-operator-cli` and `endo-studio-density-browser`
+instead, both of which pass in isolation); none of these files imports Coordinator code. No real model server or hosted API was
+contacted by any run.
 
 ### Deviations from S0 Appendix A
 

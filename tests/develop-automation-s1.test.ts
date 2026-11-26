@@ -954,14 +954,23 @@ describe("COORDINATOR-AUTOMATION-S1 Acceptance Matrix", () => {
 		expect(effFresh.effectiveStanding).toBe("exhausted-until-reset");
 		expect(effFresh.availabilityConfirmed).toBe(false);
 
-		// Evaluation AFTER resetAtMs -> MUST NOT become `available`; becomes `unknown` with resetPassedUnverified=true!
-		const effAfterReset = endoEffectiveProviderAllowanceV0(
+		// Evaluation AFTER rolling-5h resetAtMs while weekly approaching-limit is still active -> preserves approaching-limit (never `available`)!
+		const effAfterRollingReset = endoEffectiveProviderAllowanceV0(
 			{ ...claude, staleAfterMs: 10_000_000 },
 			BASE_MS + 3_600_000 + 1_000,
 		);
-		expect(effAfterReset.effectiveStanding).toBe("unknown");
-		expect(effAfterReset.availabilityConfirmed).toBe(false);
-		expect(effAfterReset.resetPassedUnverified).toBe(true);
+		expect(effAfterRollingReset.effectiveStanding).toBe("approaching-limit");
+		expect(effAfterRollingReset.availabilityConfirmed).toBe(false);
+		expect(effAfterRollingReset.resetPassedUnverified).toBe(true);
+
+		// Evaluation AFTER BOTH rolling-5h AND weekly resetAtMs -> MUST NOT become `available`; becomes `unknown`!
+		const effAfterAllResets = endoEffectiveProviderAllowanceV0(
+			{ ...claude, staleAfterMs: 10 * 86_400_000 },
+			BASE_MS + 5 * 86_400_000 + 1_000,
+		);
+		expect(effAfterAllResets.effectiveStanding).toBe("unknown");
+		expect(effAfterAllResets.availabilityConfirmed).toBe(false);
+		expect(effAfterAllResets.resetPassedUnverified).toBe(true);
 
 		// Stale observation degrades even an authoritative `available` standing to `unknown`
 		const staleEff = endoEffectiveProviderAllowanceV0(
@@ -1445,9 +1454,9 @@ describe("COORDINATOR-AUTOMATION-S1 Acceptance Matrix", () => {
 					id: "endo.event.11111111111111111111111111111111",
 					at: new Date(BASE_MS).toISOString(),
 					sequence: 1,
-					kind: "turn.started",
+					kind: "codex.turn-started",
 					source: "runtime-fact",
-					producer: "pi.default",
+					producer: "codex-app-server:codex.default",
 					coordinates: { sessionId: "endo.session.codex.test1" },
 					payload: { instanceId: "inst-1" },
 					derivedFrom: [],
@@ -1482,9 +1491,9 @@ describe("COORDINATOR-AUTOMATION-S1 Acceptance Matrix", () => {
 					id: "endo.event.22222222222222222222222222222222",
 					at: new Date(BASE_MS + 2_000).toISOString(),
 					sequence: 2,
-					kind: "turn.started",
+					kind: "codex.turn-started",
 					source: "runtime-fact",
-					producer: "pi.default",
+					producer: "codex-app-server:codex.default",
 					coordinates: { sessionId: "endo.session.codex.test1" },
 					payload: { instanceId: "inst-1" },
 					derivedFrom: [],
@@ -2114,5 +2123,201 @@ describe("COORDINATOR-AUTOMATION-S1 Acceptance Matrix", () => {
 		expect(escapeEndoSystemdExecArgV0("@weird")).toBe('"@weird"');
 		const tmpUnits = renderEndoSystemdUnitsV0({ endoBin: "/usr/bin/endo", storeRoot: "/tmp/endo-store" });
 		expect(tmpUnits.serviceContent).not.toContain("PrivateTmp=yes");
+	});
+
+	it("Codex P2 review regressions: canonical adapter turn counts, skipped-only retention, multi-window exhaustion preservation, and provider limit", async () => {
+		// P2 #1: Count canonical live-adapter turn events (`agent.turn-started` for Pi, `codex.turn-started` for Codex)
+		// without double-counting `codex.prompt-dispatched` or derived lifecycle events.
+		const rootP1 = makeTempDir("endo-s1-codex-p1-");
+		const evStore = createEndoDurableEventStoreV0(rootP1);
+		try {
+			evStore.ingest({
+				schemaVersion: "endo.event.v0",
+				id: "endo.event.pi-live.9234b54af3c5e77a.7",
+				at: new Date(BASE_MS).toISOString(),
+				sequence: 1,
+				kind: "agent.turn-started",
+				source: "runtime-fact",
+				producer: "pi-rpc-adapter:pi.default",
+				coordinates: { sessionId: "endo.session.pi.endo-pi-default-a33c9b2338da" },
+				payload: { runtimeEvent: "turn_start" },
+				derivedFrom: [],
+			});
+			evStore.ingest({
+				schemaVersion: "endo.event.v0",
+				id: "endo.event.pi-live.9234b54af3c5e77a.8",
+				at: new Date(BASE_MS + 100).toISOString(),
+				sequence: 2,
+				kind: "agent.turn-started",
+				source: "runtime-fact",
+				producer: "pi-rpc-adapter:pi.default",
+				coordinates: { sessionId: "endo.session.pi.endo-pi-default-a33c9b2338da" },
+				payload: { runtimeEvent: "turn_start" },
+				derivedFrom: [],
+			});
+			evStore.ingest({
+				schemaVersion: "endo.event.v0",
+				id: "endo.event.codex.11111111111111111111111111111111",
+				at: new Date(BASE_MS + 200).toISOString(),
+				sequence: 3,
+				kind: "codex.prompt-dispatched",
+				source: "runtime-fact",
+				producer: "codex-app-server:codex.default",
+				coordinates: { sessionId: "endo.session.codex.t1" },
+				payload: { instanceId: "inst-1" },
+				derivedFrom: [],
+			});
+			evStore.ingest({
+				schemaVersion: "endo.event.v0",
+				id: "endo.event.codex.22222222222222222222222222222222",
+				at: new Date(BASE_MS + 300).toISOString(),
+				sequence: 4,
+				kind: "codex.turn-started",
+				source: "runtime-fact",
+				producer: "codex-app-server:codex.default",
+				coordinates: { sessionId: "endo.session.codex.t1" },
+				payload: { instanceId: "inst-1", threadId: "th-1", turnId: "tu-1" },
+				derivedFrom: [],
+			});
+		} finally {
+			evStore.close();
+		}
+		const storeP1 = new DevelopAutomationStoreV0(rootP1, { now: () => BASE_MS });
+		storeP1.addSchedule({
+			scheduleId: "ledger-check",
+			actionKind: "observe-health",
+			trigger: { kind: "once", atMs: BASE_MS + 1_000 },
+		});
+		const tickP1 = await runEndoSchedulerTickV0({ root: rootP1, now: () => BASE_MS + 1_000 });
+		expect(tickP1.ok && tickP1.publishedResources).toBe(true);
+		const resP1 = storeP1.readResources();
+		expect(resP1.ok && resP1.exists).toBe(true);
+		if (resP1.ok && resP1.exists) {
+			const piProv = resP1.value.providers.find((p) => p.providerId === "pi-harness");
+			const codexProv = resP1.value.providers.find((p) => p.providerId === "codex-subscription");
+			expect(piProv?.localLedgerLowerBound?.recordedTurns).toBe(2);
+			expect(codexProv?.localLedgerLowerBound?.recordedTurns).toBe(1); // prompt-dispatched NOT double-counted!
+		}
+
+		// P2 #2: Retention pruning runs even on Phase 1 skipped-only ticks (claimed.length === 0)
+		const rootP2 = makeTempDir("endo-s1-codex-p2-");
+		const storeP2 = new DevelopAutomationStoreV0(rootP2, { now: () => BASE_MS });
+		storeP2.addSchedule({
+			scheduleId: "always-late",
+			actionKind: "observe-health",
+			missedRunPolicy: "skip-and-report",
+			trigger: { kind: "interval", everyMs: 60_000, anchorMs: BASE_MS + 60_000 },
+		});
+		// 4 ticks each arriving 30s past the 60s window (> 15s quarter-period grace) -> all 4 produce missed-skipped outcomes!
+		let totalSkippedPruned = 0;
+		for (let i = 1; i <= 4; i += 1) {
+			const t = await runEndoSchedulerTickV0({
+				root: rootP2,
+				now: () => BASE_MS + i * 60_000 + 30_000,
+				maxFirePairsRetained: 2,
+			});
+			expect(t.ok).toBe(true);
+			if (t.ok) {
+				expect(t.claimed).toHaveLength(0);
+				expect(t.missedSkipped).toHaveLength(1);
+				totalSkippedPruned += t.prunedFireCount;
+			}
+		}
+		expect(totalSkippedPruned).toBe(2);
+		const firesP2 = storeP2.readFires();
+		expect(firesP2.ok).toBe(true);
+		if (firesP2.ok) {
+			expect(firesP2.entries).toHaveLength(2);
+		}
+
+		// P2 #3: Expired rolling-5h window does NOT hide an independently active unexpired weekly exhaustion!
+		const rootP3 = makeTempDir("endo-s1-codex-p3-");
+		const storeP3 = new DevelopAutomationStoreV0(rootP3, { now: () => BASE_MS });
+		storeP3.declareResourceWindow({
+			providerId: "claude-code-subscription",
+			windowKind: "rolling-5h",
+			standing: "exhausted-until-reset",
+			resetAtMs: BASE_MS + 1_000, // already elapsed by tick at +10_000!
+		});
+		storeP3.declareResourceWindow({
+			providerId: "claude-code-subscription",
+			windowKind: "weekly",
+			standing: "exhausted-until-reset",
+			resetAtMs: BASE_MS + 5 * 86_400_000, // still exhausted!
+		});
+		storeP3.addSchedule({
+			scheduleId: "win-check",
+			actionKind: "observe-health",
+			trigger: { kind: "once", atMs: BASE_MS + 10_000 },
+		});
+		expect((await runEndoSchedulerTickV0({ root: rootP3, now: () => BASE_MS + 10_000 })).ok).toBe(true);
+		const projP3 = readEndoAutomationProjectionV0(rootP3, { now: () => BASE_MS + 10_500 });
+		expect(projP3.resources.state).toBe("ready");
+		if (projP3.resources.state === "ready") {
+			const eff = projP3.resources.effectiveProviders.find((p) => p.providerId === "claude-code-subscription")!;
+			expect(eff.effectiveStanding).toBe("exhausted-until-reset");
+			expect(eff.resetPassedUnverified).toBe(true);
+			expect(eff.availabilityConfirmed).toBe(false);
+			// Once the weekly window ALSO elapses, standing degrades to `unknown`
+			const rawProv = projP3.resources.observation.providers.find(
+				(p) => p.providerId === "claude-code-subscription",
+			)!;
+			const afterWeekly = endoEffectiveProviderAllowanceV0(
+				{ ...rawProv, staleAfterMs: 10 * 86_400_000 },
+				BASE_MS + 6 * 86_400_000,
+			);
+			expect(afterWeekly.effectiveStanding).toBe("unknown");
+		}
+
+		// P2 #4: 32 distinct declared providers succeed (33rd refused with `limit`), and tick with 32 declared providers + local endpoint still publishes cleanly!
+		const rootP4 = makeTempDir("endo-s1-codex-p4-");
+		const storeP4 = new DevelopAutomationStoreV0(rootP4, { now: () => BASE_MS });
+		for (let i = 0; i < 32; i += 1) {
+			const r = storeP4.declareResourceWindow({
+				providerId: `prov-${String(i).padStart(2, "0")}`,
+				resetAtMs: BASE_MS + 3_600_000,
+			});
+			expect(r.ok).toBe(true);
+		}
+		const over33 = storeP4.declareResourceWindow({
+			providerId: "prov-32",
+			resetAtMs: BASE_MS + 3_600_000,
+		});
+		expect(over33.ok).toBe(false);
+		if (!over33.ok) expect(over33.code).toBe("limit");
+
+		const srvP4 = await startFakeServer((req, res) => {
+			res.setHeader("content-type", "application/json");
+			if (req.url === "/health") res.end(JSON.stringify({ status: "ok" }));
+			else if (req.url === "/props") res.end(JSON.stringify({ role: "router", build_info: "b12622-abcdef1" }));
+			else {
+				res.statusCode = 404;
+				res.end();
+			}
+		});
+		const poolP4 = makePool([{ memberId: "local-p4", endpoint: srvP4.endpoint, modelId: "m-p4" }]);
+		storeP4.addSchedule({
+			scheduleId: "p4-health",
+			actionKind: "observe-health",
+			trigger: { kind: "once", atMs: BASE_MS + 5_000 },
+		});
+		const tickP4 = await runEndoSchedulerTickV0({
+			root: rootP4,
+			now: () => BASE_MS + 5_000,
+			pool: poolP4,
+			poolSource: "file",
+		});
+		expect(tickP4.ok).toBe(true);
+		if (tickP4.ok) {
+			expect(tickP4.publishedResources).toBe(true);
+			expect(tickP4.outcomes[0]!.status).toBe("completed");
+		}
+		const resP4 = storeP4.readResources();
+		expect(resP4.ok && resP4.exists).toBe(true);
+		if (resP4.ok && resP4.exists) {
+			expect(resP4.value.providers).toHaveLength(32);
+			expect(resP4.value.providers.some((p) => p.providerId === "local-inference")).toBe(true);
+			expect(resP4.value.projectionSummary?.gaps).toContain("providers-truncated");
+		}
 	});
 });

@@ -315,11 +315,14 @@ function defaultObserveLocalTurnLedger(args: {
 			const page = store.page({ afterSequence: cursor, limit: 10_000 });
 			if (page.events.length === 0) break;
 			for (const ev of page.events) {
-				if (ev.kind === "turn.started" || ev.kind === "prompt.submitted") {
+				// Count canonical live-adapter turn-start events without double-counting derived lifecycle or dispatch events (Codex P2 #1).
+				if (ev.kind === "codex.turn-started") {
+					counts.set("codex-subscription", (counts.get("codex-subscription") ?? 0) + 1);
+				} else if (ev.kind === "agent.turn-started") {
 					const sid = ev.coordinates.sessionId ?? "";
 					const provider = sid.includes(".codex.")
 						? "codex-subscription"
-						: sid.includes(".pi.")
+						: sid.includes(".pi.") || ev.producer.startsWith("pi")
 							? "pi-harness"
 							: "local-session";
 					counts.set(provider, (counts.get(provider) ?? 0) + 1);
@@ -582,8 +585,14 @@ function buildProviderObservations(args: {
 	readonly localEndpoints: readonly EndoObservedLocalEndpointV0[];
 	readonly declarations: EndoDevelopResourceDeclarationsFileV0 | null;
 	readonly turnLedger: ReadonlyMap<string, number>;
-}): EndoProviderAllowanceObservationV0[] {
+}): { readonly providers: EndoProviderAllowanceObservationV0[]; readonly truncated: boolean } {
 	const byProvider = new Map<string, EndoProviderAllowanceObservationV0>();
+	let truncated = false;
+
+	// Reserve one slot for controller-observed `local-inference` when local endpoints were probed so operator
+	// declarations cannot starve local health reporting (Codex P2 #4).
+	const reserveLocalSlot = args.localEndpoints.length > 0 ? 1 : 0;
+	const maxNonLocalProviders = Math.max(0, L.maxProvidersObserved - reserveLocalSlot);
 
 	// 1. Operator-declared windows (never promote expired reset estimate to confirmed availability).
 	if (args.declarations !== null) {
@@ -593,12 +602,19 @@ function buildProviderObservations(args: {
 			list.push(d);
 			grouped.set(d.providerId, list);
 		}
-		for (const [providerId, decls] of grouped.entries()) {
+		const sortedProviderIds = [...grouped.keys()].sort();
+		for (const providerId of sortedProviderIds) {
+			if (byProvider.size >= maxNonLocalProviders) {
+				truncated = true;
+				break;
+			}
+			const decls = grouped.get(providerId)!;
 			const first = decls[0]!;
 			const windows: EndoAllowanceWindowObservationV0[] = decls
 				.slice(0, L.maxAllowanceWindowsPerProvider)
 				.map((d) => ({
 					windowKind: d.windowKind,
+					standing: d.standing,
 					resetAtMs: d.resetAtMs,
 					resetBasis: "operator-declared",
 					availabilityConfirmed: false,
@@ -640,8 +656,12 @@ function buildProviderObservations(args: {
 	}
 
 	// 2. Local turn-ledger lower bounds for providers without operator declarations (e.g., Codex/Pi turns in local store).
-	for (const [providerId, turns] of args.turnLedger.entries()) {
-		if (byProvider.has(providerId) || byProvider.size >= L.maxProvidersObserved) continue;
+	for (const [providerId, turns] of [...args.turnLedger.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+		if (byProvider.has(providerId)) continue;
+		if (byProvider.size >= maxNonLocalProviders) {
+			truncated = true;
+			continue;
+		}
 		byProvider.set(providerId, {
 			providerId,
 			surfaceKind: providerId.includes("subscription") ? "subscription-window" : "unknown",
@@ -693,6 +713,7 @@ function buildProviderObservations(args: {
 			windows: [
 				{
 					windowKind: "local-vram",
+					standing: standing === "degraded-endpoint" ? "degraded-endpoint" : "unknown",
 					resetAtMs: null,
 					resetBasis: "unknown",
 					availabilityConfirmed: false,
@@ -711,9 +732,12 @@ function buildProviderObservations(args: {
 		});
 	}
 
-	return [...byProvider.values()].sort((a, b) =>
-		a.providerId < b.providerId ? -1 : a.providerId > b.providerId ? 1 : 0,
-	);
+	return {
+		providers: [...byProvider.values()].sort((a, b) =>
+			a.providerId < b.providerId ? -1 : a.providerId > b.providerId ? 1 : 0,
+		),
+		truncated,
+	};
 }
 
 /**
@@ -1048,8 +1072,13 @@ export async function runEndoSchedulerTickV0(
 			}
 		}
 
-		// If nothing was claimed for Phase 2 probes, release the lease immediately under this same brief lock.
+		// If nothing was claimed for Phase 2 probes, prune any skipped terminal fires under the lock (Codex P2 #2)
+		// and release the lease immediately.
+		let phase1PrunedFireCount = 0;
 		if (claimed.length === 0) {
+			if (missedSkipped.length > 0) {
+				phase1PrunedFireCount = s.pruneRetainedFires(maxFirePairsRetained).prunedKeys.length;
+			}
 			const releasedLease: EndoDevelopAutomationLeaseV0 = { ...acquiredLease, releasedAtMs: claimNowMs };
 			const rel = s.writeLease(releasedLease);
 			if (rel !== "committed") {
@@ -1070,6 +1099,7 @@ export async function runEndoSchedulerTickV0(
 			acquiredLease,
 			claimed,
 			missedSkipped,
+			phase1PrunedFireCount,
 		};
 	});
 
@@ -1084,7 +1114,14 @@ export async function runEndoSchedulerTickV0(
 		return refuse(phase1.result.refusal, phase1.result.detail, phase1.result.leaseEpoch, phase1.result.activeLease);
 	}
 
-	const { claimNowMs, monotonicStartMs, leaseEpoch: myEpoch, claimed, missedSkipped } = phase1.result;
+	const {
+		claimNowMs,
+		monotonicStartMs,
+		leaseEpoch: myEpoch,
+		claimed,
+		missedSkipped,
+		phase1PrunedFireCount,
+	} = phase1.result;
 
 	if (claimed.length === 0) {
 		return {
@@ -1099,7 +1136,7 @@ export async function runEndoSchedulerTickV0(
 			outcomes: [],
 			publishedResources: false,
 			observationDigest: null,
-			prunedFireCount: 0,
+			prunedFireCount: phase1PrunedFireCount,
 			tokensConsumed: 0,
 		};
 	}
@@ -1208,13 +1245,14 @@ export async function runEndoSchedulerTickV0(
 			root: options.root,
 			nowMs: observeNowMs,
 		});
-		const providers = buildProviderObservations({
+		const providerResult = buildProviderObservations({
 			nowMs: observeNowMs,
 			staleAfterMs,
 			localEndpoints,
 			declarations,
 			turnLedger,
 		});
+		const providers = providerResult.providers;
 
 		// 4. Passive hardware observation seam (S1-F).
 		const observeHardware = options.probes?.observeHardware ?? passiveHostOsHardwareObserverV0;
@@ -1224,6 +1262,19 @@ export async function runEndoSchedulerTickV0(
 			localEndpoints,
 			signal: phase2Signal,
 		});
+
+		const baseProjectionSummary =
+			needsProjection || projection.summary.coordinationSha256 !== null ? projection.summary : null;
+		const projectionSummary =
+			providerResult.truncated && baseProjectionSummary !== null
+				? {
+						...baseProjectionSummary,
+						gaps: [...new Set([...baseProjectionSummary.gaps, "providers-truncated"])].slice(
+							0,
+							L.maxProjectionGaps,
+						),
+					}
+				: baseProjectionSummary;
 
 		// Note: `publishedAtMs` is stamped in Phase 3 from the publication clock!
 		observationSnapshot = validateEndoDevelopResourceObservationV0({
@@ -1243,8 +1294,7 @@ export async function runEndoSchedulerTickV0(
 			sessions: mergedSessions,
 			worktrees: projection.worktrees.slice(0, L.maxWorktreesObserved),
 			hardware,
-			projectionSummary:
-				needsProjection || projection.summary.coordinationSha256 !== null ? projection.summary : null,
+			projectionSummary,
 		});
 	} catch (error) {
 		// Adversarial M1: sanitize error text so control chars or empty strings never throw inside Phase 3 outcome validation.

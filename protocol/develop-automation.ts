@@ -373,6 +373,7 @@ export interface EndoObservedLocalEndpointV0 {
 
 export interface EndoAllowanceWindowObservationV0 {
 	readonly windowKind: EndoAllowanceWindowKindV0;
+	readonly standing: EndoAllowanceStandingV0;
 	readonly resetAtMs: number | null;
 	readonly resetBasis: EndoResetBasisV0;
 	/** Strictly false unless backed by a fresh authoritative API response; an operator estimate or elapsed reset is never confirmed. */
@@ -927,16 +928,29 @@ function validateObservedLocalEndpoint(value: unknown, at: string): EndoObserved
 function validateAllowanceWindow(value: unknown, at: string): EndoAllowanceWindowObservationV0 {
 	const r = closed(
 		value,
-		["windowKind", "resetAtMs", "resetBasis", "availabilityConfirmed", "remainingEstimate", "limitEstimate", "unit"],
+		[
+			"windowKind",
+			"standing",
+			"resetAtMs",
+			"resetBasis",
+			"availabilityConfirmed",
+			"remainingEstimate",
+			"limitEstimate",
+			"unit",
+		],
 		at,
 	);
+	const standing = oneOf(r.standing, ENDO_ALLOWANCE_STANDINGS_V0, `${at}.standing`);
 	const resetBasis = oneOf(r.resetBasis, ENDO_RESET_BASES_V0, `${at}.resetBasis`);
 	const availabilityConfirmed = bool(r.availabilityConfirmed, `${at}.availabilityConfirmed`);
 	// Honesty enforcement: operator-declared or unknown reset estimates can never claim confirmed availability.
 	if (availabilityConfirmed && resetBasis !== "authoritative-api")
 		fail(`${at}.availabilityConfirmed cannot be true when resetBasis is ${JSON.stringify(resetBasis)}`);
+	if (standing === "available" && (resetBasis === "operator-declared" || resetBasis === "unknown"))
+		fail(`${at}.standing cannot be "available" under resetBasis ${JSON.stringify(resetBasis)}`);
 	return Object.freeze({
 		windowKind: oneOf(r.windowKind, ENDO_ALLOWANCE_WINDOW_KINDS_V0, `${at}.windowKind`),
+		standing,
 		resetAtMs: nullableIntRange(r.resetAtMs, 1, MAX_EPOCH_MS, `${at}.resetAtMs`),
 		resetBasis,
 		availabilityConfirmed,
@@ -1292,11 +1306,17 @@ export function validateEndoDevelopResourceDeclarationsFileV0(value: unknown): E
 		"resource declarations file.declarations",
 	).map((d, i) => validateDeclaration(d, `declarations[${i}]`));
 	const keys = new Set<string>();
+	const providerIds = new Set<string>();
 	for (const d of declarations) {
 		const key = `${d.providerId}:${d.windowKind}`;
 		if (keys.has(key)) fail(`duplicate operator declaration for ${JSON.stringify(key)}`);
 		keys.add(key);
+		providerIds.add(d.providerId);
 	}
+	if (providerIds.size > ENDO_DEVELOP_AUTOMATION_LIMITS_V0.maxProvidersObserved)
+		fail(
+			`resource declarations file exceeds limit of ${ENDO_DEVELOP_AUTOMATION_LIMITS_V0.maxProvidersObserved} distinct providers`,
+		);
 	return Object.freeze({
 		schemaVersion: ENDO_DEVELOP_RESOURCE_DECLARATIONS_SCHEMA_V0,
 		revision: intRange(r.revision, 0, Number.MAX_SAFE_INTEGER, "resource declarations file.revision"),

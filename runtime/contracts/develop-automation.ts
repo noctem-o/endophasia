@@ -588,25 +588,32 @@ export function endoEffectiveProviderAllowanceV0(
 			basis: provider.basis,
 		};
 	}
-	if (provider.standing === "exhausted-until-reset" && resetPassedUnverified) {
-		return {
-			providerId: provider.providerId,
-			freshness,
-			effectiveStanding: "unknown",
-			availabilityConfirmed: false,
-			resetPassedUnverified: true,
-			originalStanding: provider.standing,
-			basis: provider.basis,
-		};
+
+	// Preserve any independently active (unexpired) per-window restriction even when another window's reset has elapsed (Codex P2 #3).
+	const anyActiveExhausted = provider.windows.some(
+		(w) => w.standing === "exhausted-until-reset" && (w.resetAtMs === null || w.resetAtMs > nowMs),
+	);
+	const anyActiveApproaching = provider.windows.some(
+		(w) => w.standing === "approaching-limit" && (w.resetAtMs === null || w.resetAtMs > nowMs),
+	);
+
+	let effectiveStanding: EndoAllowanceStandingV0 = provider.standing;
+	if (anyActiveExhausted) {
+		effectiveStanding = "exhausted-until-reset";
+	} else if (provider.standing === "exhausted-until-reset" && resetPassedUnverified) {
+		effectiveStanding = anyActiveApproaching ? "approaching-limit" : "unknown";
+	} else if (provider.standing === "approaching-limit" && resetPassedUnverified && !anyActiveApproaching) {
+		effectiveStanding = "unknown";
 	}
+
 	const availabilityConfirmed =
-		provider.standing === "available" &&
+		effectiveStanding === "available" &&
 		provider.basis === "authoritative-api" &&
 		provider.windows.every((w) => w.resetAtMs === null || w.availabilityConfirmed);
 	return {
 		providerId: provider.providerId,
 		freshness,
-		effectiveStanding: provider.standing,
+		effectiveStanding,
 		availabilityConfirmed,
 		resetPassedUnverified,
 		originalStanding: provider.standing,

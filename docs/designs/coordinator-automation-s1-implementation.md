@@ -216,6 +216,15 @@ A separate read-only adversarial reviewer subagent audited all S1 modules (`prot
 | **L3** | Low | `onTimeGraceMs`, `maxFirePairsRetained`, `holderId` unvalidated at entry; latent tail slice hazard | Added upfront validation and preserved untouched tail schedules past `maxDueSchedulesPerTick`. Verified by `Adversarial M1–M7 & L1–L4`. |
 | **L4** | Low | C1 control chars / leading `@:+!-` in systemd args; `PrivateTmp=yes` vs `/tmp/` roots | Hardened `escapeEndoSystemdExecArgV0` and `assertAbsoluteSafePath` for C0+C1 and leading prefixes; omitted `PrivateTmp=yes` when `storeRoot` starts with `/tmp/`. Verified by `Adversarial M1–M7 & L1–L4`. |
 
+### PR #189 Codex Review Remediations (4/4 P2)
+
+| ID | Finding | Remediation |
+| :--- | :--- | :--- |
+| **Codex P2 #1** | `defaultObserveLocalTurnLedger` checked `turn.started` / `prompt.submitted` instead of live-adapter canonical events (`agent.turn-started` for Pi, `codex.turn-started` for Codex) | Switched to counting canonical `agent.turn-started` and `codex.turn-started` events without double-counting `codex.prompt-dispatched` or derived lifecycle events. |
+| **Codex P2 #2** | Phase 1 early return (`claimed.length === 0`) bypassed `pruneRetainedFires`, allowing `skip-and-report`-only ticks to grow `fires/` past `maxFirePairsRetained` | Invoked `s.pruneRetainedFires(maxFirePairsRetained)` under `automation.lock.<n>` whenever `missedSkipped.length > 0` before releasing the Phase 1 lease. |
+| **Codex P2 #3** | `endoEffectiveProviderAllowanceV0` degraded `exhausted-until-reset` to `unknown` whenever *any* window elapsed, hiding an independently unexpired weekly exhaustion | Added closed per-window `standing` to `EndoAllowanceWindowObservationV0` and updated `endoEffectiveProviderAllowanceV0` to preserve any still-unexpired window exhaustion/approaching restriction while degrading only elapsed windows. |
+| **Codex P2 #4** | `declareResourceWindow` allowed > 32 distinct providers (64 declaration cap), causing `buildProviderObservations` to exceed `maxProvidersObserved` (32) and fail resource validation | Capped distinct declared providers at `maxProvidersObserved` (32) in both protocol and storage, enforced `maxProvidersObserved` inside `buildProviderObservations` (reserving 1 slot for `local-inference` when local endpoints are probed), and surfaced `"providers-truncated"` in `projectionSummary.gaps`. |
+
 ### Verification Results
 
 Environment: Linux (Arch), Node `v26.13.1`, Vitest `v4.1.9`, Biome `v2.3.5`, default environment (`ENDO_REAL_SCOPES`, `ENDO_REQUIRE_ISOLATION`, `ENDO_COORDINATOR_OPENCLAW` unset; no live inference server or hosted API contacted).

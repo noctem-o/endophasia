@@ -1181,6 +1181,14 @@ export class DevelopAutomationStoreV0 {
 					detail: `maximum ${L.maxDeclarations} declarations reached`,
 				};
 			}
+			const distinctProviders = new Set(nextDeclarations.map((d) => d.providerId));
+			if (distinctProviders.size > L.maxProvidersObserved) {
+				return {
+					ok: false as const,
+					code: "limit" as const,
+					detail: `maximum ${L.maxProvidersObserved} distinct declared providers reached`,
+				};
+			}
 			nextDeclarations.sort((a, b) =>
 				a.providerId !== b.providerId
 					? a.providerId < b.providerId

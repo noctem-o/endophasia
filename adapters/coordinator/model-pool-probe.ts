@@ -7,7 +7,10 @@
 //   GET /props       without ?model=: the router's own properties, or a single server's (create_response(true): no wake; served from
 //                    cache while asleep). Identifies a router, a single llama.cpp server (build_info and total_slots), or neither.
 //   GET /models      single llama.cpp server only (create_response(true), cached while asleep): the exact model id must be listed.
-//   GET /v1/models   a server that is not llama.cpp: the exact id must be listed. A catalog entry is not residency evidence.
+//   GET /v1/models   only when /props is 404 (not llama.cpp): the exact id must be listed. A catalog entry is not residency evidence.
+//                    Any router (role "router", with or without a recognised build) and any /props document that identifies
+//                    neither a router nor a single llama.cpp server get no catalog request at all: on a router, /models and
+//                    /v1/models are the same handler, which runs a pending reconciliation.
 //
 // Deliberately NOT sent, with the reason read in the source:
 //   /slots     single server: create_response() without bypass calls wait_until_no_sleep(), so it WAKES a sleeping model and counts
@@ -185,11 +188,11 @@ export async function probeLocalEndpointV0(
 		if (p === null) return done("probe-refused", "malformed-response");
 		const llamaBuild =
 			typeof p.build_info === "string" && /^b[0-9]+-[0-9a-f]{7,40}$/.test(p.build_info) ? p.build_info : null;
-		if (p.role === "router" && llamaBuild !== null) backend = "llama.cpp-router";
+		build = llamaBuild;
+		if (p.role === "router") backend = "llama.cpp-router";
 		else if (llamaBuild !== null && Number.isSafeInteger(p.total_slots) && (p.total_slots as number) > 0)
 			backend = "llama.cpp-single";
-		else backend = "openai-compatible";
-		if (backend !== "openai-compatible") build = llamaBuild;
+		else return done("model-unconfirmed", "backend-unidentified");
 		if (typeof p.is_sleeping === "boolean") sleeping = p.is_sleeping;
 	} else if (props.status === 404) backend = "openai-compatible";
 	else return done("unhealthy", "health-error");

@@ -3,6 +3,15 @@
 ## Unreleased
 
 ### Added
+- **COORDINATOR-MODEL-POOL-001 (M1): a local Coordinator Model Pool** ([design, evidence and limits](docs/designs/coordinator-model-pool-m1-implementation.md)).
+  - `endo coordinator brief ... --pool <config.json> [--member <memberId>]`: the briefing's model is the highest-priority eligible member
+    of an operator-written `endo.coordinator-model-pool.v0` file (local `http://127.0.0.1:<port>` OpenAI-compatible endpoints only), or
+    exactly `--member`, never switched. Fallback happens only before inference; a refusal or failure after dispatch is final.
+  - `endo coordinator pool check [--pool <config.json>]`: zero-token GET-only health observations and the member a briefing would use.
+    It never sends `/slots`, `/metrics` or a router catalog request, which llama.cpp can turn into a model wake, load or unload, so
+    capacity is reported unknown rather than guessed.
+  - Results carry `modelPool` provenance (selected member and model, readiness, fallback, skipped members, measurements).
+  - **Not changed:** without `--pool` the M0 path is unchanged; no hosted inference, credentials, scheduling or authority of any kind.
 - **DEVELOP-PROTECTED-ATTEMPT-001: run a prepared attempt through the protected runner, and bind it to its candidate** ([design, authority, threat model and limits](docs/designs/protected-attempt-execution.md)).
   - `endo attempt protected-run --attempt <id> --template <spec.json> --out <new dir>`: one prepared attempt, one staged-changeset task, one
     condition, one trial, offline (v2) only. The brief becomes `/agent/prompt.txt`. The whole operation is shown with its digest and runs only after

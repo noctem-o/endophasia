@@ -622,21 +622,28 @@ describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () =
 		expect(server.state).toEqual({ loads: 0, completions: 0 });
 	});
 
-	it("does not mistake an unrecognised properties document for llama.cpp", async () => {
+	it.each([
+		[
+			"a router without a recognised build",
+			{ role: "router" },
+			"router-model-state-not-observed",
+			"llama.cpp-router",
+		],
+		["an unidentified properties document", { name: "something" }, "backend-unidentified", "unknown"],
+		["a single-looking document without slots", { build_info: "b1-0000000" }, "backend-unidentified", "unknown"],
+	] as const)("%s gets no catalog request", async (_name, props, detail, backend) => {
 		const endpoint = await fake((req, res) => {
-			if (req.url === "/props") return res.end(JSON.stringify({ role: "router" }));
-			if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "model-a" }] }));
-			res.end(JSON.stringify({ status: "ok" }));
+			if (req.url === "/props") return res.end(JSON.stringify(props));
+			res.end(JSON.stringify({ status: "ok", data: [{ id: "model-a" }] }));
 		});
 		await expect(
 			probeLocalEndpointV0(poolOf([local("primary", endpoint.origin)]).members[0]!),
 		).resolves.toMatchObject({
 			readiness: "model-unconfirmed",
-			detail: "model-listed-residency-unknown",
-			backend: "openai-compatible",
-			build: null,
+			detail,
+			backend,
 		});
-		expect(endpoint.hits.map((h) => h.url)).toEqual(["/health", "/props", "/v1/models"]);
+		expect(endpoint.hits.map((h) => h.url)).toEqual(["/health", "/props"]);
 	});
 
 	it("pool check observes every member, requests no completion, loads nothing and never confirms capacity", async () => {

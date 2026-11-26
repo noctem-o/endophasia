@@ -43,6 +43,7 @@ export const ENDO_COORDINATOR_PROBE_DETAILS_V0 = [
 	"slot-idle",
 	"slots-not-observable",
 	"router-model-state-not-observed",
+	"backend-unidentified",
 	"model-listed-residency-unknown",
 	"model-sleep-state-unknown",
 	"model-sleeping",

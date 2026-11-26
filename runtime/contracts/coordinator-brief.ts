@@ -1,4 +1,5 @@
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../../protocol/develop-tasks.ts";
+import type { EndoCoordinatorModelPoolProvenanceV0 } from "./coordinator-model-pool.ts";
 
 export const ENDO_COORDINATOR_TOOL_V0 = "endophasia_status";
 export const ENDO_COORDINATOR_TOOL_DEFINITION_V0 = Object.freeze({
@@ -41,7 +42,12 @@ export type EndoCoordinatorBriefRefusalV0 =
 	| "verification-positive-contradiction"
 	| "status-source-not-regular"
 	| "status-source-too-large"
-	| "ungrounded";
+	| "ungrounded"
+	| "no-healthy-member"
+	| "member-not-found"
+	| "member-unavailable"
+	| "member-not-permitted"
+	| "model-identity-mismatch";
 
 export interface EndoCoordinatorBriefEvidenceV0 {
 	readonly readAtMs: number;
@@ -59,6 +65,8 @@ type BriefBase = {
 	readonly schemaVersion: "endo.coordinator-brief.v0";
 	readonly projectId: string;
 	readonly runtime: EndoCoordinatorBriefRuntimeV0;
+	/** Present only when the briefing used a Coordinator Model Pool (`--pool`); absent on the M0 path. */
+	readonly modelPool?: EndoCoordinatorModelPoolProvenanceV0;
 };
 
 export type EndoCoordinatorBriefResultV0 = BriefBase &
@@ -86,12 +94,18 @@ export async function briefFromCoordinatorSubstrateV0(
 		schemaVersion: "endo.coordinator-brief.v0",
 		projectId: request.projectId,
 		runtime: result.runtime,
+		...(result.modelPool === undefined ? {} : { modelPool: result.modelPool }),
 		availability: "unavailable",
 		reason,
 	});
 	if (result.projectId !== request.projectId || result.schemaVersion !== "endo.coordinator-brief.v0")
 		return refuse("ungrounded");
 	if (result.availability === "unavailable") return result;
+	if (
+		result.modelPool !== undefined &&
+		(result.modelPool.selectedMemberId === null || result.runtime.model !== result.modelPool.selectedModelId)
+	)
+		return refuse("model-identity-mismatch");
 	if (result.toolSurface?.length !== 1 || result.toolSurface[0] !== ENDO_COORDINATOR_TOOL_V0)
 		return refuse("tool-surface-mismatch");
 	const sha256 = /^[0-9a-f]{64}$/;

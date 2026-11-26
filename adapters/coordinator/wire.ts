@@ -22,7 +22,19 @@ const TOOL_SET_V0 = canonicalEndoJsonV0([{ type: "function", function: ENDO_COOR
 const record = (value: unknown): Record<string, unknown> | null =>
 	value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 
-export function coordinatorWireV0(projectId: string, toolText: string, bearer: string, onRefused?: () => void) {
+export function coordinatorWireV0(
+	projectId: string,
+	toolText: string,
+	bearer: string,
+	onRefused?: () => void,
+	options: {
+		/** The exact inference parameters admitted; M0's by default. */
+		readonly inference?: Readonly<Record<keyof typeof COORDINATOR_INFERENCE_V0, number>>;
+		/** When set, a response chunk naming another model is refused as `model-identity-mismatch`. */
+		readonly model?: string;
+	} = {},
+) {
+	const inference = options.inference ?? COORDINATOR_INFERENCE_V0;
 	const trace = {
 		toolDefinitions: [] as JsonValueV0[],
 		statusDelivered: false,
@@ -52,14 +64,12 @@ export function coordinatorWireV0(projectId: string, toolText: string, bearer: s
 			const tools = Array.isArray(sent.tools) ? (sent.tools as JsonValueV0[]) : [];
 			trace.toolDefinitions.push(tools);
 			trace.inference.push(
-				Object.fromEntries(
-					Object.keys(COORDINATOR_INFERENCE_V0).map((field) => [field, (sent[field] ?? null) as JsonValueV0]),
-				),
+				Object.fromEntries(Object.keys(inference).map((field) => [field, (sent[field] ?? null) as JsonValueV0])),
 			);
 			if (canonicalEndoJsonV0(tools) !== TOOL_SET_V0 || "functions" in sent || "function_call" in sent)
 				return refuse("tool-surface-mismatch");
 			if (
-				Object.entries(COORDINATOR_INFERENCE_V0).some(([key, expected]) => sent[key] !== expected) ||
+				Object.entries(inference).some(([key, expected]) => sent[key] !== expected) ||
 				sent.stream !== true ||
 				"n_predict" in sent ||
 				"max_completion_tokens" in sent
@@ -125,6 +135,8 @@ export function coordinatorWireV0(projectId: string, toolText: string, bearer: s
 					const item = record(JSON.parse(data));
 					if (item === null || !Array.isArray(item.choices) || item.choices.length > 1)
 						return refuse("model-unavailable");
+					if (options.model !== undefined && item.model !== undefined && item.model !== options.model)
+						return refuse("model-identity-mismatch");
 					if (record(item.usage)) usage = item.usage as JsonValueV0;
 					for (const choice of item.choices) {
 						const c = record(choice);

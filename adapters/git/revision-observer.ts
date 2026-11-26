@@ -478,6 +478,33 @@ export class GitRevisionObserverV0 {
 		return { paths, cut: run.truncated };
 	}
 
+	/**
+	 * The tree of exactly `commit` in the repository `cwd` belongs to, or null when Git cannot resolve that full object id to a commit (it
+	 * is absent, not a commit, the repository cannot be read safely). Only full ids are accepted, so a branch name or a short id never
+	 * resolves here. Reads objects only, never the working tree.
+	 */
+	async commitTree(cwd: string, commit: string): Promise<string | null> {
+		if (!HEX.test(commit)) return null;
+		const keys = await this.#keys(cwd);
+		if (keys === null) return null;
+		const run = await this.#read(
+			cwd,
+			["rev-parse", `${commit}^{commit}`, `${commit}^{tree}`],
+			GIT_LIMITS_V0.listBytes,
+			keys,
+		);
+		if (run.code !== 0 || run.truncated) return null;
+		const out = lines(run, 2);
+		if (
+			out === null ||
+			out[0] !== commit ||
+			!HEX.test(out[1] as string) ||
+			(out[1] as string).length !== commit.length
+		)
+			return null;
+		return out[1] as string;
+	}
+
 	/** How `to` stands to `from`: the number of commits reachable from `to` and not `from`, and whether `from` is an ancestor of `to`. */
 	async ancestry(worktree: string, from: string, to: string): Promise<{ ahead: number; descends: boolean } | null> {
 		if (!HEX.test(from) || !HEX.test(to)) return null;

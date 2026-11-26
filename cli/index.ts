@@ -9,6 +9,7 @@
  *   node cli/index.ts project <add|list> ...   task <list|add|status|show|link|unlink|upgrade> ...   (DEVELOP's project and task metadata; docs/develop-tasks.md)
  *   node cli/index.ts attempt <prepare|brief|...|check|receipts|receipt> ...   (work attempts, handoff briefs and verification receipts; docs/designs/develop-work-attempts.md, develop-verification-receipts.md)
  *   node cli/index.ts coordinator status [<root>] [--project <id>]...   (read-only Coordinator status; docs/designs/coordinator-status.md)
+ *   node cli/index.ts assign|dep|candidate ...   (coordination intent metadata; docs/designs/coordinator-assignment-implementation.md)
  *   node cli/index.ts digest-key id
  *   node cli/index.ts dsh <import|loss-accounting> ...
  *   node cli/index.ts studio [<root>] [--root dir] [--port n] [--key-file path] [--omp-sessions dir] [--representations dir]
@@ -27,6 +28,7 @@
 import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCommand } from "./commands.ts";
 import { COORDINATOR_COMMANDS_V0 } from "./coordinator.ts";
 import { ATTEMPT_COMMANDS_V0 } from "./develop-attempts.ts";
+import { ASSIGN_COMMANDS_V0, ASSIGN_USAGE_V0, CANDIDATE_COMMANDS_V0, DEP_COMMANDS_V0 } from "./develop-coordination.ts";
 import { PROJECT_COMMANDS_V0, TASK_COMMANDS_V0 } from "./develop-tasks.ts";
 import { digestKeyCommand } from "./digest-key.ts";
 import { doctorCommand } from "./doctor.ts";
@@ -86,7 +88,13 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 		ATTEMPT_COMMANDS_V0,
 		"usage: endo attempt <prepare|brief|handoff|report|abandon|list|show|check|receipts|receipt|evidence|bridge|observe|provenance|protected-run> ...",
 	),
-	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator <status|brief> ..."),
+	assign: family(ASSIGN_COMMANDS_V0, ASSIGN_USAGE_V0),
+	dep: family(DEP_COMMANDS_V0, "usage: endo dep <add|decide|withdraw-decision|remove|list> [<root> | --root dir] ..."),
+	candidate: family(
+		CANDIDATE_COMMANDS_V0,
+		"usage: endo candidate <declare|declare-protected|select|list> [<root> | --root dir] ...",
+	),
+	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator <status|brief|coordination> ..."),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(
 		{

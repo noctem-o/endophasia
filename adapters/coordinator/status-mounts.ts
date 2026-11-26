@@ -80,6 +80,9 @@ export function pinCoordinatorStoreV0(store: string) {
 			const events = join(store, "events");
 			dir(root, "develop", develop, (fd) => {
 				file(fd, "tasks.json", join(develop, "tasks.json"));
+				// E1: exactly the coordination FILE, descriptor-pinned, when it exists (a pre-E1 store has none). Never its directory, its
+				// writer locks (`coordination.lock.<n>`) or temporaries, and nothing a coordination record names.
+				file(fd, "coordination.json", join(develop, "coordination.json"), true);
 				const attempts = join(develop, "attempts");
 				const receipts = join(develop, "receipts");
 				dir(fd, "attempts", attempts, (child) => enumerate(child, attempts, false), true);

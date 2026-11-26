@@ -548,6 +548,13 @@ export async function dispatchEndoAssignmentAttemptV0(
 		worktreePath: plan.worktreePath,
 		...(plan.verifiedWorktree === undefined ? {} : { verifiedWorktree: plan.verifiedWorktree }),
 		verifiedCandidates: plan.verifiedCandidates,
+		sessionBinding: {
+			source: plan.source,
+			sessionKey: plan.sessionKey,
+			attachmentId: plan.attachmentId,
+			instanceId: plan.instanceId,
+			runtimeFingerprintId: plan.runtimeFingerprintId,
+		},
 		route: "adapter-live",
 		admitInLock: () =>
 			options.adapter.admitOperation(plan.request, authorityProof, {

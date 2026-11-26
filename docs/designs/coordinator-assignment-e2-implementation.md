@@ -129,6 +129,18 @@ An independent read-only adversarial security and systems review audited the ful
 | 10 | LOW | Multiline/control-character transport errors failed `validateEndoDevelopAdapterOutcomeV0` and silently dropped `.outcome.json`. | Sanitized control characters and empty strings before persisting `.outcome.json`. |
 | 11 | LOW | `DevelopCoordinationReviewsStoreV0.recordReview` did not verify `input.attemptId` belongs to `input.projectId`. | Added `DevelopAttemptsStoreV0` same-project ownership verification when `attemptId !== null`. |
 
+### Follow-up Codex PR Review Remediation (PR #186)
+
+All 5 findings raised by Codex on Draft PR #186 were reproduced, fixed, and regression-tested:
+
+| # | Priority | Finding | Resolution |
+| :--- | :--- | :--- | :--- |
+| C1 | P1 | Sibling `.git` pointer tampered while operator approval was pending succeeded because `commitAssignmentDispatch` checked only pre-approval `verifiedWorktree` strings. | Revalidate live primary path and `revalidateRegisteredSiblingPointerSyncV0(reg, primaryCommonDir)` inside `commitAssignmentDispatch` under `coordination.lock.<n>` before claiming `.route.json`. |
+| C2 | P1 | Assignment-linked Pi workbench `authorize()` accepted a different session/attachment than declared on `assignment.session`. | Added `sessionBinding` validation inside `commitAssignmentDispatch` under `coordination.lock.<n>` and forwarded Pi workbench & live adapter session bindings (`session-binding-stale` refusal before `.route.json` claim). |
+| C3 | P2 | Pi lifecycle/attachment events record process instance in `payload.instance` (not `payload.instanceId`), leaving Pi restarts as `instanceStatus: "unverified"`. | Normalized both `payload.instanceId` and `payload.instance` in `storage/coordinator-coordination.ts`. |
+| C4 | P2 | `DevelopAttemptDispatchV0.authorize()` and `launchProtectedAttemptV0()` did not forward `verifiedCandidates`, causing valid `candidate-declared` / `candidate-has-passing-receipt` dependencies to fail `prerequisites-unknown`. | Added `verifiedCandidates` to `DevelopAttemptAssignmentBindingV0`, forwarded in both routes, and auto-verified prerequisite candidate identities outside `coordination.lock.<n>` in `launchProtectedAttemptV0` when omitted. |
+| C5 | P2 | Studio discarded coordination read failures (`503`/timeout/invalid) and rendered misleading empty Lanes/Graph boards. | Passed `coordinationReply` into `Board` and added explicit `CoordinationUnavailableBanner`, `CoordinationUnavailableBoard`, and provenance unavailability disclosures whenever coordination read fails. |
+
 ---
 
 ## 5. Explicit Deviations & Remaining Limitations

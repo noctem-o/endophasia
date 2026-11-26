@@ -119,8 +119,13 @@ function readOfflineSessionActivity(
 				cur.lastRecordedAtMs = atMs;
 			}
 			const payload = ev.payload as Record<string, unknown>;
+			// Codex records `payload.instanceId`; Pi lifecycle/attachment events record `payload.instance` (Codex P2 #3).
 			const inst =
-				typeof payload.instanceId === "string" && payload.instanceId.length > 0 ? payload.instanceId : null;
+				typeof payload.instanceId === "string" && payload.instanceId.length > 0
+					? payload.instanceId
+					: typeof payload.instance === "string" && payload.instance.length > 0
+						? payload.instance
+						: null;
 			if (inst !== null && !cur.instanceIds.includes(inst)) {
 				cur.instanceIds.push(inst);
 			}

@@ -13,6 +13,7 @@
 
 import { realpathSync } from "node:fs";
 import { dirname } from "node:path";
+import type { EndoCandidateIdentityReadingV0 } from "../../protocol/coordinator-coordination.ts";
 import {
 	ENDO_DEVELOP_ATTEMPT_AUTHORIZATION_SCHEMA_V0,
 	type EndoAttemptMessageRefV0,
@@ -66,6 +67,7 @@ export type DevelopAttemptDispatchRefusalV0 =
 	| "already-authorized"
 	| "assignment-required"
 	| "assignment-not-active"
+	| "session-binding-stale"
 	| "prerequisites-not-satisfied"
 	| "brief-too-large"
 	| "brief-unsafe"
@@ -91,6 +93,8 @@ export const DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0: Readonly<Record<DevelopA
 		"this attempt is linked to an assignment and must be authorized through the governed assignment commitment boundary",
 	"assignment-not-active":
 		"the assignment linked to this attempt is no longer active or its revision changed during approval",
+	"session-binding-stale":
+		"the live workbench session or attachment does not match the assignment's declared session binding",
 	"prerequisites-not-satisfied":
 		"one or more task dependencies for this assignment-linked attempt are not currently satisfied",
 	"brief-too-large": `the brief is longer than a workbench prompt (${ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0} bytes)`,
@@ -120,6 +124,9 @@ export interface DevelopAttemptBindingV0 {
 	proposalDigest: string;
 	authorizationEventId: string;
 	message: EndoAttemptMessageRefV0;
+	/** Optional live runtime process instance / fingerprint for assignment session-binding validation. */
+	instanceId?: string | null;
+	runtimeFingerprintId?: string | null;
 }
 
 export type DevelopAttemptDispatchResultV0<T> =
@@ -140,6 +147,8 @@ export interface DevelopAttemptAssignmentBindingV0 {
 	assignmentId: string;
 	expectedAssignmentRevision: number;
 	verifiedWorktree?: { commonDir: string; gitDir: string | null };
+	/** Prerequisite candidate identities verified outside `coordination.lock.<n>` by the host caller (Codex P2 #4). */
+	verifiedCandidates?: ReadonlyMap<string, EndoCandidateIdentityReadingV0>;
 }
 
 export class DevelopAttemptDispatchV0 {
@@ -313,11 +322,22 @@ export class DevelopAttemptDispatchV0 {
 				...(assignmentBinding.verifiedWorktree === undefined
 					? {}
 					: { verifiedWorktree: assignmentBinding.verifiedWorktree }),
+				...(assignmentBinding.verifiedCandidates === undefined
+					? {}
+					: { verifiedCandidates: assignmentBinding.verifiedCandidates }),
+				sessionBinding: {
+					source: "pi-live",
+					sessionKey: `pi-live:persistent:${binding.session}`,
+					attachmentId: binding.attachment,
+					instanceId: binding.instanceId ?? null,
+					runtimeFingerprintId: binding.runtimeFingerprintId ?? null,
+				},
 				route: "workbench",
 				writeRouteRecord: () => this.#attempts.write(approved.attemptId, "authorized", record),
 			});
 			if (committed.ok) return { ok: true, value: record };
 			if (committed.code === "already-authorized") return { ok: false, code: "already-authorized" };
+			if (committed.code === "session-binding-stale") return { ok: false, code: "session-binding-stale" };
 			if (committed.code === "assignment-not-active" || committed.code === "stale-revision")
 				return { ok: false, code: "assignment-not-active" };
 			if (committed.code === "prerequisites-not-satisfied" || committed.code === "prerequisites-unknown")

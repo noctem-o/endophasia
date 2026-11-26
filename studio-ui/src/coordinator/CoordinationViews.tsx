@@ -10,6 +10,7 @@ import type {
 	EndoCoordinatorCoordinationV0,
 } from "../../../protocol/coordinator-coordination.ts";
 import { Timestamp } from "./Evidence.tsx";
+import type { CoordinatorProblem } from "./read.ts";
 
 const ROLE_LABELS = {
 	builder: "Builder",
@@ -114,6 +115,56 @@ export function CoordinationBanner({ coordination }: { coordination: EndoCoordin
 					Gaps: {coordination.gaps.join(", ")}
 				</span>
 			) : null}
+		</div>
+	);
+}
+
+const COORDINATION_PROBLEM_LABELS: Record<CoordinatorProblem, string> = {
+	"grant-required": "Pairing grant required",
+	forbidden: "Project scope unavailable",
+	"not-found": "Coordination endpoint not found",
+	"too-many-requests": "Host busy (rate limited)",
+	unavailable: "Coordination projection unavailable (503)",
+	invalid: "Coordination response failed schema validation",
+	unreachable: "Workspace host unreachable",
+	timeout: "Coordination read timed out",
+};
+
+export function CoordinationUnavailableBanner({ problem }: { problem: CoordinatorProblem }): ReactElement {
+	return (
+		<div className="coordinator-coord-banner" data-testid="coordinator-coordination-unavailable">
+			<span className="coordinator-pill" data-tone="attention">
+				Coordination: unavailable
+			</span>
+			<span className="coordinator-muted">
+				{COORDINATION_PROBLEM_LABELS[problem]}. Assignments, dependencies, worktree hazards, and advisory reviews
+				could not be established — absence of warnings does not mean absence of hazards.
+			</span>
+		</div>
+	);
+}
+
+export function CoordinationUnavailableBoard({
+	view,
+	problem,
+}: {
+	view: "lanes" | "graph";
+	problem: CoordinatorProblem;
+}): ReactElement {
+	const subject = view === "lanes" ? "Participant assignments" : "Task dependencies";
+	return (
+		<div
+			className="coordinator-empty coordinator-empty-board"
+			data-testid={view === "lanes" ? "coordinator-lanes-unavailable" : "coordinator-graph-unavailable"}
+		>
+			<p className="coordinator-index">COORDINATION READ UNAVAILABLE</p>
+			<p className="coordinator-empty-title">
+				{subject} could not be established ({COORDINATION_PROBLEM_LABELS[problem]}).
+			</p>
+			<p className="coordinator-muted">
+				This does not mean no {view === "lanes" ? "assignments" : "dependencies"} or worktree hazards exist. Refresh
+				to retry the read-only coordination projection.
+			</p>
 		</div>
 	);
 }

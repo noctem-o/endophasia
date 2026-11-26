@@ -32,6 +32,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import type { EndoCandidateIdentityReadingV0 } from "../../protocol/coordinator-coordination.ts";
 import {
 	ENDO_ATTEMPT_BINDING_INTEGRITY_V0,
 	ENDO_ATTEMPT_BINDING_STANDING_V0,
@@ -88,6 +89,7 @@ import {
 	readBoundedJsonSyncV0,
 	writeOnceSyncV0,
 } from "../../storage/write-once.ts";
+import { GitRevisionObserverV0 } from "../git/revision-observer.ts";
 import { endoTreeDigestV0 } from "../sandbox/bubblewrap.ts";
 import { inspectProtectedRunForBridgeV0 } from "./evidence-bridge.ts";
 
@@ -805,6 +807,52 @@ export async function launchProtectedAttemptV0(
 		const projPath = realOrResolved(
 			tasksNow.ok ? (tasksNow.file.projects.find((p) => p.id === plan.operation.projectId)?.path ?? "") : "",
 		);
+		// Gather prerequisite candidate identities OUTSIDE `coordination.lock.<n>` if the caller did not supply them (Codex P2 #4).
+		let verifiedCandidates = options.assignment.verifiedCandidates;
+		if (verifiedCandidates === undefined) {
+			const coordPre = new DevelopCoordinationStoreV0(options.root, { now }).read();
+			if (coordPre.ok && coordPre.exists) {
+				const prereqIds = new Set(
+					coordPre.file.dependencies
+						.filter(
+							(d) => d.projectId === plan.operation.projectId && d.dependentTaskId === plan.operation.taskId,
+						)
+						.map((d) => d.prerequisiteTaskId),
+				);
+				if (prereqIds.size > 0) {
+					const observer = new GitRevisionObserverV0();
+					const gathered = new Map<string, EndoCandidateIdentityReadingV0>();
+					for (const tc of coordPre.file.taskCandidates) {
+						if (tc.projectId !== plan.operation.projectId || !prereqIds.has(tc.taskId)) continue;
+						const cur = tc.candidates.find((c) => c.candidateId === tc.currentCandidateId);
+						if (cur === undefined) continue;
+						if (cur.kind === "protected-candidate") {
+							const r = readProtectedAttemptV0({ root: options.root, attemptId: cur.attemptId });
+							const { binding: bRec } = readProtectedAttemptRecordsV0(options.root, cur.attemptId);
+							const match =
+								r?.attemptAssociation === "established" &&
+								bRec.state === "present" &&
+								bRec.record.bindingSha256 === cur.bindingSha256 &&
+								bRec.record.target.runId === cur.runId &&
+								bRec.record.target.candidate.mode === "staged-changeset" &&
+								bRec.record.target.candidate.candidateSha256 === cur.candidateSha256;
+							gathered.set(cur.candidateId, match ? "established" : "not-established");
+						} else {
+							const obs = await observer.observe(cur.worktreePath);
+							if (!obs.ok) {
+								gathered.set(cur.candidateId, "unavailable");
+							} else if (obs.observation.commonDir !== cur.commonDir) {
+								gathered.set(cur.candidateId, "mismatch");
+							} else {
+								const tree = await observer.commitTree(cur.worktreePath, cur.commitSha);
+								gathered.set(cur.candidateId, tree === cur.treeSha ? "verified" : "mismatch");
+							}
+						}
+					}
+					verifiedCandidates = gathered;
+				}
+			}
+		}
 		const committed = new DevelopCoordinationStoreV0(options.root, { now }).commitAssignmentDispatch({
 			assignmentId: options.assignment.assignmentId,
 			expectedAssignmentRevision: options.assignment.expectedAssignmentRevision,
@@ -817,6 +865,7 @@ export async function launchProtectedAttemptV0(
 			...(options.assignment.verifiedWorktree === undefined
 				? {}
 				: { verifiedWorktree: options.assignment.verifiedWorktree }),
+			...(verifiedCandidates === undefined ? {} : { verifiedCandidates }),
 			route: "protected",
 			writeRouteRecord: () => writeRecord(options.root, options.attemptId, "launch", launch),
 		});

@@ -32,6 +32,7 @@ import {
 	openSync,
 	readdirSync,
 	readSync,
+	realpathSync,
 	renameSync,
 	rmSync,
 } from "node:fs";
@@ -113,6 +114,7 @@ import {
 import { DevelopAttemptsStoreV0, type EndoAttemptsReadV0, endoAttemptProblemsOfV0 } from "./develop-attempts.ts";
 import { DevelopReceiptsStoreV0 } from "./develop-receipts.ts";
 import { DevelopTasksStoreV0, ENDO_DEVELOP_DIRECTORY_V0, type EndoTasksReadV0 } from "./develop-tasks.ts";
+import { primaryGitCommonDirSyncV0, revalidateRegisteredSiblingPointerSyncV0 } from "./git-worktree-pointer.ts";
 import { writeExactSyncV0 } from "./log.ts";
 import {
 	acquireEndoNumberedLockV0,
@@ -149,6 +151,7 @@ export type EndoCoordinationRefusalV0 =
 	| "prerequisites-unknown"
 	| "task-done"
 	| "task-words-changed"
+	| "session-binding-stale"
 	| "admission-refused"
 	| "synthetic-not-admitted"
 	| "unsupported-source"
@@ -1487,12 +1490,56 @@ export class DevelopCoordinationStoreV0 {
 					`assignment is bound to task revision ${assignment.taskRevisionAtBind}, current is ${task.revision}`,
 				);
 
-			// Revalidate worktree registration inside the critical section.
+			// Revalidate session binding inside the critical section when the assignment declares one (Codex P1 #2).
+			if (assignment.session !== null && (input.route === "workbench" || input.route === "adapter-live")) {
+				const sb = input.sessionBinding;
+				if (
+					sb === undefined ||
+					sb.source !== assignment.session.source ||
+					sb.sessionKey !== assignment.session.sessionKey ||
+					sb.attachmentId !== assignment.session.attachmentId
+				) {
+					return refuse(
+						"session-binding-stale",
+						`dispatch session (${sb ? `${sb.source}/${sb.sessionKey}/${sb.attachmentId}` : "none"}) does not match assignment session (${assignment.session.source}/${assignment.session.sessionKey}/${assignment.session.attachmentId})`,
+					);
+				}
+				if (assignment.session.instanceId !== null && sb.instanceId !== assignment.session.instanceId) {
+					return refuse(
+						"session-binding-stale",
+						`dispatch runtime instanceId (${sb.instanceId ?? "null"}) differs from assignment binding (${assignment.session.instanceId})`,
+					);
+				}
+				if (
+					assignment.session.runtimeFingerprintId !== null &&
+					sb.runtimeFingerprintId !== assignment.session.runtimeFingerprintId
+				) {
+					return refuse(
+						"session-binding-stale",
+						`dispatch runtime fingerprint (${sb.runtimeFingerprintId ?? "null"}) differs from assignment binding (${assignment.session.runtimeFingerprintId})`,
+					);
+				}
+			}
+
+			// Revalidate worktree registration AND live filesystem pointer integrity inside the critical section,
+			// closing post-approval symlink/pointer tampering races (Codex P1 #1).
 			if (assignment.workspace.worktreePath !== input.worktreePath)
 				return refuse("worktree-not-registered", "dispatch worktree does not match assignment workspace");
 			if (assignment.workspace.registration === "project-path") {
 				if (input.worktreePath !== project.path)
 					return refuse("worktree-not-registered", "worktree does not match project primary path");
+				let primaryRealNow: string | null = null;
+				try {
+					const st = lstatSync(project.path, { throwIfNoEntry: false });
+					if (st?.isDirectory()) primaryRealNow = realpathSync(project.path);
+				} catch {
+					primaryRealNow = null;
+				}
+				if (primaryRealNow !== project.path)
+					return refuse(
+						"worktree-not-registered",
+						"project primary worktree path is missing, symlinked, or substituted",
+					);
 			} else if (assignment.workspace.registration === "registered-sibling") {
 				const reg = (draft.registeredWorktrees ?? []).find(
 					(w) => w.projectId === input.projectId && w.worktreePath === input.worktreePath,
@@ -1508,6 +1555,11 @@ export class DevelopCoordinationStoreV0 {
 						"worktree-not-registered",
 						"registered sibling worktree identity could not be re-established",
 					);
+				const primaryCommonNow = primaryGitCommonDirSyncV0(project.path) ?? reg.commonDir;
+				const pointerNow = revalidateRegisteredSiblingPointerSyncV0(reg, primaryCommonNow);
+				if (!pointerNow.ok) {
+					return refuse("worktree-not-registered", pointerNow.detail);
+				}
 			} else {
 				return refuse(
 					"worktree-not-registered",
@@ -1751,6 +1803,14 @@ export interface EndoCommitAssignmentDispatchInputV0 {
 	worktreePath: string;
 	verifiedWorktree?: { commonDir: string; gitDir: string | null };
 	verifiedCandidates?: ReadonlyMap<string, EndoCandidateIdentityReadingV0>;
+	/** Current session binding presented by the dispatching live route (validated inside `coordination.lock.<n>`). */
+	sessionBinding?: {
+		source: "pi-live" | "codex-live";
+		sessionKey: string;
+		attachmentId: string;
+		instanceId?: string | null;
+		runtimeFingerprintId?: string | null;
+	};
 	route: EndoDevelopAttemptRouteV0;
 	admitInLock?: () => { admitted: true } | { admitted: false; code: string; reason: string };
 	adapterAuthorization?: Omit<EndoDevelopAdapterAuthorizationV0, "recordedAtMs">;

@@ -81,6 +81,7 @@ import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopCoordinationStoreV0 } from "../storage/develop-coordination.ts";
 import { DevelopCoordinationReviewsStoreV0 } from "../storage/develop-coordination-reviews.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
+import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { git, haveGit } from "./git-fixtures.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex-app-server.mjs", import.meta.url));
@@ -1755,5 +1756,191 @@ describe.skipIf(!haveGit)("E1 §10.6 remediation (AT24) & E2 CLI commands", () =
 			recordedBy: "operator",
 		});
 		expect(crossAttReview).toMatchObject({ ok: false, code: "cross-project" });
+	});
+
+	it("Codex review regressions (P1 #1 sibling pointer mid-approval, P1 #2 workbench session check, P2 #3 Pi payload.instance, P2 #4 verifiedCandidates forwarding)", async () => {
+		// P1 #1: Tampering with a registered sibling worktree's `.git` pointer WHILE operator approval is pending
+		// MUST be caught inside `commitAssignmentDispatch` under `coordination.lock.<n>` with zero route claim!
+		const env1 = createRepoStore("repo-codex-p1");
+		const sibling = join(env1.base, "codex-p1-sibling");
+		git(env1.repo, "worktree", "add", "-q", "-b", "codex-p1-wt", sibling);
+		const foreign = join(env1.base, "codex-p1-foreign");
+		mkdirSync(foreign);
+		git(foreign, "init", "-q");
+		writeFileSync(join(foreign, "f.txt"), "f\n");
+		git(foreign, "add", "f.txt");
+		git(foreign, "commit", "-q", "-m", "foreign");
+		const tasksRead = env1.tasks.read();
+		if (!tasksRead.ok) throw new Error(tasksRead.reason);
+		const val = await new DevelopCoordinationGitV0().validateSiblingWorktree(tasksRead.file.projects[0]!, sibling);
+		if (!val.ok) throw new Error(val.detail);
+		const reg = env1.coord.registerWorktree({
+			expectedFileRevision: 0,
+			projectId: env1.projectId,
+			worktreePath: val.worktree.worktreePath,
+			commonDir: val.worktree.commonDir,
+			gitDir: val.worktree.gitDir,
+		});
+		if (!reg.ok) throw new Error(reg.code);
+		const adapter = await createLiveCodexAdapter({ root: env1.root, worktree: sibling });
+		const { assignment: a1 } = bindAssignment(env1, {
+			adapter,
+			worktreePath: sibling,
+			registration: "registered-sibling",
+			expectedFileRevision: reg.file.revision,
+		});
+		const tamperedRes = await dispatchEndoAssignmentAttemptV0({
+			root: env1.root,
+			assignmentId: a1.assignmentId,
+			attemptId: env1.attemptId,
+			adapter,
+			approve: async () => {
+				// Replace sibling's `.git` pointer with foreign repo pointer mid-approval!
+				writeFileSync(join(sibling, ".git"), `gitdir: ${join(foreign, ".git")}\n`);
+				return { approved: true, mechanism: "terminal-phrase" };
+			},
+		});
+		expect(tamperedRes).toMatchObject({
+			status: "refused",
+			stage: "commit",
+			code: "worktree-not-registered",
+			routeClaimed: false,
+		});
+		expect(DevelopAttemptRoutesStoreV0.forRoot(env1.root).read(env1.attemptId).state).toBe("absent");
+
+		// P1 #2 & P2 #4: Workbench `authorize()` validates declared assignment session AND forwards `verifiedCandidates`!
+		const env2 = createRepoStore("repo-codex-p2");
+		const task2 = env2.tasks.createTask(env2.projectId, { title: "Dependent Pi task" });
+		if (!task2.ok) throw new Error(task2.code);
+		const cand1 = env2.coord.declareCandidate({
+			expectedFileRevision: 0,
+			projectId: env2.projectId,
+			taskId: env2.taskId,
+			candidate: {
+				kind: "git-commit",
+				commonDir: join(env2.repo, ".git"),
+				worktreePath: env2.repo,
+				commitSha: env2.headSha,
+				treeSha: env2.treeSha,
+				attemptId: null,
+			},
+		});
+		if (!cand1.ok) throw new Error(cand1.code);
+		const dep = env2.coord.addDependency({
+			expectedFileRevision: cand1.file.revision,
+			projectId: env2.projectId,
+			dependentTaskId: task2.value.id,
+			prerequisiteTaskId: env2.taskId,
+			condition: "candidate-declared",
+		});
+		if (!dep.ok) throw new Error(dep.code);
+		const prep2 = new DevelopAttemptsServiceV0(env2.tasks, env2.attempts).prepare(env2.projectId, task2.value.id, {
+			objective: "Work after candidate declared",
+		});
+		if (!prep2.ok) throw new Error(prep2.code);
+		const a2Create = env2.coord.createAssignment({
+			expectedFileRevision: dep.file.revision,
+			expectedTaskRevision: 0,
+			projectId: env2.projectId,
+			taskId: task2.value.id,
+			participant: { participantId: "pi-builder", role: "builder", intendedHarnessFamily: "pi" },
+			workspace: {
+				worktreePath: env2.repo,
+				registration: "project-path",
+				accessIntent: "read-write-intended",
+				pathHints: [],
+				allowSharedWorktree: false,
+			},
+			targetCandidate: null,
+		});
+		if (!a2Create.ok) throw new Error(a2Create.code);
+		const a2Sess = env2.coord.associateSession(a2Create.value.assignmentId, a2Create.value.revision, {
+			source: "pi-live",
+			sessionKey: "pi-live:persistent:endo.session.pi.approved",
+			attachmentId: "pi.default",
+			instanceId: "pi-inst-old",
+			runtimeFingerprintId: null,
+		});
+		if (!a2Sess.ok) throw new Error(a2Sess.code);
+		const a2Link = env2.coord.linkAttempt(a2Sess.value.assignmentId, a2Sess.value.revision, prep2.value.id);
+		if (!a2Link.ok) throw new Error(a2Link.code);
+
+		const piDispatch = new DevelopAttemptDispatchV0(env2.tasks, env2.attempts, {
+			projectId: env2.projectId,
+			launchDirectory: env2.repo,
+		});
+		const verifiedCandidates = new Map([[cand1.value.candidateId, "verified" as const]]);
+		const assignBinding = {
+			assignmentId: a2Link.value.assignmentId,
+			expectedAssignmentRevision: a2Link.value.revision,
+			verifiedCandidates,
+		};
+		const checked = piDispatch.check(prep2.value.id, assignBinding);
+		if (!checked.ok) throw new Error(`pi check failed: ${checked.code}`);
+
+		// Wrong session (`endo.session.pi.different`) MUST be refused `session-binding-stale` with zero route claim!
+		const wrongSession = piDispatch.authorize(
+			checked.value,
+			{
+				session: "endo.session.pi.different",
+				attachment: "pi.default",
+				launchId: "2".repeat(16),
+				proposalId: `endo.evidence.workbench-prompt-${"2".repeat(32)}`,
+				proposalDigest: "a".repeat(64),
+				authorizationEventId: `endo.event.${"2".repeat(32)}`,
+				message: {
+					digest: { algorithm: "hmac-sha256", keyId: "k1", value: "b".repeat(64) },
+					bytes: Buffer.byteLength(checked.value.brief),
+				},
+				instanceId: "pi-inst-old",
+			},
+			assignBinding,
+		);
+		expect(wrongSession).toEqual({ ok: false, code: "session-binding-stale" });
+		expect(DevelopAttemptRoutesStoreV0.forRoot(env2.root).read(prep2.value.id).state).toBe("absent");
+
+		// Matching session (`endo.session.pi.approved`) + forwarded `verifiedCandidates` SUCCEEDS!
+		const rightSession = piDispatch.authorize(
+			checked.value,
+			{
+				session: "endo.session.pi.approved",
+				attachment: "pi.default",
+				launchId: "2".repeat(16),
+				proposalId: `endo.evidence.workbench-prompt-${"2".repeat(32)}`,
+				proposalDigest: "a".repeat(64),
+				authorizationEventId: `endo.event.${"2".repeat(32)}`,
+				message: {
+					digest: { algorithm: "hmac-sha256", keyId: "k1", value: "b".repeat(64) },
+					bytes: Buffer.byteLength(checked.value.brief),
+				},
+				instanceId: "pi-inst-old",
+			},
+			assignBinding,
+		);
+		expect(rightSession.ok, rightSession.ok ? "" : rightSession.code).toBe(true);
+
+		// P2 #3: Pi `harness.attached` event using `payload.instance` (not `payload.instanceId`) triggers
+		// `instanceStatus: "recorded-instance-superseded"` for a Pi assignment bound to `pi-inst-old`!
+		const eventStore = createEndoDurableEventStoreV0(env2.root);
+		try {
+			eventStore.ingest({
+				schemaVersion: "endo.event.v0",
+				id: `endo.event.${"9".repeat(32)}`,
+				kind: "harness.attached",
+				source: "runtime-fact",
+				sequence: 1,
+				at: new Date().toISOString(),
+				coordinates: { sessionId: "endo.session.pi.approved" },
+				producer: "pi.default",
+				derivedFrom: [],
+				payload: { instance: "pi-inst-new", piSessionId: "approved" },
+			});
+		} finally {
+			eventStore.close();
+		}
+		const projPi = await readEndoCoordinatorCoordinationV0({ root: env2.root, projects: [env2.projectId] });
+		const piAssignView = projPi.projects[0]?.assignments.find((a) => a.assignmentId === a2Link.value.assignmentId);
+		expect(piAssignView?.session?.instanceStatus).toBe("recorded-instance-superseded");
+		expect(piAssignView?.findings).toContain("recorded-instance-superseded");
 	});
 });

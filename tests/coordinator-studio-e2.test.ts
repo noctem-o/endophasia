@@ -394,6 +394,34 @@ describe.skipIf(!haveGit)("AT19 & AT23: Coordinator coordination HTTP boundary &
 		const tamperedProj = validateEndoCoordinatorCoordinationV0(JSON.parse(afterTamper.body)).projects[0]!;
 		expect(tamperedProj.registeredWorktrees?.[0]?.observation).toBe("unavailable");
 		expect(tamperedProj.registeredWorktrees?.[0]?.headCommit).toBeNull();
+
+		// Codex P2 #5: Coordination read failure surfaces explicit unavailable banner & Lanes/Graph states
+		// rather than misleading "No participant assignments" / "No task dependency edges" empty boards.
+		const viewsMod = (await import(viewsModulePath)) as {
+			CoordinationUnavailableBanner: (props: {
+				problem: "unavailable" | "timeout";
+			}) => ReturnType<typeof createElement>;
+			CoordinationUnavailableBoard: (props: {
+				view: "lanes" | "graph";
+				problem: "unavailable" | "timeout";
+			}) => ReturnType<typeof createElement>;
+		};
+		const unavailBanner = renderToStaticMarkup(
+			createElement(viewsMod.CoordinationUnavailableBanner, { problem: "unavailable" }),
+		);
+		const unavailLanes = renderToStaticMarkup(
+			createElement(viewsMod.CoordinationUnavailableBoard, { view: "lanes", problem: "timeout" }),
+		);
+		const unavailGraph = renderToStaticMarkup(
+			createElement(viewsMod.CoordinationUnavailableBoard, { view: "graph", problem: "unavailable" }),
+		);
+		expect(unavailBanner).toContain("Coordination: unavailable");
+		expect(unavailBanner).toContain("absence of warnings does not mean absence of hazards");
+		expect(unavailLanes).toContain("COORDINATION READ UNAVAILABLE");
+		expect(unavailLanes).not.toContain("NO RECORDED ASSIGNMENTS");
+		expect(unavailGraph).toContain("COORDINATION READ UNAVAILABLE");
+		expect(unavailGraph).not.toContain("NO DECLARED DEPENDENCIES");
+		expect(unavailBanner + unavailLanes + unavailGraph).not.toMatch(/style=/i);
 	});
 });
 

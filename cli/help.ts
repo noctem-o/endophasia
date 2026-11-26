@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt|assign|dep|candidate|coordinator> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt|assign|dep|candidate|worktree|review|coordinator|schedule|scheduler|resource> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -153,6 +153,18 @@ Commands that write to a store:
   review <record|list|show> [<root> | --root dir] ...
                                      project-scoped write-once structured advisory reviews bound to exact candidate identity;
                                      advisory agent evidence only, never promoted to host verification receipts or acceptance
+  schedule <add|list|enable|disable|remove> [<root> | --root dir] ...
+                                     operator-controlled durable schedule ledger (<root>/develop/automation/schedules.json);
+                                     read-only observation actions only in S1; starts no background service
+  scheduler tick [<root> | --root dir] [--pool <config.json>] [--lease-ttl <s>] [--budget <s>] [--quiet]
+                                     run ONE bounded, zero-LLM deterministic observation pass with durable lease fencing;
+                                     grants no execution authority, dispatches nothing, and never holds session-attachment.lock
+  scheduler print-systemd-unit [<root> | --root dir] [--endo-bin <path>] [--pool <path>] [--cadence <spec>] [--json]
+                                     print an opt-in example systemd --user service and timer to stdout only; never installs
+                                     or activates units or modifies host configuration
+  resource <declare-window|list> [<root> | --root dir] ...
+                                     declare an operator-estimated provider allowance reset window or inspect recorded
+                                     resource observations with live freshness; never touches provider credential stores
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

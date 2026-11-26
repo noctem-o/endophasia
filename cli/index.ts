@@ -45,6 +45,14 @@ import { experimentProtectedReportCommand, experimentProtectedRunCommand } from 
 import { developCommand, HARNESS_COMMANDS_V0 } from "./harness.ts";
 import { ENDO_USAGE_LINE_V0, endoHelpV0, endoVersionV0 } from "./help.ts";
 import { PROXY_COMMANDS_V0, replayCommand } from "./replay.ts";
+import {
+	RESOURCE_COMMANDS_V0,
+	RESOURCE_USAGE_V0,
+	SCHEDULE_COMMANDS_V0,
+	SCHEDULE_USAGE_V0,
+	SCHEDULER_COMMANDS_V0,
+	SCHEDULER_USAGE_V0,
+} from "./scheduler.ts";
 import { STEER_COMMANDS_V0 } from "./steer.ts";
 import { TRAJECTORY_COMMANDS_V0 } from "./trajectory.ts";
 
@@ -104,6 +112,9 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	worktree: family(WORKTREE_COMMANDS_V0, "usage: endo worktree <register|unregister|list> [<root> | --root dir] ..."),
 	review: family(REVIEW_COMMANDS_V0, "usage: endo review <record|list|show> [<root> | --root dir] ..."),
 	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator <status|brief|coordination|pool> ..."),
+	schedule: family(SCHEDULE_COMMANDS_V0, SCHEDULE_USAGE_V0),
+	scheduler: family(SCHEDULER_COMMANDS_V0, SCHEDULER_USAGE_V0),
+	resource: family(RESOURCE_COMMANDS_V0, RESOURCE_USAGE_V0),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(
 		{

@@ -36,7 +36,13 @@ import {
 	rmSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
-import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "../protocol/develop-attempts.ts";
+import type { EndoCandidateIdentityReadingV0 } from "../protocol/coordinator-coordination.ts";
+import type { EndoDevelopAdapterAuthorizationV0 } from "../protocol/develop-adapter-authorization.ts";
+import {
+	ENDO_ATTEMPT_ID_PATTERN_V0,
+	endoDevelopTaskWordsChangedV0,
+	renderEndoDevelopBriefV0,
+} from "../protocol/develop-attempts.ts";
 import {
 	ENDO_ACCESS_INTENTS_V0,
 	ENDO_ASSIGNMENT_ID_PATTERN_V0,
@@ -48,6 +54,7 @@ import {
 	ENDO_PARTICIPANT_ID_PATTERN_V0,
 	ENDO_PARTICIPANT_ROLES_V0,
 	ENDO_WORKSPACE_REGISTRATIONS_V0,
+	ENDO_WORKTREE_ID_PATTERN_V0,
 	type EndoAccessIntentV0,
 	type EndoAssignmentV0,
 	type EndoCandidateRefV0,
@@ -57,11 +64,13 @@ import {
 	type EndoHazardEvidenceSnapshotV0,
 	type EndoIntendedHarnessFamilyV0,
 	type EndoParticipantRoleV0,
+	type EndoRegisteredWorktreeV0,
 	type EndoSessionAssociationV0,
 	type EndoWorkspaceRegistrationV0,
 	type EndoWorktreeHazardV0,
 	emptyEndoDevelopCoordinationFileV0,
 	endoDependencyCycleV0,
+	endoHazardBasesFromSnapshotV0,
 	endoSessionAssociationProblemV0,
 	isEndoCanonicalPathV0,
 	isEndoPathHintV0,
@@ -76,19 +85,33 @@ import {
 	type EndoDevelopUnreadableReasonV0,
 } from "../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { endoBriefSha256V0 } from "../runtime/contracts/develop-attempt-execution.ts";
 import {
 	type EndoAttemptExecutionEvidenceV0,
+	type EndoCoordinationTaskFactV0,
+	type EndoReceiptSourceV0,
 	endoAttemptExecutionEvidenceFromReadV0,
+	endoCoordinationProjectionV0,
 	endoEffectiveAssignmentFromSnapshotV0,
 	endoEffectiveAssignmentV0,
 	endoHazardEvidenceDigestV0,
 	endoHazardEvidenceSnapshotV0,
 	endoRouteEvidenceForAttemptV0,
 	endoTerminalHazardBasesV0,
+	endoWorktreeConflictsV0,
 	endoWorktreeWriteConflictsV0,
 } from "../runtime/contracts/develop-coordination.ts";
-import { DevelopAttemptRoutesStoreV0 } from "./develop-attempt-routes.ts";
-import { DevelopAttemptsStoreV0, type EndoAttemptsReadV0 } from "./develop-attempts.ts";
+import {
+	checkAdapterAuthorizationPresenceSyncV0,
+	DevelopAdapterAuthorizationsStoreV0,
+} from "./develop-adapter-authorizations.ts";
+import {
+	checkProtectedAttemptPresenceSyncV0,
+	DevelopAttemptRoutesStoreV0,
+	type EndoDevelopAttemptRouteV0,
+} from "./develop-attempt-routes.ts";
+import { DevelopAttemptsStoreV0, type EndoAttemptsReadV0, endoAttemptProblemsOfV0 } from "./develop-attempts.ts";
+import { DevelopReceiptsStoreV0 } from "./develop-receipts.ts";
 import { DevelopTasksStoreV0, ENDO_DEVELOP_DIRECTORY_V0, type EndoTasksReadV0 } from "./develop-tasks.ts";
 import { writeExactSyncV0 } from "./log.ts";
 import {
@@ -118,6 +141,15 @@ export type EndoCoordinationRefusalV0 =
 	| "dependency-cycle"
 	| "cross-project"
 	| "worktree-write-overlap"
+	| "worktree-not-registered"
+	| "assignment-not-active"
+	| "attempt-not-linked"
+	| "already-authorized"
+	| "prerequisites-not-satisfied"
+	| "prerequisites-unknown"
+	| "task-done"
+	| "task-words-changed"
+	| "admission-refused"
 	| "synthetic-not-admitted"
 	| "unsupported-source"
 	| "unreadable"
@@ -125,6 +157,7 @@ export type EndoCoordinationRefusalV0 =
 	| "attempts-unreadable"
 	| "busy"
 	| "storage-failed"
+	| "commit-partial"
 	| "commit-uncertain";
 
 export type EndoCoordinationResultV0<T> =
@@ -149,6 +182,10 @@ export interface EndoDevelopCoordinationStoreOptionsV0 {
 	afterTasksRead?: () => void;
 	/** For tests: after clearHazard captured and verified its execution-evidence snapshot under the lock, before committing. */
 	afterEvidenceRead?: () => void;
+	/** For tests: after `.route.json` is claimed inside `commitAssignmentDispatch`, before writing authorization (crash window W1). */
+	afterRouteClaim?: () => void;
+	/** For tests: after authorization is written inside `commitAssignmentDispatch`, before replacing `coordination.json` (crash window W1b). */
+	afterAuthorizationWrite?: () => void;
 	/** For tests: deterministic lock interleavings. */
 	lockHooks?: EndoNumberedLockHooksV0;
 }
@@ -171,7 +208,7 @@ interface MutationContext {
 	/** The task file, read lock-free on first use: a mutation that never needs it is not refused when it is unreadable. */
 	tasks: () => EndoTasksReadV0;
 	attempts: () => EndoAttemptsReadV0;
-	evidence: (attemptId: string) => EndoAttemptExecutionEvidenceV0;
+	evidence: (attemptId: string, assignmentId?: string) => EndoAttemptExecutionEvidenceV0;
 }
 
 export interface EndoAssignmentSpecV0 {
@@ -285,11 +322,14 @@ export class DevelopCoordinationStoreV0 {
 		if (assignment === undefined) return { ok: false, code: "not-found", detail: `assignment ${assignmentId}` };
 		const attemptsRead = new DevelopAttemptsStoreV0(this.#root).read();
 		const routes = DevelopAttemptRoutesStoreV0.forRoot(this.#root);
-		const evidence = (attemptId: string): EndoAttemptExecutionEvidenceV0 =>
+		const adapterAuths = DevelopAdapterAuthorizationsStoreV0.forRoot(this.#root);
+		const evidence = (attemptId: string, forAssignmentId?: string): EndoAttemptExecutionEvidenceV0 =>
 			endoAttemptExecutionEvidenceFromReadV0(
 				attemptId,
 				attemptsRead,
 				endoRouteEvidenceForAttemptV0(this.#dir, routes, attemptId),
+				adapterAuths.read(attemptId),
+				forAssignmentId ?? assignment.assignmentId,
 			);
 		const snapshot = endoHazardEvidenceSnapshotV0(assignment, evidence);
 		const effective = endoEffectiveAssignmentFromSnapshotV0(assignment, snapshot);
@@ -413,11 +453,14 @@ export class DevelopCoordinationStoreV0 {
 				return attempts;
 			};
 			const routes = DevelopAttemptRoutesStoreV0.forRoot(this.#root);
-			const evidence = (attemptId: string): EndoAttemptExecutionEvidenceV0 =>
+			const adapterAuths = DevelopAdapterAuthorizationsStoreV0.forRoot(this.#root);
+			const evidence = (attemptId: string, assignmentId?: string): EndoAttemptExecutionEvidenceV0 =>
 				endoAttemptExecutionEvidenceFromReadV0(
 					attemptId,
 					readAttempts(),
 					endoRouteEvidenceForAttemptV0(this.#dir, routes, attemptId),
+					adapterAuths.read(attemptId),
+					assignmentId,
 				);
 			const draft = clone(read.file);
 			const made = change(draft, { now: this.#now(), tasks, attempts: readAttempts, evidence });
@@ -516,6 +559,17 @@ export class DevelopCoordinationStoreV0 {
 				code: "bad-request",
 				detail: "a project-path workspace must be the project's registered path",
 			};
+		if (spec.workspace.registration === "registered-sibling") {
+			const registered = (draft.registeredWorktrees ?? []).some(
+				(w) => w.projectId === projectId && w.worktreePath === spec.workspace.worktreePath,
+			);
+			if (!registered)
+				return {
+					ok: false,
+					code: "worktree-not-registered",
+					detail: "sibling worktree is not explicitly registered for this project",
+				};
+		}
 		if (spec.targetCandidate !== null) {
 			const entry = draft.taskCandidates.find((t) => t.taskId === spec.targetCandidate?.taskId);
 			if (entry === undefined || !entry.candidates.some((c) => c.candidateId === spec.targetCandidate?.candidateId))
@@ -566,6 +620,12 @@ export class DevelopCoordinationStoreV0 {
 					accessIntent: spec.workspace.accessIntent,
 					pathHints: [...spec.workspace.pathHints],
 					sharedWorktreeAcknowledged: conflicts.length > 0 && spec.workspace.allowSharedWorktree,
+					// Always write explicit `acknowledgedConflictIds` on E2 assignments (even `[]`) so legacy E1
+					// boolean `sharedWorktreeAcknowledged` on another assignment can never mask a new overlap (#8).
+					acknowledgedConflictIds:
+						conflicts.length > 0 && spec.workspace.allowSharedWorktree
+							? conflicts.map((c) => c.assignmentId).sort()
+							: [],
 				},
 				worktreeHazard: { state: "none" },
 				targetCandidate: spec.targetCandidate === null ? null : { ...spec.targetCandidate },
@@ -1115,7 +1175,606 @@ export class DevelopCoordinationStoreV0 {
 			return { ok: true, value };
 		});
 	}
+
+	// ---- registered sibling worktrees (E2-C) ----------------------------------------------------------------------------------------
+
+	/**
+	 * Explicitly register a validated sibling Git worktree for `projectId`.
+	 * Git identity validation (canonical path, shared commonDir, bidirectional gitdir check) MUST run outside the lock
+	 * before calling this method. Never creates, checks out, or mutates any Git directory.
+	 */
+	registerWorktree(input: {
+		expectedFileRevision: number;
+		projectId: string;
+		worktreePath: string;
+		commonDir: string;
+		gitDir: string;
+		label?: unknown;
+	}): EndoCoordinationResultV0<EndoRegisteredWorktreeV0> {
+		const labelCheck = DevelopCoordinationStoreV0.#reason(input.label);
+		if (
+			!isRevision(input.expectedFileRevision) ||
+			!ENDO_PROJECT_ID_PATTERN_V0.test(input.projectId) ||
+			!isEndoCanonicalPathV0(input.worktreePath) ||
+			!isEndoCanonicalPathV0(input.commonDir) ||
+			!isEndoCanonicalPathV0(input.gitDir) ||
+			input.worktreePath === input.commonDir ||
+			input.gitDir === input.commonDir ||
+			!labelCheck.ok
+		)
+			return fail("bad-request");
+		return this.#mutate((draft, context) => {
+			if (draft.revision !== input.expectedFileRevision)
+				return fail("stale-revision", `coordination file is at revision ${draft.revision}`);
+			const tasks = context.tasks();
+			if (!tasks.ok) return fail("tasks-unreadable");
+			const project = tasks.file.projects.find((p) => p.id === input.projectId);
+			if (project === undefined) return fail("not-found", `project ${input.projectId}`);
+			if (project.path === input.worktreePath)
+				return fail("bad-request", "the project's primary checkout is already registered in tasks.json");
+			const list = draft.registeredWorktrees ?? [];
+			if (list.length >= L.maxRegisteredWorktrees) return fail("limit");
+			const dup = list.find((w) => w.worktreePath === input.worktreePath || w.gitDir === input.gitDir);
+			if (dup !== undefined) return fail("duplicate", `worktree ${dup.worktreeId}`);
+			const entry: EndoRegisteredWorktreeV0 = {
+				worktreeId: `endo.worktree.${hex(16)}`,
+				projectId: input.projectId,
+				worktreePath: input.worktreePath,
+				commonDir: input.commonDir,
+				gitDir: input.gitDir,
+				label: labelCheck.text,
+				registeredBy: "operator",
+				via: "cli",
+				registeredAtMs: context.now,
+			};
+			draft.registeredWorktrees = [...list, entry];
+			return { ok: true, value: entry };
+		});
+	}
+
+	/** Remove an operator-registered sibling worktree. Refuses while an active assignment references it. */
+	unregisterWorktree(
+		worktreeId: string,
+		expectedFileRevision: number,
+	): EndoCoordinationResultV0<EndoRegisteredWorktreeV0> {
+		if (!ENDO_WORKTREE_ID_PATTERN_V0.test(worktreeId) || !isRevision(expectedFileRevision))
+			return fail("bad-request");
+		return this.#mutate((draft) => {
+			if (draft.revision !== expectedFileRevision)
+				return fail("stale-revision", `coordination file is at revision ${draft.revision}`);
+			const list = draft.registeredWorktrees ?? [];
+			const idx = list.findIndex((w) => w.worktreeId === worktreeId);
+			if (idx === -1) return fail("not-found", `worktree ${worktreeId}`);
+			const target = list[idx] as EndoRegisteredWorktreeV0;
+			const activeUsing = draft.assignments.find(
+				(a) =>
+					a.state === "active" &&
+					a.projectId === target.projectId &&
+					a.workspace.worktreePath === target.worktreePath &&
+					a.workspace.registration === "registered-sibling",
+			);
+			if (activeUsing !== undefined)
+				return fail(
+					"invalid-transition",
+					`active assignment ${activeUsing.assignmentId} still references this registered worktree`,
+				);
+			const remaining = [...list.slice(0, idx), ...list.slice(idx + 1)];
+			if (remaining.length === 0) delete draft.registeredWorktrees;
+			else draft.registeredWorktrees = remaining;
+			return { ok: true, value: target };
+		});
+	}
+
+	/**
+	 * Conservative pre-transport abort hazard clear (docs/designs/coordinator-assignment.md §6.2 Winner B):
+	 * Re-acquires `coordination.lock.<n>` with `expectedRevision` OCC and clears `liveness-unverified` to `none`
+	 * ONLY if:
+	 * 1. The specific `(attemptId, authorizationId)` is linked to `assignmentId` and has matching `.authorized.json`
+	 *    and `.aborted.json` bound to `assignmentId` with no `.outcome.json`, AND
+	 * 2. Every currently observed hazard basis across the assignment is gone (zero writable-session hazard, zero
+	 *    unreadable/conflicting attempt evidence, zero other unverified attempts).
+	 */
+	clearHazardAfterPreTransportAbort(
+		assignmentId: string,
+		expectedRevision: number,
+		attemptId: string,
+		authorizationId: string,
+	): EndoCoordinationResultV0<EndoAssignmentV0> {
+		if (
+			!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(assignmentId) ||
+			!isRevision(expectedRevision) ||
+			!ENDO_ATTEMPT_ID_PATTERN_V0.test(attemptId) ||
+			typeof authorizationId !== "string" ||
+			authorizationId.length === 0
+		)
+			return fail("bad-request");
+		return this.#mutate((draft, context) => {
+			const found = this.#activeAssignment(draft, assignmentId, expectedRevision, { allowEnded: true });
+			if (!found.ok) return found;
+			const a = found.a;
+			if (a.state === "active") return fail("invalid-transition", "assignment is active");
+			if (a.worktreeHazard.state !== "liveness-unverified")
+				return fail("invalid-transition", `hazard is ${a.worktreeHazard.state}`);
+			if (!a.attemptIds.includes(attemptId))
+				return fail("attempt-not-linked", `attempt ${attemptId} is not linked to ${assignmentId}`);
+			const adapterRecords = DevelopAdapterAuthorizationsStoreV0.forRoot(this.#root).read(attemptId);
+			if (
+				adapterRecords.authorization.state !== "present" ||
+				adapterRecords.abort.state !== "present" ||
+				adapterRecords.outcome.state !== "absent" ||
+				adapterRecords.authorization.record.assignmentId !== assignmentId ||
+				adapterRecords.authorization.record.authorizationId !== authorizationId ||
+				adapterRecords.abort.record.assignmentId !== assignmentId ||
+				adapterRecords.abort.record.authorizationId !== authorizationId
+			) {
+				return fail(
+					"invalid-transition",
+					"pre-transport abort evidence does not match this assignment and authorization",
+				);
+			}
+			const snapshot = endoHazardEvidenceSnapshotV0(a, context.evidence);
+			const remainingBases = endoHazardBasesFromSnapshotV0(snapshot);
+			if (remainingBases.length > 0)
+				return fail(
+					"invalid-transition",
+					`unverified hazard bases remain (${remainingBases.join(", ")}); cannot clear automatically`,
+				);
+			a.worktreeHazard = { state: "none" };
+			a.revision += 1;
+			a.updatedAtMs = context.now;
+			return { ok: true, value: a };
+		});
+	}
+
+	/**
+	 * Linearises an unlinked (non-assignment) workbench or protected route claim inside `coordination.lock.<n>`,
+	 * closing the TOCTOU window where a concurrent `linkAttempt` links `attemptId` to an assignment between
+	 * preflight and `.route.json` claim (Adversarial Finding #2). Never creates `coordination.json`.
+	 */
+	claimUnlinkedAttemptRoute(input: {
+		attemptId: string;
+		route: "workbench" | "protected";
+		recordedAtMs?: number;
+		writeRouteRecord: (recordedAtMs: number) => "created" | "exists" | "unsafe-path" | "failed";
+	}):
+		| { ok: true; recordedAtMs: number }
+		| {
+				ok: false;
+				code:
+					| "assignment-required"
+					| "already-authorized"
+					| "already-launched"
+					| "unreadable"
+					| "busy"
+					| "storage-failed";
+				routeClaimed: boolean;
+		  } {
+		if (!ENDO_ATTEMPT_ID_PATTERN_V0.test(input.attemptId))
+			return { ok: false, code: "unreadable", routeClaimed: false };
+		if (!this.#ensureDirectory()) return { ok: false, code: "unreadable", routeClaimed: false };
+		const release = acquireEndoNumberedLockV0(this.#dir, ENDO_DEVELOP_COORDINATION_LOCK_V0, {
+			waitMs: this.#options.lockWaitMs ?? 2000,
+			now: this.#now,
+			...(this.#options.lockHooks === undefined ? {} : { hooks: this.#options.lockHooks }),
+		});
+		if (release === "busy") return { ok: false, code: "busy", routeClaimed: false };
+		if (release === "failed") return { ok: false, code: "storage-failed", routeClaimed: false };
+		try {
+			const coordRead = this.read();
+			if (!coordRead.ok) return { ok: false, code: "unreadable", routeClaimed: false };
+			if (coordRead.exists && coordRead.file.assignments.some((a) => a.attemptIds.includes(input.attemptId))) {
+				return { ok: false, code: "assignment-required", routeClaimed: false };
+			}
+			const nowMs = input.recordedAtMs ?? this.#now();
+			const routes = DevelopAttemptRoutesStoreV0.forRoot(this.#root);
+			const claimed = routes.claim(input.attemptId, input.route, nowMs);
+			if (claimed !== "created") {
+				if (claimed === "exists") {
+					const winner = routes.read(input.attemptId);
+					if (winner.state !== "present") return { ok: false, code: "unreadable", routeClaimed: false };
+					if (input.route === "protected" && winner.record.route === "protected") {
+						return { ok: false, code: "already-launched", routeClaimed: false };
+					}
+					return { ok: false, code: "already-authorized", routeClaimed: false };
+				}
+				return {
+					ok: false,
+					code: claimed === "unsafe-path" ? "unreadable" : "storage-failed",
+					routeClaimed: false,
+				};
+			}
+			const written = input.writeRouteRecord(nowMs);
+			if (written === "created") return { ok: true, recordedAtMs: nowMs };
+			if (written === "exists") {
+				return {
+					ok: false,
+					code: input.route === "protected" ? "already-launched" : "already-authorized",
+					routeClaimed: true,
+				};
+			}
+			return {
+				ok: false,
+				code: written === "unsafe-path" ? "unreadable" : "storage-failed",
+				routeClaimed: true,
+			};
+		} finally {
+			release();
+		}
+	}
+
+	// ---- atomic revocation-dispatch linearisation boundary (E2-B) -------------------------------------------------------------------
+
+	/**
+	 * Linearises assignment-linked dispatch commitment against assignment mutations (revocation, supersession, close)
+	 * inside `coordination.lock.<n>` (docs/designs/coordinator-assignment.md §6.2).
+	 *
+	 * Bounded local filesystem critical section ONLY:
+	 * - Never acquires `tasks.lock.<n>` (reads `tasks.json` lock-free as one atomic snapshot).
+	 * - Never runs Git subprocesses, terminal prompts, or harness transport I/O.
+	 * - Releases `coordination.lock.<n>` unconditionally before returning.
+	 * - Explicitly discloses partial cross-file write state (`routeClaimed`, `authorizationWritten`) on failure so
+	 *   callers never silently retry a burned attempt or claim multi-file writes are a single OS transaction.
+	 */
+	commitAssignmentDispatch(input: EndoCommitAssignmentDispatchInputV0): EndoCommitAssignmentDispatchResultV0 {
+		const refuse = (
+			code: EndoCoordinationRefusalV0,
+			detail?: string,
+			extra: { routeClaimed?: boolean; authorizationWritten?: boolean; admissionCode?: string } = {},
+		): EndoCommitAssignmentDispatchResultV0 => ({
+			ok: false,
+			code,
+			...(detail === undefined ? {} : { detail }),
+			...(extra.admissionCode === undefined ? {} : { admissionCode: extra.admissionCode }),
+			routeClaimed: extra.routeClaimed ?? false,
+			authorizationWritten: extra.authorizationWritten ?? false,
+		});
+
+		if (
+			!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(input.assignmentId) ||
+			!isRevision(input.expectedAssignmentRevision) ||
+			!isRevision(input.expectedTaskRevision) ||
+			!ENDO_PROJECT_ID_PATTERN_V0.test(input.projectId) ||
+			!ENDO_TASK_ID_PATTERN_V0.test(input.taskId) ||
+			!ENDO_ATTEMPT_ID_PATTERN_V0.test(input.attemptId) ||
+			!HEX64.test(input.expectedBriefSha256) ||
+			!isEndoCanonicalPathV0(input.worktreePath)
+		)
+			return refuse("bad-request", "invalid dispatch commitment parameters");
+
+		if (input.route === "adapter-live" && input.adapterAuthorization === undefined)
+			return refuse("bad-request", "adapter-live commitment requires adapterAuthorization payload");
+
+		if (!this.#ensureDirectory()) return refuse("unreadable", "develop directory is unsafe");
+		const release = acquireEndoNumberedLockV0(this.#dir, ENDO_DEVELOP_COORDINATION_LOCK_V0, {
+			waitMs: this.#options.lockWaitMs ?? 2000,
+			now: this.#now,
+			...(this.#options.lockHooks === undefined ? {} : { hooks: this.#options.lockHooks }),
+		});
+		if (release === "busy") return refuse("busy");
+		if (release === "failed") return refuse("storage-failed");
+
+		try {
+			this.#sweep();
+			const coordRead = this.read();
+			if (!coordRead.ok) return refuse("unreadable", `coordination store unreadable (${coordRead.reason})`);
+			if (!coordRead.exists) return refuse("not-found", `assignment ${input.assignmentId}`);
+
+			const draft = clone(coordRead.file);
+			const assignment = draft.assignments.find((a) => a.assignmentId === input.assignmentId);
+			if (assignment === undefined) return refuse("not-found", `assignment ${input.assignmentId}`);
+			if (assignment.state !== "active")
+				return refuse("assignment-not-active", `assignment ${input.assignmentId} is ${assignment.state}`);
+			if (assignment.revision !== input.expectedAssignmentRevision)
+				return refuse("stale-revision", `assignment is at revision ${assignment.revision}`);
+			if (assignment.projectId !== input.projectId || assignment.taskId !== input.taskId)
+				return refuse("cross-project", "assignment does not match requested project/task");
+			if (!assignment.attemptIds.includes(input.attemptId))
+				return refuse("attempt-not-linked", `attempt ${input.attemptId} is not linked to ${input.assignmentId}`);
+
+			// Re-read tasks.json lock-free (no tasks.lock.<n> nesting).
+			const tasksRead = new DevelopTasksStoreV0(this.#root).read();
+			if (!tasksRead.ok) return refuse("tasks-unreadable", `tasks unreadable (${tasksRead.reason})`);
+			const project = tasksRead.file.projects.find((p) => p.id === input.projectId);
+			if (project === undefined) return refuse("not-found", `project ${input.projectId}`);
+			const task = tasksRead.file.tasks.find((t) => t.id === input.taskId && t.projectId === input.projectId);
+			if (task === undefined) return refuse("not-found", `task ${input.taskId}`);
+			if (task.status === "done") return refuse("task-done", `task ${input.taskId} is done`);
+			if (task.revision !== input.expectedTaskRevision)
+				return refuse("stale-revision", `task ${input.taskId} is at revision ${task.revision}`);
+			if (task.revision !== assignment.taskRevisionAtBind)
+				return refuse(
+					"stale-revision",
+					`assignment is bound to task revision ${assignment.taskRevisionAtBind}, current is ${task.revision}`,
+				);
+
+			// Revalidate worktree registration inside the critical section.
+			if (assignment.workspace.worktreePath !== input.worktreePath)
+				return refuse("worktree-not-registered", "dispatch worktree does not match assignment workspace");
+			if (assignment.workspace.registration === "project-path") {
+				if (input.worktreePath !== project.path)
+					return refuse("worktree-not-registered", "worktree does not match project primary path");
+			} else if (assignment.workspace.registration === "registered-sibling") {
+				const reg = (draft.registeredWorktrees ?? []).find(
+					(w) => w.projectId === input.projectId && w.worktreePath === input.worktreePath,
+				);
+				if (reg === undefined) return refuse("worktree-not-registered", "sibling worktree is no longer registered");
+				if (
+					input.verifiedWorktree === undefined ||
+					input.verifiedWorktree.commonDir !== reg.commonDir ||
+					input.verifiedWorktree.gitDir === null ||
+					input.verifiedWorktree.gitDir !== reg.gitDir
+				)
+					return refuse(
+						"worktree-not-registered",
+						"registered sibling worktree identity could not be re-established",
+					);
+			} else {
+				return refuse(
+					"worktree-not-registered",
+					"unregistered sibling worktrees are not eligible for governed dispatch",
+				);
+			}
+
+			// Revalidate attempt records, routes, protected presence, and adapter authorizations.
+			const attemptsRead = new DevelopAttemptsStoreV0(this.#root).read();
+			if (!attemptsRead.ok) return refuse("attempts-unreadable", `attempts unreadable (${attemptsRead.reason})`);
+			if (endoAttemptProblemsOfV0(attemptsRead.problems, input.attemptId).length > 0)
+				return refuse("unreadable", `attempt ${input.attemptId} has unreadable files`);
+			const entry = attemptsRead.entries.find((e) => e.attempt.id === input.attemptId);
+			if (entry === undefined) return refuse("not-found", `attempt ${input.attemptId}`);
+			if (entry.attempt.projectId !== input.projectId || entry.attempt.taskId !== input.taskId)
+				return refuse("cross-project", `attempt ${input.attemptId} belongs to another task`);
+			if (entry.authorized !== null)
+				return refuse("already-authorized", "attempt already has a workbench authorization");
+			if (entry.outcome !== null) return refuse("invalid-transition", "attempt already has a recorded outcome");
+			if (entry.handoff !== null) return refuse("invalid-transition", "attempt was already handed off");
+
+			const routes = DevelopAttemptRoutesStoreV0.forRoot(this.#root);
+			const existingRoute = routes.read(input.attemptId);
+			if (existingRoute.state === "present")
+				return refuse("already-authorized", `attempt route already claimed by ${existingRoute.record.route}`);
+			if (existingRoute.state === "problem") return refuse("unreadable", "attempt route reservation is unreadable");
+
+			const protectedPresence = checkProtectedAttemptPresenceSyncV0(this.#dir, input.attemptId);
+			if (protectedPresence === "present")
+				return refuse("already-authorized", "attempt already has a protected launch or binding");
+			if (protectedPresence === "problem") return refuse("unreadable", "protected attempts directory is unreadable");
+
+			const adapterPresence = checkAdapterAuthorizationPresenceSyncV0(this.#dir, input.attemptId);
+			if (adapterPresence === "present")
+				return refuse("already-authorized", "attempt already has an adapter authorization record");
+			if (adapterPresence === "problem")
+				return refuse("unreadable", "adapter authorizations directory is unreadable");
+
+			if (endoDevelopTaskWordsChangedV0(entry.attempt, task).length > 0)
+				return refuse("task-words-changed", "task words changed since attempt preparation");
+			const briefSha = endoBriefSha256V0(renderEndoDevelopBriefV0(entry.attempt));
+			if (briefSha !== input.expectedBriefSha256)
+				return refuse("task-words-changed", "attempt brief digest differs from approved digest");
+
+			// Revalidate effective hazards and worktree write overlaps inside the lock.
+			const adapterAuths = DevelopAdapterAuthorizationsStoreV0.forRoot(this.#root);
+			const evidence = (attemptId: string, assignmentId?: string): EndoAttemptExecutionEvidenceV0 =>
+				endoAttemptExecutionEvidenceFromReadV0(
+					attemptId,
+					attemptsRead,
+					endoRouteEvidenceForAttemptV0(this.#dir, routes, attemptId),
+					adapterAuths.read(attemptId),
+					assignmentId,
+				);
+			const effectiveAssignments = draft.assignments.map((a) => endoEffectiveAssignmentV0(a, evidence));
+			if (assignment.workspace.accessIntent === "read-write-intended") {
+				const conflicts = endoWorktreeConflictsV0(effectiveAssignments);
+				const blocking = conflicts.find(
+					(c) =>
+						c.worktreePath === input.worktreePath &&
+						c.kind === "unacknowledged-worktree-write-overlap" &&
+						c.assignmentIds.includes(assignment.assignmentId),
+				);
+				if (blocking !== undefined)
+					return refuse(
+						"worktree-write-overlap",
+						`unacknowledged worktree write overlap on ${input.worktreePath}`,
+					);
+			}
+
+			// Revalidate relevant dependency state for this task inside the lock.
+			const taskDeps = draft.dependencies.filter(
+				(d) => d.projectId === input.projectId && d.dependentTaskId === input.taskId,
+			);
+			if (taskDeps.length > 0) {
+				const byId = new Map<string, EndoCoordinationTaskFactV0>();
+				for (const t of tasksRead.file.tasks) {
+					if (t.projectId === input.projectId)
+						byId.set(t.id, { projectId: t.projectId, status: t.status, revision: t.revision });
+				}
+				const receiptsStore = new DevelopReceiptsStoreV0(this.#root);
+				const receiptMap = new Map<string, EndoReceiptSourceV0>();
+				const prereqTasks = new Set(taskDeps.map((d) => d.prerequisiteTaskId));
+				for (const e of attemptsRead.entries) {
+					if (e.attempt.projectId === input.projectId && prereqTasks.has(e.attempt.taskId)) {
+						const r = receiptsStore.read(e.attempt.id);
+						receiptMap.set(
+							e.attempt.id,
+							r.ok ? { ok: true, receipts: r.receipts, problems: r.problems.length } : { ok: false },
+						);
+					}
+				}
+				const proj = endoCoordinationProjectionV0({
+					readAtMs: this.#now(),
+					requested: [input.projectId],
+					registeredProjects: tasksRead.file.projects.map((p) => p.id),
+					coordination: { state: "ready", file: draft },
+					tasks: { ok: true, byId },
+					attempts: { ok: true, entries: attemptsRead.entries, problems: attemptsRead.problems },
+					receipts: (id) => receiptMap.get(id) ?? { ok: false },
+					route: (id) => endoRouteEvidenceForAttemptV0(this.#dir, routes, id),
+					adapterAuthorizations: (id) => adapterAuths.read(id),
+					identity: input.verifiedCandidates ?? new Map(),
+					workspaces: new Map(),
+					gaps: [],
+				});
+				const evaluated = (proj.projects[0]?.dependencies ?? []).filter((d) => d.dependentTaskId === input.taskId);
+				const unsatisfied = evaluated.find((d) => d.satisfaction === "unsatisfied");
+				if (unsatisfied !== undefined)
+					return refuse(
+						"prerequisites-not-satisfied",
+						`dependency ${unsatisfied.dependencyId} unsatisfied (${unsatisfied.reasons.join(", ")})`,
+					);
+				const unknownDep = evaluated.find((d) => d.satisfaction === "unknown");
+				if (unknownDep !== undefined)
+					return refuse(
+						"prerequisites-unknown",
+						`dependency ${unknownDep.dependencyId} unknown (${unknownDep.reasons.join(", ")})`,
+					);
+			}
+
+			// Pure in-memory live adapter admission check before claiming `.route.json`.
+			if (input.admitInLock !== undefined) {
+				const decision = input.admitInLock();
+				if (!decision.admitted)
+					return refuse("admission-refused", decision.reason, { admissionCode: decision.code });
+			}
+
+			// ---- Commitment writes (bounded local FS only; cross-file windows explicitly disclosed) ----
+			const nowMs = this.#now();
+
+			// C1: Atomically claim shared immutable `.route.json` via POSIX `link(2)`.
+			const claimed = routes.claim(input.attemptId, input.route, nowMs);
+			if (claimed !== "created") {
+				if (claimed === "exists") {
+					const after = routes.read(input.attemptId);
+					return refuse(after.state === "present" ? "already-authorized" : "unreadable");
+				}
+				return refuse(claimed === "unsafe-path" ? "unreadable" : "storage-failed");
+			}
+			// Test hook for crash window W1 (after `.route.json` claim, before authorization write).
+			try {
+				this.#options.afterRouteClaim?.();
+			} catch (error) {
+				return refuse(
+					"commit-partial",
+					`interrupted after route claim (Window W1): ${error instanceof Error ? error.message : "unknown error"}; do not retry automatically`,
+					{ routeClaimed: true, authorizationWritten: false },
+				);
+			}
+
+			// C2: Write the write-once authorization / route record.
+			let writtenAuth: EndoDevelopAdapterAuthorizationV0 | undefined;
+			if (input.route === "adapter-live") {
+				const record: EndoDevelopAdapterAuthorizationV0 = {
+					...(input.adapterAuthorization as Omit<EndoDevelopAdapterAuthorizationV0, "recordedAtMs">),
+					recordedAtMs: nowMs,
+				};
+				const written = adapterAuths.writeAuthorization(record);
+				if (written !== "created") {
+					// Never delete `.route.json` on failure: attempt is permanently burned.
+					return refuse(
+						"commit-partial",
+						`route reservation was claimed but adapter authorization write returned ${written}; do not retry automatically`,
+						{ routeClaimed: true, authorizationWritten: false },
+					);
+				}
+				writtenAuth = record;
+			} else if (input.writeRouteRecord !== undefined) {
+				const written = input.writeRouteRecord(nowMs);
+				if (written !== "created") {
+					return refuse(
+						"commit-partial",
+						`route reservation was claimed but route record write returned ${written}; do not retry automatically`,
+						{ routeClaimed: true, authorizationWritten: false },
+					);
+				}
+			}
+			// Test hook for crash window W1b (after auth write, before `coordination.json` replace).
+			try {
+				this.#options.afterAuthorizationWrite?.();
+			} catch (error) {
+				return refuse(
+					"commit-partial",
+					`interrupted after authorization write (Window W1b): ${error instanceof Error ? error.message : "unknown error"}; do not retry automatically`,
+					{ routeClaimed: true, authorizationWritten: true },
+				);
+			}
+
+			// C3: Record the linked dispatched attempt on the assignment and replace `coordination.json`.
+			const existingDispatched = assignment.dispatchedAttemptIds ?? [];
+			if (!existingDispatched.includes(input.attemptId)) {
+				assignment.dispatchedAttemptIds = [...existingDispatched, input.attemptId];
+			}
+			assignment.revision += 1;
+			assignment.updatedAtMs = nowMs;
+			draft.revision = coordRead.file.revision + 1;
+
+			let checked: EndoDevelopCoordinationFileV0;
+			try {
+				checked = validateEndoDevelopCoordinationFileV0(draft);
+			} catch {
+				return refuse(
+					"commit-partial",
+					"route and authorization were written but updated coordination.json failed validation; do not retry automatically",
+					{ routeClaimed: true, authorizationWritten: true },
+				);
+			}
+			const outcome = this.#replace(checked);
+			if (outcome !== "committed") {
+				return refuse(
+					outcome === "uncertain" ? "commit-uncertain" : "commit-partial",
+					"route and authorization were written before coordination.json could be confirmed; inspect before acting and never retry automatically",
+					{ routeClaimed: true, authorizationWritten: true },
+				);
+			}
+			const updated = checked.assignments.find((a) => a.assignmentId === input.assignmentId) as EndoAssignmentV0;
+			return {
+				ok: true,
+				assignment: updated,
+				coordinationRevision: checked.revision,
+				route: input.route,
+				recordedAtMs: nowMs,
+				...(writtenAuth === undefined ? {} : { adapterAuthorization: writtenAuth }),
+				commit: "committed",
+			};
+		} finally {
+			release();
+		}
+	}
 }
+
+export interface EndoCommitAssignmentDispatchInputV0 {
+	assignmentId: string;
+	expectedAssignmentRevision: number;
+	expectedTaskRevision: number;
+	projectId: string;
+	taskId: string;
+	attemptId: string;
+	expectedBriefSha256: string;
+	worktreePath: string;
+	verifiedWorktree?: { commonDir: string; gitDir: string | null };
+	verifiedCandidates?: ReadonlyMap<string, EndoCandidateIdentityReadingV0>;
+	route: EndoDevelopAttemptRouteV0;
+	admitInLock?: () => { admitted: true } | { admitted: false; code: string; reason: string };
+	adapterAuthorization?: Omit<EndoDevelopAdapterAuthorizationV0, "recordedAtMs">;
+	writeRouteRecord?: (recordedAtMs: number) => "created" | "exists" | "unsafe-path" | "failed";
+}
+
+export type EndoCommitAssignmentDispatchResultV0 =
+	| {
+			ok: true;
+			assignment: EndoAssignmentV0;
+			coordinationRevision: number;
+			route: EndoDevelopAttemptRouteV0;
+			recordedAtMs: number;
+			adapterAuthorization?: EndoDevelopAdapterAuthorizationV0;
+			commit: "committed";
+	  }
+	| {
+			ok: false;
+			code: EndoCoordinationRefusalV0;
+			detail?: string;
+			admissionCode?: string;
+			routeClaimed: boolean;
+			authorizationWritten: boolean;
+	  };
 
 /** Parse and validate bytes that claim to be a coordination file (shared by the store and descriptor-pinned sandbox readers). */
 export function endoParseCoordinationBytesV0(bytes: Uint8Array): EndoCoordinationReadV0 {

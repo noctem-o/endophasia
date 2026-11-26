@@ -71,13 +71,16 @@ import {
 } from "../../runtime/contracts/develop-attempt-candidate-binding.ts";
 import {
 	DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0,
+	type DevelopAttemptAssignmentBindingV0,
 	type DevelopAttemptDispatchRefusalV0,
 	DevelopAttemptDispatchV0,
 } from "../../runtime/contracts/develop-attempt-dispatch.ts";
 import { endoBriefSha256V0 } from "../../runtime/contracts/develop-attempt-execution.ts";
 import { endoEmptyProtectedBridgeV0 } from "../../runtime/contracts/develop-evidence-bridge.ts";
+import { checkAdapterAuthorizationPresenceSyncV0 } from "../../storage/develop-adapter-authorizations.ts";
 import { DevelopAttemptRoutesStoreV0 } from "../../storage/develop-attempt-routes.ts";
 import { DevelopAttemptsStoreV0, endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
+import { DevelopCoordinationStoreV0 } from "../../storage/develop-coordination.ts";
 import { DevelopTasksStoreV0, ENDO_DEVELOP_DIRECTORY_V0 } from "../../storage/develop-tasks.ts";
 import {
 	checkDirectoriesSyncV0,
@@ -348,11 +351,14 @@ export function readProtectedAttemptV0(options: ReadProtectedAttemptOptionsV0): 
 	const currentTaskId = entry?.attempt.taskId ?? null;
 	const currentBriefSha256 = entry === undefined ? null : endoBriefSha256V0(renderEndoDevelopBriefV0(entry.attempt));
 	const routeReservation = DevelopAttemptRoutesStoreV0.forRoot(root).read(attemptId);
+	const adapterPresence = checkAdapterAuthorizationPresenceSyncV0(developDir(root), attemptId);
 	const workbenchAuthorized =
 		entry?.authorized != null ||
 		(attempts.ok && endoAttemptProblemsOfV0(attempts.problems, attemptId).some((p) => p.kind === "authorized")) ||
 		routeReservation.state === "problem" ||
-		(routeReservation.state === "present" && routeReservation.record.route === "workbench");
+		(routeReservation.state === "present" &&
+			(routeReservation.record.route === "workbench" || routeReservation.record.route === "adapter-live")) ||
+		adapterPresence !== "absent";
 
 	const b = binding.state === "present" ? binding.record : null;
 	const l = launch.state === "present" ? launch.record : null;
@@ -537,6 +543,8 @@ export interface PlanProtectedAttemptOptionsV0 {
 	attemptId: string;
 	templatePath: string;
 	out: string;
+	/** Optional explicit assignment binding when the attempt is linked to an assignment in coordination.json. */
+	assignment?: DevelopAttemptAssignmentBindingV0;
 }
 
 /** Everything the operator would approve, computed from the records and files as they are now. Reads only. */
@@ -563,13 +571,28 @@ export function planProtectedAttemptV0(options: PlanProtectedAttemptOptionsV0): 
 	if (existing.launch.state !== "absent" || existing.binding.state !== "absent") return refuse("already-launched");
 	const route = DevelopAttemptRoutesStoreV0.forRoot(root).read(attemptId);
 	if (route.state === "present")
-		return refuse(route.record.route === "workbench" ? "already-authorized" : "already-launched");
+		return refuse(
+			route.record.route === "workbench" || route.record.route === "adapter-live"
+				? "already-authorized"
+				: "already-launched",
+		);
 	if (route.state === "problem") return refuse("already-launched");
+	const adapterPresence = checkAdapterAuthorizationPresenceSyncV0(developDir(root), attemptId);
+	if (adapterPresence === "present") return refuse("already-authorized");
+	if (adapterPresence === "problem") return refuse("unreadable");
 	const checked = new DevelopAttemptDispatchV0(tasks, attempts, {
 		projectId: project.id,
 		launchDirectory: project.path,
-	}).check(attemptId);
-	if (!checked.ok) return refuse(checked.code);
+	}).check(attemptId, options.assignment);
+	if (!checked.ok) {
+		if (checked.code === "already-authorized") {
+			const routeNow = DevelopAttemptRoutesStoreV0.forRoot(root).read(attemptId);
+			if (routeNow.state === "present" && routeNow.record.route === "protected") {
+				return refuse("already-launched");
+			}
+		}
+		return refuse(checked.code);
+	}
 
 	const out = resolve(options.out);
 	if (!ABS.test(out) || !ABS.test(join(out, "agent")) || !ABS.test(join(out, "run"))) return refuse("out-unusable");
@@ -776,36 +799,77 @@ export async function launchProtectedAttemptV0(
 		via: "controlling-terminal-phrase",
 	};
 	validateEndoProtectedAttemptLaunchV0(JSON.parse(canonicalEndoJsonV0(launch as never)));
-	// Atomically claim the shared execution-route reservation before writing the launch record so a concurrent
-	// workbench dispatch cannot race past preflight and execute the same attempt.
-	const routes = DevelopAttemptRoutesStoreV0.forRoot(options.root);
-	const claimed = routes.claim(options.attemptId, "protected", recordedAtMs);
-	if (claimed !== "created") {
-		if (claimed === "exists") {
-			const winner = routes.read(options.attemptId);
-			const byWorkbench = winner.state === "present" && winner.record.route === "workbench";
-			return result("refused", {
-				code: byWorkbench ? "already-authorized" : "already-launched",
-				detail: ENDO_PROTECTED_ATTEMPT_REFUSAL_WORDS_V0[byWorkbench ? "already-authorized" : "already-launched"],
+	// E2-B: if this attempt is linked to an assignment, linearise route claim + launch write inside `coordination.lock.<n>`.
+	if (options.assignment !== undefined) {
+		const tasksNow = new DevelopTasksStoreV0(options.root).read();
+		const projPath = realOrResolved(
+			tasksNow.ok ? (tasksNow.file.projects.find((p) => p.id === plan.operation.projectId)?.path ?? "") : "",
+		);
+		const committed = new DevelopCoordinationStoreV0(options.root, { now }).commitAssignmentDispatch({
+			assignmentId: options.assignment.assignmentId,
+			expectedAssignmentRevision: options.assignment.expectedAssignmentRevision,
+			expectedTaskRevision: plan.operation.taskRevision,
+			projectId: plan.operation.projectId,
+			taskId: plan.operation.taskId,
+			attemptId: options.attemptId,
+			expectedBriefSha256: plan.operation.briefSha256,
+			worktreePath: projPath,
+			...(options.assignment.verifiedWorktree === undefined
+				? {}
+				: { verifiedWorktree: options.assignment.verifiedWorktree }),
+			route: "protected",
+			writeRouteRecord: () => writeRecord(options.root, options.attemptId, "launch", launch),
+		});
+		if (!committed.ok) {
+			const code: EndoProtectedAttemptRefusalV0 =
+				committed.code === "already-authorized"
+					? "already-authorized"
+					: committed.code === "assignment-not-active" || committed.code === "stale-revision"
+						? "assignment-not-active"
+						: committed.code === "prerequisites-not-satisfied" || committed.code === "prerequisites-unknown"
+							? "prerequisites-not-satisfied"
+							: committed.code === "unreadable"
+								? "unreadable"
+								: "storage-failed";
+			return result(committed.routeClaimed ? "launch-not-recorded" : "refused", {
+				code,
+				detail: committed.detail ?? ENDO_PROTECTED_ATTEMPT_REFUSAL_WORDS_V0[code],
 				operationDigest: plan.operationDigest,
 			});
 		}
-		return result("launch-not-recorded", {
-			code: "storage-failed",
-			detail: "the execution-route reservation could not be written, so nothing was created or run",
-			operationDigest: plan.operationDigest,
+	} else {
+		// Linearise unlinked route claim + launch write inside `coordination.lock.<n>` so a concurrent `linkAttempt`
+		// cannot race past preflight and bypass assignment commitment (Adversarial Finding #2).
+		const claimed = new DevelopCoordinationStoreV0(options.root, { now }).claimUnlinkedAttemptRoute({
+			attemptId: options.attemptId,
+			route: "protected",
+			recordedAtMs,
+			writeRouteRecord: () => writeRecord(options.root, options.attemptId, "launch", launch),
 		});
+		if (!claimed.ok) {
+			if (claimed.code === "assignment-required") {
+				return result("refused", {
+					code: "assignment-required",
+					detail: ENDO_PROTECTED_ATTEMPT_REFUSAL_WORDS_V0["assignment-required"],
+					operationDigest: plan.operationDigest,
+				});
+			}
+			if (claimed.code === "already-authorized" || claimed.code === "already-launched") {
+				return result("refused", {
+					code: claimed.code,
+					detail: ENDO_PROTECTED_ATTEMPT_REFUSAL_WORDS_V0[claimed.code],
+					operationDigest: plan.operationDigest,
+				});
+			}
+			return result("launch-not-recorded", {
+				code: claimed.code === "unreadable" ? "unreadable" : "storage-failed",
+				detail: claimed.routeClaimed
+					? "the launch record could not be written after route claim, so nothing was created or run"
+					: "the execution-route reservation could not be written, so nothing was created or run",
+				operationDigest: plan.operationDigest,
+			});
+		}
 	}
-	const written = writeRecord(options.root, options.attemptId, "launch", launch);
-	if (written !== "created")
-		return result(written === "exists" ? "refused" : "launch-not-recorded", {
-			code: written === "exists" ? "already-launched" : "storage-failed",
-			detail:
-				written === "exists"
-					? ENDO_PROTECTED_ATTEMPT_REFUSAL_WORDS_V0["already-launched"]
-					: "the launch record could not be written, so nothing was created or run",
-			operationDigest: plan.operationDigest,
-		});
 
 	// From here the attempt is used: whatever happens, a reader sees the launch record and never a fresh, sendable attempt.
 	const runDirectory = plan.operation.run.directory;

@@ -37,6 +37,7 @@ export const ENDO_DEVELOP_COORDINATION_LIMITS_V0 = Object.freeze({
 	maxDependencies: 1024,
 	maxCandidateTasks: 300,
 	maxCandidatesPerTask: 32,
+	maxRegisteredWorktrees: 32,
 	maxAttemptsPerAssignment: 32,
 	maxClearanceHistoryPerAssignment: 16,
 	maxPathHints: 16,
@@ -48,6 +49,7 @@ export const ENDO_DEVELOP_COORDINATION_LIMITS_V0 = Object.freeze({
 export const ENDO_ASSIGNMENT_ID_PATTERN_V0 = /^endo\.assignment\.[0-9a-f]{32}$/;
 export const ENDO_DEPENDENCY_ID_PATTERN_V0 = /^endo\.dep\.[0-9a-f]{32}$/;
 export const ENDO_CANDIDATE_ID_PATTERN_V0 = /^endo\.candidate\.[0-9a-f]{32}$/;
+export const ENDO_WORKTREE_ID_PATTERN_V0 = /^endo\.worktree\.[0-9a-f]{32}$/;
 /** A logical participant: a lowercase slug the operator chose (`codex-builder`, `pi-reviewer`). Never a model name or a session id. */
 export const ENDO_PARTICIPANT_ID_PATTERN_V0 = /^[a-z][a-z0-9-]{0,63}$/;
 /** Git object ids: SHA-1 (40 hex) or SHA-256 (64 hex), as protocol/develop-observations.ts accepts. Never a branch or a short id. */
@@ -69,8 +71,12 @@ export type EndoAccessIntentV0 = (typeof ENDO_ACCESS_INTENTS_V0)[number];
  */
 export const ENDO_COORDINATION_SESSION_SOURCES_V0 = ["pi-live", "codex-live"] as const;
 export type EndoCoordinationSessionSourceV0 = (typeof ENDO_COORDINATION_SESSION_SOURCES_V0)[number];
-/** How a workspace path relates to the project's registration: its registered path, or another worktree of the same repository. */
-export const ENDO_WORKSPACE_REGISTRATIONS_V0 = ["project-path", "same-repository-unregistered"] as const;
+/** How a workspace path relates to the project's registration: primary path, explicitly registered sibling, or unregistered same-repo. */
+export const ENDO_WORKSPACE_REGISTRATIONS_V0 = [
+	"project-path",
+	"registered-sibling",
+	"same-repository-unregistered",
+] as const;
 export type EndoWorkspaceRegistrationV0 = (typeof ENDO_WORKSPACE_REGISTRATIONS_V0)[number];
 export const ENDO_DEPENDENCY_CONDITIONS_V0 = [
 	"operator-task-done",
@@ -89,7 +95,7 @@ export const ENDO_HAZARD_BASES_V0 = [
 export type EndoHazardBasisV0 = (typeof ENDO_HAZARD_BASES_V0)[number];
 
 /** Route reservation kinds recorded on disk (`storage/develop-attempt-routes.ts`). */
-export const ENDO_HAZARD_ROUTE_KINDS_V0 = ["workbench", "protected"] as const;
+export const ENDO_HAZARD_ROUTE_KINDS_V0 = ["workbench", "protected", "adapter-live"] as const;
 export type EndoHazardRouteKindV0 = (typeof ENDO_HAZARD_ROUTE_KINDS_V0)[number];
 
 /** Closed reasons why per-attempt execution evidence could not be read or verified. */
@@ -145,6 +151,11 @@ export interface EndoAssignmentWorkspaceV0 {
 	pathHints: string[];
 	/** True only when the operator explicitly acknowledged sharing a worktree with another writable or hazardous assignment. */
 	sharedWorktreeAcknowledged: boolean;
+	/**
+	 * E2: exact sorted assignmentIds whose overlap was acknowledged when `--allow-shared-worktree` was passed.
+	 * Prevents an earlier boolean acknowledgement from masking a new or reactivated unacknowledged conflict.
+	 */
+	acknowledgedConflictIds?: string[];
 }
 
 /** Canonical session identity acknowledged by an operator hazard clearance (no timestamps). */
@@ -166,6 +177,7 @@ export type EndoHazardRouteEvidenceV0 =
 export type EndoHazardAuthorizationEvidenceV0 =
 	| { state: "absent" }
 	| { state: "authorized"; proposalId: string; authorizationEventId: string }
+	| { state: "adapter-authorized"; authorizationId: string; harnessFamily: "pi" | "codex"; aborted: boolean }
 	| { state: "unknown"; reason: EndoHazardEvidenceUnknownReasonV0; problems: EndoHazardAttemptProblemSummaryV0[] };
 
 export interface EndoHazardAttemptEvidenceV0 {
@@ -231,13 +243,37 @@ export type EndoWorktreeHazardV0 =
 export function endoHazardBasesFromSnapshotV0(snapshot: EndoHazardEvidenceSnapshotV0): EndoHazardBasisV0[] {
 	const found = new Set<EndoHazardBasisV0>();
 	for (const item of snapshot.attempts) {
-		if (item.authorization.state === "authorized") found.add("attempt-authorized");
-		if (item.route.state === "claimed") found.add("attempt-route-claimed");
+		const abortedAdapterLive =
+			item.authorization.state === "adapter-authorized" &&
+			item.authorization.aborted === true &&
+			item.route.state === "claimed" &&
+			item.route.route === "adapter-live";
+		if (
+			item.authorization.state === "authorized" ||
+			(item.authorization.state === "adapter-authorized" && !item.authorization.aborted)
+		)
+			found.add("attempt-authorized");
+		if (item.route.state === "claimed" && !abortedAdapterLive) found.add("attempt-route-claimed");
 		if (item.authorization.state === "unknown" || item.route.state === "unknown")
 			found.add("attempt-evidence-unreadable");
 	}
 	if (snapshot.writableSession !== null) found.add("writable-session-associated");
 	return ENDO_HAZARD_BASES_V0.filter((b) => found.has(b));
+}
+
+export interface EndoRegisteredWorktreeV0 {
+	worktreeId: string;
+	projectId: string;
+	/** Canonical (real) top directory of the sibling linked Git worktree. */
+	worktreePath: string;
+	/** Canonical (real) Git common directory matching the project's repository. */
+	commonDir: string;
+	/** Canonical (real) Git directory of this linked worktree (distinct from commonDir). */
+	gitDir: string;
+	label: string | null;
+	registeredBy: "operator";
+	via: "cli";
+	registeredAtMs: number;
 }
 
 export interface EndoAssignmentV0 {
@@ -261,6 +297,8 @@ export interface EndoAssignmentV0 {
 	targetCandidate: { taskId: string; candidateId: string } | null;
 	/** Prepared attempts the operator explicitly linked. A link is a reference, never evidence that the attempt ran. */
 	attemptIds: string[];
+	/** E2: attempts that crossed route-reservation commitment inside `coordination.lock.<n>`. Subset of `attemptIds`. */
+	dispatchedAttemptIds?: string[];
 	origin: { confirmedBy: "operator"; via: "cli"; confirmedAtMs: number };
 	supersedesAssignmentId: string | null;
 	supersededByAssignmentId: string | null;
@@ -330,6 +368,8 @@ export interface EndoDevelopCoordinationFileV0 {
 	assignments: EndoAssignmentV0[];
 	dependencies: EndoDependencyV0[];
 	taskCandidates: EndoTaskCandidatesV0[];
+	/** E2: explicitly operator-registered sibling Git worktrees (validated against repository commonDir). */
+	registeredWorktrees?: EndoRegisteredWorktreeV0[];
 }
 
 export const emptyEndoDevelopCoordinationFileV0 = (): EndoDevelopCoordinationFileV0 => ({
@@ -571,6 +611,19 @@ function hazardAuthorizationEvidence(v: unknown): EndoHazardAuthorizationEvidenc
 			authorizationEventId: r.authorizationEventId as string,
 		};
 	}
+	if (state === "adapter-authorized") {
+		const r = closed(v, ["state", "authorizationId", "harnessFamily", "aborted"], "hazard adapter authorization");
+		if (typeof r.authorizationId !== "string" || !SAFE_TOKEN.test(r.authorizationId))
+			return bad("hazard adapter authorizationId is not a valid token");
+		const harnessFamily = oneOf(r.harnessFamily, ["pi", "codex"] as const, "hazard adapter harnessFamily");
+		if (typeof r.aborted !== "boolean") return bad("hazard adapter aborted is not a boolean");
+		return {
+			state: "adapter-authorized",
+			authorizationId: r.authorizationId,
+			harnessFamily,
+			aborted: r.aborted,
+		};
+	}
 	if (state === "unknown") {
 		const r = closed(v, ["state", "reason", "problems"], "hazard authorization evidence");
 		const rawProblems = list(
@@ -739,33 +792,43 @@ function checkSnapshotMatchesAssignment(
 }
 
 function assignment(v: unknown): EndoAssignmentV0 {
-	const r = closed(
-		v,
-		[
-			"assignmentId",
-			"projectId",
-			"taskId",
-			"taskRevisionAtBind",
-			"revision",
-			"state",
-			"participant",
-			"session",
-			"workspace",
-			"worktreeHazard",
-			"targetCandidate",
-			"attemptIds",
-			"origin",
-			"supersedesAssignmentId",
-			"supersededByAssignmentId",
-			"ended",
-			"updatedAtMs",
-		],
-		"an assignment",
-	);
+	const baseKeys = [
+		"assignmentId",
+		"projectId",
+		"taskId",
+		"taskRevisionAtBind",
+		"revision",
+		"state",
+		"participant",
+		"session",
+		"workspace",
+		"worktreeHazard",
+		"targetCandidate",
+		"attemptIds",
+		"origin",
+		"supersedesAssignmentId",
+		"supersededByAssignmentId",
+		"ended",
+		"updatedAtMs",
+	];
+	const hasDispatched = typeof v === "object" && v !== null && Object.hasOwn(v, "dispatchedAttemptIds");
+	const r = closed(v, hasDispatched ? [...baseKeys, "dispatchedAttemptIds"] : baseKeys, "an assignment");
+	const aid = id(r.assignmentId, ENDO_ASSIGNMENT_ID_PATTERN_V0, "an assignmentId");
 	const p = closed(r.participant, ["participantId", "role", "intendedHarnessFamily"], "a participant");
+	const hasAckIds =
+		typeof r.workspace === "object" && r.workspace !== null && Object.hasOwn(r.workspace, "acknowledgedConflictIds");
 	const w = closed(
 		r.workspace,
-		["worktreePath", "registration", "accessIntent", "pathHints", "sharedWorktreeAcknowledged"],
+		hasAckIds
+			? [
+					"worktreePath",
+					"registration",
+					"accessIntent",
+					"pathHints",
+					"sharedWorktreeAcknowledged",
+					"acknowledgedConflictIds",
+				]
+			: ["worktreePath", "registration", "accessIntent", "pathHints", "sharedWorktreeAcknowledged"],
 		"a workspace",
 	);
 	const hints = list(w.pathHints, ENDO_DEVELOP_COORDINATION_LIMITS_V0.maxPathHints, "path hints").map((h) =>
@@ -773,12 +836,40 @@ function assignment(v: unknown): EndoAssignmentV0 {
 	);
 	if (new Set(hints).size !== hints.length) bad("path hints repeat");
 	if (typeof w.sharedWorktreeAcknowledged !== "boolean") bad("sharedWorktreeAcknowledged is not a boolean");
+	let acknowledgedConflictIds: string[] | undefined;
+	if (hasAckIds) {
+		const rawIds = list(
+			w.acknowledgedConflictIds,
+			ENDO_DEVELOP_COORDINATION_LIMITS_V0.maxAssignments,
+			"acknowledgedConflictIds",
+		).map((aid) => id(aid, ENDO_ASSIGNMENT_ID_PATTERN_V0, "acknowledgedConflictId"));
+		if (new Set(rawIds).size !== rawIds.length) bad("acknowledgedConflictIds repeat");
+		if (rawIds.includes(aid)) bad("acknowledgedConflictIds cannot reference the assignment itself");
+		for (let i = 1; i < rawIds.length; i += 1) {
+			if ((rawIds[i] as string) <= (rawIds[i - 1] as string)) bad("acknowledgedConflictIds are not sorted");
+		}
+		if (!w.sharedWorktreeAcknowledged && rawIds.length > 0)
+			bad("acknowledgedConflictIds set without sharedWorktreeAcknowledged");
+		acknowledgedConflictIds = rawIds;
+	}
 	const o = closed(r.origin, ["confirmedBy", "via", "confirmedAtMs"], "an origin");
 	if (o.confirmedBy !== "operator" || o.via !== "cli") bad("an origin claims an actor v0 cannot record");
 	const attempts = list(r.attemptIds, ENDO_DEVELOP_COORDINATION_LIMITS_V0.maxAttemptsPerAssignment, "attemptIds").map(
 		(a) => id(a, ENDO_ATTEMPT_ID_PATTERN_V0, "an attempt id"),
 	);
 	if (new Set(attempts).size !== attempts.length) bad("attemptIds repeat");
+	let dispatchedAttemptIds: string[] | undefined;
+	if (hasDispatched) {
+		const rawDispatched = list(
+			r.dispatchedAttemptIds,
+			ENDO_DEVELOP_COORDINATION_LIMITS_V0.maxAttemptsPerAssignment,
+			"dispatchedAttemptIds",
+		).map((a) => id(a, ENDO_ATTEMPT_ID_PATTERN_V0, "a dispatched attempt id"));
+		if (new Set(rawDispatched).size !== rawDispatched.length) bad("dispatchedAttemptIds repeat");
+		const attemptSet = new Set(attempts);
+		for (const d of rawDispatched) if (!attemptSet.has(d)) bad("dispatchedAttemptId is not in attemptIds");
+		dispatchedAttemptIds = rawDispatched;
+	}
 	const target = nullable(r.targetCandidate, (t) => {
 		const c = closed(t, ["taskId", "candidateId"], "a target candidate");
 		return {
@@ -811,10 +902,12 @@ function assignment(v: unknown): EndoAssignmentV0 {
 			accessIntent: oneOf(w.accessIntent, ENDO_ACCESS_INTENTS_V0, "accessIntent"),
 			pathHints: hints,
 			sharedWorktreeAcknowledged: w.sharedWorktreeAcknowledged as boolean,
+			...(acknowledgedConflictIds === undefined ? {} : { acknowledgedConflictIds }),
 		},
 		worktreeHazard: hazard(r.worktreeHazard),
 		targetCandidate: target,
 		attemptIds: attempts,
+		...(dispatchedAttemptIds === undefined ? {} : { dispatchedAttemptIds }),
 		origin: { confirmedBy: "operator", via: "cli", confirmedAtMs: stamp(o.confirmedAtMs, "confirmedAtMs") },
 		supersedesAssignmentId: nullable(r.supersedesAssignmentId, (x) =>
 			id(x, ENDO_ASSIGNMENT_ID_PATTERN_V0, "supersedesAssignmentId"),
@@ -1006,17 +1099,63 @@ function taskCandidates(v: unknown): EndoTaskCandidatesV0 {
 	return value;
 }
 
+function registeredWorktree(v: unknown): EndoRegisteredWorktreeV0 {
+	const r = closed(
+		v,
+		[
+			"worktreeId",
+			"projectId",
+			"worktreePath",
+			"commonDir",
+			"gitDir",
+			"label",
+			"registeredBy",
+			"via",
+			"registeredAtMs",
+		],
+		"a registered worktree",
+	);
+	if (r.registeredBy !== "operator" || r.via !== "cli") bad("a registered worktree claims an actor v0 cannot record");
+	const worktreePath = path(r.worktreePath, "registeredWorktree.worktreePath");
+	const commonDir = path(r.commonDir, "registeredWorktree.commonDir");
+	const gitDir = path(r.gitDir, "registeredWorktree.gitDir");
+	if (worktreePath === commonDir) bad("registered worktree path equals commonDir");
+	if (gitDir === commonDir) bad("registered sibling worktree gitDir must be distinct from commonDir");
+	return {
+		worktreeId: id(r.worktreeId, ENDO_WORKTREE_ID_PATTERN_V0, "worktreeId"),
+		projectId: id(r.projectId, ENDO_PROJECT_ID_PATTERN_V0, "projectId"),
+		worktreePath,
+		commonDir,
+		gitDir,
+		label: nullable(r.label, (x) => nonEmptyNote(x, "registeredWorktree.label")),
+		registeredBy: "operator",
+		via: "cli",
+		registeredAtMs: stamp(r.registeredAtMs, "registeredWorktree.registeredAtMs"),
+	};
+}
+
 /** Validate a whole file, cross-references inside it included. Throws EndoInvalidRecordV0 with a short reason. */
 export function validateEndoDevelopCoordinationFileV0(value: unknown): EndoDevelopCoordinationFileV0 {
-	const r = closed(value, ["schemaVersion", "revision", "assignments", "dependencies", "taskCandidates"], "the file");
+	const hasWorktrees = typeof value === "object" && value !== null && Object.hasOwn(value, "registeredWorktrees");
+	const r = closed(
+		value,
+		hasWorktrees
+			? ["schemaVersion", "revision", "assignments", "dependencies", "taskCandidates", "registeredWorktrees"]
+			: ["schemaVersion", "revision", "assignments", "dependencies", "taskCandidates"],
+		"the file",
+	);
 	if (r.schemaVersion !== ENDO_DEVELOP_COORDINATION_SCHEMA_V0) bad("the file is not endo.develop-coordination.v0");
 	const L = ENDO_DEVELOP_COORDINATION_LIMITS_V0;
+	const worktrees = hasWorktrees
+		? list(r.registeredWorktrees, L.maxRegisteredWorktrees, "registeredWorktrees").map(registeredWorktree)
+		: undefined;
 	const file: EndoDevelopCoordinationFileV0 = {
 		schemaVersion: ENDO_DEVELOP_COORDINATION_SCHEMA_V0,
 		revision: count(r.revision, "revision"),
 		assignments: list(r.assignments, L.maxAssignments, "assignments").map(assignment),
 		dependencies: list(r.dependencies, L.maxDependencies, "dependencies").map(dependency),
 		taskCandidates: list(r.taskCandidates, L.maxCandidateTasks, "taskCandidates").map(taskCandidates),
+		...(worktrees === undefined ? {} : { registeredWorktrees: worktrees }),
 	};
 	// Identity: every id once, across the whole file.
 	const ids = new Set<string>();
@@ -1026,6 +1165,17 @@ export function validateEndoDevelopCoordinationFileV0(value: unknown): EndoDevel
 	};
 	for (const a of file.assignments) once(a.assignmentId);
 	for (const d of file.dependencies) once(d.dependencyId);
+	if (file.registeredWorktrees !== undefined) {
+		const seenPaths = new Set<string>();
+		const seenGitDirs = new Set<string>();
+		for (const w of file.registeredWorktrees) {
+			once(w.worktreeId);
+			if (seenPaths.has(w.worktreePath)) bad("a registered worktree path repeats");
+			if (seenGitDirs.has(w.gitDir)) bad("a registered worktree gitDir repeats");
+			seenPaths.add(w.worktreePath);
+			seenGitDirs.add(w.gitDir);
+		}
+	}
 	const entries = new Map<string, EndoTaskCandidatesV0>();
 	for (const t of file.taskCandidates) {
 		if (entries.has(t.taskId)) bad("a task has two candidate entries");

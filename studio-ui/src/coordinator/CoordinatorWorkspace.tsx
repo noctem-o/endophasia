@@ -1,4 +1,5 @@
 import { type ReactElement, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { EndoCoordinatorCoordinationV0 } from "../../../protocol/coordinator-coordination.ts";
 import {
 	ENDO_COORDINATOR_AUTHORITY_V0,
 	ENDO_COORDINATOR_NOT_ESTABLISHED_V0,
@@ -9,6 +10,12 @@ import { FieldLayer, FieldLegend, useReducedMotion } from "../develop/Field.tsx"
 import type { FieldSignal } from "../model/field.ts";
 import type { Atmosphere } from "../model/weather.ts";
 import type { WorkbenchState } from "../model/workbench.ts";
+import {
+	CoordinationBanner,
+	CoordinationProvenancePanel,
+	DependencyGraphView,
+	ParticipantLanesView,
+} from "./CoordinationViews.tsx";
 import { Freshness, SessionCard, TaskCard, Timestamp } from "./Evidence.tsx";
 import { ATTENTION_LABELS, type CoordinatorProblem } from "./read.ts";
 import { useCoordinator } from "./use-coordinator.ts";
@@ -48,7 +55,7 @@ interface Filters {
 	phase: EndoCoordinatorPhaseV0 | null;
 }
 
-type ViewMode = "list" | "columns";
+type ViewMode = "list" | "columns" | "lanes" | "graph";
 type Density = "standard" | "compact";
 
 const NO_FILTERS: Filters = { project: null, phase: null };
@@ -155,6 +162,7 @@ function SummaryStrip({ status, filters }: { status: EndoCoordinatorStatusV0; fi
 
 function Board({
 	status,
+	coordination,
 	filters,
 	onFilters,
 	viewMode,
@@ -166,6 +174,7 @@ function Board({
 	onClearHighlight,
 }: {
 	status: EndoCoordinatorStatusV0;
+	coordination: EndoCoordinatorCoordinationV0 | null;
 	filters: Filters;
 	onFilters(filters: Filters): void;
 	viewMode: ViewMode;
@@ -179,6 +188,12 @@ function Board({
 	const tasksReady = status.sources.tasks.state === "ready";
 	const selected = status.projects.find((project) => project.id === filters.project);
 	const projects = selected === undefined ? status.projects : [selected];
+	const coordProjects =
+		coordination === null
+			? []
+			: selected === undefined
+				? coordination.projects
+				: coordination.projects.filter((p) => p.id === selected.id);
 	const tasks = projects.flatMap((project) => project.tasks);
 	const taskIds = new Set(tasks.map((task) => task.taskId));
 	const taskTitles = new Map(tasks.map((task) => [task.taskId, task.title]));
@@ -362,6 +377,24 @@ function Board({
 							>
 								Columns
 							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-lanes"
+								aria-pressed={viewMode === "lanes"}
+								onClick={() => onViewMode("lanes")}
+							>
+								Lanes
+							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-graph"
+								aria-pressed={viewMode === "graph"}
+								onClick={() => onViewMode("graph")}
+							>
+								Graph
+							</button>
 						</fieldset>
 						<fieldset className="coordinator-segmented">
 							<legend className="sr-only">Task card density</legend>
@@ -386,7 +419,26 @@ function Board({
 						</fieldset>
 					</div>
 				</header>
-				{visibleCount === 0 ? (
+				{coordination !== null ? <CoordinationBanner coordination={coordination} /> : null}
+				{viewMode === "lanes" ? (
+					<ParticipantLanesView
+						projects={coordProjects}
+						taskTitles={taskTitles}
+						onJumpToTask={(taskId) => {
+							onViewMode("list");
+							onJumpToTask(taskId);
+						}}
+					/>
+				) : viewMode === "graph" ? (
+					<DependencyGraphView
+						projects={coordProjects}
+						taskTitles={taskTitles}
+						onJumpToTask={(taskId) => {
+							onViewMode("list");
+							onJumpToTask(taskId);
+						}}
+					/>
+				) : visibleCount === 0 ? (
 					<div className="coordinator-empty coordinator-empty-board">
 						<p className="coordinator-index">
 							{!countsKnown
@@ -574,6 +626,7 @@ function Board({
 						</div>
 					) : null}
 				</div>
+				<CoordinationProvenancePanel projects={coordProjects} taskTitles={taskTitles} />
 				<div className="coordinator-scope-group">
 					<h3>
 						Read findings <span className="coordinator-count">{findings.length} items</span>
@@ -654,7 +707,7 @@ export function CoordinatorWorkspace({
 	const [viewMode, setViewMode] = useState<ViewMode>("list");
 	const [density, setDensity] = useState<Density>("standard");
 	const [highlightedTask, setHighlightedTask] = useState<{ id: string; seq: number } | null>(null);
-	const { reply, busy, refresh } = useCoordinator(grant, workbench.launchId, () => {
+	const { reply, coordinationReply, busy, refresh } = useCoordinator(grant, workbench.launchId, () => {
 		focusPairing.current = refreshButton.current === document.activeElement;
 		setGrantRefused(true);
 		setFilters(NO_FILTERS);
@@ -673,6 +726,7 @@ export function CoordinatorWorkspace({
 		pairingButton.current?.focus();
 	}, [grant]);
 	const status = reply?.kind === "status" ? reply.status : null;
+	const coordination = coordinationReply?.kind === "coordination" ? coordinationReply.coordination : null;
 	const problem = reply?.kind === "failure" ? reply.problem : null;
 	useLayoutEffect(() => {
 		if (problem === "forbidden") {
@@ -853,6 +907,7 @@ export function CoordinatorWorkspace({
 					<>
 						<Board
 							status={status}
+							coordination={coordination}
 							filters={filters}
 							onFilters={setFilters}
 							viewMode={viewMode}

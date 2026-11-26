@@ -107,18 +107,23 @@ export class EndoWorkspaceHostV0 implements EndoCockpitWorkbenchV0 {
 		request: EndoCockpitWorkbenchRequestV0,
 		coordinator?: { root: string; observe: EndoCoordinatorHeadV0 },
 	): Promise<{ status: number; body: unknown }> {
-		const [a, b] = request.route;
+		const [a, b, c] = request.route;
 		if (a === "status" && b === undefined && request.method === "GET" && request.query === "")
 			return { status: 200, body: this.#status() };
 		if (a === "pair" && b === undefined && request.method === "POST" && request.query === "")
 			return this.#pairing.pair(isRecord(request.body) ? request.body.code : undefined);
 		if (!this.#pairing.granted(request.grant)) return refuse(401, "grant-required");
 		let answer: { status: number; body: unknown } | null = null;
-		if (a === "workspace" && b === "coordinator" && request.route.length === 2 && coordinator !== undefined) {
+		const isCoordinatorStatus = a === "workspace" && b === "coordinator" && request.route.length === 2;
+		const isCoordinatorCoordination =
+			a === "workspace" && b === "coordinator" && c === "coordination" && request.route.length === 3;
+		if ((isCoordinatorStatus || isCoordinatorCoordination) && coordinator !== undefined) {
 			if (request.method !== "GET" || request.query !== "") return refuse(400, "bad-request");
 			const project = this.#routes.view().project;
 			if (project?.launch !== "same") return refuse(403, "forbidden");
-			answer = await this.#coordinator.read(coordinator.root, project, coordinator.observe);
+			answer = isCoordinatorStatus
+				? await this.#coordinator.read(coordinator.root, project, coordinator.observe)
+				: await this.#coordinator.readCoordination(coordinator.root, project, coordinator.observe);
 			if (!this.#pairing.granted(request.grant)) return refuse(401, "grant-required");
 			const current = this.#routes.view().project;
 			if (

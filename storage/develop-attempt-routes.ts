@@ -27,7 +27,7 @@ export const ENDO_DEVELOP_ATTEMPT_ROUTE_SCHEMA_V0 = "endo.develop-attempt-route.
 const ENDO_PROTECTED_ATTEMPTS_DIR = "protected-attempts";
 const MAX_ROUTE_RECORD_BYTES = 4 * 1024;
 
-export type EndoDevelopAttemptRouteV0 = "workbench" | "protected";
+export type EndoDevelopAttemptRouteV0 = "workbench" | "protected" | "adapter-live";
 
 export interface EndoDevelopAttemptRouteReservationV0 {
 	schemaVersion: typeof ENDO_DEVELOP_ATTEMPT_ROUTE_SCHEMA_V0;
@@ -58,7 +58,8 @@ export function validateEndoDevelopAttemptRouteReservationV0(value: unknown): En
 		throw new EndoInvalidRecordV0("route reservation schemaVersion");
 	if (typeof r.attemptId !== "string" || !ENDO_ATTEMPT_ID_PATTERN_V0.test(r.attemptId))
 		throw new EndoInvalidRecordV0("route reservation attemptId");
-	if (r.route !== "workbench" && r.route !== "protected") throw new EndoInvalidRecordV0("route reservation route");
+	if (r.route !== "workbench" && r.route !== "protected" && r.route !== "adapter-live")
+		throw new EndoInvalidRecordV0("route reservation route");
 	if (
 		typeof r.recordedAtMs !== "number" ||
 		!Number.isSafeInteger(r.recordedAtMs) ||

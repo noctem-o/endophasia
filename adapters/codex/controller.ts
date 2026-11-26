@@ -20,6 +20,7 @@ import {
 	endoAdapterSessionKeyV0,
 } from "../../protocol/develop-adapter.ts";
 import { endoDevelopOperationPayloadDigestV0 } from "../../runtime/contracts/develop-adapter.ts";
+import { endoObserveAdapterLivenessV0 } from "../../runtime/contracts/develop-session-liveness.ts";
 import { CODEX_LIVE_CONTROL_PATH_V0, type CodexDevelopAdapterV0 } from "./develop-adapter.ts";
 
 export interface CodexApprovalPromptV0 {
@@ -158,6 +159,14 @@ export class CodexLiveControllerV0 {
 				},
 			},
 		};
+	}
+
+	/** Controller-observed session liveness and termination evidence (E2-E; read-only, no heartbeat timer). */
+	observeLiveness(options?: { staleAfterMs?: number }) {
+		return endoObserveAdapterLivenessV0(this.adapter, {
+			nowMs: this.#now(),
+			...(options?.staleAfterMs === undefined ? {} : { staleAfterMs: options.staleAfterMs }),
+		});
 	}
 
 	/** Request operator terminal approval and dispatch a prompt (`turn/start`). */

@@ -4,7 +4,12 @@
 
 import type { EndoObserveRepresentationSceneV0 } from "../../protocol/observe-representation.ts";
 import type { EndoOmpSessionV0 } from "../../protocol/omp-observation.ts";
-import { type CoordinatorReply, readCoordinatorStatus } from "./coordinator/read.ts";
+import {
+	type CoordinatorCoordinationReply,
+	type CoordinatorReply,
+	readCoordinatorCoordination,
+	readCoordinatorStatus,
+} from "./coordinator/read.ts";
 import { type AttemptsReply, readAttempts } from "./model/attempts-wire.ts";
 import { type AttentionReply, readAttention } from "./model/attention-wire.ts";
 import type { CompareRequest } from "./model/compare.ts";
@@ -952,6 +957,43 @@ export async function fetchCoordinator(grant: string, cancel: AbortSignal): Prom
 			if (!parsed.ok) return { kind: "failure", problem: "invalid" };
 			const record = readCoordinatorStatus(parsed.value);
 			return record === null ? { kind: "failure", problem: "invalid" } : { kind: "status", status: record };
+		} catch {
+			return { kind: "failure", problem: cancel.aborted ? "unreachable" : timeout.aborted ? "timeout" : "invalid" };
+		}
+	} catch {
+		return { kind: "failure", problem: timeout.aborted ? "timeout" : "unreachable" };
+	}
+}
+
+export async function fetchCoordinatorCoordination(
+	grant: string,
+	cancel: AbortSignal,
+): Promise<CoordinatorCoordinationReply> {
+	const timeout = AbortSignal.timeout(60_000);
+	try {
+		const response = await fetch(new URL("./api/v0/workbench/workspace/coordinator/coordination", document.baseURI), {
+			method: "GET",
+			credentials: "omit",
+			referrerPolicy: "no-referrer",
+			redirect: "error",
+			cache: "no-store",
+			headers: { "X-Endo-Grant": grant },
+			signal: AbortSignal.any([cancel, timeout]),
+		});
+		if (response.status === 401) return { kind: "failure", problem: "grant-required" };
+		if (response.status === 403) return { kind: "failure", problem: "forbidden" };
+		if (response.status === 404) return { kind: "failure", problem: "not-found" };
+		if (response.status === 429) return { kind: "failure", problem: "too-many-requests" };
+		if (response.status !== 200) return { kind: "failure", problem: "unavailable" };
+		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? ""))
+			return { kind: "failure", problem: "invalid" };
+		try {
+			const parsed = await readBoundedJson(response, MAX_COORDINATOR_RESPONSE_BYTES);
+			if (!parsed.ok) return { kind: "failure", problem: "invalid" };
+			const record = readCoordinatorCoordination(parsed.value);
+			return record === null
+				? { kind: "failure", problem: "invalid" }
+				: { kind: "coordination", coordination: record };
 		} catch {
 			return { kind: "failure", problem: cancel.aborted ? "unreachable" : timeout.aborted ? "timeout" : "invalid" };
 		}

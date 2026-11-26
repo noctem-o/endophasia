@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { fetchCoordinator } from "../api.ts";
-import type { CoordinatorReply } from "./read.ts";
+import { fetchCoordinator, fetchCoordinatorCoordination } from "../api.ts";
+import type { CoordinatorCoordinationReply, CoordinatorReply } from "./read.ts";
 
 export function useCoordinator(grant: string | null, launchId: string | null, onGrantRequired: () => void) {
 	const [refreshes, setRefreshes] = useState(0);
@@ -9,6 +9,7 @@ export function useCoordinator(grant: string | null, launchId: string | null, on
 		launchId: string;
 		refreshes: number;
 		reply: CoordinatorReply;
+		coordinationReply: CoordinatorCoordinationReply;
 	} | null>(null);
 	const refuse = useRef(onGrantRequired);
 	refuse.current = onGrantRequired;
@@ -19,19 +20,28 @@ export function useCoordinator(grant: string | null, launchId: string | null, on
 		const abort = new AbortController();
 		queueMicrotask(async () => {
 			if (abort.signal.aborted) return;
-			const reply = await fetchCoordinator(grant, abort.signal);
+			const [reply, coordinationReply] = await Promise.all([
+				fetchCoordinator(grant, abort.signal),
+				fetchCoordinatorCoordination(grant, abort.signal),
+			]);
 			if (abort.signal.aborted) return;
-			setRead({ grant, launchId, refreshes, reply });
-			if (reply.kind === "failure" && reply.problem === "grant-required") refuse.current();
+			setRead({ grant, launchId, refreshes, reply, coordinationReply });
+			if (
+				(reply.kind === "failure" && reply.problem === "grant-required") ||
+				(coordinationReply.kind === "failure" && coordinationReply.problem === "grant-required")
+			)
+				refuse.current();
 		});
 		return () => abort.abort();
 	}, [grant, launchId, refreshes]);
 
-	const reply =
-		read?.grant === grant && read.launchId === launchId && read.refreshes === refreshes ? read.reply : null;
+	const current = read?.grant === grant && read.launchId === launchId && read.refreshes === refreshes ? read : null;
+	const reply = current?.reply ?? null;
+	const coordinationReply = current?.coordinationReply ?? null;
 	const busy = grant !== null && launchId !== null && reply === null;
 	return {
 		reply,
+		coordinationReply,
 		busy,
 		refresh: () => {
 			if (grant !== null && launchId !== null && !busy) setRefreshes((value) => value + 1);

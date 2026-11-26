@@ -142,6 +142,12 @@ Commands that write to a store:
                                      immutable candidates: a full commit id resolved to its tree in the project's repository,
                                      or an established protected candidate; the current one is an explicit selection, never
                                      task acceptance
+  worktree <register|unregister|list> [<root> | --root dir] ...
+                                     explicit operator registration of eligible sibling Git worktrees (same repository,
+                                     canonical path and pointer validated); never creates, checks out, or deletes worktrees
+  review <record|list|show> [<root> | --root dir] ...
+                                     project-scoped write-once structured advisory reviews bound to exact candidate identity;
+                                     advisory agent evidence only, never promoted to host verification receipts or acceptance
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

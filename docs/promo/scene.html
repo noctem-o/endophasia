@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>endophasia promo</title>
+<!--
+  Deterministic promo scenes. Everything visible is a pure function of time:
+  window.renderAt(t) paints the frame for t seconds. render.mjs drives it frame
+  by frame; open with ?play to preview in real time, ?t=21.6 to freeze a frame,
+  and ?w=1920&h=1080 for the landscape cut.
+-->
+<style>
+@font-face { font-family: Plex Sans; font-weight: 400; src: url(assets/fonts/ibm-plex-sans-latin-400-normal.woff2); }
+@font-face { font-family: Plex Sans; font-weight: 500; src: url(assets/fonts/ibm-plex-sans-latin-500-normal.woff2); }
+@font-face { font-family: Plex Sans; font-weight: 600; src: url(assets/fonts/ibm-plex-sans-latin-600-normal.woff2); }
+@font-face { font-family: Plex Mono; font-weight: 400; src: url(assets/fonts/ibm-plex-mono-latin-400-normal.woff2); }
+@font-face { font-family: Plex Mono; font-weight: 500; src: url(assets/fonts/ibm-plex-mono-latin-500-normal.woff2); }
+@font-face { font-family: Plex Mono; font-weight: 600; src: url(assets/fonts/ibm-plex-mono-latin-600-normal.woff2); }
+
+:root {
+  --ground: #030405; --slab: #08090c; --slab2: #0e1014; --slab3: #14161c;
+  --line: #272b35; --line2: #414756;
+  --ink1: #efebe3; --ink2: #c9c5bc; --ink3: #8f8c85; --ink4: #57565a;
+  --amber: #f2bc58; --lamp: #9ab8ff; --fault: #f2766e; --pass: #56d6c4; --der: #b8a1f8;
+  --sans: "Plex Sans", Inter, sans-serif; --mono: "Plex Mono", "DejaVu Sans Mono", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--ground); overflow: hidden; }
+#stage { position: relative; overflow: hidden; background: var(--ground); color: var(--ink1); font-family: var(--sans); }
+#sky { position: absolute; inset: 0; }
+#flash { position: absolute; inset: 0; background: #c9d6ff; mix-blend-mode: screen; opacity: 0; pointer-events: none; }
+#vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 45%, transparent 45%, rgba(0,0,0,.65) 100%); pointer-events: none; }
+.scene { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 64px; opacity: 0; }
+.el { will-change: transform, opacity; }
+.mono { font-family: var(--mono); }
+.dim { color: var(--ink3); }
+
+/* mark */
+#mark { position: absolute; left: 64px; top: 64px; font-family: var(--mono); font-size: 26px; letter-spacing: .32em; color: var(--ink3); opacity: 0; }
+#mark b { color: var(--amber); font-weight: 500; }
+.land #mark { left: 72px; top: 56px; }
+
+/* S1 hook */
+#s1 .kicker { font-size: 44px; color: var(--ink3); margin-bottom: 36px; }
+.bubble { background: var(--slab3); border: 1px solid var(--line2); border-radius: 28px 28px 28px 8px; padding: 34px 44px; max-width: 900px; }
+.bubble .who { font-family: var(--mono); font-size: 24px; color: var(--lamp); letter-spacing: .12em; margin-bottom: 14px; }
+.bubble .say { font-size: 60px; font-weight: 500; line-height: 1.15; }
+.chip { display: inline-flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 30px; padding: 10px 22px; border-radius: 999px; border: 1px solid var(--line2); color: var(--ink2); }
+#s1 .chip { margin-top: 40px; }
+.ok { color: var(--pass); } .bad { color: var(--fault); } .warn { color: var(--amber); }
+
+/* terminal */
+.term { width: 920px; background: rgba(8,9,12,.92); border: 1px solid var(--line2); border-radius: 18px; overflow: hidden; box-shadow: 0 40px 120px rgba(0,0,0,.6); }
+.term .bar { display: flex; gap: 10px; padding: 18px 22px; border-bottom: 1px solid var(--line); align-items: center; }
+.term .bar i { width: 14px; height: 14px; border-radius: 50%; background: var(--line2); }
+.term .bar span { margin-left: 14px; font-family: var(--mono); font-size: 20px; color: var(--ink4); }
+.term pre { font-family: var(--mono); font-size: 40px; line-height: 1.55; padding: 30px 34px 36px; color: var(--ink1); white-space: pre-wrap; min-height: 330px; }
+.term .p { color: var(--amber); }
+.cursor { display: inline-block; width: .55em; height: 1em; background: var(--ink2); vertical-align: -0.12em; }
+.big20 { color: var(--fault); font-weight: 600; display: inline-block; }
+.caps { margin-top: 56px; text-align: center; }
+.caps div { font-size: 54px; font-weight: 500; line-height: 1.25; }
+.caps div + div { margin-top: 14px; }
+
+/* title */
+#s3 .word { font-family: var(--mono); font-weight: 500; font-size: 112px; letter-spacing: .14em; }
+#s3 .word b { color: var(--amber); font-weight: 500; }
+#s3 .tl { margin-top: 44px; font-size: 44px; color: var(--ink2); text-align: center; line-height: 1.35; }
+#s3 .tl2 { margin-top: 40px; font-size: 34px; color: var(--ink3); text-align: center; max-width: 860px; line-height: 1.4; }
+#s3 .tl2 em { color: var(--ink1); font-style: normal; }
+
+/* evidence cards */
+#s4 .head, #s5 .head { font-size: 58px; font-weight: 600; text-align: center; margin-bottom: 44px; line-height: 1.15; }
+#s4 .grid { display: flex; flex-direction: column; gap: 28px; width: 940px; }
+.card { background: rgba(14,16,20,.94); border: 1px solid var(--line2); border-radius: 18px; padding: 26px 30px; }
+.card .lab { display: flex; align-items: center; gap: 14px; font-family: var(--mono); font-size: 22px; letter-spacing: .16em; color: var(--ink3); margin-bottom: 16px; }
+.card .lab .n { color: var(--ground); background: var(--ink3); border-radius: 6px; padding: 1px 9px; letter-spacing: 0; }
+.card pre { font-family: var(--mono); font-size: 27px; line-height: 1.5; white-space: pre-wrap; color: var(--ink2); }
+.card .k { color: var(--lamp); } .card .s { color: var(--pass); } .card .a { color: var(--amber); }
+.badge { display: inline-block; font-family: var(--mono); font-weight: 600; font-size: 28px; padding: 4px 16px; border-radius: 8px; letter-spacing: .08em; }
+.badge.fail { background: rgba(242,118,110,.16); color: var(--fault); border: 1px solid rgba(242,118,110,.6); }
+.ledrow { display: grid; grid-template-columns: 150px 1fr; gap: 16px; font-family: var(--mono); font-size: 26px; line-height: 1.45; padding: 8px 0; border-top: 1px solid var(--line); }
+.ledrow:first-of-type { border-top: 0; }
+.ledrow .c { color: var(--ink3); }
+#ledger.hot { border-color: rgba(242,118,110,.7); box-shadow: 0 0 80px rgba(242,118,110,.18); }
+#s4 .foot { margin-top: 40px; font-size: 40px; text-align: center; color: var(--ink2); line-height: 1.35; max-width: 940px; }
+#s4 .foot b { color: var(--ink1); font-weight: 600; }
+
+/* lanes + board */
+#lanes { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 940px; }
+.lane { background: rgba(14,16,20,.94); border: 1px solid var(--line2); border-radius: 16px; padding: 22px 24px; }
+.lane .top { display: flex; align-items: center; gap: 12px; font-size: 32px; font-weight: 600; }
+.lane .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--pass); box-shadow: 0 0 14px var(--pass); }
+.lane .what { font-family: var(--mono); font-size: 22px; color: var(--ink3); margin-top: 10px; white-space: nowrap; overflow: hidden; }
+.lane .bars { display: flex; gap: 5px; align-items: flex-end; height: 44px; margin-top: 14px; }
+.lane .bars i { flex: 1; background: var(--lamp); opacity: .55; border-radius: 2px; }
+.tag { margin-left: auto; font-family: var(--mono); font-size: 18px; font-weight: 500; letter-spacing: .1em; padding: 3px 10px; border-radius: 6px; border: 1px dashed var(--line2); color: var(--ink3); }
+.tag.live { border-style: solid; color: var(--pass); border-color: rgba(86,214,196,.45); }
+#board { width: 940px; margin-top: 28px; }
+#board .bt { display: flex; align-items: center; font-family: var(--mono); font-size: 22px; letter-spacing: .16em; color: var(--ink3); margin-bottom: 10px; }
+.brow { display: grid; grid-template-columns: 1fr 210px 170px; gap: 12px; align-items: center; font-size: 29px; padding: 15px 4px; border-top: 1px solid var(--line); }
+.brow .ag { font-family: var(--mono); font-size: 24px; color: var(--ink2); }
+.st { font-family: var(--mono); font-size: 23px; font-weight: 500; text-align: center; padding: 4px 0; border-radius: 6px; }
+.st.passed { color: var(--pass); background: rgba(86,214,196,.1); }
+.st.failed { color: var(--fault); background: rgba(242,118,110,.12); }
+.st.notrun { color: var(--ink3); background: rgba(143,140,133,.1); }
+.st.stale { color: var(--amber); background: rgba(242,188,88,.1); }
+#s5 .foot { margin-top: 34px; font-size: 40px; text-align: center; color: var(--ink1); font-weight: 500; line-height: 1.3; max-width: 940px; }
+#s5 .note { margin-top: 18px; font-family: var(--mono); font-size: 20px; color: var(--ink4); text-align: center; }
+
+/* laws */
+#s6 .lawhead { font-family: var(--mono); font-size: 26px; letter-spacing: .3em; color: var(--amber); margin-bottom: 50px; }
+#s6 .law { font-size: 66px; font-weight: 600; text-align: center; line-height: 1.18; max-width: 920px; }
+#s6 .law + .law { margin-top: 34px; }
+
+/* CTA */
+#s7 .word { font-family: var(--mono); font-weight: 500; font-size: 64px; letter-spacing: .14em; }
+#s7 .word b { color: var(--amber); font-weight: 500; }
+#s7 .line { margin-top: 48px; font-size: 84px; font-weight: 600; text-align: center; line-height: 1.1; }
+#s7 .url { margin-top: 56px; font-family: var(--mono); font-size: 38px; color: var(--lamp); padding: 18px 30px; border: 1px solid var(--line2); border-radius: 14px; background: rgba(14,16,20,.9); }
+#s7 .meta { margin-top: 30px; font-family: var(--mono); font-size: 26px; color: var(--ink3); letter-spacing: .06em; }
+
+/* ---- landscape cut ---- */
+.land .scene { padding: 70px 120px; }
+.land #s4 .head, .land #s5 .head { font-size: 50px; margin-bottom: 30px; }
+.land #s4 .grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; width: 1600px; gap: 22px; }
+.land #ledger { grid-column: 2; grid-row: 1 / span 2; }
+.land #s4 .foot { margin-top: 28px; font-size: 36px; max-width: 1400px; }
+.land #s5 .wrap { display: grid; grid-template-columns: 760px 780px; gap: 40px; align-items: start; }
+.land #lanes { width: 760px; gap: 16px; }
+.land .lane { padding: 18px 20px; }
+.land #board { width: 780px; margin-top: 0; }
+.land #s5 .foot { font-size: 36px; margin-top: 30px; max-width: 1400px; }
+.land #s6 .law { max-width: 1500px; font-size: 64px; }
+.land #s6 .law + .law { margin-top: 24px; }
+.land .term pre { min-height: 280px; }
+.land .caps { margin-top: 36px; }
+.land .caps div { font-size: 48px; }
+.land #s1 .bubble .say { font-size: 64px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="sky"></canvas>
+
+  <div id="mark"><b>endo</b>phasia</div>
+
+  <section class="scene" id="s1">
+    <div class="kicker el" id="h1">Your coding agent says:</div>
+    <div class="bubble el" id="h2"><div class="who">AGENT</div><div class="say">Done ✅ Fixed the bug.<br>All tests pass.</div></div>
+    <div class="chip el" id="h3"><span class="ok">●</span> exit 0</div>
+  </section>
+
+  <section class="scene" id="s2">
+    <div class="term el" id="term">
+      <div class="bar"><i></i><i></i><i></i><span>~/calc</span></div>
+      <pre id="tpre"></pre>
+    </div>
+    <div class="caps">
+      <div class="el" id="c1">2 + 3 × 4 should be <span class="ok">14</span>.</div>
+      <div class="el" id="c2">The exit code is still <span class="warn">0</span>.</div>
+    </div>
+  </section>
+
+  <section class="scene" id="s3">
+    <div class="word el" id="w1"><b>endo</b>phasia</div>
+    <div class="tl el" id="w2">Work with agents.<br>Inspect the evidence.<br>Test what changes.</div>
+    <div class="tl2 el" id="w3">It answers from <em>records</em> — never from the agent's report.</div>
+  </section>
+
+  <section class="scene" id="s4">
+    <div class="head el" id="e0">Say what “right” looks like.<br>Then check it.</div>
+    <div class="grid">
+      <div class="card el" id="plan">
+        <div class="lab"><span class="n">1</span>PLAN · written before work starts</div>
+<pre>{ <span class="k">"name"</span>: <span class="s">"precedence"</span>,
+  <span class="k">"argv"</span>: [<span class="s">"node"</span>, <span class="s">"calc.mjs"</span>, <span class="s">"2+3*4"</span>],
+  <span class="k">"expect"</span>: { <span class="k">"exitCode"</span>: <span class="a">0</span>, <span class="k">"stdout"</span>: <span class="s">"14\n"</span> } }</pre>
+      </div>
+      <div class="card el" id="receipt">
+        <div class="lab"><span class="n">2</span>RECEIPT · you run it, at a clean commit</div>
+        <pre id="rpre"></pre>
+      </div>
+      <div class="card el" id="ledger">
+        <div class="lab"><span class="n">3</span>LEDGER · what holds at HEAD</div>
+        <div class="ledrow el" id="l1"><span class="c">planned</span><span>precedence <span class="dim">→</span> <span class="bad">failed</span> at HEAD <span class="dim">6712eae5</span></span></div>
+        <div class="ledrow el" id="l2"><span class="c">behaviour</span><span>exit 0 ✓ · output differs<br>expected <span class="ok">"14"</span> · observed <span class="bad">"20"</span><br><span class="dim">first difference at line 1</span></span></div>
+        <div class="ledrow el" id="l3"><span class="c">criterion</span><span>2+3*4 is 14 &nbsp;<span class="badge fail el" id="failb">FAILED</span></span></div>
+      </div>
+    </div>
+    <div class="foot el" id="e4">Exit 0 only says it ran. <b>Your plan says what it should print.</b></div>
+  </section>
+
+  <section class="scene" id="s5">
+    <div class="head el" id="g0">Any agent. One ledger.</div>
+    <div class="wrap">
+      <div id="lanes">
+        <div class="lane el" id="ln0"><div class="top"><span class="dot"></span>Pi<span class="tag live">LIVE</span></div><div class="what">edit calc.mjs · parser.mjs</div><div class="bars"></div></div>
+        <div class="lane el" id="ln1"><div class="top"><span class="dot"></span>Codex<span class="tag live">LIVE</span></div><div class="what">run node --test</div><div class="bars"></div></div>
+        <div class="lane el" id="ln2"><div class="top"><span class="dot"></span>Claude Code<span class="tag">PLANNED</span></div><div class="what">refactor tokenizer</div><div class="bars"></div></div>
+        <div class="lane el" id="ln3"><div class="top"><span class="dot"></span>Antigravity<span class="tag">PLANNED</span></div><div class="what">add stdin checks</div><div class="bars"></div></div>
+      </div>
+      <div id="board">
+        <div class="bt el" id="bt">COORDINATOR · MISSION BOARD<span class="tag" style="margin-left:auto">PLANNED</span></div>
+        <div class="brow el" id="r0"><span>Fix operator precedence</span><span class="ag">Codex</span><span class="st passed">passed</span></div>
+        <div class="brow el" id="r1"><span>Parse unary minus</span><span class="ag">Pi</span><span class="st failed">failed</span></div>
+        <div class="brow el" id="r2"><span>Tokenizer cleanup</span><span class="ag">Claude Code</span><span class="st notrun">not run</span></div>
+        <div class="brow el" id="r3"><span>Read from stdin</span><span class="ag">Antigravity</span><span class="st stale">stale</span></div>
+      </div>
+    </div>
+    <div class="foot el" id="g5">Every claim, from every agent,<br>checked against <span class="warn">HEAD</span> — by you.</div>
+    <div class="note el" id="g6">Live today: Pi · Codex &nbsp;—&nbsp; planned: more harnesses, concurrent sessions, assignment</div>
+  </section>
+
+  <section class="scene" id="s6">
+    <div class="lawhead el" id="lh">FOUR LAWS</div>
+    <div class="law el" id="law0">Only you run commands.</div>
+    <div class="law el" id="law1">Only the terminal approves.</div>
+    <div class="law el" id="law2">A passing check is not acceptance.</div>
+    <div class="law el" id="law3">Missing stays missing.</div>
+  </section>
+
+  <section class="scene" id="s7">
+    <div class="word el" id="k0"><b>endo</b>phasia</div>
+    <div class="line el" id="k1">Don't trust the report.<br><span class="warn">Inspect the evidence.</span></div>
+    <div class="url el" id="k2">github.com/noctem-o/endophasia</div>
+    <div class="meta el" id="k3">local-first · open source · Apache-2.0</div>
+  </section>
+
+  <div id="flash"></div>
+  <div id="vignette"></div>
+</div>
+
+<script src="timeline.js"></script>
+<script>
+const q = new URLSearchParams(location.search);
+const W = +q.get('w') || 1080, H = +q.get('h') || 1920;
+const stage = document.getElementById('stage');
+stage.style.width = W + 'px'; stage.style.height = H + 'px';
+if (W > H) stage.classList.add('land');
+const C = TL.cues, $ = (id) => document.getElementById(id);
+
+// ---- helpers ------------------------------------------------------------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const P = (t, a, b) => clamp((t - a) / (b - a));
+const eo = (x) => 1 - Math.pow(1 - x, 3);
+const eio = (x) => (x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+function show(el, t, a, d = .5, out = 1e9, od = .4, dy = 34) {
+  const i = eo(P(t, a, a + d)), o = eio(P(t, out, out + od));
+  el.style.opacity = i * (1 - o);
+  el.style.transform = `translateY(${(1 - i) * dy - o * dy * .6}px)`;
+  return i * (1 - o);
+}
+function scene(id, t, a, b, fade = .45) {
+  const v = P(t, a, a + fade) * (1 - P(t, b - fade, b));
+  $(id).style.opacity = v;
+  $(id).style.visibility = v > 0 ? 'visible' : 'hidden';
+  return v;
+}
+const typing = Object.fromEntries(TL.typing.map((s) => [s.id, s]));
+function typed(id, t) {
+  const s = typing[id];
+  const n = clamp(Math.floor((t - s.start) * s.cps), 0, s.text.length);
+  return { text: s.text.slice(0, n), done: n >= s.text.length, started: t >= s.start };
+}
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const cursor = (t) => (Math.floor(t * 2.2) % 2 === 0 ? '<span class="cursor"></span>' : '<span class="cursor" style="opacity:0"></span>');
+function rng(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296); }
+
+// ---- sky: clouds, rain, lightning ----------------------------------------
+const sky = $('sky'); sky.width = W; sky.height = H;
+const ctx = sky.getContext('2d');
+const R = rng(7);
+const drops = Array.from({ length: Math.round(W * H / 9000) }, () => ({
+  x: R() * (W + 400) - 200, ph: R() * 5000, v: 1400 + R() * 1100, len: 30 + R() * 70, a: .05 + R() * .13, w: R() < .2 ? 1.6 : 1,
+}));
+const clouds = Array.from({ length: 7 }, () => ({ x: R() * W, y: R() * H * .55, r: (.35 + R() * .45) * Math.max(W, H), v: (R() - .5) * 18 }));
+function boltPath(seed) {
+  const r = rng(seed); const pts = [[W * (.3 + r() * .4), -20]];
+  while (pts[pts.length - 1][1] < H * .62) {
+    const [x, y] = pts[pts.length - 1]; pts.push([x + (r() - .5) * 120, y + 40 + r() * 70]);
+  }
+  return pts;
+}
+const bolts = TL.bolts.map((t, i) => ({ t, pts: boltPath(31 + i * 17) }));
+function flashAt(t) {
+  let f = 0;
+  for (const b of bolts) {
+    const d = t - b.t; if (d < 0 || d > 2.2) continue;
+    f = Math.max(f, Math.exp(-d * 7) + .55 * Math.exp(-Math.max(0, d - .16) * 9) * (d > .16 ? 1 : 0));
+  }
+  return clamp(f);
+}
+function drawSky(t, storm) {
+  ctx.fillStyle = '#030405'; ctx.fillRect(0, 0, W, H);
+  const fl = flashAt(t);
+  for (const c of clouds) {
+    const x = ((c.x + t * c.v) % (W + c.r)) ; const g = ctx.createRadialGradient(x, c.y, 0, x, c.y, c.r);
+    const a = .05 + .05 * storm + fl * .25;
+    g.addColorStop(0, `rgba(70,84,110,${a})`); g.addColorStop(1, 'rgba(70,84,110,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+  // rain
+  const slant = .18;
+  ctx.lineCap = 'round';
+  for (const d of drops) {
+    const span = H + d.len + 100;
+    const y = ((d.ph + t * d.v) % span) - d.len;
+    const x = d.x - y * slant;
+    ctx.strokeStyle = `rgba(154,184,255,${d.a * (.35 + .65 * storm) + fl * .2})`;
+    ctx.lineWidth = d.w;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - d.len * slant, y + d.len); ctx.stroke();
+  }
+  // bolts
+  for (const b of bolts) {
+    const d = t - b.t; if (d < 0 || d > .5) continue;
+    const a = d < .08 ? 1 : d < .16 ? .25 : d < .3 ? .8 : Math.max(0, 1 - (d - .3) / .2) * .6;
+    ctx.save(); ctx.shadowColor = '#b9c9ff'; ctx.shadowBlur = 40; ctx.strokeStyle = `rgba(235,240,255,${a})`;
+    ctx.lineWidth = 4; ctx.beginPath(); b.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.stroke();
+    ctx.lineWidth = 1.5; ctx.stroke(); ctx.restore();
+  }
+  $('flash').style.opacity = fl * .55;
+}
+
+// lane activity bars
+const laneBars = [0, 1, 2, 3].map((i) => {
+  const el = $('ln' + i).querySelector('.bars');
+  for (let k = 0; k < 28; k++) el.appendChild(document.createElement('i'));
+  return [...el.children];
+});
+
+// ---- frame -------------------------------------------------------------
+window.renderAt = function (t) {
+  // storm intensity: heavy in the opening, calmer once records take over
+  const storm = 1 - .55 * P(t, 10.5, 14) + .4 * P(t, 20.8, 21.6) - .4 * P(t, 23, 25) - .5 * P(t, 39, 43);
+  drawSky(t, clamp(storm));
+  $('mark').style.opacity = P(t, 14.5, 15.2) * (1 - P(t, 38.2, 38.6)) * .9;
+
+  // S1 hook
+  if (scene('s1', t, 0, C.term, .3)) {
+    show($('h1'), t, C.hook1); show($('h2'), t, C.hook2, .6); show($('h3'), t, C.hook3, .45);
+  }
+
+  // S2 terminal
+  if (scene('s2', t, C.term, C.title - .05, .35)) {
+    show($('term'), t, C.term, .5, 1e9, .4, 60);
+    const a = typed('cmd1', t), b = typed('cmd2', t);
+    let s = `<span class="p">$</span> ${esc(a.text)}`;
+    if (!a.done) s += cursor(t);
+    if (t >= C.out20) {
+      const k = eo(P(t, C.out20, C.out20 + .35));
+      s += `\n<span class="big20" style="transform:scale(${1 + (1 - k) * .6});opacity:${k}">20</span>`;
+      s += `\n<span class="p">$</span> ${esc(b.text)}` + (t < C.out0 ? cursor(t) : '');
+      if (t >= C.out0) s += `\n<span class="ok">0</span>\n<span class="p">$</span> ` + cursor(t);
+    }
+    $('tpre').innerHTML = s;
+    show($('c1'), t, C.cap1); show($('c2'), t, C.cap2);
+  }
+
+  // S3 title
+  if (scene('s3', t, C.title, C.plan - .1, .5)) {
+    const w = $('w1'); const i = eo(P(t, C.title, C.title + 1.1));
+    w.style.opacity = i; w.style.letterSpacing = (.5 - .36 * i) + 'em'; w.style.filter = `blur(${(1 - i) * 10}px)`;
+    show($('w2'), t, C.tag1, .6); show($('w3'), t, C.tag2, .6);
+  }
+
+  // S4 plan → receipt → ledger
+  if (scene('s4', t, C.plan - .2, C.lanes - .05, .45)) {
+    show($('e0'), t, C.plan - .2); show($('plan'), t, C.plan, .55); show($('receipt'), t, C.receipt, .55); show($('ledger'), t, C.ledger, .55);
+    const c = typed('cmd3', t);
+    let r = `<span class="a">$</span> ${esc(c.text)}` + (c.started && !c.done ? cursor(t) : '');
+    if (t >= C.receiptOk) r += `\n<span class="s">recorded:</span> check ran at <span class="k">6712eae5bcc3</span>\nexit 0 · stdout sha256 <span class="dim">9f2c…41ad</span>`;
+    $('rpre').innerHTML = r;
+    show($('l1'), t, C.ledger + .35, .4, 1e9, .4, 14); show($('l2'), t, C.ledger + .8, .4, 1e9, .4, 14); show($('l3'), t, C.fail - .35, .35, 1e9, .4, 14);
+    const fb = $('failb'); const k = P(t, C.fail, C.fail + .4);
+    fb.style.opacity = t >= C.fail ? 1 : 0; fb.style.transform = `scale(${1 + (1 - eo(k)) * .7})`; fb.style.display = 'inline-block';
+    $('ledger').classList.toggle('hot', t >= C.fail);
+    show($('e4'), t, C.cap3, .6);
+  }
+
+  // S5 lanes + board
+  if (scene('s5', t, C.lanes - .1, C.law0 - .1, .45)) {
+    show($('g0'), t, C.lanes);
+    for (let i = 0; i < 4; i++) {
+      show($('ln' + i), t, C['lane' + i], .5);
+      const on = t >= C['lane' + i] + .2;
+      laneBars[i].forEach((bar, k) => {
+        const h = on ? .15 + .85 * Math.abs(Math.sin(k * .9 + t * (2.2 + i * .7) + i * 3) * Math.sin(k * .37 - t * 1.3 + i)) : .08;
+        bar.style.height = (h * 100).toFixed(1) + '%';
+        bar.style.background = ['#9ab8ff', '#56d6c4', '#b8a1f8', '#f2bc58'][i];
+      });
+    }
+    show($('bt'), t, C.board); for (let i = 0; i < 4; i++) show($('r' + i), t, C['row' + i], .4, 1e9, .4, 16);
+    show($('g5'), t, C.cap5, .6); show($('g6'), t, C.cap5 + .5, .6);
+  }
+
+  // S6 laws
+  if (scene('s6', t, C.law0 - .1, C.cta - .05, .4)) {
+    show($('lh'), t, C.law0 - .1, .4);
+    for (let i = 0; i < 4; i++) {
+      const el = $('law' + i); const v = show(el, t, C['law' + i], .45, 1e9, .4, 40);
+      const next = i < 3 ? C['law' + (i + 1)] : Infinity;
+      el.style.color = t >= next ? '#8f8c85' : '#efebe3';
+      if (i === 3) el.style.color = t >= C.law3 ? '#f2bc58' : '#efebe3';
+    }
+  }
+
+  // S7 CTA
+  if (scene('s7', t, C.cta, TL.duration + 1, .5)) {
+    show($('k0'), t, C.cta, .6); show($('k1'), t, C.cta + .35, .6); show($('k2'), t, C.url, .5); show($('k3'), t, C.url + .4, .5);
+  }
+  stage.style.opacity = 1 - P(t, TL.duration - .7, TL.duration);
+};
+
+// preview modes
+if (q.has('t')) document.fonts.ready.then(() => renderAt(+q.get('t')));
+else if (q.has('play')) {
+  const t0 = performance.now() - (+q.get('play') || 0) * 1000;
+  const loop = () => { renderAt(((performance.now() - t0) / 1000) % TL.duration); requestAnimationFrame(loop); };
+  document.fonts.ready.then(loop);
+} else document.fonts.ready.then(() => renderAt(0));
+</script>
+</body>
+</html>

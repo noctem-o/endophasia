@@ -354,48 +354,37 @@ describe("M1-AT02 configuration validation, before any endpoint is contacted", (
 		const server = await fake((_q, s) => s.end("{}"));
 		const dir = scratch();
 		const valid = JSON.stringify(doc([local("primary", server.origin)]));
+		const put = (name: string, text: string) => {
+			writeFileSync(join(dir, name), text);
+			return join(dir, name);
+		};
 		const cases: [string, () => string, RegExp][] = [
 			["missing", () => join(dir, "none.json"), /cannot be opened/],
-			["directory", () => (mkdirSync(join(dir, "d")), join(dir, "d")), /not a regular file/],
+			[
+				"directory",
+				() => {
+					mkdirSync(join(dir, "d"));
+					return join(dir, "d");
+				},
+				/not a regular file/,
+			],
 			[
 				"symbolic link",
 				() => {
-					writeFileSync(join(dir, "real.json"), valid);
-					symlinkSync(join(dir, "real.json"), join(dir, "link.json"));
+					symlinkSync(put("real.json", valid), join(dir, "link.json"));
 					return join(dir, "link.json");
 				},
 				/cannot be opened/,
 			],
-			[
-				"oversized",
-				() => (writeFileSync(join(dir, "big.json"), " ".repeat(70_000) + valid), join(dir, "big.json")),
-				/64 KiB/,
-			],
-			["not JSON", () => (writeFileSync(join(dir, "bad.json"), "{"), join(dir, "bad.json")), /not JSON/],
+			["oversized", () => put("big.json", `${" ".repeat(70_000)}${valid}`), /64 KiB/],
+			["not JSON", () => put("bad.json", "{"), /not JSON/],
 			[
 				"repeated key",
-				() => (
-					writeFileSync(
-						join(dir, "dup.json"),
-						valid.replace('"modelId":"model-a"', '"modelId":"model-a","modelId":"model-b"'),
-					),
-					join(dir, "dup.json")
-				),
+				() => put("dup.json", valid.replace('"modelId":"model-a"', '"modelId":"model-a","modelId":"model-b"')),
 				/repeats a key/,
 			],
-			[
-				"repeated top-level key",
-				() => (writeFileSync(join(dir, "dup2.json"), valid.replace("{", '{"members":[],')), join(dir, "dup2.json")),
-				/repeats a key/,
-			],
-			[
-				"invalid limit",
-				() => (
-					writeFileSync(join(dir, "limit.json"), valid.replace('"timeoutMs":135000', '"timeoutMs":0')),
-					join(dir, "limit.json")
-				),
-				/timeoutMs/,
-			],
+			["repeated top-level key", () => put("dup2.json", valid.replace("{", '{"members":[],')), /repeats a key/],
+			["invalid limit", () => put("limit.json", valid.replace('"timeoutMs":135000', '"timeoutMs":0')), /timeoutMs/],
 		];
 		for (const [name, make, message] of cases) {
 			const path = make();
@@ -810,7 +799,9 @@ describe("M1-AT10 bounded observation", () => {
 		});
 		expect(cut.hits).toHaveLength(1);
 
-		const garbage = await fake((_q, s) => (s.socket?.end("not http\r\n\r\n"), undefined));
+		const garbage = await fake((_q, s) => {
+			s.socket?.end("not http\r\n\r\n");
+		});
 		await expect(probeLocalEndpointV0(poolOf([local("primary", garbage.origin)]).members[0]!)).resolves.toMatchObject(
 			{
 				readiness: "unreachable",
@@ -1174,7 +1165,7 @@ describe("M1-AT12 tool surface integrity for a pool member", () => {
 		["exec", "{}", "tool-not-permitted"],
 		[ENDO_COORDINATOR_TOOL_V0, JSON.stringify({ project: other }), "project-out-of-scope"],
 		[ENDO_COORDINATOR_TOOL_V0, '{"project":"../../etc"}', "malformed-selector"],
-		[ENDO_COORDINATOR_TOOL_V0, '{"project":"' + projectId + '","path":"/"}', "malformed-selector"],
+		[ENDO_COORDINATOR_TOOL_V0, `{"project":"${projectId}","path":"/"}`, "malformed-selector"],
 	] as const)("refuses a generated %s call with %s", (name, args, reason) => {
 		const { t, g } = gate();
 		expect(g.request({ headers, body: payload(t) })).toBe(true);
@@ -1462,7 +1453,7 @@ describe("M1-AT10 bounded execution through the real relay", () => {
 	it("an oversized response is cut at the relay's transfer bound", async () => {
 		const upstream = await fake((_q, s) => {
 			s.setHeader("content-type", "text/event-stream");
-			s.end(":" + "x".repeat(9 * 1024 * 1024) + "\n\n" + sse({ content: "late" }, "stop"));
+			s.end(`:${"x".repeat(9 * 1024 * 1024)}\n\n${sse({ content: "late" }, "stop")}`);
 		});
 		const t = targetFor(upstream.origin);
 		const { wire, relay, response: r } = await throughRelay(t, [requestBody(t)]);
@@ -1543,7 +1534,7 @@ describe.skipIf(!sandboxAvailable || !openclaw)(
 		it.each([
 			["valid", null, 2],
 			// OpenClaw itself exits non-zero on an empty final answer, before the relay's own ungrounded check is reached.
-		["reasoning-only", "runtime-unavailable", 2],
+			["reasoning-only", "runtime-unavailable", 2],
 			["truncated", "generation-limit", 2],
 			["substituted", "model-identity-mismatch", 2],
 		] as const)(

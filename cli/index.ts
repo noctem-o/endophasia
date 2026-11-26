@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * The `endo` command. Runs directly on Node ≥ 22.19 (native TypeScript):
  *
@@ -25,6 +26,7 @@
  * (cli/trajectory.ts) read stores only.
  */
 
+import { ADVISORY_COMMANDS_V0, ADVISORY_USAGE_V0 } from "./advisory.ts";
 import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCommand } from "./commands.ts";
 import { COORDINATOR_COMMANDS_V0 } from "./coordinator.ts";
 import { ATTEMPT_COMMANDS_V0 } from "./develop-attempts.ts";
@@ -115,6 +117,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	schedule: family(SCHEDULE_COMMANDS_V0, SCHEDULE_USAGE_V0),
 	scheduler: family(SCHEDULER_COMMANDS_V0, SCHEDULER_USAGE_V0),
 	resource: family(RESOURCE_COMMANDS_V0, RESOURCE_USAGE_V0),
+	advisory: family(ADVISORY_COMMANDS_V0, ADVISORY_USAGE_V0),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(
 		{

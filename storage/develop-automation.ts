@@ -241,7 +241,7 @@ function jsonKeysRepeat(text: string): boolean {
 	return false;
 }
 
-function readBoundedValidatedJsonSync<T>(
+export function readBoundedValidatedJsonSync<T>(
 	dirs: readonly string[],
 	filePath: string,
 	maxBytes: number,
@@ -349,7 +349,7 @@ export type EndoAtomicReplaceOutcomeV0 = "committed" | "storage-failed" | "commi
  * Distinguishes failure before rename (`storage-failed`, old file untouched) from failure after rename
  * (`commit-uncertain`, new file visible but directory fsync unconfirmed).
  */
-function replaceJsonAtomicSync(
+export function replaceJsonAtomicSync(
 	dir: string,
 	fileName: string,
 	payload: unknown,

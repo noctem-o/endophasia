@@ -59,11 +59,11 @@ export const SCHEDULE_USAGE_V0 = "usage: endo schedule <add|list|enable|disable|
 export const SCHEDULER_USAGE_V0 = "usage: endo scheduler <tick|print-systemd-unit> [<root> | --root dir] ...";
 export const RESOURCE_USAGE_V0 = "usage: endo resource <declare-window|list> [<root> | --root dir] ...";
 
-const printJson = (value: unknown): void => {
+export const printJson = (value: unknown): void => {
 	process.stdout.write(`${canonicalEndoJsonV0(JSON.parse(JSON.stringify(value)) as never)}\n`);
 };
 
-function parseFlags(
+export function parseFlags(
 	argv: readonly string[],
 	valueFlags: readonly string[],
 	boolFlags: readonly string[],
@@ -89,7 +89,7 @@ function parseFlags(
 	return { root: taken.root, defaultNote: taken.defaultNote, values, bools };
 }
 
-function parseNonNegIntFlag(raw: string | undefined, flag: string): number | undefined {
+export function parseNonNegIntFlag(raw: string | undefined, flag: string): number | undefined {
 	if (raw === undefined) return undefined;
 	if (!/^(?:0|[1-9][0-9]*)$/.test(raw)) throw new TypeError(`${flag} must be a non-negative integer`);
 	const n = Number(raw);
@@ -111,14 +111,14 @@ function parsePositiveSecondsFlag(
 	return ms;
 }
 
-function parseEnum<T extends string>(raw: string, allowed: readonly T[], flag: string): T {
+export function parseEnum<T extends string>(raw: string, allowed: readonly T[], flag: string): T {
 	if (!(allowed as readonly string[]).includes(raw)) {
 		throw new TypeError(`${flag} must be one of ${allowed.join(", ")}`);
 	}
 	return raw as T;
 }
 
-function refuseMutation(code: string, detail?: string): never {
+export function refuseMutation(code: string, detail?: string): never {
 	printJson({ refusal: { code, ...(detail === undefined ? {} : { detail }) } });
 	throw new Error(`${code}${detail === undefined ? "" : `: ${detail}`}`);
 }

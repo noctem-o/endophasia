@@ -211,6 +211,8 @@ export interface OpenClawCoordinatorTrialV0 {
 	readonly latencyMs: number;
 	/** From starting the sandboxed agent to its exit: the inference-bearing part of the turn. */
 	readonly inferenceElapsedMs: number;
+	/** Requests the relay admitted to the model server (each a completion request, whatever came back). */
+	readonly admittedExchanges: number;
 	readonly recorderClean: boolean;
 	readonly stderr: string;
 }
@@ -360,11 +362,9 @@ export async function runOpenClawCoordinatorV0(
 			`${SCRATCH}/workspace`,
 		);
 		const inferenceStarted = performance.now();
-		const ran = await execute(
-			args,
-			options.signal === undefined ? abort.signal : AbortSignal.any([abort.signal, options.signal]),
-			target.timeoutMs,
-		);
+		const deadline = target.hostDeadline ? AbortSignal.timeout(target.timeoutMs) : undefined;
+		const signals = [abort.signal, options.signal, deadline].filter((s): s is AbortSignal => s !== undefined);
+		const ran = await execute(args, signals.length === 1 ? abort.signal : AbortSignal.any(signals), target.timeoutMs);
 		const inferenceElapsedMs = Math.round(performance.now() - inferenceStarted);
 		await relay.close();
 		const recorderClean = relay.recordingFailures() === 0 && !existsSync(relay.socketPath);
@@ -379,10 +379,13 @@ export async function runOpenClawCoordinatorV0(
 			evidence: status.evidence,
 			latencyMs: Math.round(performance.now() - started),
 			inferenceElapsedMs,
+			admittedExchanges: relay.admitted(),
 			recorderClean,
 			stderr: ran.stderr.replaceAll(bearer, "[redacted]").slice(0, 4000),
 		});
 		if (options.signal?.aborted) return unavailable("runtime-unavailable");
+		if (deadline !== undefined && (deadline.aborted || inferenceElapsedMs >= target.timeoutMs))
+			return unavailable("inference-timeout");
 		if (wire.trace.refusal !== null) return unavailable(wire.trace.refusal);
 		if (!recorderClean) return unavailable("runtime-unavailable");
 		if (wire.trace.responses.length === 0)

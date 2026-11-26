@@ -13,11 +13,13 @@ import { canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 
 /**
  * What a zero-token observation established about one local member, most to least available:
- * - `ready`: the model is observed loaded and an idle inference slot was observed.
- * - `capacity-unknown`: the model is observed loaded; slot availability was not observable without risking a model load.
- * - `model-unconfirmed`: the endpoint is healthy, but the model is listed unloaded or sleeping, or the server lists no models.
+ * - `ready`: the model is observed loaded and free capacity was observed passively. M1's local probe never reports it: no llama.cpp
+ *   capacity signal is passive (model-pool-probe.ts). It is kept for observers that have one (S1, M2).
+ * - `capacity-unknown`: the model is observed loaded and awake; free capacity was not observable without side effects.
+ * - `model-unconfirmed`: the endpoint is healthy, but the model's residency was not established: sleeping, a router (whose model
+ *   state is not read, since listing can run a reconciliation), a generic catalog entry, or no listing.
  * - `loading`: the server or the model reports it is loading.
- * - `saturated`: the server reports no idle slot.
+ * - `saturated`: the observer reports no free capacity. Like `ready`, never reported by M1's local probe.
  * - `model-unavailable`: the server's listing lacks the exact model, or reports it failed or incomplete.
  * - `unhealthy`: the health endpoint answered with an error.
  * - `unreachable`: no answer within the deadline, or the connection failed.
@@ -39,17 +41,13 @@ export type EndoCoordinatorMemberReadinessV0 = (typeof ENDO_COORDINATOR_MEMBER_R
 /** Why, in one closed word, an observation reached its readiness. */
 export const ENDO_COORDINATOR_PROBE_DETAILS_V0 = [
 	"slot-idle",
-	"slots-not-probed-router",
-	"slots-not-probed-sleeping-unknown",
 	"slots-not-observable",
-	"model-loaded",
-	"model-unloaded",
+	"router-model-state-not-observed",
+	"model-listed-residency-unknown",
+	"model-sleep-state-unknown",
 	"model-sleeping",
 	"model-listing-unavailable",
 	"model-not-listed",
-	"model-failed",
-	"model-incomplete",
-	"model-loading",
 	"server-loading",
 	"no-idle-slot",
 	"health-error",
@@ -201,6 +199,7 @@ export interface EndoCoordinatorPoolMeasurementsV0 {
 	/** Server-reported usage summed over the exchanges that reported it; null when none did. Self-reported by the model server. */
 	readonly promptTokens: number | null;
 	readonly completionTokens: number | null;
+	/** Completion requests the relay admitted to the model server; null when no inference was attempted. */
 	readonly exchanges: number | null;
 	/** The briefing's closed refusal, when it had one. */
 	readonly failureCategory: string | null;
@@ -216,7 +215,7 @@ export interface EndoCoordinatorModelPoolProvenanceV0 {
 	readonly selectedModelId: string | null;
 	readonly selectedEndpoint: string | null;
 	readonly selectedReadiness: EndoCoordinatorMemberReadinessV0 | null;
-	/** True only for `ready`: an idle slot was observed. A healthy endpoint alone never confirms capacity. */
+	/** True only for `ready`: free capacity was observed. A healthy endpoint or a loaded model never confirms capacity. */
 	readonly capacityConfirmed: boolean;
 	readonly fallbackOccurred: boolean;
 	readonly skippedMembers: readonly { readonly memberId: string; readonly reason: EndoCoordinatorSkipReasonV0 }[];

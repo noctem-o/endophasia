@@ -27,6 +27,11 @@ export interface EndoCoordinatorModelTargetV0 {
 	 * target so the default path's wire behaviour is unchanged.
 	 */
 	readonly pinResponseModel: boolean;
+	/**
+	 * Enforce `timeoutMs` on the host: abort the agent at the deadline and refuse any result that arrives after it
+	 * (`inference-timeout`). On for pool members; off for the M0 target, whose 135 s agent timeout and 155 s kill are unchanged.
+	 */
+	readonly hostDeadline: boolean;
 }
 
 /** M0's binding, unchanged: the default when no pool is given. */
@@ -37,6 +42,7 @@ export const ENDO_COORDINATOR_M0_TARGET_V0: EndoCoordinatorModelTargetV0 = Objec
 	maxPromptBytes: 8192,
 	timeoutMs: 135_000,
 	pinResponseModel: false,
+	hostDeadline: false,
 });
 
 /** The frozen target for a validated local member. Throws for a hosted member: M1 has no hosted execution. */
@@ -52,6 +58,7 @@ export function coordinatorTargetFromMemberV0(member: EndoCoordinatorModelPoolMe
 		maxPromptBytes: member.maxPromptBytes,
 		timeoutMs: member.timeoutMs,
 		pinResponseModel: true,
+		hostDeadline: true,
 	});
 }
 

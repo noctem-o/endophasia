@@ -5,7 +5,7 @@ import { execFile, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse } from "node:http";
-import type { AddressInfo } from "node:net";
+import { type AddressInfo, createServer as createNetServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -125,15 +125,15 @@ async function closedPort(): Promise<number> {
 type ModelStatus = "loaded" | "loading" | "unloaded" | "sleeping" | "downloading" | "failed";
 
 /**
- * A fake llama.cpp server. In router mode it behaves as server-models.cpp does for the routes the probe must avoid: a GET with
- * `?model=` or any `/slots`, and any POST, would load the model (counted in `loads`).
+ * A fake llama.cpp server. It counts as a "load" every request the real server could turn into a model load, unload, wake or
+ * activity (server-models.cpp proxy_get and need_reload, server-context.cpp wait_until_no_sleep): any POST; any query string; any
+ * /slots or /metrics; and on a router, /models.
  */
 function llama(options: {
 	mode: "router" | "single" | "openai";
 	health?: 200 | 500 | "loading";
 	models?: Record<string, ModelStatus>;
 	sleeping?: boolean | null;
-	slots?: number;
 	listing?: number;
 	state?: { loads: number; completions: number };
 }) {
@@ -153,8 +153,8 @@ function llama(options: {
 				state.loads += 1;
 				return send(500, { error: "completion requested by a probe" });
 			}
-			if (url.searchParams.has("model") || url.searchParams.has("autoload") || url.searchParams.has("reload"))
-				state.loads += 1;
+			if (url.search !== "" || url.pathname === "/slots" || url.pathname === "/metrics") state.loads += 1;
+			if (options.mode === "router" && url.pathname.endsWith("/models")) state.loads += 1;
 			if (url.pathname === "/health") {
 				if (options.health === "loading")
 					return send(503, { error: { code: 503, message: "Loading model", type: "unavailable_error" } });
@@ -166,6 +166,7 @@ function llama(options: {
 				if (options.mode === "router") return send(200, { role: "router", build_info: "b12622-19bc41dbb" });
 				return send(200, {
 					build_info: "b12622-19bc41dbb",
+					total_slots: 1,
 					...(options.sleeping === null || options.sleeping === undefined
 						? {}
 						: { is_sleeping: options.sleeping }),
@@ -179,25 +180,11 @@ function llama(options: {
 					data: Object.entries(models).map(([id, status]) => ({
 						id,
 						object: "model",
-						...(options.mode === "router"
-							? {
-									status:
-										status === "failed"
-											? { value: "unloaded", failed: true, exit_code: 1 }
-											: { value: status, args: ["llama-server"] },
-								}
-							: {}),
+						...(options.mode === "router" ? { status: { value: status } } : {}),
 					})),
 				});
 			}
-			if (url.pathname === "/slots") {
-				if (options.mode === "router") state.loads += 1;
-				if (url.searchParams.get("fail_on_no_slot") !== "1") return send(400, {});
-				return send(
-					options.slots ?? 200,
-					options.slots === 503 ? { error: "no slot" } : [{ id: 0, is_processing: false }],
-				);
-			}
+			if (url.pathname === "/slots") return send(200, [{ id: 0, is_processing: false }]);
 			send(404, {});
 		},
 	};
@@ -280,6 +267,7 @@ function fakeRun(
 			evidence: { readAtMs: 1, projectionSha256: "a".repeat(64), modelViewSha256: "b".repeat(64) },
 			latencyMs: 20,
 			inferenceElapsedMs: 12,
+			admittedExchanges: 2,
 			recorderClean: true,
 			stderr: "",
 		});
@@ -547,85 +535,33 @@ describe("M1-AT07 network boundary", () => {
 });
 
 describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () => {
+	it.each(["loaded", "loading", "unloaded", "sleeping", "downloading", "failed"] as const)(
+		"a router whose model is %s is never read beyond its own health and properties",
+		async (status) => {
+			const server = llama({ mode: "router", models: { "model-a": status } });
+			const endpoint = await fake(server.handler);
+			const result = await probeLocalEndpointV0(poolOf([local("primary", endpoint.origin)]).members[0]!);
+			expect(result).toMatchObject({
+				readiness: "model-unconfirmed",
+				detail: "router-model-state-not-observed",
+				backend: "llama.cpp-router",
+				build: "b12622-19bc41dbb",
+				inferenceTokens: 0,
+			});
+			expect(endpoint.hits.map((h) => h.url)).toEqual(["/health", "/props"]);
+			expect(server.state).toEqual({ loads: 0, completions: 0 });
+		},
+	);
+
 	it.each([
-		[
-			"router, model loaded",
-			{ mode: "router" },
-			"capacity-unknown",
-			"slots-not-probed-router",
-			["/health", "/props", "/models"],
-		],
-		[
-			"router, model unloaded",
-			{ mode: "router", models: { "model-a": "unloaded" } },
-			"model-unconfirmed",
-			"model-unloaded",
-			["/health", "/props", "/models"],
-		],
-		[
-			"router, model sleeping",
-			{ mode: "router", models: { "model-a": "sleeping" } },
-			"model-unconfirmed",
-			"model-sleeping",
-			["/health", "/props", "/models"],
-		],
-		[
-			"router, model loading",
-			{ mode: "router", models: { "model-a": "loading" } },
-			"loading",
-			"model-loading",
-			["/health", "/props", "/models"],
-		],
-		[
-			"router, model load failed",
-			{ mode: "router", models: { "model-a": "failed" } },
-			"model-unavailable",
-			"model-failed",
-			["/health", "/props", "/models"],
-		],
-		[
-			"router, model downloading",
-			{ mode: "router", models: { "model-a": "downloading" } },
-			"model-unavailable",
-			"model-incomplete",
-			["/health", "/props", "/models"],
-		],
-		[
-			"router, model missing",
-			{ mode: "router", models: { "model-b": "loaded" } },
-			"model-unavailable",
-			"model-not-listed",
-			["/health", "/props", "/models"],
-		],
-		[
-			"router, substituted name only",
-			{ mode: "router", models: { "Model-A": "loaded", "model-a:Q4": "loaded" } },
-			"model-unavailable",
-			"model-not-listed",
-			["/health", "/props", "/models"],
-		],
 		["server loading", { mode: "router", health: "loading" }, "loading", "server-loading", ["/health"]],
 		["server error", { mode: "single", health: 500 }, "unhealthy", "health-error", ["/health"]],
 		[
-			"single, awake, idle slot",
+			"single, awake",
 			{ mode: "single", sleeping: false },
-			"ready",
-			"slot-idle",
-			["/health", "/props", "/models", "/slots?fail_on_no_slot=1"],
-		],
-		[
-			"single, awake, saturated",
-			{ mode: "single", sleeping: false, slots: 503 },
-			"saturated",
-			"no-idle-slot",
-			["/health", "/props", "/models", "/slots?fail_on_no_slot=1"],
-		],
-		[
-			"single, slots disabled",
-			{ mode: "single", sleeping: false, slots: 501 },
 			"capacity-unknown",
 			"slots-not-observable",
-			["/health", "/props", "/models", "/slots?fail_on_no_slot=1"],
+			["/health", "/props", "/models"],
 		],
 		[
 			"single, sleeping",
@@ -637,8 +573,8 @@ describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () =
 		[
 			"single, sleep state unknown",
 			{ mode: "single", sleeping: null },
-			"capacity-unknown",
-			"slots-not-probed-sleeping-unknown",
+			"model-unconfirmed",
+			"model-sleep-state-unknown",
 			["/health", "/props", "/models"],
 		],
 		[
@@ -649,10 +585,31 @@ describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () =
 			["/health", "/props", "/models"],
 		],
 		[
-			"other OpenAI-compatible server",
+			"single, model missing",
+			{ mode: "single", sleeping: false, models: { "model-b": "loaded" } },
+			"model-unavailable",
+			"model-not-listed",
+			["/health", "/props", "/models"],
+		],
+		[
+			"single, only a similar name",
+			{ mode: "single", sleeping: false, models: { "Model-A": "loaded", "model-a:Q4": "loaded" } },
+			"model-unavailable",
+			"model-not-listed",
+			["/health", "/props", "/models"],
+		],
+		[
+			"other server, model listed",
 			{ mode: "openai" },
-			"capacity-unknown",
-			"slots-not-observable",
+			"model-unconfirmed",
+			"model-listed-residency-unknown",
+			["/health", "/props", "/v1/models"],
+		],
+		[
+			"other server, model missing",
+			{ mode: "openai", models: { "model-b": "loaded" } },
+			"model-unavailable",
+			"model-not-listed",
 			["/health", "/props", "/v1/models"],
 		],
 	] as const)("%s", async (_name, options, readiness, detail, paths) => {
@@ -663,14 +620,26 @@ describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () =
 		expect(endpoint.hits.map((h) => h.url)).toEqual(paths);
 		expect(endpoint.hits.every((h) => h.method === "GET" && h.authorization === undefined)).toBe(true);
 		expect(server.state).toEqual({ loads: 0, completions: 0 });
-		if (readiness !== "ready") {
-			const pool = poolOf([local("primary", endpoint.origin)]);
-			const check = await checkCoordinatorModelPoolV0(pool, "file");
-			if (check.selection.ok) expect(check.selection.capacityConfirmed).toBe(false);
-		}
 	});
 
-	it("pool check observes every member, requests no completion, loads nothing and only a slot-observed member confirms capacity", async () => {
+	it("does not mistake an unrecognised properties document for llama.cpp", async () => {
+		const endpoint = await fake((req, res) => {
+			if (req.url === "/props") return res.end(JSON.stringify({ role: "router" }));
+			if (req.url === "/v1/models") return res.end(JSON.stringify({ data: [{ id: "model-a" }] }));
+			res.end(JSON.stringify({ status: "ok" }));
+		});
+		await expect(
+			probeLocalEndpointV0(poolOf([local("primary", endpoint.origin)]).members[0]!),
+		).resolves.toMatchObject({
+			readiness: "model-unconfirmed",
+			detail: "model-listed-residency-unknown",
+			backend: "openai-compatible",
+			build: null,
+		});
+		expect(endpoint.hits.map((h) => h.url)).toEqual(["/health", "/props", "/v1/models"]);
+	});
+
+	it("pool check observes every member, requests no completion, loads nothing and never confirms capacity", async () => {
 		const router = llama({ mode: "router", models: { "model-a": "unloaded", "model-b": "loaded" } });
 		const single = llama({ mode: "single", sleeping: false });
 		const r = await fake(router.handler);
@@ -680,15 +649,12 @@ describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () =
 		writeFileSync(
 			path,
 			JSON.stringify(
-				doc(
-					[
-						local("router-cold", r.origin, { priority: 30 }),
-						local("router-warm", r.origin, { priority: 20, modelId: "model-b" }),
-						local("single", s.origin, { priority: 10 }),
-						local("cloud", "https://openrouter.ai", { kind: "hosted-relay", priority: 99 }),
-					],
-					{ fallback: "availability", unconfirmedModel: "refuse" },
-				),
+				doc([
+					local("router-cold", r.origin, { priority: 30 }),
+					local("router-warm", r.origin, { priority: 20, modelId: "model-b" }),
+					local("single", s.origin, { priority: 10 }),
+					local("cloud", "https://openrouter.ai", { kind: "hosted-relay", priority: 99 }),
+				]),
 			),
 		);
 		const cli = await runCli(["coordinator", "pool", "check", "--pool", path]);
@@ -703,26 +669,26 @@ describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () =
 		).toEqual([
 			["cloud", null],
 			["router-cold", "model-unconfirmed"],
-			["router-warm", "capacity-unknown"],
-			["single", "ready"],
+			["router-warm", "model-unconfirmed"],
+			["single", "capacity-unknown"],
 		]);
 		expect(check.selection).toEqual({
 			ok: true,
-			selectedMemberId: "router-warm",
+			selectedMemberId: "single",
 			capacityConfirmed: false,
 			fallbackOccurred: true,
 			skippedMembers: [
 				{ memberId: "cloud", reason: "hosted-not-permitted" },
 				{ memberId: "router-cold", reason: "model-unconfirmed" },
+				{ memberId: "router-warm", reason: "model-unconfirmed" },
 			],
 		});
 		expect(cli.stderr).toMatch(/zero inference tokens/);
 		expect(router.state).toEqual({ loads: 0, completions: 0 });
 		expect(single.state).toEqual({ loads: 0, completions: 0 });
-		expect([...r.hits, ...s.hits].some((h) => h.method !== "GET" || h.url.includes("completions"))).toBe(false);
 	});
 
-	it("pool check without --pool describes M0's endpoint as one member and stays read-only", () => {
+	it("pool check without --pool describes M0's endpoint as one member that permits an unconfirmed model, as M0 does", () => {
 		expect(ENDO_COORDINATOR_M0_POOL_V0.members).toEqual([
 			expect.objectContaining({
 				memberId: "m0-default",
@@ -732,6 +698,15 @@ describe("M1-AT08 zero-inference observation and M1-AT09 honest readiness", () =
 			}),
 		]);
 		expect(ENDO_COORDINATOR_M0_POOL_V0.selection).toEqual({ fallback: "none", unconfirmedModel: "permit" });
+	});
+
+	it("the shipped example pool is valid and names only the loopback", () => {
+		const pool = readCoordinatorModelPoolFileV0(
+			fileURLToPath(new URL("../docs/designs/coordinator-model-pool.example.json", import.meta.url)),
+		);
+		expect(
+			pool.members.every((m) => m.endpoint === "http://127.0.0.1:8091" && m.kind === "local-openai-compat"),
+		).toBe(true);
 	});
 });
 
@@ -809,26 +784,50 @@ describe("M1-AT10 bounded observation", () => {
 		);
 	});
 
-	it("refuses malformed listings rather than guessing", async () => {
-		const server = await fake((req, res) => {
-			if (req.url === "/props") return res.end(JSON.stringify({ role: "router" }));
-			if (req.url === "/models")
-				return res.end(JSON.stringify({ data: [{ id: "model-a", status: { value: "mystery" } }] }));
-			res.end(JSON.stringify({ status: "ok" }));
+	it("refuses malformed listings and protocol upgrades rather than guessing or hanging", async () => {
+		const props = JSON.stringify({ build_info: "b1-0000000", total_slots: 1, is_sleeping: false });
+		for (const listing of [
+			{ data: "model-a" },
+			{ data: [{ id: 7 }] },
+			{ data: [{ id: "model-a" }, { id: "model-a" }] },
+		]) {
+			const server = await fake((req, res) => {
+				if (req.url === "/props") return res.end(props);
+				if (req.url === "/models") return res.end(JSON.stringify(listing));
+				res.end(JSON.stringify({ status: "ok" }));
+			});
+			await expect(
+				probeLocalEndpointV0(poolOf([local("primary", server.origin)]).members[0]!),
+			).resolves.toMatchObject({
+				readiness: "probe-refused",
+				detail: "malformed-response",
+			});
+		}
+		const upgrade = createNetServer((socket) => {
+			socket.once("data", () =>
+				socket.write("HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\nUpgrade: x\r\n\r\n"),
+			);
 		});
-		await expect(probeLocalEndpointV0(poolOf([local("primary", server.origin)]).members[0]!)).resolves.toMatchObject({
-			readiness: "probe-refused",
-			detail: "malformed-response",
+		await new Promise<void>((resolve) => upgrade.listen(0, "127.0.0.1", () => resolve()));
+		closers.push(() => new Promise<void>((resolve) => upgrade.close(() => resolve())));
+		const port = (upgrade.address() as AddressInfo).port;
+		const started = performance.now();
+		const result = await probeLocalEndpointV0(poolOf([local("primary", `http://127.0.0.1:${port}`)]).members[0]!, {
+			deadlineMs: 500,
 		});
-		const twice = await fake((req, res) => {
-			if (req.url === "/props") return res.end(JSON.stringify({ is_sleeping: false }));
-			if (req.url === "/models") return res.end(JSON.stringify({ data: [{ id: "model-a" }, { id: "model-a" }] }));
-			res.end(JSON.stringify({ status: "ok" }));
-		});
-		await expect(probeLocalEndpointV0(poolOf([local("primary", twice.origin)]).members[0]!)).resolves.toMatchObject({
-			readiness: "probe-refused",
-			detail: "malformed-response",
-		});
+		expect(performance.now() - started).toBeLessThan(1500);
+		expect(result.readiness === "probe-refused" || result.readiness === "unreachable").toBe(true);
+		const mute = createNetServer((socket) => socket.once("data", () => socket.end()));
+		await new Promise<void>((resolve) => mute.listen(0, "127.0.0.1", () => resolve()));
+		closers.push(() => new Promise<void>((resolve) => mute.close(() => resolve())));
+		await expect(
+			probeLocalEndpointV0(
+				poolOf([local("primary", `http://127.0.0.1:${(mute.address() as AddressInfo).port}`)]).members[0]!,
+				{
+					deadlineMs: 500,
+				},
+			),
+		).resolves.toMatchObject({ readiness: "unreachable", detail: "connect-failed" });
 	});
 });
 
@@ -893,9 +892,9 @@ describe("M1-AT03 priority selection, M1-AT04 fallback, M1-AT05 outage, M1-AT06 
 		expect(permit.ok && permit.member.memberId).toBe("alpha");
 	});
 
-	it("end to end: a saturated primary hands the briefing to the secondary, which alone receives the target", async () => {
-		const primaryServer = llama({ mode: "single", sleeping: false, slots: 503 });
-		const secondaryServer = llama({ mode: "router", models: { "model-b": "loaded" } });
+	it("end to end: an unhealthy primary hands the briefing to the secondary, which alone receives the target", async () => {
+		const primaryServer = llama({ mode: "single", health: 500 });
+		const secondaryServer = llama({ mode: "single", sleeping: false, models: { "model-b": "loaded" } });
 		const primary = await fake(primaryServer.handler);
 		const secondary = await fake(secondaryServer.handler);
 		const pool = poolOf([
@@ -922,6 +921,7 @@ describe("M1-AT03 priority selection, M1-AT04 fallback, M1-AT05 outage, M1-AT06 
 					maxPromptBytes: 4096,
 					timeoutMs: 60_000,
 					pinResponseModel: true,
+					hostDeadline: true,
 				},
 				provider: "llama.cpp b12622-19bc41dbb",
 			},
@@ -940,7 +940,7 @@ describe("M1-AT03 priority selection, M1-AT04 fallback, M1-AT05 outage, M1-AT06 
 				selectedReadiness: "capacity-unknown",
 				capacityConfirmed: false,
 				fallbackOccurred: true,
-				skippedMembers: [{ memberId: "primary", reason: "saturated" }],
+				skippedMembers: [{ memberId: "primary", reason: "unhealthy" }],
 				inferenceFailover: "never",
 				measurements: {
 					inferenceElapsedMs: 12,
@@ -992,9 +992,9 @@ describe("M1-AT03 priority selection, M1-AT04 fallback, M1-AT05 outage, M1-AT06 
 	});
 
 	it("an explicit member that is unavailable is refused, never switched; the other member is never contacted", async () => {
-		const saturated = llama({ mode: "single", sleeping: false, slots: 503 });
+		const loading = llama({ mode: "single", health: "loading" });
 		const healthy = llama({ mode: "single", sleeping: false });
-		const a = await fake(saturated.handler);
+		const a = await fake(loading.handler);
 		const b = await fake(healthy.handler);
 		const pool = poolOf([local("chosen", a.origin, { priority: 1 }), local("better", b.origin, { priority: 99 })]);
 		const { run, calls } = fakeRun();
@@ -1010,13 +1010,14 @@ describe("M1-AT03 priority selection, M1-AT04 fallback, M1-AT05 outage, M1-AT06 
 				requestedMemberId: "chosen",
 				selectedMemberId: null,
 				fallbackOccurred: false,
-				skippedMembers: [{ memberId: "chosen", reason: "saturated" }],
+				skippedMembers: [{ memberId: "chosen", reason: "loading" }],
 			},
 		});
 		expect(calls).toEqual([]);
 		expect(b.connections).toBe(0);
 		const missing = await pooledCoordinatorV0("/nonexistent", pool, { run, memberId: "ghost" }).brief({ projectId });
 		expect(missing).toMatchObject({ availability: "unavailable", reason: "member-not-found" });
+		expect(a.connections + b.connections).toBe(1);
 		const explicitOk = await pooledCoordinatorV0("/nonexistent", pool, { run, memberId: "better" }).brief({
 			projectId,
 		});
@@ -1026,10 +1027,10 @@ describe("M1-AT03 priority selection, M1-AT04 fallback, M1-AT05 outage, M1-AT06 
 				selectionMode: "explicit",
 				selectedMemberId: "better",
 				fallbackOccurred: false,
-				capacityConfirmed: true,
+				capacityConfirmed: false,
 			},
 		});
-		expect(a.connections).toBe(1 * 4);
+		expect(a.connections).toBe(1);
 	});
 });
 
@@ -1051,6 +1052,19 @@ describe("M1-AT11 model identity", () => {
 		});
 		expect(same.request({ headers, body: payload(target) })).toBe(true);
 		expect(same.response(response(sse(call(ENDO_COORDINATOR_TOOL_V0), "tool_calls", "model-a")))).toBe(true);
+	});
+
+	it("refuses a pooled response that omits its model", () => {
+		const target = coordinatorTargetFromMemberV0(poolOf([local("primary", "http://127.0.0.1:9001")]).members[0]!);
+		const gate = coordinatorWireV0(projectId, toolText, key, undefined, {
+			inference: coordinatorInferenceForV0(target),
+			model: target.model,
+		});
+		expect(gate.request({ headers, body: payload(target) })).toBe(true);
+		const unnamed = sse(call(ENDO_COORDINATOR_TOOL_V0), "tool_calls").replaceAll(',"model":"model-a"', "");
+		expect(unnamed).not.toContain("model-a");
+		expect(gate.response(response(unnamed))).toBe(false);
+		expect(gate.trace.refusal).toBe("model-identity-mismatch");
 	});
 
 	it("refuses a request for another model at the relay policy", () => {
@@ -1322,6 +1336,7 @@ describe("M1-AT01 backward compatibility of the M0 binding", () => {
 			maxPromptBytes: 8192,
 			timeoutMs: 135_000,
 			pinResponseModel: false,
+			hostDeadline: false,
 		});
 		expect(coordinatorInferenceForV0(ENDO_COORDINATOR_M0_TARGET_V0)).toEqual(COORDINATOR_INFERENCE_V0);
 		const m0Policy = {
@@ -1502,7 +1517,7 @@ describe.skipIf(!sandboxAvailable || !openclaw)(
 		type Scenario = "valid" | "reasoning-only" | "truncated" | "substituted" | "hang" | "slow-stream";
 		async function provider(scenario: Scenario, modelId: string) {
 			const state = { completions: 0, loads: 0 };
-			const probe = llama({ mode: "router", models: { [modelId]: "loaded" }, state });
+			const probe = llama({ mode: "single", sleeping: false, models: { [modelId]: "loaded" }, state });
 			const server = await fake((req, res, body) => {
 				if (req.method !== "POST") return probe.handler(req, res);
 				state.completions += 1;
@@ -1530,21 +1545,26 @@ describe.skipIf(!sandboxAvailable || !openclaw)(
 			});
 			return { server, state };
 		}
+		const fixture = () => {
+			vi.stubEnv("XDG_RUNTIME_DIR", scratch());
+			const dir = scratch();
+			mkdirSync(join(dir, "control"));
+			return createBriefFixtureV0(dir, "review");
+		};
+		const viaOpenClaw: Run = (root, request, options) =>
+			runOpenClawCoordinatorV0(root, request, { ...options, openclaw });
 
 		it.each([
-			["valid", null, 2],
+			["valid", null],
 			// OpenClaw itself exits non-zero on an empty final answer, before the relay's own ungrounded check is reached.
-			["reasoning-only", "runtime-unavailable", 2],
-			["truncated", "generation-limit", 2],
-			["substituted", "model-identity-mismatch", 2],
+			["reasoning-only", "runtime-unavailable"],
+			["truncated", "generation-limit"],
+			["substituted", "model-identity-mismatch"],
 		] as const)(
-			"%s: falls back from a saturated primary and ends %s",
-			async (scenario, reason, completions) => {
-				vi.stubEnv("XDG_RUNTIME_DIR", scratch());
-				const dir = scratch();
-				mkdirSync(join(dir, "control"));
-				const f = createBriefFixtureV0(dir, "review");
-				const primaryServer = llama({ mode: "single", sleeping: false, slots: 503 });
+			"%s: falls back from an unhealthy primary and ends %s",
+			async (scenario, reason) => {
+				const f = fixture();
+				const primaryServer = llama({ mode: "single", health: 500 });
 				const primary = await fake(primaryServer.handler);
 				const secondary = await provider(scenario, "model-b");
 				const pool = poolOf([
@@ -1553,58 +1573,61 @@ describe.skipIf(!sandboxAvailable || !openclaw)(
 				]);
 				const result = await briefFromCoordinatorSubstrateV0(
 					{ projectId: f.projectId },
-					pooledCoordinatorV0(f.root, pool, {
-						run: (root, request, options) => runOpenClawCoordinatorV0(root, request, { ...options, openclaw }),
-					}),
+					pooledCoordinatorV0(f.root, pool, { run: viaOpenClaw }),
 				);
-				expect(secondary.state).toEqual({ completions, loads: 0 });
+				expect(secondary.state).toEqual({ completions: 2, loads: 0 });
 				expect(primaryServer.state).toEqual({ loads: 0, completions: 0 });
 				expect(result.modelPool).toMatchObject({
 					selectedMemberId: "secondary",
 					selectedModelId: "model-b",
 					fallbackOccurred: true,
-					skippedMembers: [{ memberId: "primary", reason: "saturated" }],
+					skippedMembers: [{ memberId: "primary", reason: "unhealthy" }],
+					measurements: { exchanges: 2 },
 				});
 				if (reason === null) {
 					expect(result).toMatchObject({ availability: "available", runtime: { model: "model-b" } });
-					expect(result.modelPool?.measurements).toMatchObject({
-						exchanges: 2,
-						promptTokens: 10,
-						completionTokens: 6,
-					});
+					expect(result.modelPool?.measurements).toMatchObject({ promptTokens: 10, completionTokens: 6 });
 				} else expect(result).toMatchObject({ availability: "unavailable", reason });
 			},
 			165_000,
 		);
 
-		it.each([
-			["hang", "timeout"],
-			["slow-stream", "cancellation"],
-		] as const)(
-			"%s: a %s ends the briefing unavailable within its bound, with no retry and no late answer",
-			async (scenario, kind) => {
-				vi.stubEnv("XDG_RUNTIME_DIR", scratch());
-				const dir = scratch();
-				mkdirSync(join(dir, "control"));
-				const f = createBriefFixtureV0(dir, "review");
-				const p = await provider(scenario, "model-a");
-				const pool = poolOf([local("only", p.server.origin, { timeoutMs: 5000 })]);
-				const controller = new AbortController();
-				if (kind === "cancellation") setTimeout(() => controller.abort(), 8000);
-				const started = performance.now();
+		it("a hanging member ends inference-timeout at its own deadline, with no retry and no late answer", async () => {
+			const f = fixture();
+			const p = await provider("hang", "model-a");
+			const pool = poolOf([local("only", p.server.origin, { timeoutMs: 20_000 })]);
+			const started = performance.now();
+			const result = await pooledCoordinatorV0(f.root, pool, { run: viaOpenClaw }).brief({ projectId: f.projectId });
+			expect(performance.now() - started).toBeLessThan(30_000);
+			expect(result).toMatchObject({ availability: "unavailable", reason: "inference-timeout" });
+			const completions = p.state.completions;
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+			expect(p.state.completions).toBe(completions);
+			expect(completions).toBe(1);
+		}, 165_000);
+
+		it("a cancelled briefing is unavailable, whatever was streaming", async () => {
+			const f = fixture();
+			const p = await provider("slow-stream", "model-a");
+			const pool = poolOf([local("only", p.server.origin, { timeoutMs: 60_000 })]);
+			const controller = new AbortController();
+			const timer = setInterval(() => {
+				if (p.state.completions >= 2) controller.abort();
+			}, 50);
+			try {
 				const result = await pooledCoordinatorV0(f.root, pool, {
+					run: viaOpenClaw,
 					signal: controller.signal,
-					run: (root, request, options) => runOpenClawCoordinatorV0(root, request, { ...options, openclaw }),
-				}).brief({ projectId: f.projectId });
-				expect(performance.now() - started).toBeLessThan(40_000);
-				expect(result.availability).toBe("unavailable");
+				}).brief({
+					projectId: f.projectId,
+				});
+				expect(controller.signal.aborted).toBe(true);
+				expect(result).toMatchObject({ availability: "unavailable", reason: "runtime-unavailable" });
 				expect(result).not.toHaveProperty("answer");
-				const completions = p.state.completions;
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-				expect(p.state.completions).toBe(completions);
-				expect(completions).toBeLessThanOrEqual(2);
-			},
-			165_000,
-		);
+				expect(p.state.completions).toBe(2);
+			} finally {
+				clearInterval(timer);
+			}
+		}, 165_000);
 	},
 );

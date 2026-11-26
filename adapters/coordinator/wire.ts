@@ -30,7 +30,7 @@ export function coordinatorWireV0(
 	options: {
 		/** The exact inference parameters admitted; M0's by default. */
 		readonly inference?: Readonly<Record<keyof typeof COORDINATOR_INFERENCE_V0, number>>;
-		/** When set, a response chunk naming another model is refused as `model-identity-mismatch`. */
+		/** When set, every response chunk must name exactly this model, else `model-identity-mismatch`. */
 		readonly model?: string;
 	} = {},
 ) {
@@ -135,7 +135,7 @@ export function coordinatorWireV0(
 					const item = record(JSON.parse(data));
 					if (item === null || !Array.isArray(item.choices) || item.choices.length > 1)
 						return refuse("model-unavailable");
-					if (options.model !== undefined && item.model !== undefined && item.model !== options.model)
+					if (options.model !== undefined && item.model !== options.model)
 						return refuse("model-identity-mismatch");
 					if (record(item.usage)) usage = item.usage as JsonValueV0;
 					for (const choice of item.choices) {

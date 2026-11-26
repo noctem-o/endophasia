@@ -270,7 +270,7 @@ export function pooledCoordinatorV0(
 			const modelPool = provenance({
 				inferenceElapsedMs: observedTrial?.inferenceElapsedMs ?? null,
 				...usage(observedTrial),
-				exchanges: observedTrial === null ? null : observedTrial.wire.responses.length,
+				exchanges: observedTrial === null ? null : observedTrial.admittedExchanges,
 				failureCategory: result.availability === "unavailable" ? result.reason : null,
 			});
 			if (result.runtime.model !== selection.member.modelId)

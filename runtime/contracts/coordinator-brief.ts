@@ -47,7 +47,8 @@ export type EndoCoordinatorBriefRefusalV0 =
 	| "member-not-found"
 	| "member-unavailable"
 	| "member-not-permitted"
-	| "model-identity-mismatch";
+	| "model-identity-mismatch"
+	| "inference-timeout";
 
 export interface EndoCoordinatorBriefEvidenceV0 {
 	readonly readAtMs: number;

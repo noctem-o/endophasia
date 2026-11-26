@@ -1,21 +1,27 @@
 // probeLocalEndpointV0 (S0 Appendix A, M1-B): one bounded, zero-token health observation of a local Coordinator Model Pool member.
 //
-// It sends only GET requests, never a completion, never a credential, and never a request the llama.cpp server documents as able to
-// load, unload or wake a model (tools/server/README.md, "Sleeping on Idle" and "Using multiple models"; server-models.cpp proxy_get):
+// It sends only GET requests, never a completion, never a credential, never a query string, and only requests the llama.cpp server
+// answers without loading, unloading or waking a model and without counting as activity (llama.cpp tools/server, read at master):
 //
-//   GET /health                          answered by the server itself; exempt from idle reload. 200 healthy, 503 loading.
-//   GET /props                           without `?model=`: the router's own properties (role, build), or a single server's; exempt.
-//   GET /models (llama.cpp) or GET /v1/models (other servers)
-//                                        the listing, never `?reload=1`; the router's answer is computed without loading anything.
-//   GET /slots?fail_on_no_slot=1         ONLY for a single-model llama.cpp server that reports `is_sleeping: false`. In router mode
-//                                        `/slots` is proxied to the model's instance and, with the default autoload, LOADS the model
-//                                        (proxy_get calls ensure_model_ready), and `?autoload=false` cannot be confirmed on every
-//                                        router build, so a router member's slot capacity is reported unknown instead. `/slots` is not
-//                                        exempt from idle reload, so a single server that does not say it is awake is not asked.
+//   GET /health      answered by the server itself; exempt from idle sleep. 200 healthy, 503 "Loading model" loading.
+//   GET /props       without ?model=: the router's own properties, or a single server's (create_response(true): no wake; served from
+//                    cache while asleep). Identifies a router, a single llama.cpp server (build_info and total_slots), or neither.
+//   GET /models      single llama.cpp server only (create_response(true), cached while asleep): the exact model id must be listed.
+//   GET /v1/models   a server that is not llama.cpp: the exact id must be listed. A catalog entry is not residency evidence.
 //
-// Every request has the probe's one deadline, a bounded head and body, no redirect following (a 3xx is refused), no keep-alive, and a
-// check that the connected peer is 127.0.0.1 on the member's port. The member's endpoint was already validated as the literal
-// `http://127.0.0.1:<port>`; no name is resolved.
+// Deliberately NOT sent, with the reason read in the source:
+//   /slots     single server: create_response() without bypass calls wait_until_no_sleep(), so it WAKES a sleeping model and counts
+//              as activity; router: proxied by proxy_get, which with the default autoload LOADS the model.
+//   /metrics   single server: posts a metrics task with metrics_reset_bucket (changes what a Prometheus scraper sees); router: proxied.
+//   /models on a router: get_all_meta() runs a pending load_models() reconciliation, which can UNLOAD a running model whose source
+//              changed after a download (server-models.cpp need_reload).
+// So no local llama.cpp observation in M1 confirms free capacity or saturation: a loaded, awake model is capacity-unknown, and a
+// router member's model state is unobserved. "ready" and "saturated" remain in the readiness vocabulary for observers that have a
+// passive capacity signal (S1, M2).
+//
+// Every request has the probe's one deadline (settled directly on expiry or cancellation), a bounded head and body, no redirect
+// following (a 3xx or 101 is refused), no keep-alive, and a check that the connected peer is 127.0.0.1 on the member's port. The
+// endpoint was already validated as the literal http://127.0.0.1:<port>; no name is resolved.
 
 import { request as httpRequest } from "node:http";
 import {
@@ -39,6 +45,7 @@ type TransportFailure =
 	| "cancelled"
 	| "redirect"
 	| "response-too-large"
+	| "malformed-response"
 	| "destination-mismatch";
 type Got =
 	| { readonly ok: true; readonly status: number; readonly body: Buffer }
@@ -46,20 +53,18 @@ type Got =
 
 function get(port: number, path: string, deadline: AbortSignal, cancel: AbortSignal | undefined): Promise<Got> {
 	const signal = cancel === undefined ? deadline : AbortSignal.any([deadline, cancel]);
+	const aborted = (): TransportFailure => (cancel?.aborted ? "cancelled" : "timeout");
+	if (signal.aborted) return Promise.resolve({ ok: false, detail: aborted() });
 	return new Promise<Got>((resolve) => {
 		let settled = false;
-		let wrongPeer = false;
+		const onAbort = () => settle({ ok: false, detail: aborted() });
 		const settle = (value: Got) => {
 			if (settled) return;
 			settled = true;
+			signal.removeEventListener("abort", onAbort);
 			req.destroy();
 			resolve(value);
 		};
-		const aborted = (): TransportFailure => (cancel?.aborted ? "cancelled" : "timeout");
-		if (signal.aborted) {
-			resolve({ ok: false, detail: aborted() });
-			return;
-		}
 		const req = httpRequest({
 			host: "127.0.0.1",
 			family: 4,
@@ -69,18 +74,20 @@ function get(port: number, path: string, deadline: AbortSignal, cancel: AbortSig
 			agent: false,
 			headers: { accept: "application/json", connection: "close" },
 			maxHeaderSize: HEADER_MAX,
-			signal,
 			lookup: () => {
 				throw new Error("the probe resolves no names");
 			},
 		});
+		signal.addEventListener("abort", onAbort, { once: true });
 		req.on("socket", (socket) => {
 			socket.once("connect", () => {
-				if (socket.remoteAddress !== "127.0.0.1" || socket.remotePort !== port) {
-					wrongPeer = true;
+				if (socket.remoteAddress !== "127.0.0.1" || socket.remotePort !== port)
 					settle({ ok: false, detail: "destination-mismatch" });
-				}
 			});
+		});
+		req.on("upgrade", (_response, socket) => {
+			socket.destroy();
+			settle({ ok: false, detail: "malformed-response" });
 		});
 		req.on("response", (response) => {
 			const status = response.statusCode ?? 0;
@@ -93,15 +100,13 @@ function get(port: number, path: string, deadline: AbortSignal, cancel: AbortSig
 				parts.push(chunk);
 			});
 			response.on("end", () => settle({ ok: true, status, body: Buffer.concat(parts) }));
-			response.on("error", () => settle({ ok: false, detail: signal.aborted ? aborted() : "connect-failed" }));
-			response.on("aborted", () => settle({ ok: false, detail: signal.aborted ? aborted() : "connect-failed" }));
+			response.on("error", () => settle({ ok: false, detail: "connect-failed" }));
+			response.on("close", () => settle({ ok: false, detail: "connect-failed" }));
 		});
-		req.on("error", (error: NodeJS.ErrnoException) => {
-			if (wrongPeer) return settle({ ok: false, detail: "destination-mismatch" });
-			if (signal.aborted) return settle({ ok: false, detail: aborted() });
-			if (error.code === "HPE_HEADER_OVERFLOW") return settle({ ok: false, detail: "response-too-large" });
-			settle({ ok: false, detail: "connect-failed" });
-		});
+		req.on("error", (error: NodeJS.ErrnoException) =>
+			settle({ ok: false, detail: error.code === "HPE_HEADER_OVERFLOW" ? "response-too-large" : "connect-failed" }),
+		);
+		req.on("close", () => settle({ ok: false, detail: "connect-failed" }));
 		req.end();
 	});
 }
@@ -178,51 +183,31 @@ export async function probeLocalEndpointV0(
 	if (props.status === 200) {
 		const p = record(json(props.body));
 		if (p === null) return done("probe-refused", "malformed-response");
-		backend = p.role === "router" ? "llama.cpp-router" : "llama.cpp-single";
-		if (typeof p.build_info === "string" && /^b[0-9]+-[0-9a-f]{7,40}$/.test(p.build_info)) build = p.build_info;
+		const llamaBuild =
+			typeof p.build_info === "string" && /^b[0-9]+-[0-9a-f]{7,40}$/.test(p.build_info) ? p.build_info : null;
+		if (p.role === "router" && llamaBuild !== null) backend = "llama.cpp-router";
+		else if (llamaBuild !== null && Number.isSafeInteger(p.total_slots) && (p.total_slots as number) > 0)
+			backend = "llama.cpp-single";
+		else backend = "openai-compatible";
+		if (backend !== "openai-compatible") build = llamaBuild;
 		if (typeof p.is_sleeping === "boolean") sleeping = p.is_sleeping;
 	} else if (props.status === 404) backend = "openai-compatible";
 	else return done("unhealthy", "health-error");
 
-	const listing = await fetch(backend === "openai-compatible" ? "/v1/models" : "/models");
+	if (backend === "llama.cpp-router") return done("model-unconfirmed", "router-model-state-not-observed");
+
+	const listing = await fetch(backend === "llama.cpp-single" ? "/models" : "/v1/models");
 	if (!listing.ok) return transport(listing.detail);
 	if (listing.status === 404) return done("model-unconfirmed", "model-listing-unavailable");
 	if (listing.status !== 200) return done("unhealthy", "health-error");
 	const data = record(json(listing.body))?.data;
 	if (!Array.isArray(data) || data.some((entry) => typeof record(entry)?.id !== "string"))
 		return done("probe-refused", "malformed-response");
-	const matches = data.map(record).filter((entry) => entry?.id === member.modelId);
+	const matches = data.filter((entry) => record(entry)?.id === member.modelId);
 	if (matches.length > 1) return done("probe-refused", "malformed-response");
-	const entry = matches[0];
-	if (entry === undefined || entry === null) return done("model-unavailable", "model-not-listed");
-
-	if (backend === "llama.cpp-router") {
-		const status = record(entry.status);
-		switch (status?.value) {
-			case "loaded":
-				return done("capacity-unknown", "slots-not-probed-router");
-			case "loading":
-				return done("loading", "model-loading");
-			case "sleeping":
-				return done("model-unconfirmed", "model-sleeping");
-			case "unloaded":
-				return status.failed === true
-					? done("model-unavailable", "model-failed")
-					: done("model-unconfirmed", "model-unloaded");
-			case "downloading":
-			case "incomplete":
-				return done("model-unavailable", "model-incomplete");
-			default:
-				return done("probe-refused", "malformed-response");
-		}
-	}
-	if (backend === "openai-compatible") return done("capacity-unknown", "slots-not-observable");
+	if (matches.length === 0) return done("model-unavailable", "model-not-listed");
+	if (backend === "openai-compatible") return done("model-unconfirmed", "model-listed-residency-unknown");
 	if (sleeping === true) return done("model-unconfirmed", "model-sleeping");
-	if (sleeping !== false) return done("capacity-unknown", "slots-not-probed-sleeping-unknown");
-
-	const slots = await fetch("/slots?fail_on_no_slot=1");
-	if (!slots.ok) return transport(slots.detail);
-	if (slots.status === 200) return done("ready", "slot-idle");
-	if (slots.status === 503) return done("saturated", "no-idle-slot");
-	return done("capacity-unknown", "slots-not-observable");
+	if (sleeping === false) return done("capacity-unknown", "slots-not-observable");
+	return done("model-unconfirmed", "model-sleep-state-unknown");
 }

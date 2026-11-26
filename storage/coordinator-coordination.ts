@@ -6,6 +6,7 @@
 // starts no process itself. Each file is one atomic snapshot; nothing makes the files consistent WITH each other, which the projection
 // states (`basis.consistency: per-file-snapshot`). Storage reaches no adapter: Git and protected-run re-verification are injected.
 
+import { join } from "node:path";
 import type {
 	EndoCandidateIdentityReadingV0,
 	EndoCoordinationGapV0,
@@ -18,12 +19,13 @@ import {
 	type EndoCoordinationTaskFactV0,
 	type EndoReceiptSourceV0,
 	endoCoordinationProjectionV0,
+	endoRouteEvidenceForAttemptV0,
 } from "../runtime/contracts/develop-coordination.ts";
 import { DevelopAttemptRoutesStoreV0 } from "./develop-attempt-routes.ts";
 import { DevelopAttemptsStoreV0 } from "./develop-attempts.ts";
 import { DevelopCoordinationStoreV0, type EndoCoordinationReadV0 } from "./develop-coordination.ts";
 import { DevelopReceiptsStoreV0 } from "./develop-receipts.ts";
-import { DevelopTasksStoreV0 } from "./develop-tasks.ts";
+import { DevelopTasksStoreV0, ENDO_DEVELOP_DIRECTORY_V0 } from "./develop-tasks.ts";
 
 export interface ReadEndoCoordinatorCoordinationOptionsV0 {
 	root: string;
@@ -118,6 +120,7 @@ export async function readEndoCoordinatorCoordinationV0(
 			}
 		}
 	const routes = DevelopAttemptRoutesStoreV0.forRoot(root);
+	const developDir = join(root, ENDO_DEVELOP_DIRECTORY_V0);
 	return endoCoordinationProjectionV0({
 		readAtMs: now(),
 		requested: options.projects === null ? null : [...options.projects],
@@ -126,12 +129,11 @@ export async function readEndoCoordinatorCoordinationV0(
 		tasks: tasksRead.ok ? { ok: true, byId } : { ok: false },
 		attempts: attemptsRead.ok
 			? { ok: true, entries: attemptsRead.entries, problems: attemptsRead.problems }
-			: { ok: false },
+			: { ok: false, reason: attemptsRead.reason },
 		receipts: (attemptId) => receipts.get(attemptId) ?? { ok: false },
 		route: (attemptId) => {
-			if (options.routes === "unknown") return "unknown";
-			const read = routes.read(attemptId);
-			return read.state === "present" ? "claimed" : read.state === "absent" ? "absent" : "unknown";
+			if (options.routes === "unknown") return { state: "unknown", reason: "unavailable" };
+			return endoRouteEvidenceForAttemptV0(developDir, routes, attemptId);
 		},
 		identity,
 		workspaces,

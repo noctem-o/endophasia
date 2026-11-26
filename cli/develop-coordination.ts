@@ -41,6 +41,8 @@ const NO_AUTHORITY =
 const REFUSALS: Readonly<Record<string, string>> = {
 	"not-found": "no such project, task, assignment, dependency, candidate or attempt",
 	"stale-revision": "the record changed since that revision; read it again",
+	"stale-evidence":
+		"observed execution evidence changed since that digest; run endo assign show and re-verify before clearing the hazard",
 	"invalid-transition": "that change is not allowed from the record's current state",
 	"bad-request": "the input was not acceptable",
 	limit: "a limit of the coordination file was reached",
@@ -311,18 +313,19 @@ function assignReconfirm(argv: readonly string[]): void {
 
 function assignClearHazard(argv: readonly string[]): void {
 	const usage =
-		"usage: endo assign clear-hazard [<root> | --root dir] --assignment <id> --revision <assignment revision> --note <what you verified>";
-	const { root, flags } = flagsOf(argv, ["--assignment", "--revision", "--note"], usage);
+		"usage: endo assign clear-hazard [<root> | --root dir] --assignment <id> --revision <assignment revision> --evidence-digest <64-hex sha256 from endo assign show> --note <what you verified>";
+	const { root, flags } = flagsOf(argv, ["--assignment", "--revision", "--evidence-digest", "--note"], usage);
 	const r = done(
 		new DevelopCoordinationStoreV0(root).clearHazard(
 			need(flags, "--assignment", usage),
 			revisionOf(flags, usage),
+			need(flags, "--evidence-digest", usage),
 			need(flags, "--note", usage),
 		),
 	);
 	print({ assignment: r.value, coordinationRevision: r.revision, commit: r.commit });
 	process.stderr.write(
-		`recorded your statement that the processes behind ${describe(r.value)} have stopped. Endophasia did not verify it.\n`,
+		`recorded your statement that the processes behind ${describe(r.value)} have stopped, bound to the acknowledged evidence snapshot. Endophasia did not verify it; newly observed or unreadable execution evidence will reactivate the hazard.\n`,
 	);
 }
 
@@ -344,14 +347,14 @@ async function assignShow(argv: readonly string[]): Promise<void> {
 	const usage = "usage: endo assign show [<root> | --root dir] --assignment <id>";
 	const { root, flags } = flagsOf(argv, ["--assignment"], usage);
 	const id = need(flags, "--assignment", usage);
-	const read = new DevelopCoordinationStoreV0(root).read();
-	if (!read.ok) return refuse("unreadable", undefined, read.reason);
-	const assignment = read.file.assignments.find((a) => a.assignmentId === id);
-	if (assignment === undefined) return refuse("not-found", `assignment ${id}`);
-	const projection = await hostProjection(root, [assignment.projectId]);
+	const hazardRead = new DevelopCoordinationStoreV0(root).readHazardEvidence(id);
+	if (!hazardRead.ok) return refuse(hazardRead.code, hazardRead.detail, hazardRead.reason);
+	const projection = await hostProjection(root, [hazardRead.assignment.projectId]);
 	print({
-		coordinationRevision: read.file.revision,
-		assignment,
+		coordinationRevision: hazardRead.coordinationRevision,
+		assignment: hazardRead.assignment,
+		effectiveHazard: hazardRead.effectiveHazard,
+		hazardEvidence: { snapshot: hazardRead.snapshot, digest: hazardRead.digest },
 		reading: projection.projects[0]?.assignments.find((a) => a.assignmentId === id) ?? null,
 	});
 }

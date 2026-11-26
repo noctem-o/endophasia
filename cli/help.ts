@@ -131,7 +131,8 @@ Commands that write to a store:
   assign <create|supersede|revoke|close|bind|unbind|link|reconfirm|clear-hazard|list|show> [<root> | --root dir] ...
                                      the operator's coordination intent in develop/coordination.json: which participant is
                                      intended to do a task, in which worktree, with which (operator-declared) session. Every
-                                     change names a revision; create, supersede and reconfirm also need --task-revision. An assignment is not an authorisation: nothing is dispatched,
+                                     change names a revision; create, supersede and reconfirm also need --task-revision, and
+                                     clear-hazard also needs --evidence-digest from assign show. An assignment is not an authorisation: nothing is dispatched,
                                      prompted, approved, interrupted, checked out or stopped; ending one stops nothing
   dep <add|decide|withdraw-decision|remove|list> [<root> | --root dir] ...
                                      task dependencies within one project (operator-task-done, candidate-declared,

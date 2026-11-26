@@ -13,6 +13,7 @@ import type { EndoReceiptCurrentV0 } from "../protocol/develop-receipts.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
 import { endoWorktreeConflictsV0 } from "../runtime/contracts/develop-coordination.ts";
 import { readEndoCoordinatorCoordinationV0 } from "../storage/coordinator-coordination.ts";
+import { DevelopAttemptRoutesStoreV0 } from "../storage/develop-attempt-routes.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopCoordinationStoreV0, type EndoCoordinationResultV0 } from "../storage/develop-coordination.ts";
 import { DevelopReceiptsStoreV0 } from "../storage/develop-receipts.ts";
@@ -469,5 +470,149 @@ describe("assignments and conflicts", () => {
 		expect(view?.findings).toEqual(
 			expect.arrayContaining(["session-liveness-unknown", "session-instance-undeclared"]),
 		);
+	});
+
+	it("R8 & R9: Coordinator reports reactivated hazard and unacknowledged conflict with an already-admitted replacement writer", async () => {
+		const w = world();
+		const at1 = w.attempt(w.build.id);
+		let a1 = ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.rev(),
+				projectId: w.project.id,
+				taskId: w.build.id,
+				...spec("one"),
+			}),
+		);
+		a1 = ok(
+			w.store.associateSession(a1.assignmentId, a1.revision, {
+				source: "codex-live",
+				sessionKey: "codex-live:persistent:s9",
+				attachmentId: "codex.default",
+				instanceId: null,
+				runtimeFingerprintId: null,
+			}),
+		);
+		a1 = ok(w.store.linkAttempt(a1.assignmentId, a1.revision, at1));
+		a1 = ok(w.store.endAssignment(a1.assignmentId, a1.revision, "revoked"));
+		const info = w.store.readHazardEvidence(a1.assignmentId);
+		if (!info.ok) throw new Error(info.code);
+		a1 = ok(w.store.clearHazard(a1.assignmentId, a1.revision, info.digest, "S9 stopped"));
+
+		// Replacement writable assignment A2 is cleanly admitted during the cleared interval (no shared-worktree flag needed).
+		const a2 = ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.rev(),
+				projectId: w.project.id,
+				taskId: w.review.id,
+				...spec("two", false),
+			}),
+		);
+		expect(a2.workspace.sharedWorktreeAcknowledged).toBe(false);
+		expect(only(await w.view()).conflicts).toEqual([]);
+
+		// Late route claim arrives for AT1 on A1 AFTER A2 was admitted.
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1, "workbench", T0)).toBe("created");
+
+		// Coordinator reports A1 as liveness-unverified (hazard-clearance-expired), keeps A2 active (never undoes admission),
+		// and reports BOTH worktree-liveness-unverified and unacknowledged-worktree-write-overlap between A1 and A2.
+		const after = await w.view();
+		const proj = only(after);
+		const view1 = proj.assignments.find((x) => x.assignmentId === a1.assignmentId);
+		const view2 = proj.assignments.find((x) => x.assignmentId === a2.assignmentId);
+		expect(view1?.hazard).toBe("liveness-unverified");
+		expect(view1?.findings).toEqual(
+			expect.arrayContaining(["worktree-liveness-unverified", "hazard-clearance-expired"]),
+		);
+		expect(view2?.state).toBe("active");
+		expect(proj.conflicts.find((c) => c.kind === "worktree-liveness-unverified")?.assignmentIds).toEqual([
+			a1.assignmentId,
+		]);
+		expect(proj.conflicts.find((c) => c.kind === "unacknowledged-worktree-write-overlap")?.assignmentIds).toEqual(
+			[a1.assignmentId, a2.assignmentId].sort(),
+		);
+	});
+
+	it("sandbox posture (routes: unknown) conservatively reactivates a host-cleared assignment with linked attempts", async () => {
+		const w = world();
+		const at1 = w.attempt(w.build.id);
+		let a1 = ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.rev(),
+				projectId: w.project.id,
+				taskId: w.build.id,
+				...spec("one"),
+			}),
+		);
+		a1 = ok(
+			w.store.associateSession(a1.assignmentId, a1.revision, {
+				source: "codex-live",
+				sessionKey: "codex-live:persistent:sbx",
+				attachmentId: "codex.default",
+				instanceId: null,
+				runtimeFingerprintId: null,
+			}),
+		);
+		a1 = ok(w.store.linkAttempt(a1.assignmentId, a1.revision, at1));
+		a1 = ok(w.store.endAssignment(a1.assignmentId, a1.revision, "revoked"));
+		const info = w.store.readHazardEvidence(a1.assignmentId);
+		if (!info.ok) throw new Error(info.code);
+		ok(w.store.clearHazard(a1.assignmentId, a1.revision, info.digest, "Host verified stopped"));
+
+		// Host read (routes readable): stays operator-cleared.
+		expect(only(await w.view()).assignments.find((x) => x.assignmentId === a1.assignmentId)?.hazard).toBe(
+			"operator-cleared",
+		);
+		// Sandbox read (routes unavailable): cannot verify AT1's route remained unclaimed -> conservatively reactivates.
+		const sbx = await readEndoCoordinatorCoordinationV0({
+			root: w.root,
+			projects: [w.project.id],
+			now: () => T0,
+			routes: "unknown",
+		});
+		expect(validateEndoCoordinatorCoordinationV0(JSON.parse(JSON.stringify(sbx)))).toEqual(sbx);
+		expect(only(sbx).assignments.find((x) => x.assignmentId === a1.assignmentId)).toMatchObject({
+			hazard: "liveness-unverified",
+			findings: expect.arrayContaining([
+				"worktree-liveness-unverified",
+				"attempt-evidence-unknown",
+				"hazard-clearance-expired",
+			]),
+		});
+	});
+
+	it("review #3: Coordinator emits attempt-evidence-unknown even when the other evidence channel is positive", async () => {
+		const w = world();
+		const at1 = w.attempt(w.build.id);
+		let a1 = ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.rev(),
+				projectId: w.project.id,
+				taskId: w.build.id,
+				...spec("one"),
+			}),
+		);
+		a1 = ok(w.store.linkAttempt(a1.assignmentId, a1.revision, at1));
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1, "workbench", T0)).toBe("created");
+		a1 = ok(w.store.endAssignment(a1.assignmentId, a1.revision, "revoked"));
+		const info = w.store.readHazardEvidence(a1.assignmentId);
+		if (!info.ok) throw new Error(info.code);
+		ok(w.store.clearHazard(a1.assignmentId, a1.revision, info.digest, "Route checked"));
+
+		// Corrupt AT1's authorization file while its route remains claimed.
+		writeFileSync(join(w.root, "develop", "attempts", `${at1}.authorized.json`), "{bad");
+		const after = await w.view();
+		expect(only(after).assignments.find((x) => x.assignmentId === a1.assignmentId)).toMatchObject({
+			hazard: "liveness-unverified",
+			findings: expect.arrayContaining([
+				"attempt-execution-recorded",
+				"attempt-evidence-unknown",
+				"worktree-liveness-unverified",
+				"hazard-clearance-expired",
+			]),
+		});
 	});
 });

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 import { validateEndoCoordinatorCoordinationV0 } from "../protocol/coordinator-coordination.ts";
+import { DevelopAttemptRoutesStoreV0 } from "../storage/develop-attempt-routes.ts";
 import { git, haveGit } from "./git-fixtures.ts";
 
 const CLI = fileURLToPath(new URL("../cli/index.ts", import.meta.url));
@@ -285,5 +286,140 @@ describe.skipIf(!haveGit)("endo assign, dep and candidate", () => {
 			"done for now",
 		]);
 		expect(r.assignment).toMatchObject({ state: "revoked", worktreeHazard: { state: "none" } });
+	});
+
+	it("binds assign clear-hazard to --evidence-digest, refuses stale-evidence, reactivates on late route, and allows re-clearance", () => {
+		const currentRev = run(["assign", "list", "--root", root, "--project", project]).coordinationRevision;
+		const attempt = run([
+			"attempt",
+			"prepare",
+			"--root",
+			root,
+			"--project",
+			project,
+			"--task",
+			build,
+			"--objective",
+			"Hazard test attempt.",
+		]);
+		const attemptId = attempt.attempt?.id ?? attempt.id;
+		const created = run([
+			"assign",
+			"create",
+			"--task-revision",
+			"0",
+			"--root",
+			root,
+			"--project",
+			project,
+			"--task",
+			build,
+			"--participant",
+			"hazard-builder",
+			"--role",
+			"builder",
+			"--harness",
+			"codex",
+			"--worktree",
+			repo,
+			"--access",
+			"rw",
+			"--revision",
+			String(currentRev),
+		]);
+		const aid = created.assignment.assignmentId;
+		run([
+			"assign",
+			"bind",
+			"--root",
+			root,
+			"--assignment",
+			aid,
+			"--revision",
+			"1",
+			"--source",
+			"codex-live",
+			"--session-key",
+			"codex-live:persistent:cli-hazard",
+			"--attachment",
+			"codex.default",
+		]);
+		run(["assign", "link", "--root", root, "--assignment", aid, "--revision", "2", "--attempt", attemptId]);
+		const revoked = run(["assign", "revoke", "--root", root, "--assignment", aid, "--revision", "3"]);
+		expect(revoked.assignment.worktreeHazard.state).toBe("liveness-unverified");
+
+		// Inspect evidence digest via `assign show`
+		const shown1 = run(["assign", "show", "--root", root, "--assignment", aid]);
+		expect(shown1.effectiveHazard.state).toBe("liveness-unverified");
+		const digest1 = shown1.hazardEvidence.digest;
+		expect(digest1).toMatch(/^[0-9a-f]{64}$/);
+
+		// Clear hazard using digest1
+		const cleared1 = run([
+			"assign",
+			"clear-hazard",
+			"--root",
+			root,
+			"--assignment",
+			aid,
+			"--revision",
+			"4",
+			"--evidence-digest",
+			digest1,
+			"--note",
+			"Verified session stopped",
+		]);
+		expect(cleared1.assignment.worktreeHazard).toMatchObject({
+			state: "operator-cleared",
+			clearedBy: "operator",
+			via: "cli",
+		});
+
+		// Late route claim arrives -> hazard reactivates -> stale digest1 is refused with stale-evidence
+		expect(DevelopAttemptRoutesStoreV0.forRoot(root).claim(attemptId, "workbench", 99)).toBe("created");
+		const shown2 = run(["assign", "show", "--root", root, "--assignment", aid]);
+		expect(shown2.effectiveHazard.state).toBe("liveness-unverified");
+		expect(shown2.reading.hazard).toBe("liveness-unverified");
+		expect(shown2.reading.findings).toContain("hazard-clearance-expired");
+		const digest2 = shown2.hazardEvidence.digest;
+		expect(digest2).not.toBe(digest1);
+
+		expect(
+			refused([
+				"assign",
+				"clear-hazard",
+				"--root",
+				root,
+				"--assignment",
+				aid,
+				"--revision",
+				"5",
+				"--evidence-digest",
+				digest1,
+				"--note",
+				"Trying stale digest",
+			]).code,
+		).toBe("stale-evidence");
+
+		// Explicit re-clearance against digest2 succeeds and preserves prior clearance history
+		const cleared2 = run([
+			"assign",
+			"clear-hazard",
+			"--root",
+			root,
+			"--assignment",
+			aid,
+			"--revision",
+			"5",
+			"--evidence-digest",
+			digest2,
+			"--note",
+			"Verified workbench route stopped",
+		]);
+		expect(cleared2.assignment.worktreeHazard).toMatchObject({
+			state: "operator-cleared",
+			bases: ["attempt-route-claimed", "writable-session-associated"],
+		});
+		expect(cleared2.assignment.worktreeHazard.priorClearances).toHaveLength(1);
 	});
 });

@@ -1,11 +1,16 @@
 // COORDINATOR-ASSIGNMENT-002 (E1): the durable coordination file. Every change is the operator's explicit act against the revision they
 // read; a refusal writes nothing; a file that cannot be read is never repaired; and nothing here changes a task or grants authority.
 import { spawn } from "node:child_process";
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import {
+	ENDO_DEVELOP_ATTEMPT_AUTHORIZATION_SCHEMA_V0,
+	type EndoDevelopAttemptAuthorizationV0,
+	validateEndoDevelopAttemptAuthorizationV0,
+} from "../protocol/develop-attempt-execution.ts";
 import {
 	ENDO_DEVELOP_COORDINATION_LIMITS_V0,
 	type EndoDevelopCoordinationFileV0,
@@ -14,6 +19,7 @@ import {
 	validateEndoDevelopCoordinationFileV0,
 } from "../protocol/develop-coordination.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
+import { readEndoCoordinatorCoordinationV0 } from "../storage/coordinator-coordination.ts";
 import { DevelopAttemptRoutesStoreV0 } from "../storage/develop-attempt-routes.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import {
@@ -245,11 +251,31 @@ describe("assignments", () => {
 			bases: ["writable-session-associated"],
 		});
 		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
-		expect(w.store.clearHazard(a.assignmentId, ended.revision, "")).toMatchObject({ ok: false, code: "bad-request" });
-		const cleared = ok(w.store.clearHazard(a.assignmentId, ended.revision, "pkill confirmed; no codex process"));
+		const hazardInfo = w.store.readHazardEvidence(a.assignmentId);
+		if (!hazardInfo.ok) throw new Error(hazardInfo.code);
+		expect(w.store.clearHazard(a.assignmentId, ended.revision, hazardInfo.digest, "")).toMatchObject({
+			ok: false,
+			code: "bad-request",
+		});
+		const cleared = ok(
+			w.store.clearHazard(a.assignmentId, ended.revision, hazardInfo.digest, "pkill confirmed; no codex process"),
+		);
 		expect(cleared.worktreeHazard).toMatchObject({
 			state: "operator-cleared",
+			clearedBy: "operator",
+			via: "cli",
 			bases: ["writable-session-associated"],
+			acknowledgedEvidence: {
+				writableSession: {
+					source: "codex-live",
+					sessionKey: "codex-live:persistent:thread-1",
+					attachmentId: "codex.default",
+					instanceId: null,
+					runtimeFingerprintId: null,
+				},
+				attempts: [],
+			},
+			priorClearances: [],
 		});
 		expect(ok(assign(w, "two")).state).toBe("active");
 	});
@@ -322,7 +348,9 @@ describe("assignments", () => {
 		expect(ended.worktreeHazard.state).toBe("none");
 		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(attempt.id, "workbench", 1)).toBe("created");
 		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
-		ok(w.store.clearHazard(a.assignmentId, ended.revision, "Stopped and checked"));
+		const hazardInfo = w.store.readHazardEvidence(a.assignmentId);
+		if (!hazardInfo.ok) throw new Error(hazardInfo.code);
+		ok(w.store.clearHazard(a.assignmentId, ended.revision, hazardInfo.digest, "Stopped and checked"));
 		ok(assign(w, "two"));
 	});
 	it("damaged tasks do not prevent revocation", () => {
@@ -755,5 +783,521 @@ describe("the file validator", () => {
 			ok: false,
 			kind: "unsupported-version",
 		});
+	});
+});
+
+describe("hazard clearance evidence binding and reactivation", () => {
+	const digestOf = (w: ReturnType<typeof world>, assignmentId: string): string => {
+		const info = w.store.readHazardEvidence(assignmentId);
+		if (!info.ok) throw new Error(`readHazardEvidence failed: ${info.code}`);
+		return info.digest;
+	};
+
+	const authorizeAttempt = (root: string, attemptId: string, suffix = "a"): EndoDevelopAttemptAuthorizationV0 => {
+		const record: EndoDevelopAttemptAuthorizationV0 = {
+			schemaVersion: ENDO_DEVELOP_ATTEMPT_AUTHORIZATION_SCHEMA_V0,
+			attemptId,
+			recordedAtMs: 5_000,
+			briefSha256: "b".repeat(64),
+			taskRevision: 0,
+			harness: "pi",
+			session: `endo.session.pi.s-${suffix}`,
+			attachment: "pi.default",
+			launchId: suffix.repeat(16).slice(0, 16),
+			proposalId: `endo.evidence.workbench-prompt-${suffix.repeat(32).slice(0, 32)}`,
+			proposalDigest: "c".repeat(64),
+			authorizationEventId: `endo.event.auth-${suffix}`,
+			message: {
+				digest: { algorithm: "hmac-sha256", keyId: "endo.digest-key.1", value: "d".repeat(64) },
+				bytes: 42,
+			},
+			approvedBy: "operator",
+			via: "workbench-terminal",
+		};
+		validateEndoDevelopAttemptAuthorizationV0(record);
+		expect(new DevelopAttemptsStoreV0(root).write(attemptId, "authorized", record)).toBe("created");
+		return record;
+	};
+
+	it("R1 & R7: clearing a session-associated hazard then claiming a linked attempt route reactivates and blocks create & supersede", async () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		const a1 = ok(assign(w, "one"));
+		const b1 = ok(
+			w.store.associateSession(a1.assignmentId, a1.revision, {
+				source: "codex-live",
+				sessionKey: "codex-live:persistent:s1",
+				attachmentId: "codex.default",
+				instanceId: null,
+				runtimeFingerprintId: null,
+			}),
+		);
+		const l1 = ok(w.store.linkAttempt(a1.assignmentId, b1.revision, at1.id));
+		const revoked = ok(w.store.endAssignment(a1.assignmentId, l1.revision, "revoked"));
+		expect(revoked.worktreeHazard).toMatchObject({
+			state: "liveness-unverified",
+			bases: ["writable-session-associated"],
+		});
+		const cleared = ok(
+			w.store.clearHazard(a1.assignmentId, revoked.revision, digestOf(w, a1.assignmentId), "Confirmed S1 stopped"),
+		);
+		expect(cleared.worktreeHazard.state).toBe("operator-cleared");
+
+		// A separate read-only assignment on the same task to test supersede refusal after reactivation.
+		const reader = ok(assign(w, "reader", { accessIntent: "read-only-intended" }));
+
+		// Late route claim on previously linked AT1 after operator clearance.
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1.id, "workbench", 2_000)).toBe("created");
+
+		const info = w.store.readHazardEvidence(a1.assignmentId);
+		expect(info.ok).toBe(true);
+		if (!info.ok) return;
+		expect(info.effectiveHazard).toMatchObject({
+			state: "liveness-unverified",
+			bases: ["attempt-route-claimed", "writable-session-associated"],
+		});
+		expect(info.effectiveHazard.state === "liveness-unverified" && info.effectiveHazard.priorClearances?.length).toBe(
+			1,
+		);
+
+		// Both createAssignment and supersedeAssignment refuse conflicting writes on the same worktree.
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+		expect(w.store.supersedeAssignment(reader.assignmentId, reader.revision, 0, spec("two"))).toMatchObject({
+			ok: false,
+			code: "worktree-write-overlap",
+		});
+
+		// Coordinator projection reports the exact same reactivated hazard and conflict.
+		const proj = await readEndoCoordinatorCoordinationV0({ root: w.root, projects: [w.project.id] });
+		const view = proj.projects[0]?.assignments.find((x) => x.assignmentId === a1.assignmentId);
+		expect(view?.hazard).toBe("liveness-unverified");
+		expect(view?.findings).toEqual(
+			expect.arrayContaining(["worktree-liveness-unverified", "hazard-clearance-expired"]),
+		);
+		expect(proj.projects[0]?.conflicts.map((c) => c.kind)).toContain("worktree-liveness-unverified");
+	});
+
+	it("R2: clearing AT1's route hazard then claiming AT2's route reactivates despite identical hazard category", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		const at2 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT2" }));
+		let a = ok(assign(w, "one"));
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at1.id));
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at2.id));
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1.id, "workbench", 10)).toBe("created");
+		a = ok(w.store.endAssignment(a.assignmentId, a.revision, "revoked"));
+		expect(a.worktreeHazard).toMatchObject({ state: "liveness-unverified", bases: ["attempt-route-claimed"] });
+		a = ok(w.store.clearHazard(a.assignmentId, a.revision, digestOf(w, a.assignmentId), "AT1 confirmed stopped"));
+		expect(w.store.readHazardEvidence(a.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "operator-cleared" },
+		});
+
+		// Claim AT2's route: same hazard category ("attempt-route-claimed"), but newly observed attempt evidence.
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at2.id, "protected", 20)).toBe("created");
+		const after = w.store.readHazardEvidence(a.assignmentId);
+		expect(after).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "liveness-unverified", bases: ["attempt-route-claimed"] },
+		});
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+	});
+
+	it("R3: clearing a route-claimed hazard then observing new authorization evidence on the same attempt reactivates", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		let a = ok(assign(w, "one"));
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at1.id));
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1.id, "workbench", 10)).toBe("created");
+		a = ok(w.store.endAssignment(a.assignmentId, a.revision, "revoked"));
+		a = ok(w.store.clearHazard(a.assignmentId, a.revision, digestOf(w, a.assignmentId), "Route checked"));
+		expect(w.store.readHazardEvidence(a.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "operator-cleared" },
+		});
+
+		// Authorization record arrives for the SAME attempt AT1.
+		authorizeAttempt(w.root, at1.id, "1");
+		const after = w.store.readHazardEvidence(a.assignmentId);
+		expect(after).toMatchObject({
+			ok: true,
+			effectiveHazard: {
+				state: "liveness-unverified",
+				bases: ["attempt-authorized", "attempt-route-claimed"],
+			},
+		});
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+	});
+
+	it("R4: execution evidence becoming unreadable after clearance reactivates instead of treating uncertainty as safety", async () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		let a = ok(assign(w, "one"));
+		a = ok(
+			w.store.associateSession(a.assignmentId, a.revision, {
+				source: "codex-live",
+				sessionKey: "codex-live:persistent:s4",
+				attachmentId: "codex.default",
+				instanceId: null,
+				runtimeFingerprintId: null,
+			}),
+		);
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at1.id));
+		a = ok(w.store.endAssignment(a.assignmentId, a.revision, "revoked"));
+		a = ok(w.store.clearHazard(a.assignmentId, a.revision, digestOf(w, a.assignmentId), "S4 stopped"));
+		expect(w.store.readHazardEvidence(a.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "operator-cleared" },
+		});
+
+		// Corrupt AT1's authorization file so attempt execution evidence becomes unreadable while prepared record stays valid.
+		writeFileSync(join(w.root, "develop", "attempts", `${at1.id}.authorized.json`), "{bad json");
+
+		const after = w.store.readHazardEvidence(a.assignmentId);
+		expect(after).toMatchObject({
+			ok: true,
+			effectiveHazard: {
+				state: "liveness-unverified",
+				bases: ["attempt-evidence-unreadable", "writable-session-associated"],
+			},
+		});
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+
+		// Coordinator projection matches the store on corrupted per-attempt authorization files.
+		const proj = await readEndoCoordinatorCoordinationV0({ root: w.root, projects: [w.project.id] });
+		expect(proj.projects[0]?.assignments.find((x) => x.assignmentId === a.assignmentId)).toMatchObject({
+			hazard: "liveness-unverified",
+			findings: expect.arrayContaining([
+				"worktree-liveness-unverified",
+				"attempt-evidence-unknown",
+				"hazard-clearance-expired",
+			]),
+		});
+	});
+
+	it("R5 & R6: unchanged acknowledged evidence stays cleared, and a reactivated hazard can be explicitly re-cleared preserving history", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		let a = ok(assign(w, "one"));
+		a = ok(
+			w.store.associateSession(a.assignmentId, a.revision, {
+				source: "pi-live",
+				sessionKey: "pi-live:launch:l1",
+				attachmentId: "pi.default",
+				instanceId: null,
+				runtimeFingerprintId: null,
+			}),
+		);
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at1.id));
+		a = ok(w.store.endAssignment(a.assignmentId, a.revision, "revoked"));
+		const firstDigest = digestOf(w, a.assignmentId);
+		a = ok(w.store.clearHazard(a.assignmentId, a.revision, firstDigest, "First clearance: session stopped"));
+
+		// R5: repeated reads with unchanged evidence remain operator-cleared (no infinite reactivation).
+		for (let i = 0; i < 3; i += 1) {
+			expect(w.store.readHazardEvidence(a.assignmentId)).toMatchObject({
+				ok: true,
+				effectiveHazard: { state: "operator-cleared" },
+			});
+		}
+		expect(w.store.clearHazard(a.assignmentId, a.revision, firstDigest, "Duplicate")).toMatchObject({
+			ok: false,
+			code: "invalid-transition",
+		});
+
+		// New route evidence reactivates the hazard.
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1.id, "workbench", 30)).toBe("created");
+		const secondDigest = digestOf(w, a.assignmentId);
+		expect(secondDigest).not.toBe(firstDigest);
+
+		// R6: operator explicitly re-clears against the new evidence digest; prior clearance is preserved in history.
+		const recleared = ok(
+			w.store.clearHazard(
+				a.assignmentId,
+				a.revision,
+				secondDigest,
+				"Second clearance: workbench route verified stopped",
+			),
+		);
+		expect(recleared.worktreeHazard).toMatchObject({
+			state: "operator-cleared",
+			clearedBy: "operator",
+			via: "cli",
+			bases: ["attempt-route-claimed", "writable-session-associated"],
+			note: "Second clearance: workbench route verified stopped",
+		});
+		if (recleared.worktreeHazard.state === "operator-cleared" && "priorClearances" in recleared.worktreeHazard) {
+			expect(recleared.worktreeHazard.priorClearances).toHaveLength(1);
+			expect(recleared.worktreeHazard.priorClearances[0]).toMatchObject({
+				clearedBy: "operator",
+				via: "cli",
+				note: "First clearance: session stopped",
+				bases: ["writable-session-associated"],
+			});
+		} else {
+			throw new Error("expected canonical operator-cleared hazard with priorClearances");
+		}
+		expect(w.store.readHazardEvidence(a.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "operator-cleared" },
+		});
+		expect(ok(assign(w, "two")).state).toBe("active");
+	});
+
+	it("R10: stale-evidence refusal blocks clearing unseen evidence, and concurrent race after lock read reactivates on next check", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		let a = ok(assign(w, "one"));
+		a = ok(
+			w.store.associateSession(a.assignmentId, a.revision, {
+				source: "codex-live",
+				sessionKey: "codex-live:persistent:s10",
+				attachmentId: "codex.default",
+				instanceId: null,
+				runtimeFingerprintId: null,
+			}),
+		);
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at1.id));
+		a = ok(w.store.endAssignment(a.assignmentId, a.revision, "revoked"));
+
+		// Operator inspects evidence BEFORE route is claimed.
+		const presentedDigest = digestOf(w, a.assignmentId);
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1.id, "workbench", 50)).toBe("created");
+
+		// Stale clearance using presentedDigest MUST refuse with stale-evidence and write nothing.
+		const bytesBefore = coordinationBytes(w.root);
+		const refused = w.store.clearHazard(a.assignmentId, a.revision, presentedDigest, "Cleared stale snapshot");
+		expect(refused).toMatchObject({ ok: false, code: "stale-evidence" });
+		expect(coordinationBytes(w.root)).toEqual(bytesBefore);
+
+		// Deterministic E1 cross-file race: external route/auth arrives AFTER clearHazard reads evidence inside lock,
+		// BEFORE coordination.json is committed. Clearance commits only the pre-race snapshot, and subsequent reads
+		// immediately reactivate the hazard.
+		const currentDigest = digestOf(w, a.assignmentId);
+		const racingStore = new DevelopCoordinationStoreV0(w.root, {
+			afterEvidenceRead: () => {
+				authorizeAttempt(w.root, at1.id, "9");
+			},
+		});
+		const racedClear = ok(racingStore.clearHazard(a.assignmentId, a.revision, currentDigest, "Cleared route only"));
+		expect(racedClear.worktreeHazard.state).toBe("operator-cleared");
+		// Immediately after, reads and admissions see the late authorization and reactivate liveness-unverified.
+		expect(w.store.readHazardEvidence(a.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: {
+				state: "liveness-unverified",
+				bases: ["attempt-authorized", "attempt-route-claimed", "writable-session-associated"],
+			},
+		});
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+	});
+
+	it("conservatively handles earlier draft-generated operator-cleared files without acknowledgedEvidence", () => {
+		const w = world();
+		const a = ok(assign(w, "one"));
+		const b = ok(
+			w.store.associateSession(a.assignmentId, a.revision, {
+				source: "codex-live",
+				sessionKey: "codex-live:persistent:legacy",
+				attachmentId: "codex.default",
+				instanceId: null,
+				runtimeFingerprintId: null,
+			}),
+		);
+		const ended = ok(w.store.endAssignment(a.assignmentId, b.revision, "revoked"));
+		// Hand-craft an earlier pre-remediation draft operator-cleared record (4 keys, no acknowledgedEvidence).
+		const read = w.store.read();
+		if (!read.ok) throw new Error(read.reason);
+		const legacyFile = structuredClone(read.file);
+		const target = legacyFile.assignments.find((x) => x.assignmentId === a.assignmentId);
+		if (target === undefined) throw new Error("missing assignment");
+		target.worktreeHazard = {
+			state: "operator-cleared",
+			clearedAtMs: 5_000,
+			bases: ["writable-session-associated"],
+			note: "Legacy draft clearance",
+		};
+		// Validator accepts the earlier draft shape read-only.
+		expect(() => validateEndoDevelopCoordinationFileV0(legacyFile)).not.toThrow();
+		writeFileSync(w.store.path, `${JSON.stringify(legacyFile)}\n`);
+
+		// Conservative evaluation: because current writable-session evidence exists and legacy clearance has no snapshot,
+		// it reactivates to liveness-unverified while preserving the legacy note in priorClearances.
+		const info = w.store.readHazardEvidence(a.assignmentId);
+		expect(info.ok).toBe(true);
+		if (!info.ok) return;
+		expect(info.effectiveHazard).toMatchObject({
+			state: "liveness-unverified",
+			bases: ["writable-session-associated"],
+			priorClearances: [
+				{
+					clearedBy: "operator",
+					via: "cli",
+					clearedAtMs: 5_000,
+					acknowledgedEvidence: null,
+					note: "Legacy draft clearance",
+				},
+			],
+		});
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+
+		// Operator can explicitly re-clear, upgrading to the canonical snapshot while preserving legacy history.
+		const upgraded = ok(w.store.clearHazard(a.assignmentId, ended.revision, info.digest, "Re-verified under E1"));
+		expect(upgraded.worktreeHazard).toMatchObject({
+			state: "operator-cleared",
+			clearedBy: "operator",
+			via: "cli",
+			note: "Re-verified under E1",
+			priorClearances: [{ acknowledgedEvidence: null, note: "Legacy draft clearance" }],
+		});
+		expect(ok(assign(w, "two")).state).toBe("active");
+	});
+
+	it("rejects tampered acknowledgedEvidence and priorClearances in closed protocol validation", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		let a = ok(assign(w, "one"));
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at1.id));
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1.id, "workbench", 1)).toBe("created");
+		a = ok(w.store.endAssignment(a.assignmentId, a.revision, "revoked"));
+		a = ok(w.store.clearHazard(a.assignmentId, a.revision, digestOf(w, a.assignmentId), "Verified stopped"));
+		const read = w.store.read();
+		if (!read.ok) throw new Error(read.reason);
+
+		// Omitting linked attempt from acknowledgedEvidence is rejected.
+		const missingAttempt = structuredClone(read.file);
+		const h1 = missingAttempt.assignments[0]?.worktreeHazard;
+		if (h1?.state === "operator-cleared" && "acknowledgedEvidence" in h1) h1.acknowledgedEvidence.attempts = [];
+		expect(() => validateEndoDevelopCoordinationFileV0(missingAttempt)).toThrow();
+
+		// Claiming non-operator clearedBy is rejected.
+		const badActor = structuredClone(read.file);
+		const h2 = badActor.assignments[0]?.worktreeHazard;
+		if (h2?.state === "operator-cleared" && "clearedBy" in h2)
+			(h2 as { clearedBy: string }).clearedBy = "coordinator";
+		expect(() => validateEndoDevelopCoordinationFileV0(badActor)).toThrow();
+
+		// Mismatching bases vs acknowledgedEvidence is rejected.
+		const badBases = structuredClone(read.file);
+		const h3 = badBases.assignments[0]?.worktreeHazard;
+		if (h3?.state === "operator-cleared" && "acknowledgedEvidence" in h3) h3.bases = ["writable-session-associated"];
+		expect(() => validateEndoDevelopCoordinationFileV0(badBases)).toThrow();
+	});
+
+	it("review #1: per-attempt problem summary distinguishes orphaned/corrupted authorization and misnamed files", () => {
+		// Counterexample A: orphaned handoff cleared, then orphaned valid authorized file appears -> MUST reactivate.
+		const wA = world();
+		const sA = new DevelopAttemptsServiceV0(wA.tasks, new DevelopAttemptsStoreV0(wA.root));
+		const atA = ok(sA.prepare(wA.project.id, wA.build.id, { objective: "AT-A" }));
+		ok(sA.handoff(atA.id, { target: "codex", note: "handed over" }));
+		let aA = ok(assign(wA, "one"));
+		aA = ok(wA.store.linkAttempt(aA.assignmentId, aA.revision, atA.id));
+		rmSync(join(wA.root, "develop", "attempts", `${atA.id}.prepared.json`));
+		aA = ok(wA.store.endAssignment(aA.assignmentId, aA.revision, "revoked"));
+		aA = ok(
+			wA.store.clearHazard(aA.assignmentId, aA.revision, digestOf(wA, aA.assignmentId), "Handoff orphan checked"),
+		);
+		expect(wA.store.readHazardEvidence(aA.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "operator-cleared" },
+		});
+		authorizeAttempt(wA.root, atA.id, "a");
+		expect(wA.store.readHazardEvidence(aA.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "liveness-unverified", bases: ["attempt-evidence-unreadable"] },
+		});
+		expect(assign(wA, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+
+		// Counterexample B: malformed handoff cleared, then malformed authorized file appears -> MUST reactivate.
+		const wB = world();
+		const sB = new DevelopAttemptsServiceV0(wB.tasks, new DevelopAttemptsStoreV0(wB.root));
+		const atB = ok(sB.prepare(wB.project.id, wB.build.id, { objective: "AT-B" }));
+		let aB = ok(assign(wB, "one"));
+		aB = ok(wB.store.linkAttempt(aB.assignmentId, aB.revision, atB.id));
+		writeFileSync(join(wB.root, "develop", "attempts", `${atB.id}.handoff.json`), "{bad");
+		aB = ok(wB.store.endAssignment(aB.assignmentId, aB.revision, "revoked"));
+		aB = ok(
+			wB.store.clearHazard(aB.assignmentId, aB.revision, digestOf(wB, aB.assignmentId), "Malformed handoff ok"),
+		);
+		writeFileSync(join(wB.root, "develop", "attempts", `${atB.id}.authorized.json`), "{also-bad");
+		expect(wB.store.readHazardEvidence(aB.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "liveness-unverified", bases: ["attempt-evidence-unreadable"] },
+		});
+
+		// Counterexample C: valid authorized file cleared, then extra unknown/misnamed file for AT1 appears -> MUST reactivate.
+		const wC = world();
+		const sC = new DevelopAttemptsServiceV0(wC.tasks, new DevelopAttemptsStoreV0(wC.root));
+		const atC = ok(sC.prepare(wC.project.id, wC.build.id, { objective: "AT-C" }));
+		let aC = ok(assign(wC, "one"));
+		aC = ok(wC.store.linkAttempt(aC.assignmentId, aC.revision, atC.id));
+		authorizeAttempt(wC.root, atC.id, "c");
+		aC = ok(wC.store.endAssignment(aC.assignmentId, aC.revision, "revoked"));
+		aC = ok(wC.store.clearHazard(aC.assignmentId, aC.revision, digestOf(wC, aC.assignmentId), "Auth checked"));
+		expect(wC.store.readHazardEvidence(aC.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "operator-cleared" },
+		});
+		writeFileSync(join(wC.root, "develop", "attempts", `${atC.id}.extra.authorized.json`), "{}");
+		expect(wC.store.readHazardEvidence(aC.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "liveness-unverified", bases: ["attempt-evidence-unreadable"] },
+		});
+	});
+
+	it("review #2: an ended read-only-intended assignment with liveness-unverified blocks new writers until cleared", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "AT1" }));
+		let ro = ok(
+			w.store.createAssignment({
+				expectedTaskRevision: 0,
+				expectedFileRevision: w.revision(),
+				projectId: w.project.id,
+				taskId: w.build.id,
+				participant: { participantId: "reviewer", role: "reviewer", intendedHarnessFamily: "pi" },
+				workspace: {
+					worktreePath: PATH,
+					registration: "project-path",
+					accessIntent: "read-only-intended",
+					pathHints: [],
+					allowSharedWorktree: false,
+				},
+				targetCandidate: null,
+			}),
+		);
+		ro = ok(w.store.linkAttempt(ro.assignmentId, ro.revision, at1.id));
+		ro = ok(w.store.endAssignment(ro.assignmentId, ro.revision, "revoked"));
+		expect(ro.worktreeHazard.state).toBe("none");
+		// Late route claim on the read-only-intended assignment's linked attempt reactivates hazard and blocks new writers.
+		expect(DevelopAttemptRoutesStoreV0.forRoot(w.root).claim(at1.id, "workbench", 10)).toBe("created");
+		expect(assign(w, "builder-two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
+		ok(w.store.clearHazard(ro.assignmentId, ro.revision, digestOf(w, ro.assignmentId), "Verified stopped"));
+		expect(ok(assign(w, "builder-two")).state).toBe("active");
+	});
+
+	it("review #4: protected-attempts launch/candidate presence without .route.json triggers and reactivates hazard", () => {
+		const w = world();
+		const service = new DevelopAttemptsServiceV0(w.tasks, new DevelopAttemptsStoreV0(w.root));
+		const at1 = ok(service.prepare(w.project.id, w.build.id, { objective: "Protected fallback" }));
+		let a = ok(assign(w, "one"));
+		a = ok(w.store.linkAttempt(a.assignmentId, a.revision, at1.id));
+		a = ok(w.store.endAssignment(a.assignmentId, a.revision, "closed"));
+		expect(a.worktreeHazard.state).toBe("none");
+		// Pre-route protected launch artifact appears without .route.json
+		mkdirSync(join(w.root, "develop", "protected-attempts"), { recursive: true });
+		writeFileSync(join(w.root, "develop", "protected-attempts", `${at1.id}.launch.json`), "{}");
+		expect(w.store.readHazardEvidence(a.assignmentId)).toMatchObject({
+			ok: true,
+			effectiveHazard: { state: "liveness-unverified", bases: ["attempt-route-claimed"] },
+		});
+		expect(assign(w, "two")).toMatchObject({ ok: false, code: "worktree-write-overlap" });
 	});
 });

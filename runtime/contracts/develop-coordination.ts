@@ -28,12 +28,22 @@ import {
 import { ENDO_ATTEMPT_ID_PATTERN_V0, endoAttemptPlanV0 } from "../../protocol/develop-attempts.ts";
 import {
 	ENDO_HAZARD_BASES_V0,
+	ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0,
 	type EndoAccessIntentV0,
 	type EndoAssignmentV0,
 	type EndoCandidateRefV0,
 	type EndoDependencyV0,
 	type EndoDevelopCoordinationFileV0,
+	type EndoHazardAttemptProblemKindV0,
+	type EndoHazardAttemptProblemSummaryV0,
+	type EndoHazardAuthorizationEvidenceV0,
 	type EndoHazardBasisV0,
+	type EndoHazardEvidenceSnapshotV0,
+	type EndoHazardEvidenceUnknownReasonV0,
+	type EndoHazardPriorClearanceV0,
+	type EndoHazardRouteEvidenceV0,
+	type EndoHazardSessionEvidenceV0,
+	endoHazardBasesFromSnapshotV0,
 } from "../../protocol/develop-coordination.ts";
 import type {
 	EndoDevelopReceiptV0,
@@ -41,15 +51,25 @@ import type {
 	EndoReceiptOutcomeV0,
 } from "../../protocol/develop-receipts.ts";
 import type { EndoDevelopTaskStatusV0 } from "../../protocol/develop-tasks.ts";
-import type { EndoAttemptEntryV0, EndoAttemptProblemV0 } from "../../storage/develop-attempts.ts";
+import {
+	checkProtectedAttemptPresenceSyncV0,
+	type DevelopAttemptRoutesStoreV0,
+	type EndoDevelopAttemptRouteReadV0,
+} from "../../storage/develop-attempt-routes.ts";
+import {
+	type EndoAttemptEntryV0,
+	type EndoAttemptProblemV0,
+	endoAttemptProblemsOfV0,
+} from "../../storage/develop-attempts.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 import { endoPlannedReadingV0 } from "./develop-verification.ts";
 
 // ---- workspace conflicts (used by writers to refuse, and by readers to report) ------------------------------------------------------
 
-/** Whether an assignment is a writer that still occupies its worktree: active, or ended with an unverified hazard. */
+/** Whether an assignment still occupies its worktree against new writers: active writable, or any ended assignment with an unverified hazard. */
 export const endoOccupiesWorktreeV0 = (a: EndoAssignmentV0): boolean =>
-	a.workspace.accessIntent === "read-write-intended" &&
-	(a.state === "active" || a.worktreeHazard.state === "liveness-unverified");
+	(a.state === "active" && a.workspace.accessIntent === "read-write-intended") ||
+	a.worktreeHazard.state === "liveness-unverified";
 
 /**
  * The assignments a NEW writable assignment on `worktreePath` would overlap (§10.1): every other writer on the same canonical path that is
@@ -72,9 +92,188 @@ export function endoWorktreeWriteConflictsV0(
 
 /** Per-attempt execution evidence as found on disk by the caller: never inferred, `unknown` when it could not be read. */
 export type EndoAttemptExecutionEvidenceV0 = {
-	authorized: boolean | "unknown";
-	route: "claimed" | "absent" | "unknown";
+	route: EndoHazardRouteEvidenceV0;
+	authorization: EndoHazardAuthorizationEvidenceV0;
 };
+
+const toUnknownReason = (raw: string | undefined): EndoHazardEvidenceUnknownReasonV0 =>
+	raw !== undefined && (ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0 as readonly string[]).includes(raw)
+		? (raw as EndoHazardEvidenceUnknownReasonV0)
+		: "invalid";
+
+/** Map a route-store read to canonical hazard route evidence. */
+export function endoRouteEvidenceFromReadV0(read: EndoDevelopAttemptRouteReadV0): EndoHazardRouteEvidenceV0 {
+	if (read.state === "absent") return { state: "absent" };
+	if (read.state === "present") return { state: "claimed", route: read.record.route };
+	return { state: "unknown", reason: toUnknownReason(read.reason) };
+}
+
+/**
+ * Read canonical route evidence for one attempt on the host, consulting both `<developDir>/attempt-routes/<id>.route.json`
+ * and the pre-route `<developDir>/protected-attempts/<id>.{launch,candidate}.json` fallback (matching DevelopAttemptDispatchV0).
+ */
+export function endoRouteEvidenceForAttemptV0(
+	developDir: string,
+	routes: DevelopAttemptRoutesStoreV0,
+	attemptId: string,
+): EndoHazardRouteEvidenceV0 {
+	const primary = endoRouteEvidenceFromReadV0(routes.read(attemptId));
+	if (primary.state !== "absent") return primary;
+	const protectedPresence = checkProtectedAttemptPresenceSyncV0(developDir, attemptId);
+	if (protectedPresence === "present") return { state: "claimed", route: "protected" };
+	if (protectedPresence === "problem") return { state: "unknown", reason: "problem" };
+	return primary;
+}
+
+/**
+ * Shared read-side and write-side per-attempt execution evidence builder so the coordination store and the
+ * Coordinator projection never diverge (including on per-attempt unreadable/orphaned/misnamed problem files).
+ * Checks `endoAttemptProblemsOfV0` BEFORE `entry.authorized` so a misnamed or extra problem file cannot be masked.
+ */
+export function endoAttemptExecutionEvidenceFromReadV0(
+	attemptId: string,
+	attemptsRead:
+		| { ok: true; entries: readonly EndoAttemptEntryV0[]; problems: readonly EndoAttemptProblemV0[] }
+		| { ok: false; reason?: string },
+	route: EndoHazardRouteEvidenceV0,
+): EndoAttemptExecutionEvidenceV0 {
+	if (!attemptsRead.ok) {
+		return {
+			route,
+			authorization: { state: "unknown", reason: toUnknownReason(attemptsRead.reason ?? "io"), problems: [] },
+		};
+	}
+	const problems = endoAttemptProblemsOfV0(attemptsRead.problems, attemptId);
+	if (problems.length > 0) {
+		const counts = new Map<string, EndoHazardAttemptProblemSummaryV0>();
+		for (const p of problems) {
+			const kind: EndoHazardAttemptProblemKindV0 = p.kind ?? "other";
+			const reason = toUnknownReason(p.problem.reason);
+			const key = `${kind}:${reason}`;
+			const existing = counts.get(key);
+			if (existing === undefined) counts.set(key, { kind, reason, count: 1 });
+			else existing.count += 1;
+		}
+		const summary = [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, v]) => v);
+		const firstReason = [...summary].map((s) => s.reason).sort()[0] ?? "problem";
+		return { route, authorization: { state: "unknown", reason: firstReason, problems: summary } };
+	}
+	const entry = attemptsRead.entries.find((e) => e.attempt.id === attemptId);
+	if (entry?.authorized != null) {
+		return {
+			route,
+			authorization: {
+				state: "authorized",
+				proposalId: entry.authorized.proposalId,
+				authorizationEventId: entry.authorized.authorizationEventId,
+			},
+		};
+	}
+	if (entry === undefined) {
+		return { route, authorization: { state: "unknown", reason: "missing", problems: [] } };
+	}
+	return { route, authorization: { state: "absent" } };
+}
+
+/** Canonical, bounded snapshot of observed execution evidence for an assignment. */
+export function endoHazardEvidenceSnapshotV0(
+	a: EndoAssignmentV0,
+	evidence: (attemptId: string) => EndoAttemptExecutionEvidenceV0,
+): EndoHazardEvidenceSnapshotV0 {
+	const writableSession: EndoHazardSessionEvidenceV0 | null =
+		a.workspace.accessIntent === "read-write-intended" && a.session !== null
+			? {
+					source: a.session.source,
+					sessionKey: a.session.sessionKey,
+					attachmentId: a.session.attachmentId,
+					instanceId: a.session.instanceId,
+					runtimeFingerprintId: a.session.runtimeFingerprintId,
+				}
+			: null;
+	const attempts = [...a.attemptIds].sort().map((attemptId) => {
+		const e = evidence(attemptId);
+		return { attemptId, route: e.route, authorization: e.authorization };
+	});
+	return { writableSession, attempts };
+}
+
+/** Deterministic SHA-256 digest of a canonical hazard evidence snapshot (for stale-evidence clearance binding). */
+export function endoHazardEvidenceDigestV0(snapshot: EndoHazardEvidenceSnapshotV0): string {
+	return sha256HexV0(canonicalEndoJsonV0(snapshot as never));
+}
+
+const sameSessionEvidence = (a: EndoHazardSessionEvidenceV0 | null, b: EndoHazardSessionEvidenceV0 | null): boolean => {
+	if (a === null || b === null) return a === b;
+	return (
+		a.source === b.source &&
+		a.sessionKey === b.sessionKey &&
+		a.attachmentId === b.attachmentId &&
+		a.instanceId === b.instanceId &&
+		a.runtimeFingerprintId === b.runtimeFingerprintId
+	);
+};
+
+const sameProblemSummary = (
+	a: readonly EndoHazardAttemptProblemSummaryV0[],
+	b: readonly EndoHazardAttemptProblemSummaryV0[],
+): boolean =>
+	a.length === b.length &&
+	a.every((item, i) => {
+		const other = b[i];
+		return (
+			other !== undefined && item.kind === other.kind && item.reason === other.reason && item.count === other.count
+		);
+	});
+
+/**
+ * Which currently observed hazard bases are NOT covered by a prior clearance's `acknowledgedEvidence`.
+ * When `acknowledged` is null (an earlier pre-remediation draft clearance without an evidence snapshot),
+ * conservatively treats every currently observed hazard basis as uncovered.
+ */
+export function endoUncoveredHazardBasesV0(
+	current: EndoHazardEvidenceSnapshotV0,
+	acknowledged: EndoHazardEvidenceSnapshotV0 | null,
+): EndoHazardBasisV0[] {
+	if (acknowledged === null) return endoHazardBasesFromSnapshotV0(current);
+	const uncovered = new Set<EndoHazardBasisV0>();
+	if (
+		current.writableSession !== null &&
+		!sameSessionEvidence(current.writableSession, acknowledged.writableSession)
+	) {
+		uncovered.add("writable-session-associated");
+	}
+	const ackByAttempt = new Map(acknowledged.attempts.map((item) => [item.attemptId, item]));
+	for (const cur of current.attempts) {
+		const ack = ackByAttempt.get(cur.attemptId);
+		if (cur.route.state === "claimed") {
+			if (ack?.route.state !== "claimed" || ack.route.route !== cur.route.route) {
+				uncovered.add("attempt-route-claimed");
+			}
+		} else if (cur.route.state === "unknown") {
+			if (ack?.route.state !== "unknown" || ack.route.reason !== cur.route.reason) {
+				uncovered.add("attempt-evidence-unreadable");
+			}
+		}
+		if (cur.authorization.state === "authorized") {
+			if (
+				ack?.authorization.state !== "authorized" ||
+				ack.authorization.proposalId !== cur.authorization.proposalId ||
+				ack.authorization.authorizationEventId !== cur.authorization.authorizationEventId
+			) {
+				uncovered.add("attempt-authorized");
+			}
+		} else if (cur.authorization.state === "unknown") {
+			if (
+				ack?.authorization.state !== "unknown" ||
+				ack.authorization.reason !== cur.authorization.reason ||
+				!sameProblemSummary(ack.authorization.problems, cur.authorization.problems)
+			) {
+				uncovered.add("attempt-evidence-unreadable");
+			}
+		}
+	}
+	return ENDO_HAZARD_BASES_V0.filter((b) => uncovered.has(b));
+}
 
 /**
  * Why a terminal transition (supersede, revoke, close) must leave the worktree hazardous: any linked attempt with an authorisation or a
@@ -86,28 +285,63 @@ export function endoTerminalHazardBasesV0(
 	a: EndoAssignmentV0,
 	evidence: (attemptId: string) => EndoAttemptExecutionEvidenceV0,
 ): EndoHazardBasisV0[] {
-	const found = new Set<EndoHazardBasisV0>();
-	for (const id of a.attemptIds) {
-		const e = evidence(id);
-		if (e.authorized === true) found.add("attempt-authorized");
-		if (e.route === "claimed") found.add("attempt-route-claimed");
-		if (e.authorized === "unknown" || e.route === "unknown") found.add("attempt-evidence-unreadable");
+	return endoHazardBasesFromSnapshotV0(endoHazardEvidenceSnapshotV0(a, evidence));
+}
+
+/**
+ * Evaluate the effective hazard of an assignment against one already-captured canonical evidence snapshot.
+ * Re-evaluates `none`, `liveness-unverified` and `operator-cleared` assignments so late or unreadable execution
+ * evidence always reactivates `liveness-unverified` while preserving historical clearances in `priorClearances`.
+ */
+export function endoEffectiveAssignmentFromSnapshotV0(
+	a: EndoAssignmentV0,
+	snapshot: EndoHazardEvidenceSnapshotV0,
+): EndoAssignmentV0 {
+	if (a.state === "active") return a;
+	const currentBases = endoHazardBasesFromSnapshotV0(snapshot);
+	if (a.worktreeHazard.state === "none") {
+		return currentBases.length === 0
+			? a
+			: { ...a, worktreeHazard: { state: "liveness-unverified", sinceMs: a.updatedAtMs, bases: currentBases } };
 	}
-	if (a.session !== null && a.workspace.accessIntent === "read-write-intended")
-		found.add("writable-session-associated");
-	return ENDO_HAZARD_BASES_V0.filter((b) => found.has(b));
+	if (a.worktreeHazard.state === "liveness-unverified") {
+		const stored = a.worktreeHazard;
+		const mergedBases = ENDO_HAZARD_BASES_V0.filter((b) => stored.bases.includes(b) || currentBases.includes(b));
+		return mergedBases.length === stored.bases.length && mergedBases.every((b, i) => b === stored.bases[i])
+			? a
+			: { ...a, worktreeHazard: { ...stored, bases: mergedBases } };
+	}
+	// `operator-cleared`: valid ONLY while every currently observed hazard basis is covered by `acknowledgedEvidence`.
+	const ack = "acknowledgedEvidence" in a.worktreeHazard ? a.worktreeHazard.acknowledgedEvidence : null;
+	const uncovered = endoUncoveredHazardBasesV0(snapshot, ack);
+	if (uncovered.length === 0) return a;
+	const expiredRecord: EndoHazardPriorClearanceV0 = {
+		clearedBy: "operator",
+		via: "cli",
+		clearedAtMs: a.worktreeHazard.clearedAtMs,
+		bases: a.worktreeHazard.bases,
+		acknowledgedEvidence: ack,
+		note: a.worktreeHazard.note,
+	};
+	const priorClearances =
+		"priorClearances" in a.worktreeHazard ? [...a.worktreeHazard.priorClearances, expiredRecord] : [expiredRecord];
+	return {
+		...a,
+		worktreeHazard: {
+			state: "liveness-unverified",
+			sinceMs: a.worktreeHazard.clearedAtMs,
+			bases: currentBases,
+			priorClearances,
+		},
+	};
 }
 
 export function endoEffectiveAssignmentV0(
 	a: EndoAssignmentV0,
 	evidence: (id: string) => EndoAttemptExecutionEvidenceV0,
 ): EndoAssignmentV0 {
-	if (a.state === "active" || a.workspace.accessIntent !== "read-write-intended" || a.worktreeHazard.state !== "none")
-		return a;
-	const bases = endoTerminalHazardBasesV0(a, evidence);
-	return bases.length === 0
-		? a
-		: { ...a, worktreeHazard: { state: "liveness-unverified", sinceMs: a.updatedAtMs, bases } };
+	if (a.state === "active") return a;
+	return endoEffectiveAssignmentFromSnapshotV0(a, endoHazardEvidenceSnapshotV0(a, evidence));
 }
 
 // ---- the candidate-bound receipt predicate ----------------------------------------------------------------------------------------
@@ -206,10 +440,10 @@ export interface EndoCoordinationProjectionInputV0 {
 	tasks: { ok: true; byId: ReadonlyMap<string, EndoCoordinationTaskFactV0> } | { ok: false };
 	attempts:
 		| { ok: true; entries: readonly EndoAttemptEntryV0[]; problems: readonly EndoAttemptProblemV0[] }
-		| { ok: false };
+		| { ok: false; reason?: string };
 	receipts: (attemptId: string) => EndoReceiptSourceV0;
 	/** Route reservation per attempt, as read now; `unknown` when it could not be read (or is not mounted). */
-	route: (attemptId: string) => "claimed" | "absent" | "unknown";
+	route: (attemptId: string) => EndoHazardRouteEvidenceV0;
 	/** Re-verification of each candidate by candidate id, done by the caller (Git / protected-run reading), or `unavailable`. */
 	identity: ReadonlyMap<string, EndoCandidateIdentityReadingV0>;
 	/** The live HEAD of a worktree path, observed now by the caller; absent or null when it was not or could not be. */
@@ -267,12 +501,8 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 		: [];
 	if (unreadableAttempts.length > 0) gaps.add("attempt-problems");
 	const attemptRecordsComplete = input.attempts.ok && unreadableAttempts.length === 0;
-	const execution = (id: string): EndoAttemptExecutionEvidenceV0 => {
-		const route = input.route(id);
-		if (!input.attempts.ok) return { authorized: "unknown", route };
-		const e = entryById.get(id);
-		return { authorized: e === undefined ? "unknown" : e.authorized !== null, route };
-	};
+	const execution = (id: string): EndoAttemptExecutionEvidenceV0 =>
+		endoAttemptExecutionEvidenceFromReadV0(id, input.attempts, input.route(id));
 
 	const candidateEntry = new Map((file?.taskCandidates ?? []).map((t) => [t.taskId, t]));
 	const receiptReading = new Map<string, ReturnType<typeof endoCandidateReceiptReadingV0>>();
@@ -474,16 +704,17 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 							? ("other-task" as const)
 							: ("resolved" as const);
 				const ran =
-					e.authorized === true
+					e.authorization.state === "authorized"
 						? ("workbench-authorized" as const)
-						: e.route === "claimed"
+						: e.route.state === "claimed"
 							? ("route-claimed" as const)
-							: e.authorized === "unknown" || e.route === "unknown"
+							: e.authorization.state === "unknown" || e.route.state === "unknown"
 								? ("unknown" as const)
 								: ("none-recorded" as const);
 				if (link === "missing" || link === "other-task") findings.add("attempt-link-unresolved");
 				if (ran === "workbench-authorized" || ran === "route-claimed") findings.add("attempt-execution-recorded");
-				if (ran === "unknown") findings.add("attempt-evidence-unknown");
+				if (e.authorization.state === "unknown" || e.route.state === "unknown")
+					findings.add("attempt-evidence-unknown");
 				return { attemptId, link, execution: ran };
 			});
 			if (a.state === "active") {
@@ -491,7 +722,10 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 				if (r === "waiting") findings.add("prerequisites-not-satisfied");
 				if (r === "unknown") findings.add("prerequisites-unknown");
 			}
-			if (a.worktreeHazard.state === "liveness-unverified") findings.add("worktree-liveness-unverified");
+			if (a.worktreeHazard.state === "liveness-unverified") {
+				findings.add("worktree-liveness-unverified");
+				if ((a.worktreeHazard.priorClearances?.length ?? 0) > 0) findings.add("hazard-clearance-expired");
+			}
 			if (a.workspace.registration === "same-repository-unregistered") findings.add("worktree-not-registered");
 			if (
 				a.state !== "active" &&

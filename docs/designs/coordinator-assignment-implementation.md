@@ -19,13 +19,13 @@
 ### 1.1 Records
 
 * **Assignment:** participant (slug, role builder/reviewer/investigator, intended harness family or null), task and the task revision it was confirmed against, workspace intent (canonical worktree path, `project-path` or `same-repository-unregistered`, read-write or read-only intent, advisory path hints, explicit shared-worktree acknowledgement), an optional operator-declared session association (`pi-live`/`codex-live` only; `test-*` is refused as `synthetic-not-admitted`), linked prepared attempts (references only), an optional target candidate for reviewers and investigators, and a lifecycle: `active` → `superseded` | `revoked` | `closed`, with symmetric supersession links.
-* **Worktree hazard:** a terminal transition records `liveness-unverified` with the bases the on-disk evidence warrants (`attempt-authorized`, `attempt-route-claimed`, `attempt-evidence-unreadable`, `writable-session-associated`). Only `endo assign clear-hazard --note …` clears it, and the bases stay as a record. No timer, lease or agent claim clears it.
+* **Worktree hazard:** a terminal transition records `liveness-unverified` with the bases the on-disk evidence warrants (`attempt-authorized`, `attempt-route-claimed`, `attempt-evidence-unreadable`, `writable-session-associated`). Only `endo assign clear-hazard --evidence-digest <sha256> --note …` clears it, binding the clearance to the exact observed execution-evidence snapshot (`acknowledgedEvidence`) and preserving earlier assertions in `priorClearances`. No timer, lease or agent claim clears it; newly observed or unreadable execution evidence reactivates `liveness-unverified` while retaining prior clearance history.
 * **Dependency:** `dependent → prerequisite` in one project, under `operator-task-done`, `candidate-declared`, `candidate-has-passing-receipt` or `operator-decision`. Decisions are bound to the prerequisite's task revision.
 * **Candidate:** immutable `git-commit` (common dir, worktree, full commit and tree ids) or `protected-candidate` (attempt, run, binding and candidate digests). A new declaration supersedes the current one and keeps it; `candidate select` changes which is current and never erases.
 
 ### 1.2 Refusals and outcomes
 
-Every refusal writes nothing: `not-found`, `stale-revision`, `invalid-transition`, `bad-request`, `limit`, `duplicate`, `dependency-cycle`, `cross-project`, `worktree-write-overlap`, `synthetic-not-admitted`, `unsupported-source`, `unreadable`, `tasks-unreadable`, `attempts-unreadable`, `busy`, `storage-failed`. One outcome is not a refusal: `commit-uncertain` (§3.2). An unreadable, oversize, unknown-version or invalid `coordination.json` is reported and left byte for byte; it is never repaired.
+Every refusal writes nothing: `not-found`, `stale-revision`, `stale-evidence`, `invalid-transition`, `bad-request`, `limit`, `duplicate`, `dependency-cycle`, `cross-project`, `worktree-write-overlap`, `synthetic-not-admitted`, `unsupported-source`, `unreadable`, `tasks-unreadable`, `attempts-unreadable`, `busy`, `storage-failed`. One outcome is not a refusal: `commit-uncertain` (§3.2). An unreadable, oversize, unknown-version or invalid `coordination.json` is reported and left byte for byte; it is never repaired.
 
 ### 1.3 The projection
 
@@ -159,3 +159,61 @@ One read-only reviewer on archlinux inspected draft head `d0bfd641d` across the 
 | R8: cross-project conflicts and disclosure | Exclusion is global. Foreign assignment IDs are omitted from overlap refusals. Projection conflicts are computed across the visible projects only: the two-project regression shows an all-project read reporting the overlap and a scoped read withholding the other assignment. |
 
 The lock assumes one host, user and PID namespace. A repeated session key for the same participant is a declared association, not proof of an independent session or an execution capability. Neither was established as another authority path. No event-log format, migration, live dispatch or replay change is included.
+
+## 10. Remediation: evidence-bound hazard clearance (`d95577d9b` follow-up)
+
+### 10.1 Reproduced counterexample
+
+Against reviewed head `d95577d9bf244d13e1bdb27bbf47451aac8f43f9`, `endoEffectiveAssignmentV0()` returned early whenever `a.worktreeHazard.state !== "none"`. Running the 9-step counterexample deterministically against a temporary store confirmed:
+
+1. Writable assignment `A1` bound session `S1` and linked prepared attempt `AT1` (undispatched), then was revoked → `liveness-unverified` (`["writable-session-associated"]`).
+2. Operator cleared `A1`'s hazard → `operator-cleared`.
+3. `DevelopAttemptRoutesStoreV0.claim(AT1, "workbench", ...)` claimed `AT1`'s route after clearance.
+4. Both `readEndoCoordinatorCoordinationV0` (`hazard: "operator-cleared"`, `conflicts: []`) and `DevelopCoordinationStoreV0.createAssignment` (`A2` admitted with `ok: true`) failed to reactivate the hazard.
+
+### 10.2 Exact hazard-clearance semantics
+
+Hazard clearance now acknowledges a bounded, canonical **observed execution-evidence snapshot** (`EndoHazardEvidenceSnapshotV0`) rather than establishing a permanent exemption:
+
+* **`writableSession`:** `{ source, sessionKey, attachmentId, instanceId, runtimeFingerprintId }` when writable with a declared session, else `null` (no timestamps).
+* **`attempts`:** one entry per linked attempt on the assignment, sorted lexicographically by `attemptId`, recording:
+  * `route`: `{ state: "absent" }` | `{ state: "claimed", route: "workbench" | "protected" }` (consulting both `<root>/develop/attempt-routes/<id>.route.json` and the `<root>/develop/protected-attempts/<id>.{launch,candidate}.json` fallback) | `{ state: "unknown", reason }`.
+  * `authorization`: `{ state: "absent" }` | `{ state: "authorized", proposalId, authorizationEventId }` | `{ state: "unknown", reason, problems }` where `problems` is a canonical sorted per-`(kind, reason)` count summary from `endoAttemptProblemsOfV0` (checked **before** `entry.authorized`, so orphaned or corrupted authorization/misnamed files never collapse into earlier `handoff`/`outcome` problems or get masked by an existing valid authorization).
+* **Re-evaluation (`endoEffectiveAssignmentFromSnapshotV0` & `endoUncoveredHazardBasesV0`):** every ended assignment (whether stored `none`, `liveness-unverified`, or `operator-cleared`, and regardless of advisory `accessIntent`) is re-evaluated against current on-disk evidence. An `operator-cleared` hazard stays cleared **only** while every currently observed non-absent session, route, authorization, or unreadable-evidence item matches its `acknowledgedEvidence`. Any new attempt route, new authorization on a previously route-claimed attempt, changed route/authorization identity, or newly unreadable/unavailable source reactivates `liveness-unverified`, appends the expired clearance assertion to `priorClearances`, and emits the closed Coordinator finding `hazard-clearance-expired`.
+* **Worktree occupation (`endoOccupiesWorktreeV0`):** an assignment occupies its worktree against new writers whenever it is an active writable assignment **or** any ended assignment with effective `worktreeHazard.state === "liveness-unverified"`.
+* **Stale-evidence binding (`clearHazard`):** `DevelopCoordinationStoreV0.clearHazard(assignmentId, expectedRevision, expectedEvidenceDigest, note)` and `endo assign clear-hazard --evidence-digest <sha256>` require the SHA-256 digest of the exact canonical snapshot (`endoHazardEvidenceDigestV0`, displayed by `endo assign show`). Inside `coordination.lock.<n>`, the store captures current evidence once, checks `effective.worktreeHazard.state === "liveness-unverified"`, and refuses with `stale-evidence` (writing nothing) if the digest changed. On commit, it records `clearedBy: "operator"`, `via: "cli"`, `acknowledgedEvidence`, `bases`, `note`, and preserves prior clearances in `priorClearances` (bounded by `maxClearanceHistoryPerAssignment: 16`, refusing `limit` if exceeded).
+
+### 10.3 Schema changes and compatibility
+
+Narrow amendment to `endo.develop-coordination.v0` (no migration framework):
+
+* New writes emit the closed 8-key canonical `operator-cleared` shape: `{ state, clearedBy: "operator", via: "cli", clearedAtMs, bases, acknowledgedEvidence, note, priorClearances }`.
+* Closed validation verifies `acknowledgedEvidence` matches the assignment's `session` and `attemptIds`, every implied basis appears in `bases`, `note` is non-empty, and `priorClearances` stays within `maxClearanceHistoryPerAssignment = 16` and `maxFileBytes = 4 MiB`.
+* **Compatibility with earlier draft v0 files:** the pre-remediation 4-key `operator-cleared` shape (`{ state, clearedAtMs, bases, note }`) remains strictly closed-validated and accepted read-only without silent repair or discarding. Because it lacks `acknowledgedEvidence`, `endoUncoveredHazardBasesV0` treats it conservatively: if any current hazard evidence exists, it reactivates to `liveness-unverified` while preserving the legacy assertion in `priorClearances` (`acknowledgedEvidence: null`); if no current hazard evidence exists, it stays `operator-cleared`. Explicit operator re-clearance upgrades the record to the canonical shape while retaining the legacy entry in `priorClearances`.
+* Companion projection (`endo.coordinator-coordination.v0`): adds one closed finding code, `"hazard-clearance-expired"`, to `ENDO_COORDINATION_ASSIGNMENT_FINDINGS_V0`; operator notes and raw `acknowledgedEvidence` are never disclosed to the Coordinator.
+
+### 10.4 Regression coverage
+
+* `tests/develop-coordination-store.test.ts`: covers all 10 required regressions (session clearance → late route claim; AT1 vs AT2 same-category route claim; route clearance → late authorization on same attempt; unreadable authorization file after clearance; unchanged evidence idempotency; explicit re-clearance with history preservation; `createAssignment` and `supersedeAssignment` overlap refusals on reactivated hazard; `stale-evidence` refusal and deterministic `afterEvidenceRead` race hook), plus legacy 4-key draft compatibility, closed validator tampering rejections, and all 4 adversarial-review regressions.
+* `tests/coordinator-coordination.test.ts`: verifies Coordinator projection parity with the store's conflict evaluator, already-admitted replacement writer reported as `unacknowledged-worktree-write-overlap` + `worktree-liveness-unverified` + `hazard-clearance-expired` on late evidence, `attempt-evidence-unknown` emitted alongside positive channels, and sandbox `routes: "unknown"` conservative reactivation for host-cleared linked attempts.
+* `tests/develop-coordination-cli.test.ts`: end-to-end CLI flow for `assign show` → `assign clear-hazard --evidence-digest` → `stale-evidence` refusal → late route reactivation → re-clearance.
+
+### 10.5 Independent adversarial review (remediation) and disposition
+
+One fresh read-only adversarial research reviewer audited the remediation diff across all 10 review areas (clearance identity/scope, late route/auth, unreadable evidence, repeated clearance, conflict semantics, stale revision/evidence, cross-file claims, Coordinator projection/disclosure, accidental execution authority, and `storage/numbered-lock.ts`).
+
+| Finding | Severity | Disposition |
+| --- | --- | --- |
+| Multi-problem `firstReason` collapsing & `entry.authorized` short-circuit in `endoAttemptExecutionEvidenceFromReadV0` could swallow a newly orphaned/corrupted or misnamed authorization file | **HIGH** | **Fixed.** `endoAttemptProblemsOfV0` is now checked before `entry.authorized`, and `authorization.state === "unknown"` records a canonical sorted `problems: [{ kind, reason, count }]` summary compared in `endoUncoveredHazardBasesV0`. Covered by three counterexample regressions (`tests/develop-coordination-store.test.ts`: "review #1"). |
+| `endoOccupiesWorktreeV0` gated `liveness-unverified` behind `accessIntent === "read-write-intended"`, allowing a new writer when an ended `read-only-intended` assignment had an unverified linked-attempt hazard | **MEDIUM** | **Fixed.** Any ended assignment with effective `worktreeHazard.state === "liveness-unverified"` now occupies its worktree against unacknowledged new writers. Covered by regression (`tests/develop-coordination-store.test.ts`: "review #2"). |
+| Coordinator projection derived `"attempt-evidence-unknown"` from `ran === "unknown"`, suppressing the finding whenever the other evidence channel was `route-claimed` or `workbench-authorized` | **MEDIUM** | **Fixed.** `"attempt-evidence-unknown"` is now emitted whenever `e.authorization.state === "unknown" || e.route.state === "unknown"`. Covered by regression (`tests/coordinator-coordination.test.ts`: "review #3"). |
+| Pre-route `develop/protected-attempts/<id>.{launch,candidate}.json` presence/unreadability without `.route.json` was not consulted | **LOW/MEDIUM** | **Fixed.** Shared `endoRouteEvidenceForAttemptV0` falls back to `checkProtectedAttemptPresenceSyncV0` whenever `.route.json` is absent (matching `DevelopAttemptDispatchV0`). Covered by regression (`tests/develop-coordination-store.test.ts`: "review #4"). |
+
+No regressions were found in `storage/numbered-lock.ts`, cross-file consistency disclosures, Coordinator disclosure boundaries, or execution authority boundaries.
+
+### 10.6 Remaining E1 consistency limits & explicit E2 requirements
+
+* **No cross-file linearisation in E1:** `coordination.lock.<n>` still does not serialize existing attempt-route or attempt-authorization writers (`DevelopAttemptRoutesStoreV0`, `DevelopAttemptsStoreV0`). A route/authorization written after `clearHazard` captures its snapshot inside the lock and before rename is NOT silently acknowledged: `clearHazard` commits only the pre-race snapshot, and subsequent reads/admissions immediately reactivate `liveness-unverified`. If another writer was admitted during the cleared interval, Coordinator reports the resulting conflict without pretending E1 can undo admission or terminate a process.
+* **Boolean `sharedWorktreeAcknowledged` limit:** E1's counted-not-ordered overlap check (`writers.filter((a) => !a.workspace.sharedWorktreeAcknowledged).length <= 1`) remains an E1 metadata limit if an ended writer already carried `sharedWorktreeAcknowledged: true` from an earlier overlap.
+* **Explicit E2 requirements:** E2 must linearise dispatch commitment inside `coordination.lock.<n>` (re-checking active assignment at approved revision, dependencies, and effective worktree conflicts, claiming `.route.json`, writing harness-neutral authorization, and recording the dispatched attempt before releasing the lock and performing transport I/O) and introduce controller-observed session liveness / termination evidence.
+* **Protected-candidate validation standing:** no pre-existing genuine compatible `staged-changeset` protected-run artifact was present under `research/`; synthetic protected-candidate resolution and forged-binding rejection tests in `tests/develop-protected-attempt.test.ts` remain the E1 verification baseline, and live protected-run validation is deferred per operator decision (workstation H0 remains BLOCKED).

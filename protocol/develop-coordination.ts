@@ -20,7 +20,7 @@
 import { ENDO_ADAPTER_IDENTITY_SCOPES_V0, type EndoAdapterIdentityScopeV0 } from "./develop-adapter.ts";
 import { ENDO_ATTEMPT_ID_PATTERN_V0 } from "./develop-attempts.ts";
 import { checkEndoDevelopTextV0, ENDO_PROJECT_ID_PATTERN_V0, ENDO_TASK_ID_PATTERN_V0 } from "./develop-tasks.ts";
-import { isWellFormedKindV0 } from "./identity.ts";
+import { isEndoIdentifierV0, isWellFormedKindV0 } from "./identity.ts";
 import {
 	defineEndoVersionTableV0,
 	EndoInvalidRecordV0,
@@ -38,6 +38,7 @@ export const ENDO_DEVELOP_COORDINATION_LIMITS_V0 = Object.freeze({
 	maxCandidateTasks: 300,
 	maxCandidatesPerTask: 32,
 	maxAttemptsPerAssignment: 32,
+	maxClearanceHistoryPerAssignment: 16,
 	maxPathHints: 16,
 	maxPathHint: 256,
 	maxPath: 1024,
@@ -87,6 +88,36 @@ export const ENDO_HAZARD_BASES_V0 = [
 ] as const;
 export type EndoHazardBasisV0 = (typeof ENDO_HAZARD_BASES_V0)[number];
 
+/** Route reservation kinds recorded on disk (`storage/develop-attempt-routes.ts`). */
+export const ENDO_HAZARD_ROUTE_KINDS_V0 = ["workbench", "protected"] as const;
+export type EndoHazardRouteKindV0 = (typeof ENDO_HAZARD_ROUTE_KINDS_V0)[number];
+
+/** Closed reasons why per-attempt execution evidence could not be read or verified. */
+export const ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0 = [
+	"unavailable",
+	"missing",
+	"problem",
+	"unsafe-path",
+	"too-large",
+	"malformed",
+	"invalid",
+	"misnamed",
+	"orphan",
+	"unknown-file",
+	"io",
+] as const;
+export type EndoHazardEvidenceUnknownReasonV0 = (typeof ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0)[number];
+
+/** Record-kind bucket for per-attempt problem summaries so distinct unreadable/orphaned files never collapse. */
+export const ENDO_HAZARD_ATTEMPT_PROBLEM_KINDS_V0 = ["prepared", "handoff", "outcome", "authorized", "other"] as const;
+export type EndoHazardAttemptProblemKindV0 = (typeof ENDO_HAZARD_ATTEMPT_PROBLEM_KINDS_V0)[number];
+
+export interface EndoHazardAttemptProblemSummaryV0 {
+	kind: EndoHazardAttemptProblemKindV0;
+	reason: EndoHazardEvidenceUnknownReasonV0;
+	count: number;
+}
+
 // ---- records -----------------------------------------------------------------------------------------------------------------------
 
 /**
@@ -116,10 +147,98 @@ export interface EndoAssignmentWorkspaceV0 {
 	sharedWorktreeAcknowledged: boolean;
 }
 
+/** Canonical session identity acknowledged by an operator hazard clearance (no timestamps). */
+export interface EndoHazardSessionEvidenceV0 {
+	source: EndoCoordinationSessionSourceV0;
+	sessionKey: string;
+	attachmentId: string;
+	instanceId: string | null;
+	runtimeFingerprintId: string | null;
+}
+
+/** Observed route reservation evidence for one linked attempt at clearance/evaluation time. */
+export type EndoHazardRouteEvidenceV0 =
+	| { state: "absent" }
+	| { state: "claimed"; route: EndoHazardRouteKindV0 }
+	| { state: "unknown"; reason: EndoHazardEvidenceUnknownReasonV0 };
+
+/** Observed attempt-authorisation evidence for one linked attempt at clearance/evaluation time. */
+export type EndoHazardAuthorizationEvidenceV0 =
+	| { state: "absent" }
+	| { state: "authorized"; proposalId: string; authorizationEventId: string }
+	| { state: "unknown"; reason: EndoHazardEvidenceUnknownReasonV0; problems: EndoHazardAttemptProblemSummaryV0[] };
+
+export interface EndoHazardAttemptEvidenceV0 {
+	attemptId: string;
+	route: EndoHazardRouteEvidenceV0;
+	authorization: EndoHazardAuthorizationEvidenceV0;
+}
+
+/**
+ * Bounded, canonical snapshot of the exact observed execution evidence for an ended assignment.
+ * Operator clearance acknowledges THIS snapshot — never an unbounded future exemption.
+ */
+export interface EndoHazardEvidenceSnapshotV0 {
+	writableSession: EndoHazardSessionEvidenceV0 | null;
+	/** Every linked attempt on the assignment, sorted lexicographically by `attemptId`. */
+	attempts: EndoHazardAttemptEvidenceV0[];
+}
+
+/**
+ * A preserved historical operator clearance assertion. `acknowledgedEvidence` is null ONLY when
+ * archiving an earlier pre-remediation draft clearance that lacked an evidence snapshot.
+ */
+export interface EndoHazardPriorClearanceV0 {
+	clearedBy: "operator";
+	via: "cli";
+	clearedAtMs: number;
+	bases: EndoHazardBasisV0[];
+	acknowledgedEvidence: EndoHazardEvidenceSnapshotV0 | null;
+	note: string;
+}
+
 export type EndoWorktreeHazardV0 =
 	| { state: "none" }
-	| { state: "liveness-unverified"; sinceMs: number; bases: EndoHazardBasisV0[] }
-	| { state: "operator-cleared"; clearedAtMs: number; bases: EndoHazardBasisV0[]; note: string };
+	| {
+			state: "liveness-unverified";
+			sinceMs: number;
+			bases: EndoHazardBasisV0[];
+			/** Historical operator clearances whose operational relevance expired when new/unreadable evidence appeared. */
+			priorClearances?: EndoHazardPriorClearanceV0[];
+	  }
+	| {
+			state: "operator-cleared";
+			clearedBy: "operator";
+			via: "cli";
+			clearedAtMs: number;
+			bases: EndoHazardBasisV0[];
+			acknowledgedEvidence: EndoHazardEvidenceSnapshotV0;
+			note: string;
+			priorClearances: EndoHazardPriorClearanceV0[];
+	  }
+	| {
+			/**
+			 * Earlier pre-remediation draft v0 clearance (no `acknowledgedEvidence`): accepted read-only for compatibility,
+			 * never written by new code, and evaluated conservatively whenever current hazard evidence exists.
+			 */
+			state: "operator-cleared";
+			clearedAtMs: number;
+			bases: EndoHazardBasisV0[];
+			note: string;
+	  };
+
+/** Derive canonical hazard bases directly from a canonical evidence snapshot. */
+export function endoHazardBasesFromSnapshotV0(snapshot: EndoHazardEvidenceSnapshotV0): EndoHazardBasisV0[] {
+	const found = new Set<EndoHazardBasisV0>();
+	for (const item of snapshot.attempts) {
+		if (item.authorization.state === "authorized") found.add("attempt-authorized");
+		if (item.route.state === "claimed") found.add("attempt-route-claimed");
+		if (item.authorization.state === "unknown" || item.route.state === "unknown")
+			found.add("attempt-evidence-unreadable");
+	}
+	if (snapshot.writableSession !== null) found.add("writable-session-associated");
+	return ENDO_HAZARD_BASES_V0.filter((b) => found.has(b));
+}
 
 export interface EndoAssignmentV0 {
 	assignmentId: string;
@@ -388,6 +507,144 @@ function session(v: unknown): EndoSessionAssociationV0 {
 	return { standing: "operator-declared", ...value, declaredAtMs: stamp(r.declaredAtMs, "declaredAtMs") };
 }
 
+function nonEmptyNote(v: unknown, what: string): string {
+	const text = note(v, what);
+	if (text === "") return bad(`${what} is empty`);
+	return text;
+}
+
+function hazardSessionEvidence(v: unknown): EndoHazardSessionEvidenceV0 {
+	const r = closed(
+		v,
+		["source", "sessionKey", "attachmentId", "instanceId", "runtimeFingerprintId"],
+		"hazard session evidence",
+	);
+	const value: EndoHazardSessionEvidenceV0 = {
+		source: r.source as EndoCoordinationSessionSourceV0,
+		sessionKey: r.sessionKey as string,
+		attachmentId: r.attachmentId as string,
+		instanceId: r.instanceId as string | null,
+		runtimeFingerprintId: r.runtimeFingerprintId as string | null,
+	};
+	const problem = endoSessionAssociationProblemV0(value);
+	if (problem !== null) bad(`hazard session evidence is not admissible (${problem})`);
+	return value;
+}
+
+function hazardRouteEvidence(v: unknown): EndoHazardRouteEvidenceV0 {
+	if (typeof v !== "object" || v === null) return bad("hazard route evidence is not an object");
+	const state = (v as { state?: unknown }).state;
+	if (state === "absent") {
+		closed(v, ["state"], "hazard route evidence");
+		return { state: "absent" };
+	}
+	if (state === "claimed") {
+		const r = closed(v, ["state", "route"], "hazard route evidence");
+		return { state: "claimed", route: oneOf(r.route, ENDO_HAZARD_ROUTE_KINDS_V0, "hazard route kind") };
+	}
+	if (state === "unknown") {
+		const r = closed(v, ["state", "reason"], "hazard route evidence");
+		return {
+			state: "unknown",
+			reason: oneOf(r.reason, ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0, "hazard route unknown reason"),
+		};
+	}
+	return bad("hazard route evidence has an unknown state");
+}
+
+function hazardAuthorizationEvidence(v: unknown): EndoHazardAuthorizationEvidenceV0 {
+	if (typeof v !== "object" || v === null) return bad("hazard authorization evidence is not an object");
+	const state = (v as { state?: unknown }).state;
+	if (state === "absent") {
+		closed(v, ["state"], "hazard authorization evidence");
+		return { state: "absent" };
+	}
+	if (state === "authorized") {
+		const r = closed(v, ["state", "proposalId", "authorizationEventId"], "hazard authorization evidence");
+		if (typeof r.proposalId !== "string" || !isEndoIdentifierV0(r.proposalId, "evidence"))
+			bad("hazard authorization proposalId is not a well-formed identifier");
+		if (typeof r.authorizationEventId !== "string" || !isEndoIdentifierV0(r.authorizationEventId, "event"))
+			bad("hazard authorization eventId is not a well-formed identifier");
+		return {
+			state: "authorized",
+			proposalId: r.proposalId as string,
+			authorizationEventId: r.authorizationEventId as string,
+		};
+	}
+	if (state === "unknown") {
+		const r = closed(v, ["state", "reason", "problems"], "hazard authorization evidence");
+		const rawProblems = list(
+			r.problems,
+			ENDO_HAZARD_ATTEMPT_PROBLEM_KINDS_V0.length * ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0.length,
+			"hazard authorization problems",
+		);
+		const problems: EndoHazardAttemptProblemSummaryV0[] = rawProblems.map((item) => {
+			const c = closed(item, ["kind", "reason", "count"], "hazard authorization problem");
+			return {
+				kind: oneOf(c.kind, ENDO_HAZARD_ATTEMPT_PROBLEM_KINDS_V0, "hazard problem kind"),
+				reason: oneOf(c.reason, ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0, "hazard problem reason"),
+				count: count(c.count, "hazard problem count", 1),
+			};
+		});
+		for (let i = 1; i < problems.length; i += 1) {
+			const prev = problems[i - 1] as EndoHazardAttemptProblemSummaryV0;
+			const cur = problems[i] as EndoHazardAttemptProblemSummaryV0;
+			const prevKey = `${prev.kind}:${prev.reason}`;
+			const curKey = `${cur.kind}:${cur.reason}`;
+			if (curKey <= prevKey) bad("hazard authorization problems are not strictly sorted");
+		}
+		return {
+			state: "unknown",
+			reason: oneOf(r.reason, ENDO_HAZARD_EVIDENCE_UNKNOWN_REASONS_V0, "hazard authorization unknown reason"),
+			problems,
+		};
+	}
+	return bad("hazard authorization evidence has an unknown state");
+}
+
+function hazardEvidenceSnapshot(v: unknown): EndoHazardEvidenceSnapshotV0 {
+	const r = closed(v, ["writableSession", "attempts"], "acknowledged hazard evidence");
+	const rawAttempts = list(
+		r.attempts,
+		ENDO_DEVELOP_COORDINATION_LIMITS_V0.maxAttemptsPerAssignment,
+		"acknowledged hazard attempts",
+	);
+	const attempts: EndoHazardAttemptEvidenceV0[] = rawAttempts.map((item) => {
+		const c = closed(item, ["attemptId", "route", "authorization"], "acknowledged hazard attempt");
+		return {
+			attemptId: id(c.attemptId, ENDO_ATTEMPT_ID_PATTERN_V0, "acknowledged hazard attemptId"),
+			route: hazardRouteEvidence(c.route),
+			authorization: hazardAuthorizationEvidence(c.authorization),
+		};
+	});
+	for (let i = 1; i < attempts.length; i += 1) {
+		const prev = attempts[i - 1] as EndoHazardAttemptEvidenceV0;
+		const cur = attempts[i] as EndoHazardAttemptEvidenceV0;
+		if (cur.attemptId <= prev.attemptId) bad("acknowledged hazard attempts are not strictly sorted");
+	}
+	return {
+		writableSession: nullable(r.writableSession, hazardSessionEvidence),
+		attempts,
+	};
+}
+
+function priorClearance(v: unknown): EndoHazardPriorClearanceV0 {
+	const r = closed(
+		v,
+		["clearedBy", "via", "clearedAtMs", "bases", "acknowledgedEvidence", "note"],
+		"a prior hazard clearance",
+	);
+	if (r.clearedBy !== "operator" || r.via !== "cli") bad("a prior hazard clearance claims an actor v0 cannot record");
+	return {
+		clearedBy: "operator",
+		via: "cli",
+		clearedAtMs: stamp(r.clearedAtMs, "priorClearance.clearedAtMs"),
+		bases: bases(r.bases, "priorClearance.bases"),
+		acknowledgedEvidence: nullable(r.acknowledgedEvidence, hazardEvidenceSnapshot),
+		note: nonEmptyNote(r.note, "a prior hazard clearance note"),
+	};
+}
+
 function hazard(v: unknown): EndoWorktreeHazardV0 {
 	if (typeof v !== "object" || v === null) return bad("a worktree hazard is not an object");
 	const state = (v as { state?: unknown }).state;
@@ -396,19 +653,89 @@ function hazard(v: unknown): EndoWorktreeHazardV0 {
 		return { state: "none" };
 	}
 	if (state === "liveness-unverified") {
+		if (Object.hasOwn(v, "priorClearances")) {
+			const r = closed(v, ["state", "sinceMs", "bases", "priorClearances"], "a worktree hazard");
+			const prior = list(
+				r.priorClearances,
+				ENDO_DEVELOP_COORDINATION_LIMITS_V0.maxClearanceHistoryPerAssignment,
+				"priorClearances",
+			).map(priorClearance);
+			if (prior.length === 0) bad("priorClearances on liveness-unverified is empty");
+			return {
+				state,
+				sinceMs: stamp(r.sinceMs, "sinceMs"),
+				bases: bases(r.bases, "hazard bases"),
+				priorClearances: prior,
+			};
+		}
 		const r = closed(v, ["state", "sinceMs", "bases"], "a worktree hazard");
 		return { state, sinceMs: stamp(r.sinceMs, "sinceMs"), bases: bases(r.bases, "hazard bases") };
 	}
 	if (state === "operator-cleared") {
+		if (Object.hasOwn(v, "acknowledgedEvidence")) {
+			const r = closed(
+				v,
+				["state", "clearedBy", "via", "clearedAtMs", "bases", "acknowledgedEvidence", "note", "priorClearances"],
+				"a worktree hazard",
+			);
+			if (r.clearedBy !== "operator" || r.via !== "cli") bad("a hazard clearance claims an actor v0 cannot record");
+			return {
+				state,
+				clearedBy: "operator",
+				via: "cli",
+				clearedAtMs: stamp(r.clearedAtMs, "clearedAtMs"),
+				bases: bases(r.bases, "hazard bases"),
+				acknowledgedEvidence: hazardEvidenceSnapshot(r.acknowledgedEvidence),
+				note: nonEmptyNote(r.note, "a hazard clearance note"),
+				priorClearances: list(
+					r.priorClearances,
+					ENDO_DEVELOP_COORDINATION_LIMITS_V0.maxClearanceHistoryPerAssignment,
+					"priorClearances",
+				).map(priorClearance),
+			};
+		}
+		// Earlier pre-remediation draft v0 clearance shape: accepted read-only and evaluated conservatively.
 		const r = closed(v, ["state", "clearedAtMs", "bases", "note"], "a worktree hazard");
 		return {
 			state,
 			clearedAtMs: stamp(r.clearedAtMs, "clearedAtMs"),
 			bases: bases(r.bases, "hazard bases"),
-			note: note(r.note, "a hazard clearance note"),
+			note: nonEmptyNote(r.note, "a hazard clearance note"),
 		};
 	}
 	return bad("a worktree hazard has an unknown state");
+}
+
+function checkSnapshotMatchesAssignment(
+	snapshot: EndoHazardEvidenceSnapshotV0,
+	declaredBases: readonly EndoHazardBasisV0[],
+	value: EndoAssignmentV0,
+): void {
+	const expectWritableSession = value.workspace.accessIntent === "read-write-intended" && value.session !== null;
+	if (expectWritableSession) {
+		const s = snapshot.writableSession;
+		if (
+			s === null ||
+			s.source !== value.session?.source ||
+			s.sessionKey !== value.session?.sessionKey ||
+			s.attachmentId !== value.session?.attachmentId ||
+			s.instanceId !== value.session?.instanceId ||
+			s.runtimeFingerprintId !== value.session?.runtimeFingerprintId
+		)
+			bad("acknowledged hazard session does not match the assignment's session");
+	} else if (snapshot.writableSession !== null) {
+		bad("acknowledged hazard session does not match the assignment");
+	}
+	const expectedAttempts = [...value.attemptIds].sort();
+	if (
+		snapshot.attempts.length !== expectedAttempts.length ||
+		snapshot.attempts.some((item, i) => item.attemptId !== expectedAttempts[i])
+	)
+		bad("acknowledged hazard attempts do not match the assignment's linked attempts");
+	const implied = endoHazardBasesFromSnapshotV0(snapshot);
+	for (const b of implied) {
+		if (!declaredBases.includes(b)) bad("acknowledged hazard evidence implies a basis absent from hazard bases");
+	}
 }
 
 function assignment(v: unknown): EndoAssignmentV0 {
@@ -508,6 +835,20 @@ function assignment(v: unknown): EndoAssignmentV0 {
 		bad("an assignment supersedes itself");
 	if (value.participant.role === "builder" && value.targetCandidate !== null)
 		bad("a builder assignment names a target candidate");
+	if (value.worktreeHazard.state === "operator-cleared") {
+		if ("acknowledgedEvidence" in value.worktreeHazard) {
+			checkSnapshotMatchesAssignment(value.worktreeHazard.acknowledgedEvidence, value.worktreeHazard.bases, value);
+			for (const prior of value.worktreeHazard.priorClearances) {
+				if (prior.acknowledgedEvidence !== null)
+					checkSnapshotMatchesAssignment(prior.acknowledgedEvidence, prior.bases, value);
+			}
+		}
+	} else if (value.worktreeHazard.state === "liveness-unverified" && value.worktreeHazard.priorClearances) {
+		for (const prior of value.worktreeHazard.priorClearances) {
+			if (prior.acknowledgedEvidence !== null)
+				checkSnapshotMatchesAssignment(prior.acknowledgedEvidence, prior.bases, value);
+		}
+	}
 	return value;
 }
 

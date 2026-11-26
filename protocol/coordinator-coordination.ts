@@ -51,6 +51,7 @@ export const ENDO_COORDINATION_ASSIGNMENT_FINDINGS_V0 = [
 	"worktree-liveness-unverified",
 	"worktree-not-registered",
 	"ended-without-process-confirmation",
+	"hazard-clearance-expired",
 ] as const;
 export type EndoCoordinationAssignmentFindingV0 = (typeof ENDO_COORDINATION_ASSIGNMENT_FINDINGS_V0)[number];
 

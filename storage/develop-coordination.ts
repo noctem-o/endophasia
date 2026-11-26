@@ -54,10 +54,12 @@ import {
 	type EndoDependencyConditionV0,
 	type EndoDependencyV0,
 	type EndoDevelopCoordinationFileV0,
+	type EndoHazardEvidenceSnapshotV0,
 	type EndoIntendedHarnessFamilyV0,
 	type EndoParticipantRoleV0,
 	type EndoSessionAssociationV0,
 	type EndoWorkspaceRegistrationV0,
+	type EndoWorktreeHazardV0,
 	emptyEndoDevelopCoordinationFileV0,
 	endoDependencyCycleV0,
 	endoSessionAssociationProblemV0,
@@ -76,12 +78,17 @@ import {
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import {
 	type EndoAttemptExecutionEvidenceV0,
+	endoAttemptExecutionEvidenceFromReadV0,
+	endoEffectiveAssignmentFromSnapshotV0,
 	endoEffectiveAssignmentV0,
+	endoHazardEvidenceDigestV0,
+	endoHazardEvidenceSnapshotV0,
+	endoRouteEvidenceForAttemptV0,
 	endoTerminalHazardBasesV0,
 	endoWorktreeWriteConflictsV0,
 } from "../runtime/contracts/develop-coordination.ts";
 import { DevelopAttemptRoutesStoreV0 } from "./develop-attempt-routes.ts";
-import { DevelopAttemptsStoreV0, type EndoAttemptsReadV0, endoAttemptProblemsOfV0 } from "./develop-attempts.ts";
+import { DevelopAttemptsStoreV0, type EndoAttemptsReadV0 } from "./develop-attempts.ts";
 import { DevelopTasksStoreV0, ENDO_DEVELOP_DIRECTORY_V0, type EndoTasksReadV0 } from "./develop-tasks.ts";
 import { writeExactSyncV0 } from "./log.ts";
 import {
@@ -103,6 +110,7 @@ export type EndoCoordinationReadV0 =
 export type EndoCoordinationRefusalV0 =
 	| "not-found"
 	| "stale-revision"
+	| "stale-evidence"
 	| "invalid-transition"
 	| "bad-request"
 	| "limit"
@@ -139,9 +147,13 @@ export interface EndoDevelopCoordinationStoreOptionsV0 {
 	afterReplace?: () => void;
 	/** For tests: after tasks.json was read under the coordination lock, before the change is applied. */
 	afterTasksRead?: () => void;
+	/** For tests: after clearHazard captured and verified its execution-evidence snapshot under the lock, before committing. */
+	afterEvidenceRead?: () => void;
 	/** For tests: deterministic lock interleavings. */
 	lockHooks?: EndoNumberedLockHooksV0;
 }
+
+const HEX64 = /^[0-9a-f]{64}$/;
 
 type Draft<T> =
 	| { ok: true; value: T; unchanged?: boolean }
@@ -245,6 +257,50 @@ export class DevelopCoordinationStoreV0 {
 		} catch (error) {
 			return { ok: false, reason: errno(error) === "ELOOP" || errno(error) === "ENOTDIR" ? "unsafe-path" : "io" };
 		}
+	}
+
+	/**
+	 * Read-only, lock-free snapshot of an assignment's current observed execution evidence and effective hazard.
+	 * Operators inspect this (via `endo assign show`) to obtain the exact `digest` bound into `clearHazard`.
+	 */
+	readHazardEvidence(assignmentId: string):
+		| {
+				ok: true;
+				coordinationRevision: number;
+				assignment: EndoAssignmentV0;
+				effectiveHazard: EndoWorktreeHazardV0;
+				snapshot: EndoHazardEvidenceSnapshotV0;
+				digest: string;
+		  }
+		| {
+				ok: false;
+				code: "bad-request" | "unreadable" | "not-found";
+				reason?: EndoDevelopUnreadableReasonV0;
+				detail?: string;
+		  } {
+		if (!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(assignmentId)) return { ok: false, code: "bad-request" };
+		const read = this.read();
+		if (!read.ok) return { ok: false, code: "unreadable", reason: read.reason };
+		const assignment = read.file.assignments.find((a) => a.assignmentId === assignmentId);
+		if (assignment === undefined) return { ok: false, code: "not-found", detail: `assignment ${assignmentId}` };
+		const attemptsRead = new DevelopAttemptsStoreV0(this.#root).read();
+		const routes = DevelopAttemptRoutesStoreV0.forRoot(this.#root);
+		const evidence = (attemptId: string): EndoAttemptExecutionEvidenceV0 =>
+			endoAttemptExecutionEvidenceFromReadV0(
+				attemptId,
+				attemptsRead,
+				endoRouteEvidenceForAttemptV0(this.#dir, routes, attemptId),
+			);
+		const snapshot = endoHazardEvidenceSnapshotV0(assignment, evidence);
+		const effective = endoEffectiveAssignmentFromSnapshotV0(assignment, snapshot);
+		return {
+			ok: true,
+			coordinationRevision: read.file.revision,
+			assignment,
+			effectiveHazard: effective.worktreeHazard,
+			snapshot,
+			digest: endoHazardEvidenceDigestV0(snapshot),
+		};
 	}
 
 	// ---- the one write path ----------------------------------------------------------------------------------------------------------
@@ -357,18 +413,12 @@ export class DevelopCoordinationStoreV0 {
 				return attempts;
 			};
 			const routes = DevelopAttemptRoutesStoreV0.forRoot(this.#root);
-			const evidence = (attemptId: string): EndoAttemptExecutionEvidenceV0 => {
-				const a = readAttempts();
-				const route = routes.read(attemptId);
-				const routeState = route.state === "present" ? "claimed" : route.state === "absent" ? "absent" : "unknown";
-				if (!a.ok) return { authorized: "unknown", route: routeState };
-				const entry = a.entries.find((e) => e.attempt.id === attemptId);
-				const problem = endoAttemptProblemsOfV0(a.problems, attemptId).length > 0;
-				return {
-					authorized: entry?.authorized != null ? true : problem || entry === undefined ? "unknown" : false,
-					route: routeState,
-				};
-			};
+			const evidence = (attemptId: string): EndoAttemptExecutionEvidenceV0 =>
+				endoAttemptExecutionEvidenceFromReadV0(
+					attemptId,
+					readAttempts(),
+					endoRouteEvidenceForAttemptV0(this.#dir, routes, attemptId),
+				);
 			const draft = clone(read.file);
 			const made = change(draft, { now: this.#now(), tasks, attempts: readAttempts, evidence });
 			if (!made.ok)
@@ -786,18 +836,23 @@ export class DevelopCoordinationStoreV0 {
 	}
 
 	/**
-	 * The operator's explicit statement that they verified the processes behind an ended assignment have stopped. Kept as a record (the
-	 * bases stay), never automatic: no timer, lease, unreachability or agent claim reaches this.
+	 * The operator's explicit statement that they verified the processes behind an ended assignment have stopped,
+	 * bound to the exact observed execution evidence snapshot (`expectedEvidenceDigest`) the operator reviewed.
+	 * Kept as a record (the bases, acknowledged evidence and prior clearances stay), never automatic and never an
+	 * exemption against future execution evidence: newly observed or unreadable evidence reactivates `liveness-unverified`.
 	 */
 	clearHazard(
 		assignmentId: string,
 		expectedRevision: number,
+		expectedEvidenceDigest: string,
 		note: unknown,
 	): EndoCoordinationResultV0<EndoAssignmentV0> {
 		const checked = checkEndoDevelopTextV0("note", note);
 		if (
 			!ENDO_ASSIGNMENT_ID_PATTERN_V0.test(assignmentId) ||
 			!isRevision(expectedRevision) ||
+			typeof expectedEvidenceDigest !== "string" ||
+			!HEX64.test(expectedEvidenceDigest) ||
 			!checked.ok ||
 			checked.text === ""
 		)
@@ -806,14 +861,29 @@ export class DevelopCoordinationStoreV0 {
 			const found = this.#activeAssignment(draft, assignmentId, expectedRevision, { allowEnded: true });
 			if (!found.ok) return found;
 			const a = found.a;
-			a.worktreeHazard = endoEffectiveAssignmentV0(a, context.evidence).worktreeHazard;
-			if (a.worktreeHazard.state !== "liveness-unverified")
-				return fail("invalid-transition", `hazard is ${a.worktreeHazard.state}`);
+			const snapshot = endoHazardEvidenceSnapshotV0(a, context.evidence);
+			const currentDigest = endoHazardEvidenceDigestV0(snapshot);
+			const effective = endoEffectiveAssignmentFromSnapshotV0(a, snapshot);
+			if (effective.worktreeHazard.state !== "liveness-unverified")
+				return fail("invalid-transition", `hazard is ${effective.worktreeHazard.state}`);
+			if (currentDigest !== expectedEvidenceDigest)
+				return fail(
+					"stale-evidence",
+					`observed execution evidence changed (current digest ${currentDigest}); re-read before clearing`,
+				);
+			const priorClearances = effective.worktreeHazard.priorClearances ?? [];
+			if (priorClearances.length > L.maxClearanceHistoryPerAssignment)
+				return fail("limit", "clearance history limit reached");
+			this.#options.afterEvidenceRead?.();
 			a.worktreeHazard = {
 				state: "operator-cleared",
+				clearedBy: "operator",
+				via: "cli",
 				clearedAtMs: context.now,
-				bases: a.worktreeHazard.bases,
+				bases: effective.worktreeHazard.bases,
+				acknowledgedEvidence: snapshot,
 				note: checked.text,
+				priorClearances,
 			};
 			a.revision += 1;
 			a.updatedAtMs = context.now;

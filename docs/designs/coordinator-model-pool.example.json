@@ -1,0 +1,28 @@
+{
+	"schemaVersion": "endo.coordinator-model-pool.v0",
+	"selection": { "fallback": "availability", "unconfirmedModel": "permit" },
+	"members": [
+		{
+			"memberId": "local-primary",
+			"kind": "local-openai-compat",
+			"endpoint": "http://127.0.0.1:8091",
+			"modelId": "REPLACE-WITH-THE-EXACT-id-FROM-GET-models",
+			"priority": 100,
+			"maxPromptBytes": 8192,
+			"maxOutputTokens": 2048,
+			"timeoutMs": 135000,
+			"advisoryOnly": true
+		},
+		{
+			"memberId": "local-secondary",
+			"kind": "local-openai-compat",
+			"endpoint": "http://127.0.0.1:8091",
+			"modelId": "REPLACE-WITH-A-SECOND-id-FROM-GET-models",
+			"priority": 50,
+			"maxPromptBytes": 8192,
+			"maxOutputTokens": 2048,
+			"timeoutMs": 135000,
+			"advisoryOnly": true
+		}
+	]
+}

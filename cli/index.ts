@@ -103,7 +103,7 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 	),
 	worktree: family(WORKTREE_COMMANDS_V0, "usage: endo worktree <register|unregister|list> [<root> | --root dir] ..."),
 	review: family(REVIEW_COMMANDS_V0, "usage: endo review <record|list|show> [<root> | --root dir] ..."),
-	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator <status|brief|coordination> ..."),
+	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator <status|brief|coordination|pool> ..."),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(
 		{

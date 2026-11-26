@@ -121,8 +121,13 @@ Commands that write to a store:
                                      and evidence gaps, sessions as active or last-observed with agent-reported vs
                                      controller-observed activity, explicit vs unknown session/task relationships, and the
                                      freshness of each. Writes nothing, grants nothing (docs/designs/coordinator-status.md)
-  coordinator brief [<root> | --root dir] --project <id> [--quiet]
-                                     derive a local-model briefing from read-only status evidence for one project
+  coordinator brief [<root> | --root dir] --project <id> [--pool <config.json> [--member <memberId>]] [--quiet]
+                                     derive a local-model briefing from read-only status evidence for one project; with
+                                     --pool, the model is the highest-priority eligible member of a local model pool, or
+                                     exactly --member (never switched). Advisory only (docs/designs/coordinator-model-pool-m1-implementation.md)
+  coordinator pool check [--pool <config.json>] [--quiet]
+                                     zero-token health observations of the pool's local members (M0's endpoint without
+                                     --pool) and the member a briefing would select now. Never requests a completion
   coordinator coordination [<root> | --root dir] --project <id>... [--quiet]
                                      read-only coordination projection (endo.coordinator-coordination.v0): assignments,
                                      dependency satisfaction and reasons, candidates (identity, current vs superseded, live

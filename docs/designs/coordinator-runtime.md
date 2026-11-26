@@ -81,7 +81,8 @@ holding a pass at HEAD and a failure at an earlier HEAD. A `not-current` task ha
 
 The status reader is read-only, has an output/deadline bound and uses existing bounded source reads. The model relay bounds body
 size, bytes, connections, generation (one choice), and the number of upstream exchanges; the embedded process has a deadline.
-Connections to the external model service are fixed to `127.0.0.1:8091`; failure doesn't switch providers. Incomplete scratch state
+Connections to the external model service are fixed to `127.0.0.1:8091`; failure doesn't switch providers. (With `--pool`, M1 makes
+the endpoint one validated loopback member per briefing; see [the model pool](coordinator-model-pool-m1-implementation.md).) Incomplete scratch state
 or a refused request cannot turn into a result. Scratch HOME, OpenClaw state, recording and the relay socket are removed on normal
 success or failure. Controller death during bubblewrap's launch window isn't attested, and abrupt death may leave private scratch files.
 The launcher neither installs plugins nor reads

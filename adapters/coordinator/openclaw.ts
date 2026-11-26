@@ -26,34 +26,34 @@ import {
 } from "../../runtime/contracts/coordinator-brief.ts";
 import { endoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { EndoCaptureLogV0 } from "../openai-proxy/capture-log.ts";
+import { bridgedCommandV0, type EndoModelRelayV0, modelRelayMountsV0 } from "../sandbox/model-relay.ts";
 import {
-	bridgedCommandV0,
-	type EndoModelRelayV0,
-	modelRelayMountsV0,
-	startModelRelayV0,
-} from "../sandbox/model-relay.ts";
+	coordinatorInferenceForV0,
+	ENDO_COORDINATOR_M0_TARGET_V0,
+	type EndoCoordinatorInferenceV0,
+	type EndoCoordinatorModelTargetV0,
+	startCoordinatorModelRelayV0,
+} from "./model-relay.ts";
 import {
 	COORDINATOR_ENV_V0,
 	coordinatorAnswerRefusalV0,
 	coordinatorBwrapV0,
 	readCoordinatorBriefStatusV0,
 } from "./status.ts";
-import { COORDINATOR_INFERENCE_V0, coordinatorWireV0 } from "./wire.ts";
+import type { coordinatorWireV0 } from "./wire.ts";
 
-const HARNESS = "OpenClaw 2026.11.7";
-const MODEL = "Inkling-2-Mini-Uncensored-AD-Q4_K";
-const ORIGIN = "http://127.0.0.1:8091";
-const ROUTE = "/v1/chat/completions";
+export const ENDO_COORDINATOR_HARNESS_V0 = "OpenClaw 2026.11.7";
+const HARNESS = ENDO_COORDINATOR_HARNESS_V0;
 const PROVIDER = "endo-local";
 const PORT = 18091;
 const PLUGIN = "endo-coordinator";
 const SCRATCH = "/scratch";
-function pluginEntry(projectId: string, toolText: string) {
+function pluginEntry(projectId: string, toolText: string, inference: EndoCoordinatorInferenceV0) {
 	return `import { appendFileSync } from "node:fs";
 const project = ${JSON.stringify(projectId)};
 const tool = ${JSON.stringify({ ...ENDO_COORDINATOR_TOOL_DEFINITION_V0, label: "Endophasia Status" })};
 const status = ${JSON.stringify(toolText)};
-const settings = ${JSON.stringify(COORDINATOR_INFERENCE_V0)};
+const settings = ${JSON.stringify(inference)};
 function refusal(name, params) {
   if (name !== tool.name) return "tool-not-permitted";
   if (!params || typeof params !== "object" || Array.isArray(params)) return "malformed-selector";
@@ -92,7 +92,15 @@ export default { id: ${JSON.stringify(PLUGIN)}, name: "Endophasia Coordinator", 
 
 const put = (path: string, value: unknown) => writeFileSync(path, JSON.stringify(value), { mode: 0o600 });
 
-function configure(directory: string, projectId: string, toolText: string, bearer: string, extraTool: boolean) {
+function configure(
+	directory: string,
+	projectId: string,
+	toolText: string,
+	bearer: string,
+	extraTool: boolean,
+	target: EndoCoordinatorModelTargetV0,
+) {
+	const inference = coordinatorInferenceForV0(target);
 	for (const dir of ["home", "state", "workspace", "plugin"]) mkdirSync(join(directory, dir), { mode: 0o700 });
 	put(join(directory, "plugin", "package.json"), {
 		name: PLUGIN,
@@ -107,8 +115,8 @@ function configure(directory: string, projectId: string, toolText: string, beare
 		contracts: { tools: [ENDO_COORDINATOR_TOOL_V0] },
 		configSchema: { type: "object", additionalProperties: false, properties: {} },
 	});
-	writeFileSync(join(directory, "plugin", "index.mjs"), pluginEntry(projectId, toolText), { mode: 0o600 });
-	const modelRef = `${PROVIDER}/${MODEL}`;
+	writeFileSync(join(directory, "plugin", "index.mjs"), pluginEntry(projectId, toolText, inference), { mode: 0o600 });
+	const modelRef = `${PROVIDER}/${target.model}`;
 	put(join(directory, "config.json"), {
 		agents: {
 			defaults: {
@@ -128,12 +136,12 @@ function configure(directory: string, projectId: string, toolText: string, beare
 					apiKey: bearer,
 					models: [
 						{
-							id: MODEL,
-							name: MODEL,
+							id: target.model,
+							name: target.model,
 							input: ["text"],
 							reasoning: false,
 							contextWindow: 32_768,
-							maxTokens: COORDINATOR_INFERENCE_V0.max_tokens,
+							maxTokens: inference.max_tokens,
 						},
 					],
 				},
@@ -150,14 +158,14 @@ function configure(directory: string, projectId: string, toolText: string, beare
 	});
 }
 
-const execute = (args: string[], signal: AbortSignal) =>
+const execute = (args: string[], signal: AbortSignal, timeoutMs: number) =>
 	new Promise<{ ok: boolean; stderr: string }>((resolve) => {
 		execFile(
 			"/usr/bin/bwrap",
 			args,
 			{
 				env: COORDINATOR_ENV_V0,
-				timeout: 155_000,
+				timeout: timeoutMs + 20_000,
 				killSignal: "SIGKILL",
 				maxBuffer: 512 * 1024,
 				signal,
@@ -195,12 +203,16 @@ async function providerBuild(origin: string) {
 
 export interface OpenClawCoordinatorTrialV0 {
 	readonly promptSha256: string;
-	readonly inference: typeof COORDINATOR_INFERENCE_V0;
+	readonly inference: EndoCoordinatorInferenceV0;
 	readonly wire: ReturnType<typeof coordinatorWireV0>["trace"];
 	readonly dispatched: boolean;
 	readonly toolOutcome: unknown;
 	readonly evidence: Extract<EndoCoordinatorBriefResultV0, { availability: "available" }>["evidence"];
 	readonly latencyMs: number;
+	/** From starting the sandboxed agent to its exit: the inference-bearing part of the turn. */
+	readonly inferenceElapsedMs: number;
+	/** Requests the relay admitted to the model server (each a completion request, whatever came back). */
+	readonly admittedExchanges: number;
 	readonly recorderClean: boolean;
 	readonly stderr: string;
 }
@@ -213,10 +225,20 @@ export async function runOpenClawCoordinatorV0(
 		origin?: string;
 		extraTool?: boolean;
 		trial?: (trial: OpenClawCoordinatorTrialV0) => void;
+		/** The inference target; M0's by default. `origin` still overrides its origin (tests). */
+		target?: EndoCoordinatorModelTargetV0;
+		/** The provider identity a pool observation already established; skips M0's router `/props` gate. */
+		provider?: string;
+		/** Cancels the briefing: a cancelled briefing is unavailable, whatever arrived. */
+		signal?: AbortSignal;
 	} = {},
 ): Promise<EndoCoordinatorBriefResultV0> {
 	const { projectId } = request;
-	const runtime = { harness: HARNESS, provider: "llama.cpp (unidentified)", model: MODEL };
+	const target: EndoCoordinatorModelTargetV0 = Object.freeze({
+		...(options.target ?? ENDO_COORDINATOR_M0_TARGET_V0),
+		...(options.origin === undefined ? {} : { origin: options.origin }),
+	});
+	const runtime = { harness: HARNESS, provider: "llama.cpp (unidentified)", model: target.model };
 	const base = { schemaVersion: "endo.coordinator-brief.v0" as const, projectId, runtime };
 	const unavailable = (reason: EndoCoordinatorBriefRefusalV0) => ({
 		...base,
@@ -224,7 +246,7 @@ export async function runOpenClawCoordinatorV0(
 		reason,
 	});
 	if (!ENDO_PROJECT_ID_PATTERN_V0.test(projectId)) return unavailable("malformed-selector");
-	const origin = options.origin ?? ORIGIN;
+	const origin = target.origin;
 	if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(origin)) return unavailable("model-unavailable");
 	const scratch = process.env.XDG_RUNTIME_DIR;
 	if (!scratch?.startsWith("/")) return unavailable("runtime-unavailable");
@@ -235,11 +257,14 @@ export async function runOpenClawCoordinatorV0(
 	} catch {
 		return unavailable("runtime-unavailable");
 	}
-	try {
-		runtime.provider = await providerBuild(origin);
-	} catch {
-		return unavailable("model-unavailable");
-	}
+	if (options.provider !== undefined) runtime.provider = options.provider;
+	else
+		try {
+			runtime.provider = await providerBuild(origin);
+		} catch {
+			return unavailable("model-unavailable");
+		}
+	if (options.signal?.aborted) return unavailable("runtime-unavailable");
 	const started = performance.now();
 	const status = await readCoordinatorBriefStatusV0(root, projectId);
 	if (!status.ok) {
@@ -253,7 +278,7 @@ export async function runOpenClawCoordinatorV0(
 	const toolOutcome = { availability: "available", status: status.view };
 	const toolText = JSON.stringify(toolOutcome);
 	const prompt = `${ENDO_COORDINATOR_INSTRUCTIONS_V0}\n\nProject in scope: ${projectId}.${request.question === undefined ? "" : `\nOperator asks: ${request.question}`}`;
-	if (Buffer.byteLength(prompt) > 8192) return unavailable("request-too-large");
+	if (Buffer.byteLength(prompt) > target.maxPromptBytes) return unavailable("request-too-large");
 	if (Buffer.byteLength(toolText) > 256 * 1024) return unavailable("status-output-too-large");
 	let directory: string | undefined;
 	let log: EndoCaptureLogV0 | undefined;
@@ -273,27 +298,21 @@ export async function runOpenClawCoordinatorV0(
 		const agent = join(directory, "agent");
 		mkdirSync(agent, { mode: 0o700 });
 		const bearer = randomBytes(24).toString("hex");
-		configure(agent, projectId, toolText, bearer, options.extraTool === true);
+		configure(agent, projectId, toolText, bearer, options.extraTool === true, target);
 		writeFileSync(join(agent, "prompt"), prompt, { mode: 0o600 });
 		const abort = new AbortController();
-		const wire = coordinatorWireV0(projectId, toolText, bearer, () => abort.abort());
 		log = new EndoCaptureLogV0(directory, endoDigestKeyV0(randomBytes(32), "coordinator"), "coordinator");
-		relay = await startModelRelayV0({
-			upstream: origin,
-			log,
+		const started_ = await startCoordinatorModelRelayV0({
+			target,
+			projectId,
+			toolText,
+			bearer,
 			runtimeDirectory: directory,
-			policy: {
-				routes: [{ method: "POST", path: ROUTE }],
-				model: MODEL,
-				maxRequestBytes: 512 * 1024,
-				maxTransferredBytes: 8 * 1024 * 1024,
-				maxConnections: 4,
-				maxTotalConnections: 8,
-				maxExchanges: 2,
-				maxCompletionTokens: COORDINATOR_INFERENCE_V0.max_tokens,
-			},
-			additionalAdmission: { request: wire.request, response: wire.response },
+			log,
+			onRefused: () => abort.abort(),
 		});
+		relay = started_.relay;
+		const wire: ReturnType<typeof coordinatorWireV0> = started_.wire;
 		const mounts = modelRelayMountsV0(relay, directory);
 		const args = coordinatorBwrapV0(
 			[
@@ -331,33 +350,42 @@ export async function runOpenClawCoordinatorV0(
 				"--agent",
 				"coordinator",
 				"--model",
-				`${PROVIDER}/${MODEL}`,
+				`${PROVIDER}/${target.model}`,
 				"--thinking",
 				"off",
 				"--timeout",
-				"135",
+				String(Math.ceil(target.timeoutMs / 1000)),
 				"--json",
 				"--message-file",
 				`${SCRATCH}/prompt`,
 			]).slice(1),
 			`${SCRATCH}/workspace`,
 		);
-		const ran = await execute(args, abort.signal);
+		const inferenceStarted = performance.now();
+		const deadline = target.hostDeadline ? AbortSignal.timeout(target.timeoutMs) : undefined;
+		const signals = [abort.signal, options.signal, deadline].filter((s): s is AbortSignal => s !== undefined);
+		const ran = await execute(args, signals.length === 1 ? abort.signal : AbortSignal.any(signals), target.timeoutMs);
+		const inferenceElapsedMs = Math.round(performance.now() - inferenceStarted);
 		await relay.close();
 		const recorderClean = relay.recordingFailures() === 0 && !existsSync(relay.socketPath);
 		const dispatch = join(agent, "dispatch");
 		const dispatched = existsSync(dispatch) && readFileSync(dispatch, "utf8") === "called\n";
 		options.trial?.({
 			promptSha256: sha256HexV0(prompt),
-			inference: COORDINATOR_INFERENCE_V0,
+			inference: coordinatorInferenceForV0(target),
 			wire: wire.trace,
 			dispatched,
 			toolOutcome: wire.trace.statusDelivered ? toolOutcome : null,
 			evidence: status.evidence,
 			latencyMs: Math.round(performance.now() - started),
+			inferenceElapsedMs,
+			admittedExchanges: relay.admitted(),
 			recorderClean,
 			stderr: ran.stderr.replaceAll(bearer, "[redacted]").slice(0, 4000),
 		});
+		if (options.signal?.aborted) return unavailable("runtime-unavailable");
+		if (deadline !== undefined && (deadline.aborted || inferenceElapsedMs >= target.timeoutMs))
+			return unavailable("inference-timeout");
 		if (wire.trace.refusal !== null) return unavailable(wire.trace.refusal);
 		if (!recorderClean) return unavailable("runtime-unavailable");
 		if (wire.trace.responses.length === 0)

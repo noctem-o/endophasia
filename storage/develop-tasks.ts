@@ -27,16 +27,13 @@ import {
 	constants,
 	fstatSync,
 	fsyncSync,
-	linkSync,
 	lstatSync,
 	mkdirSync,
 	openSync,
 	readdirSync,
-	readFileSync,
 	readSync,
 	renameSync,
 	rmSync,
-	writeFileSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import {
@@ -66,11 +63,11 @@ import {
 } from "../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { writeExactSyncV0 } from "./log.ts";
+import { acquireEndoNumberedLockV0 } from "./numbered-lock.ts";
 
 export const ENDO_DEVELOP_DIRECTORY_V0 = "develop";
 const FILE = "tasks.json";
 const LOCK = "tasks.lock";
-const LOCK_NUMBER = /^tasks\.lock\.([1-9][0-9]{0,14})$/;
 const LOCK_TEMPORARY = /^tasks\.lock\.tmp-[0-9]+-[0-9a-f]{12}$/;
 const TEMPORARY = /^tasks\.json\.tmp-[0-9]+-[0-9a-f]{12}$/;
 
@@ -112,9 +109,6 @@ export interface EndoDevelopTasksStoreOptionsV0 {
 type Draft<T> = { ok: true; value: T; unchanged?: boolean } | { ok: false; code: EndoTasksRefusalV0 };
 const fail = (code: EndoTasksRefusalV0): { ok: false; code: EndoTasksRefusalV0 } => ({ ok: false, code });
 
-const sleep = (ms: number): void => {
-	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-};
 const errno = (error: unknown): string | undefined => (error as NodeJS.ErrnoException | undefined)?.code;
 const hex = (bytes: number): string => randomBytes(bytes).toString("hex");
 const clone = (file: EndoDevelopTasksFileV1): EndoDevelopTasksFileV1 =>
@@ -205,125 +199,9 @@ export class DevelopTasksStoreV0 {
 
 	// ---- the one write path ----------------------------------------------------------------------------------------------------------
 
-	/**
-	 * The writer lock. It is a series of numbered files, `tasks.lock.<n>`, and the HIGHEST number is the lock: its file says who holds it, or
-	 * that it was released. A writer takes the lock by creating `n + 1` (a hard link of a finished temporary file, so the name appears whole
-	 * and only one of several contenders can create it), then deletes the lower numbers. Nothing is ever removed or rewritten to take a lock
-	 * from another writer, so one writer cannot take away a lock another has just acquired; a lock whose process is gone is simply
-	 * superseded by the next number. The highest number is never deleted (a release marks it released, by an atomic rename), so a number is
-	 * never reused and a slow contender that judged an old holder dead can only ever create a number that already exists or has been passed.
-	 */
+	/** The writer lock (`tasks.lock.<n>`): storage/numbered-lock.ts, shared with the coordination file under its own name. */
 	#acquire(): (() => void) | "busy" | "failed" {
-		const deadline = Date.now() + this.#lockWaitMs;
-		for (;;) {
-			const numbers = this.#lockNumbers();
-			if (numbers === undefined) return "failed";
-			const top = numbers.length === 0 ? 0 : Math.max(...numbers);
-			let claimable = top === 0;
-			if (top > 0) {
-				const state = this.#lockState(top);
-				if (state === "gone") continue;
-				if (state === "failed") return "failed";
-				claimable = state === "free";
-			}
-			if (claimable) {
-				const mine = top + 1;
-				const made = this.#createLock(mine, false);
-				if (made === "failed") return "failed";
-				if (made === "created") {
-					// Someone may have created a higher number than ours while ours was not there (ours was deleted as a lower one, then
-					// created again by a slow contender): then ours is not the lock, and is withdrawn.
-					const after = this.#lockNumbers();
-					if (after === undefined) {
-						rmSync(this.#lockPath(mine), { force: true });
-						return "failed";
-					}
-					if (after.some((n) => n > mine)) rmSync(this.#lockPath(mine), { force: true });
-					else {
-						for (const n of after) if (n < mine) rmSync(this.#lockPath(n), { force: true });
-						let released = false;
-						return () => {
-							if (released) return;
-							released = true;
-							// Marked released, never deleted: the highest number must stay.
-							if (this.#createLock(mine, true) === "failed") rmSync(this.#lockPath(mine), { force: true });
-						};
-					}
-				}
-				if (Date.now() < deadline) continue;
-			}
-			if (Date.now() >= deadline) return "busy";
-			sleep(20);
-		}
-	}
-
-	#lockPath(n: number): string {
-		return join(this.#dir, `${LOCK}.${n}`);
-	}
-
-	/** The lock numbers present, or undefined when the directory cannot be listed. */
-	#lockNumbers(): number[] | undefined {
-		try {
-			const numbers: number[] = [];
-			for (const name of readdirSync(this.#dir)) {
-				const found = LOCK_NUMBER.exec(name);
-				if (found !== null) numbers.push(Number(found[1]));
-			}
-			return numbers;
-		} catch {
-			return undefined;
-		}
-	}
-
-	/** Whether the lock `n` is free to be superseded: released, or held by a process that is gone (or an unreadable one that is old). */
-	#lockState(n: number): "free" | "held" | "gone" | "failed" {
-		const path = this.#lockPath(n);
-		let text: string;
-		try {
-			text = readFileSync(path, "utf8");
-		} catch (error) {
-			return errno(error) === "ENOENT" ? "gone" : "failed";
-		}
-		let parsed: { pid?: unknown; released?: unknown } | undefined;
-		try {
-			parsed = JSON.parse(text) as { pid?: unknown; released?: unknown };
-		} catch {
-			parsed = undefined;
-		}
-		if (parsed?.released === true) return "free";
-		const holder =
-			typeof parsed?.pid === "number" && Number.isSafeInteger(parsed.pid) && parsed.pid > 0 ? parsed.pid : undefined;
-		if (holder === undefined) {
-			// Not a lock this module wrote (hand-made, damaged): it is only superseded once it is old.
-			const info = lstatSync(path, { throwIfNoEntry: false });
-			if (info === undefined) return "gone";
-			return Date.now() - info.mtimeMs > 60_000 ? "free" : "held";
-		}
-		if (holder === process.pid) return "held";
-		try {
-			process.kill(holder, 0);
-			return "held";
-		} catch (probe) {
-			return errno(probe) === "EPERM" ? "held" : "free";
-		}
-	}
-
-	/** Make lock `n` appear whole: created exclusively when it is a new lock, replaced atomically when it is the release of one's own. */
-	#createLock(n: number, release: boolean): "created" | "exists" | "failed" {
-		const temporary = join(this.#dir, `${LOCK}.tmp-${process.pid}-${hex(6)}`);
-		const content = `${JSON.stringify(
-			release ? { released: true } : { pid: process.pid, at: new Date(this.#now()).toISOString() },
-		)}\n`;
-		try {
-			writeFileSync(temporary, content, { flag: "wx", mode: 0o600 });
-			if (release) renameSync(temporary, this.#lockPath(n));
-			else linkSync(temporary, this.#lockPath(n));
-			return "created";
-		} catch (error) {
-			return !release && errno(error) === "EEXIST" ? "exists" : "failed";
-		} finally {
-			rmSync(temporary, { force: true });
-		}
+		return acquireEndoNumberedLockV0(this.#dir, LOCK, { waitMs: this.#lockWaitMs, now: this.#now });
 	}
 
 	/** Make the directory (owner-only) and prove it is a plain directory, not a link someone put there. */

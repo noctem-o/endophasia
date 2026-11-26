@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
+import { DevelopCoordinationGitV0, resolveProtectedCandidateV0 } from "../adapters/develop/coordination.ts";
 import { readDevelopEvidenceBridgeV0 } from "../adapters/develop/evidence-bridge.ts";
 import {
 	endoBoundedTreeDigestV0,
@@ -438,6 +439,35 @@ const failed = (r: ReturnType<typeof reading>) =>
 	(r?.binding.checks ?? []).filter((c) => c.result === "fail").map((c) => c.check);
 
 describe("DEVELOP-PROTECTED-ATTEMPT-001: launcher and binding (deterministic, fake runner)", () => {
+	it("COORDINATOR-ASSIGNMENT-002: a bound attempt resolves to a protected candidate that is re-established on read, and a forged binding is not", async () => {
+		const f = fixture();
+		expect(resolveProtectedCandidateV0(f.root, f.attemptId)).toMatchObject({ ok: false, code: "not-found" });
+		await launched(f);
+		const resolved = resolveProtectedCandidateV0(f.root, f.attemptId);
+		if (!resolved.ok) throw new Error(`${resolved.code}: ${resolved.detail}`);
+		const binding = readBinding(f);
+		expect(resolved.candidate).toMatchObject({
+			kind: "protected-candidate",
+			attemptId: f.attemptId,
+			runId: binding.target.runId,
+			bindingSha256: binding.bindingSha256,
+		});
+		const stored = {
+			...(resolved.candidate as Extract<typeof resolved.candidate, { kind: "protected-candidate" }>),
+			candidateId: `endo.candidate.${"c".repeat(32)}`,
+			declaredBy: "operator" as const,
+			supersedesCandidateId: null,
+			taskRevisionAtDeclare: 0,
+			declaredAtMs: 0,
+		};
+		const git = new DevelopCoordinationGitV0();
+		expect(await git.identity(f.root, stored)).toBe("established");
+		forgeBinding(f, (b) => {
+			b.briefSha256 = H("d");
+		});
+		expect(await git.identity(f.root, stored)).toBe("not-established");
+	});
+
 	it("binds a launched attempt to its reconstructed candidate, and the bridge reads it as controller-established", async () => {
 		const f = fixture();
 		const { out, result } = await launched(f);

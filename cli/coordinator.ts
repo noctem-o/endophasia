@@ -69,7 +69,36 @@ async function brief(argv: readonly string[]): Promise<void> {
 		);
 }
 
+/** `endo coordinator coordination`: the companion projection, read on the host (Git re-verification on). Writes nothing. */
+async function coordination(argv: readonly string[]): Promise<void> {
+	const usage = "usage: endo coordinator coordination [<root> | --root dir] --project <id>... [--quiet]";
+	const taken = takeEndoRootV0(argv, 0, new Set(["--project"]));
+	const projects: string[] = [];
+	let quiet = false;
+	const rest = [...taken.rest];
+	while (rest.length > 0) {
+		const flag = rest.shift();
+		if (flag === "--quiet") quiet = true;
+		else if (flag === "--project") {
+			const value = rest.shift();
+			if (value === undefined || !ENDO_PROJECT_ID_PATTERN_V0.test(value))
+				throw new TypeError("--project needs one endo.project.<32 hex> id");
+			projects.push(value);
+		} else throw new TypeError(usage);
+	}
+	if (projects.length === 0) throw new TypeError(usage);
+	announceEndoRootV0(taken);
+	const { hostProjection } = await import("./develop-coordination.ts");
+	const coordinatorCoordination = await hostProjection(taken.root, projects);
+	process.stdout.write(`${canonicalEndoJsonV0(JSON.parse(JSON.stringify({ coordinatorCoordination })))}\n`);
+	if (!quiet)
+		process.stderr.write(
+			`coordination source: ${coordinatorCoordination.source.state}; gaps: ${coordinatorCoordination.gaps.join(", ") || "none"}.\nRead-only projection: liveness is not observed, readiness is not permission, an assignment is not an authorisation.\n`,
+		);
+}
+
 export const COORDINATOR_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
 	status,
 	brief,
+	coordination,
 };

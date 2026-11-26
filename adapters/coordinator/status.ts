@@ -6,6 +6,11 @@ import {
 	type EndophasiaStatusConfigV0,
 	externalEndophasiaStatusV0,
 } from "../../integrations/openclaw-endophasia-status/src/status-reader.ts";
+import {
+	ENDO_COORDINATION_PROJECTION_AUTHORITY_V0,
+	ENDO_COORDINATOR_COORDINATION_SCHEMA_V0,
+	validateEndoCoordinatorCoordinationV0,
+} from "../../protocol/coordinator-coordination.ts";
 import { validateEndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
@@ -127,6 +132,7 @@ export async function projectStatusCommandV0(root: string, id: string) {
 				head?.worktree ?? "",
 				head?.commonDir ?? "",
 				head === null ? "" : head.dirty.length === 0 ? "yes" : "no",
+				...(snapshot.coordinationUnsafe ? ["unsafe-coordination"] : []),
 			]);
 		} catch (error) {
 			snapshot.close();
@@ -164,7 +170,30 @@ export async function readCoordinatorBriefStatusV0(root: string, id: string) {
 		if (code === "ENOBUFS") return { ok: false, reason: "output-too-large" } as const;
 		if (code === "ETIMEDOUT") return { ok: false, reason: "timed-out" } as const;
 		if (ran.error || ran.status !== 0) return { ok: false, reason: "sandbox-unavailable" } as const;
-		const status = validateEndoCoordinatorStatusV0(JSON.parse(ran.stdout).coordinatorStatus);
+		const parsed = JSON.parse(ran.stdout) as { coordinatorStatus?: unknown; coordinatorCoordination?: unknown };
+		const status = validateEndoCoordinatorStatusV0(parsed.coordinatorStatus);
+		// The companion projection is held to the same disclosure rule: exactly the one project asked for, or nothing is used.
+		let coordination: ReturnType<typeof validateEndoCoordinatorCoordinationV0>;
+		try {
+			coordination = validateEndoCoordinatorCoordinationV0(parsed.coordinatorCoordination);
+			if (
+				coordination.scope.requested?.length !== 1 ||
+				coordination.scope.requested[0] !== id ||
+				coordination.projects.some((p) => p.id !== id)
+			)
+				throw new TypeError("unexpected scope");
+		} catch {
+			coordination = validateEndoCoordinatorCoordinationV0({
+				schemaVersion: ENDO_COORDINATOR_COORDINATION_SCHEMA_V0,
+				readAtMs: status.readAtMs,
+				authority: ENDO_COORDINATION_PROJECTION_AUTHORITY_V0,
+				basis: { liveness: "not-observed", consistency: "per-file-snapshot", attribution: "unsigned-local-record" },
+				scope: { requested: [id] },
+				source: { state: "unreadable", reason: "invalid-companion", revision: null },
+				projects: [],
+				gaps: ["coordination-unreadable"],
+			});
+		}
 		if (
 			status.scope.requested?.length !== 1 ||
 			status.scope.requested[0] !== id ||
@@ -181,6 +210,8 @@ export async function readCoordinatorBriefStatusV0(root: string, id: string) {
 		return {
 			ok: true as const,
 			view,
+			// Validated and project-scoped, but NOT part of the model view in E1: the OpenClaw-facing view is unchanged.
+			coordination,
 			evidence: {
 				readAtMs: status.readAtMs,
 				projectionSha256: sha256HexV0(canonicalEndoJsonV0(status)),

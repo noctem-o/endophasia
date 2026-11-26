@@ -4,7 +4,7 @@
  * Speaks the exact stdio JSON-RPC wire shape observed on `codex-cli 0.171.0` (no `jsonrpc` field on replies/notifications).
  */
 
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 
 const argv = process.argv.slice(2);
 if (argv.includes("--version")) {
@@ -19,6 +19,24 @@ const scenarios = new Set(
 		.filter(Boolean),
 );
 const logFile = process.env.FAKE_CODEX_LOG_FILE ?? null;
+const triggerFile = process.env.FAKE_CODEX_TRIGGER_FILE ?? null;
+function afterIdleTrigger(fn) {
+	if (!triggerFile) {
+		setTimeout(fn, 25);
+		return;
+	}
+	if (existsSync(triggerFile)) {
+		fn();
+		return;
+	}
+	const timer = setInterval(() => {
+		if (existsSync(triggerFile)) {
+			clearInterval(timer);
+			fn();
+		}
+	}, 10);
+	timer.unref();
+}
 const recorded = [];
 const record = (entry) => {
 	recorded.push(entry);
@@ -238,23 +256,25 @@ function handleMessage(msg) {
 		});
 		send({ method: "thread/started", params: { thread } });
 		if (scenarios.has("native-approval-idle")) {
-			send({
-				id: "srv-idle-1",
-				method: "item/commandExecution/requestApproval",
-				params: {
-					kind: "command",
-					threadId,
-					turnId: "019a0000-0000-7000-8000-000000000099",
-					itemId: "item-idle-1",
-					startedAtMs: Date.now(),
-					environmentId: null,
-					command: "echo idle",
-					cwd: "/tmp/fixture",
-				},
+			afterIdleTrigger(() => {
+				send({
+					id: "srv-idle-1",
+					method: "item/commandExecution/requestApproval",
+					params: {
+						kind: "command",
+						threadId,
+						turnId: "019a0000-0000-7000-8000-000000000099",
+						itemId: "item-idle-1",
+						startedAtMs: Date.now(),
+						environmentId: null,
+						command: "echo idle",
+						cwd: "/tmp/fixture",
+					},
+				});
 			});
 		}
 		if (scenarios.has("native-approval-idle-null-turn")) {
-			setTimeout(() => {
+			afterIdleTrigger(() => {
 				send({
 					id: "srv-idle-null-turn-1",
 					method: "item/commandExecution/requestApproval",
@@ -268,7 +288,7 @@ function handleMessage(msg) {
 						cwd: "/tmp/fixture",
 					},
 				});
-			}, 25);
+			});
 		}
 		if (scenarios.has("late-unexpected-mcp-startup")) {
 			setTimeout(() => {

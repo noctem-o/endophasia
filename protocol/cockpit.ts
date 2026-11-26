@@ -262,8 +262,30 @@ export const ENDO_COCKPIT_CATEGORIES_V0 = [
 ] as const;
 export type EndoCockpitCategoryV0 = (typeof ENDO_COCKPIT_CATEGORIES_V0)[number];
 
-/** The category of a kind: its first dotted segment when that is in the vocabulary, else "other". The one definition. */
+/** Known `codex.*` event kinds mapped into the closed 11-category timeline vocabulary (unknown `codex.*` stays `"other"`). */
+const CODEX_CATEGORY_MAP_V0: Readonly<Record<string, EndoCockpitCategoryV0>> = Object.freeze({
+	"codex.thread-started": "session",
+	"codex.turn-started": "agent",
+	"codex.turn-completed": "agent",
+	"codex.item-started": "agent",
+	"codex.item-completed": "agent",
+	"codex.token-usage-updated": "agent",
+	"codex.error": "agent",
+	"codex.prompt-dispatched": "control",
+	"codex.steer-dispatched": "control",
+	"codex.stop-requested": "control",
+	"codex.stop-accepted": "control",
+	"codex.stop-refused": "control",
+	"codex.native-approval-requested": "control",
+	"codex.native-approval-resolved": "control",
+	"codex.thread-compacted": "compaction",
+	"codex.transport-fault": "harness",
+	"codex.connection-lost": "harness",
+});
+
+/** The category of a kind: known `codex.*` kinds map to their semantic lane; otherwise first dotted segment when in vocabulary, else `"other"`. */
 export function endoCockpitCategoryOfV0(kind: string): EndoCockpitCategoryV0 {
+	if (Object.hasOwn(CODEX_CATEGORY_MAP_V0, kind)) return CODEX_CATEGORY_MAP_V0[kind]!;
 	const dot = kind.indexOf(".");
 	const segment = dot === -1 ? kind : kind.slice(0, dot);
 	return (ENDO_COCKPIT_CATEGORIES_V0 as readonly string[]).includes(segment)

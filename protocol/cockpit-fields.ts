@@ -193,6 +193,90 @@ export const ENDO_COCKPIT_FIELD_SPECS_V0: Readonly<Record<string, readonly EndoC
 	"harness.session-mismatch": [],
 	"runtime.unrecognized-event": [runtimeEvent],
 	"runtime.malformed-event": [runtimeEvent],
+	"codex.thread-started": [
+		["instanceId", "instanceId", "observed", "string"],
+		["ephemeral", "ephemeral", "reported", "boolean"],
+		["model", "model", "reported", "string", true],
+		["modelProvider", "modelProvider", "reported", "string", true],
+		["approvalPolicy", "approvalPolicy", "reported", "string"],
+		["approvalsReviewer", "approvalsReviewer", "reported", "string"],
+	],
+	"codex.prompt-dispatched": [["instanceId", "instanceId", "observed", "string"]],
+	"codex.steer-dispatched": [["instanceId", "instanceId", "observed", "string"]],
+	"codex.stop-requested": [["instanceId", "instanceId", "observed", "string"]],
+	"codex.stop-accepted": [["instanceId", "instanceId", "observed", "string"]],
+	"codex.stop-refused": [
+		["instanceId", "instanceId", "observed", "string"],
+		["rpcCode", "rpcCode", "reported", "number"],
+	],
+	"codex.turn-started": [["instanceId", "instanceId", "observed", "string"]],
+	"codex.turn-completed": [
+		["instanceId", "instanceId", "observed", "string"],
+		["status", "status", "reported", "string"],
+		["codexErrorInfo", "codexErrorInfo", "reported", "string"],
+	],
+	"codex.item-started": [
+		["instanceId", "instanceId", "observed", "string"],
+		["itemType", "itemType", "reported", "string"],
+		["phase", "phase", "reported", "string"],
+		["toolName", "toolName", "reported", "string"],
+	],
+	"codex.item-completed": [
+		["instanceId", "instanceId", "observed", "string"],
+		["itemType", "itemType", "reported", "string"],
+		["phase", "phase", "reported", "string"],
+		["toolName", "toolName", "reported", "string"],
+		["exitCode", "exitCode", "reported", "number", true],
+		["changeCount", "changeCount", "reported", "number"],
+	],
+	"codex.token-usage-updated": [
+		["instanceId", "instanceId", "observed", "string"],
+		["inputTokens", "inputTokens", "reported", "number", true],
+		["cachedInputTokens", "cachedInputTokens", "reported", "number", true],
+		["outputTokens", "outputTokens", "reported", "number", true],
+		["reasoningTokens", "reasoningTokens", "reported", "number", true],
+		["totalTokens", "totalTokens", "reported", "number", true],
+		["modelContextWindow", "modelContextWindow", "reported", "number", true],
+	],
+	"codex.thread-compacted": [["instanceId", "instanceId", "observed", "string"]],
+	"codex.native-approval-requested": [
+		["instanceId", "instanceId", "observed", "string"],
+		["approvalKind", "approvalKind", "reported", "string"],
+		["nativeMethod", "nativeMethod", "reported", "string"],
+		["proposesBroadening", "proposesBroadening", "derived", "boolean"],
+	],
+	"codex.native-approval-resolved": [
+		["instanceId", "instanceId", "observed", "string"],
+		["approvalKind", "approvalKind", "reported", "string"],
+		["nativeMethod", "nativeMethod", "reported", "string"],
+		["resolution", "resolution", "observed", "string"],
+		["scope", "scope", "observed", "string"],
+		["code", "code", "observed", "string"],
+	],
+	"codex.error": [
+		["instanceId", "instanceId", "observed", "string"],
+		["willRetry", "willRetry", "reported", "boolean"],
+		["codexErrorInfo", "codexErrorInfo", "reported", "string", true],
+	],
+	"codex.transport-fault": [
+		["instanceId", "instanceId", "observed", "string"],
+		["faultKind", "faultKind", "observed", "string"],
+		["byteLength", "byteLength", "observed", "number"],
+	],
+	"codex.connection-lost": [
+		["instanceId", "instanceId", "observed", "string"],
+		["expected", "expected", "observed", "boolean"],
+		["cleanupBoundary", "cleanupBoundary", "observed", "string"],
+		["cleanupResult", "cleanupResult", "observed", "string"],
+		["remainingProcesses", "remainingProcesses", "observed", "number", true],
+		["exitCode", "exit.code", "observed", "number", true],
+		["exitSignal", "exit.signal", "observed", "string", true],
+		["spawnFailed", "exit.spawnFailed", "observed", "boolean"],
+	],
+	"codex.unrecognized-notification": [
+		["instanceId", "instanceId", "observed", "string"],
+		["method", "method", "reported", "string"],
+	],
 });
 
 /**
@@ -235,6 +319,7 @@ export const ENDO_COCKPIT_INTERRUPTION_KINDS_V0: readonly string[] = freezeDeep(
 	"lifecycle.interrupted",
 	"lifecycle.detached",
 	"harness.process-exited",
+	"codex.connection-lost",
 ]);
 export const ENDO_COCKPIT_DISCONTINUITY_KINDS_V0: readonly string[] = freezeDeep([
 	"lifecycle.session-resumed",
@@ -245,10 +330,12 @@ export const ENDO_COCKPIT_ANOMALY_KINDS_V0: readonly string[] = freezeDeep([
 	"harness.protocol-fault",
 	"harness.session-mismatch",
 	"runtime.malformed-event",
+	"codex.transport-fault",
 ]);
 export const ENDO_COCKPIT_UNRECOGNIZED_KINDS_V0: readonly string[] = freezeDeep([
 	"lifecycle.unrecognized-runtime-event",
 	"runtime.unrecognized-event",
+	"codex.unrecognized-notification",
 ]);
 
 /**

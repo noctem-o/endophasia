@@ -9320,3 +9320,238 @@ body:has(.coordinator[data-appearance="field"][data-atmosphere="storm"]) .topbar
 	max-height: 7.5rem;
 	overflow-y: auto;
 }
+
+/* Coordinator read-only coordination views (E2-F): restrained dark instrument surfaces, minimal vertical chrome. */
+.coordinator-coord-banner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px;
+	margin-bottom: 10px;
+	border: 1px solid var(--line-subtle);
+	border-radius: var(--radius);
+	background: var(--surface-1);
+	font-size: 12px;
+}
+
+.coordinator-pill {
+	display: inline-flex;
+	align-items: center;
+	padding: 1px 7px;
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	font-family: var(--mono);
+	font-size: 11px;
+	color: var(--fg-2);
+	background: var(--surface-2);
+	white-space: nowrap;
+}
+
+.coordinator-pill[data-tone="info"] {
+	border-color: var(--obs);
+	color: var(--obs);
+}
+
+.coordinator-pill[data-tone="attention"] {
+	border-color: var(--attention);
+	color: var(--attention);
+}
+
+.coordinator-pill[data-tone="fault"] {
+	border-color: var(--fault);
+	color: var(--fault);
+}
+
+.coordinator-pill[data-role="builder"] {
+	border-color: var(--obs);
+	color: var(--fg-1);
+}
+
+.coordinator-pill[data-role="reviewer"] {
+	border-color: var(--rep);
+	color: var(--fg-1);
+}
+
+.coordinator-pill[data-role="investigator"] {
+	border-color: var(--der);
+	color: var(--fg-1);
+}
+
+.coordinator-lanes {
+	display: grid;
+	gap: 12px;
+}
+
+.coordinator-lane {
+	border: 1px solid var(--line);
+	border-radius: var(--radius);
+	background: var(--surface-1);
+	padding: 10px 12px;
+	display: grid;
+	gap: 8px;
+}
+
+.coordinator-lane-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	border-bottom: 1px solid var(--line-subtle);
+	padding-bottom: 6px;
+}
+
+.coordinator-lane-id {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.coordinator-lane-cards {
+	display: grid;
+	gap: 8px;
+}
+
+.coordinator-assign-card {
+	border: 1px solid var(--line-subtle);
+	border-radius: var(--radius);
+	background: var(--surface-2);
+	padding: 8px 10px;
+	display: grid;
+	gap: 6px;
+}
+
+.coordinator-assign-card[data-hazard="liveness-unverified"] {
+	border-left: 2px solid var(--fault);
+}
+
+.coordinator-assign-top {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.coordinator-assign-meta {
+	display: grid;
+	gap: 4px;
+	margin: 0;
+	font-size: 12px;
+}
+
+.coordinator-assign-meta > div {
+	display: grid;
+	grid-template-columns: minmax(7.5em, max-content) minmax(0, 1fr);
+	gap: 8px;
+	align-items: baseline;
+}
+
+.coordinator-assign-meta dt {
+	color: var(--fg-3);
+	font-family: var(--mono);
+	font-size: 11px;
+	white-space: nowrap;
+}
+
+.coordinator-assign-meta dd {
+	margin: 0;
+	color: var(--fg-2);
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.coordinator-inline-list {
+	margin: 0;
+	padding-left: 16px;
+	display: grid;
+	gap: 2px;
+}
+
+.coordinator-dep-graph {
+	display: grid;
+	gap: 10px;
+}
+
+.coordinator-dep-svg-wrap {
+	border: 1px solid var(--line-subtle);
+	border-radius: var(--radius);
+	background: var(--surface-1);
+	padding: 8px;
+	overflow-x: auto;
+}
+
+.coordinator-dep-svg {
+	display: block;
+	width: 100%;
+	max-width: 760px;
+	height: auto;
+}
+
+.coordinator-dep-edge-line {
+	stroke: var(--fg-3);
+	stroke-width: 1.5;
+}
+
+.coordinator-dep-edge-line[data-satisfaction="satisfied"] {
+	stroke: var(--obs);
+}
+
+.coordinator-dep-edge-line[data-satisfaction="unsatisfied"] {
+	stroke: var(--attention);
+	stroke-dasharray: 4 3;
+}
+
+.coordinator-dep-node rect {
+	fill: var(--surface-2);
+	stroke: var(--line);
+	stroke-width: 1;
+}
+
+.coordinator-dep-node-title {
+	fill: var(--fg-1);
+	font-family: var(--sans);
+	font-size: 11px;
+	font-weight: 600;
+}
+
+.coordinator-dep-node-sub {
+	fill: var(--fg-3);
+	font-family: var(--mono);
+	font-size: 10px;
+}
+
+.coordinator-dep-edge-list,
+.coordinator-conflict-list,
+.coordinator-review-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 6px;
+}
+
+.coordinator-dep-edge-row,
+.coordinator-conflict-list li,
+.coordinator-review-list > li {
+	border: 1px solid var(--line-subtle);
+	border-radius: var(--radius);
+	background: var(--surface-1);
+	padding: 7px 9px;
+	display: grid;
+	gap: 3px;
+	font-size: 12px;
+}
+
+.coordinator-dep-edge-main,
+.coordinator-review-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+}
+
+.coordinator-provenance-groups {
+	display: grid;
+	gap: 10px;
+}

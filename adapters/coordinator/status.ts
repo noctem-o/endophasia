@@ -119,7 +119,7 @@ export async function projectStatusCommandV0(root: string, id: string) {
 			env: { HOME: "/nonexistent" },
 		}).observe(projectRoot);
 		const head = observed.ok && !observed.observation.linked ? observed.observation : null;
-		const snapshot = pinCoordinatorStoreV0(store);
+		const snapshot = pinCoordinatorStoreV0(store, id);
 		const mounts = ["--ro-bind", codeRoot, codeRoot, ...snapshot.mounts];
 		let args: string[];
 		try {
@@ -133,6 +133,7 @@ export async function projectStatusCommandV0(root: string, id: string) {
 				head?.commonDir ?? "",
 				head === null ? "" : head.dirty.length === 0 ? "yes" : "no",
 				...(snapshot.coordinationUnsafe ? ["unsafe-coordination"] : []),
+				...(snapshot.reviewsUnsafe ? ["unsafe-reviews"] : []),
 			]);
 		} catch (error) {
 			snapshot.close();

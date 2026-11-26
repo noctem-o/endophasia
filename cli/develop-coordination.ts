@@ -23,7 +23,15 @@ import {
 	type EndoDependencyConditionV0,
 	type EndoIntendedHarnessFamilyV0,
 	type EndoParticipantRoleV0,
+	type EndoRegisteredWorktreeV0,
 } from "../protocol/develop-coordination.ts";
+import {
+	ENDO_ADVISORY_FINDING_SEVERITIES_V0,
+	ENDO_ADVISORY_REVIEW_VERDICTS_V0,
+	type EndoAdvisoryFindingSeverityV0,
+	type EndoAdvisoryReviewFindingV0,
+	type EndoAdvisoryReviewVerdictV0,
+} from "../protocol/develop-coordination-reviews.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0, type EndoDevelopProjectV0 } from "../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { readEndoCoordinatorCoordinationV0 } from "../storage/coordinator-coordination.ts";
@@ -32,6 +40,7 @@ import {
 	type EndoAssignmentSpecV0,
 	type EndoCoordinationResultV0,
 } from "../storage/develop-coordination.ts";
+import { DevelopCoordinationReviewsStoreV0 } from "../storage/develop-coordination-reviews.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { flagsOf } from "./develop-tasks.ts";
 
@@ -51,6 +60,8 @@ const REFUSALS: Readonly<Record<string, string>> = {
 	"cross-project": "that crosses a project, task or repository boundary",
 	"worktree-write-overlap":
 		"another writable assignment (active, or ended with liveness unverified) uses that worktree; pass --allow-shared-worktree to acknowledge sharing it",
+	"worktree-not-registered":
+		"that sibling worktree is not explicitly registered or failed validation; register it with `endo worktree register`",
 	"synthetic-not-admitted": "a synthetic (test-*) session source cannot be associated with an assignment",
 	"unsupported-source": "that session source cannot be recorded by this version",
 	unsupported: "that operation is not supported by this version",
@@ -127,6 +138,7 @@ async function specOf(
 	flags: Map<string, string>,
 	project: EndoDevelopProjectV0,
 	usage: string,
+	registeredWorktrees: readonly EndoRegisteredWorktreeV0[] = [],
 ): Promise<EndoAssignmentSpecV0> {
 	const role = oneOf<EndoParticipantRoleV0>(need(flags, "--role", usage), ENDO_PARTICIPANT_ROLES_V0, "--role");
 	const harness = flags.get("--harness");
@@ -142,7 +154,11 @@ async function specOf(
 	const targetCandidate = flags.get("--target-candidate");
 	if ((targetTask === undefined) !== (targetCandidate === undefined))
 		throw new TypeError("--target-task and --target-candidate go together");
-	const place = await new DevelopCoordinationGitV0().resolveWorkspace(project, need(flags, "--worktree", usage));
+	const place = await new DevelopCoordinationGitV0().resolveWorkspace(
+		project,
+		need(flags, "--worktree", usage),
+		registeredWorktrees,
+	);
 	if (!place.ok) return refuse(place.code, place.detail);
 	const hints = flags.get("--path-hints");
 	return {
@@ -176,9 +192,12 @@ async function assignCreate(argv: readonly string[]): Promise<void> {
 		"usage: endo assign create [<root> | --root dir] --project <id> --task <id> --participant <slug> --role <builder|reviewer|investigator> [--harness <pi|codex|claude-code|any>] --worktree <dir> --access <rw|ro> [--path-hints a,b] [--target-task <id> --target-candidate <id>] [--allow-shared-worktree yes] --revision <file revision> --task-revision <task revision>";
 	const { root, flags } = flagsOf(argv, ["--project", "--task", "--revision", ...SPEC_FLAGS], usage);
 	const project = projectOf(root, need(flags, "--project", usage));
-	const spec = await specOf(flags, project, usage);
+	const coordStore = new DevelopCoordinationStoreV0(root);
+	const coordRead = coordStore.read();
+	const registeredWorktrees = coordRead.ok ? (coordRead.file.registeredWorktrees ?? []) : [];
+	const spec = await specOf(flags, project, usage, registeredWorktrees);
 	const r = done(
-		new DevelopCoordinationStoreV0(root).createAssignment({
+		coordStore.createAssignment({
 			expectedTaskRevision: revisionOf(flags, usage, "--task-revision"),
 			expectedFileRevision: revisionOf(flags, usage),
 			projectId: project.id,
@@ -200,7 +219,7 @@ async function assignSupersede(argv: readonly string[]): Promise<void> {
 	const id = need(flags, "--assignment", usage);
 	const current = read.file.assignments.find((a) => a.assignmentId === id);
 	if (current === undefined) return refuse("not-found", `assignment ${id}`);
-	const spec = await specOf(flags, projectOf(root, current.projectId), usage);
+	const spec = await specOf(flags, projectOf(root, current.projectId), usage, read.file.registeredWorktrees ?? []);
 	const r = done(
 		store.supersedeAssignment(
 			id,
@@ -558,15 +577,257 @@ export const CANDIDATE_COMMANDS_V0: Record<string, (argv: readonly string[]) => 
 	list: candidateList,
 };
 
+// ---- registered sibling worktrees (E2-C) ------------------------------------------------------------------------------------------
+
+async function worktreeRegister(argv: readonly string[]): Promise<void> {
+	const usage =
+		"usage: endo worktree register [<root> | --root dir] --project <id> --path <dir> [--label <text>] --revision <file revision>";
+	const { root, flags } = flagsOf(argv, ["--project", "--path", "--label", "--revision"], usage);
+	const project = projectOf(root, need(flags, "--project", usage));
+	const expected = revisionOf(flags, usage);
+	const validated = await new DevelopCoordinationGitV0().validateSiblingWorktree(
+		project,
+		need(flags, "--path", usage),
+	);
+	if (!validated.ok) return refuse(validated.code, validated.detail);
+	const r = done(
+		new DevelopCoordinationStoreV0(root).registerWorktree({
+			expectedFileRevision: expected,
+			projectId: project.id,
+			worktreePath: validated.worktree.worktreePath,
+			commonDir: validated.worktree.commonDir,
+			gitDir: validated.worktree.gitDir,
+			label: flags.get("--label") ?? null,
+		}),
+	);
+	print({
+		worktree: r.value,
+		observed: {
+			headCommit: validated.worktree.headCommit,
+			headTree: validated.worktree.headTree,
+			clean: validated.worktree.clean,
+		},
+		coordinationRevision: r.revision,
+		commit: r.commit,
+	});
+	process.stderr.write(
+		`registered sibling worktree ${r.value.worktreeId} (${r.value.worktreePath}) for project ${project.id}.\nNo Git worktree was created, checked out, or modified. ${NO_AUTHORITY}`,
+	);
+}
+
+function worktreeUnregister(argv: readonly string[]): void {
+	const usage = "usage: endo worktree unregister [<root> | --root dir] --worktree <id> --revision <file revision>";
+	const { root, flags } = flagsOf(argv, ["--worktree", "--revision"], usage);
+	const r = done(
+		new DevelopCoordinationStoreV0(root).unregisterWorktree(
+			need(flags, "--worktree", usage),
+			revisionOf(flags, usage),
+		),
+	);
+	print({ removed: r.value, coordinationRevision: r.revision, commit: r.commit });
+	process.stderr.write(`unregistered sibling worktree ${r.value.worktreeId}. Files on disk were not modified.\n`);
+}
+
+async function worktreeList(argv: readonly string[]): Promise<void> {
+	const usage = "usage: endo worktree list [<root> | --root dir] --project <id>";
+	const { root, flags } = flagsOf(argv, ["--project"], usage);
+	const projectId = need(flags, "--project", usage);
+	projectOf(root, projectId);
+	const read = new DevelopCoordinationStoreV0(root).read();
+	if (!read.ok) return refuse("unreadable", undefined, read.reason);
+	const projection = await hostProjection(root, [projectId]);
+	print({
+		coordinationRevision: read.file.revision,
+		registeredWorktrees: (read.file.registeredWorktrees ?? []).filter((w) => w.projectId === projectId),
+		observations: projection.projects[0]?.registeredWorktrees ?? [],
+	});
+}
+
+export const WORKTREE_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
+	register: worktreeRegister,
+	unregister: worktreeUnregister,
+	list: worktreeList,
+};
+
+// ---- structured advisory reviews (E2-D) -------------------------------------------------------------------------------------------
+
+async function reviewRecord(argv: readonly string[]): Promise<void> {
+	const usage = `usage: endo review record [<root> | --root dir] --project <id> --candidate-task <id> --candidate <id> --participant <slug> --verdict <${ENDO_ADVISORY_REVIEW_VERDICTS_V0.join("|")}> --summary <text> [--harness <pi|codex|claude-code|any>] [--session-key <key>] [--fingerprint <id>] [--assignment <id>] [--attempt <id>] [--worktree <dir>] [--agent-claimed-checks <text>] [--finding <severity:category:summary>]`;
+	const { root, flags } = flagsOf(
+		argv,
+		[
+			"--project",
+			"--candidate-task",
+			"--candidate",
+			"--participant",
+			"--verdict",
+			"--summary",
+			"--harness",
+			"--session-key",
+			"--fingerprint",
+			"--assignment",
+			"--attempt",
+			"--worktree",
+			"--agent-claimed-checks",
+			"--finding",
+		],
+		usage,
+	);
+	const project = projectOf(root, need(flags, "--project", usage));
+	const candidateTaskId = need(flags, "--candidate-task", usage);
+	const candidateId = need(flags, "--candidate", usage);
+	const verdict = oneOf<EndoAdvisoryReviewVerdictV0>(
+		need(flags, "--verdict", usage),
+		ENDO_ADVISORY_REVIEW_VERDICTS_V0,
+		"--verdict",
+	);
+	const harness = flags.get("--harness");
+	const findings: EndoAdvisoryReviewFindingV0[] = [];
+	const findingRaw = flags.get("--finding");
+	if (findingRaw !== undefined && findingRaw.length > 0) {
+		const first = findingRaw.indexOf(":");
+		const second = first === -1 ? -1 : findingRaw.indexOf(":", first + 1);
+		if (first === -1 || second === -1)
+			throw new TypeError("--finding must have the form <severity>:<category>:<summary>");
+		const severity = oneOf<EndoAdvisoryFindingSeverityV0>(
+			findingRaw.slice(0, first),
+			ENDO_ADVISORY_FINDING_SEVERITIES_V0,
+			"--finding severity",
+		);
+		findings.push({
+			severity,
+			category: findingRaw.slice(first + 1, second),
+			summary: findingRaw.slice(second + 1),
+			location: null,
+		});
+	}
+
+	let checkout: {
+		standing: "controller-observed" | "unobserved";
+		worktreePath: string | null;
+		preObservationId: string | null;
+		postObservationId: string | null;
+		cleanAtCandidate: boolean;
+		reason: string | null;
+	} = {
+		standing: "unobserved",
+		worktreePath: null,
+		preObservationId: null,
+		postObservationId: null,
+		cleanAtCandidate: false,
+		reason: "no checkout worktree was observed at review recording time",
+	};
+
+	const worktreeFlag = flags.get("--worktree");
+	if (worktreeFlag !== undefined) {
+		const coordRead = new DevelopCoordinationStoreV0(root).read();
+		const registered = coordRead.ok ? (coordRead.file.registeredWorktrees ?? []) : [];
+		const git = new DevelopCoordinationGitV0();
+		const place = await git.resolveWorkspace(project, worktreeFlag, registered);
+		if (!place.ok) return refuse(place.code, place.detail);
+		const obs = await git.workspace(place.worktreePath);
+		const candidate = coordRead.ok
+			? coordRead.file.taskCandidates
+					.find((t) => t.taskId === candidateTaskId)
+					?.candidates.find((c) => c.candidateId === candidateId)
+			: undefined;
+		if (obs !== null && candidate !== undefined && candidate.kind === "git-commit") {
+			const cleanAtCandidate =
+				obs.clean && obs.commonDir === candidate.commonDir && obs.commit === candidate.commitSha;
+			checkout = {
+				standing: "controller-observed",
+				worktreePath: place.worktreePath,
+				preObservationId: null,
+				postObservationId: null,
+				cleanAtCandidate,
+				reason: cleanAtCandidate
+					? null
+					: !obs.clean
+						? "worktree had uncommitted changes when review was recorded"
+						: "worktree HEAD did not match the reviewed candidate commit",
+			};
+		}
+	}
+
+	const written = new DevelopCoordinationReviewsStoreV0(root).recordReview({
+		projectId: project.id,
+		candidateTaskId,
+		candidateId,
+		assignmentId: flags.get("--assignment") ?? null,
+		attemptId: flags.get("--attempt") ?? null,
+		reviewer: {
+			participantId: need(flags, "--participant", usage),
+			harnessFamily:
+				harness === undefined
+					? null
+					: oneOf<EndoIntendedHarnessFamilyV0>(harness, ENDO_HARNESS_FAMILIES_V0, "--harness"),
+			sessionKey: flags.get("--session-key") ?? null,
+			runtimeFingerprintId: flags.get("--fingerprint") ?? null,
+		},
+		verdict,
+		summary: need(flags, "--summary", usage),
+		findings,
+		agentClaimedChecks: flags.get("--agent-claimed-checks") ?? null,
+		checkout,
+		recordedBy: "operator",
+	});
+	if (!written.ok) return refuse(written.code, written.detail);
+	print({ review: written.review });
+	process.stderr.write(
+		`recorded advisory review ${written.review.reviewId} (standing: advisory-agent-review; basis: agent-reported) for candidate ${candidateId}.\nAn advisory review is NOT a host check receipt and NOT operator acceptance.\n`,
+	);
+}
+
+async function reviewList(argv: readonly string[]): Promise<void> {
+	const usage = "usage: endo review list [<root> | --root dir] --project <id>";
+	const { root, flags } = flagsOf(argv, ["--project"], usage);
+	const projectId = need(flags, "--project", usage);
+	projectOf(root, projectId);
+	const read = new DevelopCoordinationReviewsStoreV0(root).readProject(projectId);
+	if (!read.ok) return refuse("unreadable", read.reason);
+	const projection = await hostProjection(root, [projectId]);
+	print({
+		reviews: read.reviews,
+		problems: read.problems,
+		readings: projection.projects[0]?.reviews ?? [],
+	});
+}
+
+function reviewShow(argv: readonly string[]): void {
+	const usage = "usage: endo review show [<root> | --root dir] --project <id> --review <id>";
+	const { root, flags } = flagsOf(argv, ["--project", "--review"], usage);
+	const projectId = need(flags, "--project", usage);
+	const reviewId = need(flags, "--review", usage);
+	projectOf(root, projectId);
+	const read = new DevelopCoordinationReviewsStoreV0(root).readProject(projectId);
+	if (!read.ok) refuse("unreadable", read.reason);
+	const found = read.reviews.find((r) => r.reviewId === reviewId);
+	if (found === undefined) refuse("not-found", `review ${reviewId}`);
+	print({ review: found });
+}
+
+export const REVIEW_COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
+	record: reviewRecord,
+	list: reviewList,
+	show: reviewShow,
+};
+
 // ---- the host projection -----------------------------------------------------------------------------------------------------------
 
 /** The companion projection read on the host: Git and protected re-verification on, route reservations read. Read-only. */
 export function hostProjection(root: string, projects: readonly string[] | null) {
 	const git = new DevelopCoordinationGitV0();
+	const tasksRead = new DevelopTasksStoreV0(root).read();
+	const projectsById = new Map(tasksRead.ok ? tasksRead.file.projects.map((p) => [p.id, p]) : []);
 	return readEndoCoordinatorCoordinationV0({
 		root,
 		projects,
 		identity: (c) => git.identity(root, c),
 		workspace: (path) => git.workspace(path),
+		registeredWorktree: async (wt) => {
+			const proj = projectsById.get(wt.projectId);
+			if (proj === undefined) return null;
+			return git.observeRegisteredWorktree(proj, wt);
+		},
 	});
 }

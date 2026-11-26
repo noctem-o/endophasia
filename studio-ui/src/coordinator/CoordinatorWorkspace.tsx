@@ -9,8 +9,16 @@ import { FieldLayer, FieldLegend, useReducedMotion } from "../develop/Field.tsx"
 import type { FieldSignal } from "../model/field.ts";
 import type { Atmosphere } from "../model/weather.ts";
 import type { WorkbenchState } from "../model/workbench.ts";
+import {
+	CoordinationBanner,
+	CoordinationProvenancePanel,
+	CoordinationUnavailableBanner,
+	CoordinationUnavailableBoard,
+	DependencyGraphView,
+	ParticipantLanesView,
+} from "./CoordinationViews.tsx";
 import { Freshness, SessionCard, TaskCard, Timestamp } from "./Evidence.tsx";
-import { ATTENTION_LABELS, type CoordinatorProblem } from "./read.ts";
+import { ATTENTION_LABELS, type CoordinatorCoordinationReply, type CoordinatorProblem } from "./read.ts";
 import { useCoordinator } from "./use-coordinator.ts";
 
 const PHASES = ["open", "in-progress", "blocked", "awaiting-review", "completed"] as const;
@@ -48,7 +56,7 @@ interface Filters {
 	phase: EndoCoordinatorPhaseV0 | null;
 }
 
-type ViewMode = "list" | "columns";
+type ViewMode = "list" | "columns" | "lanes" | "graph";
 type Density = "standard" | "compact";
 
 const NO_FILTERS: Filters = { project: null, phase: null };
@@ -155,6 +163,7 @@ function SummaryStrip({ status, filters }: { status: EndoCoordinatorStatusV0; fi
 
 function Board({
 	status,
+	coordinationReply,
 	filters,
 	onFilters,
 	viewMode,
@@ -166,6 +175,7 @@ function Board({
 	onClearHighlight,
 }: {
 	status: EndoCoordinatorStatusV0;
+	coordinationReply: CoordinatorCoordinationReply | null;
 	filters: Filters;
 	onFilters(filters: Filters): void;
 	viewMode: ViewMode;
@@ -179,6 +189,14 @@ function Board({
 	const tasksReady = status.sources.tasks.state === "ready";
 	const selected = status.projects.find((project) => project.id === filters.project);
 	const projects = selected === undefined ? status.projects : [selected];
+	const coordination = coordinationReply?.kind === "coordination" ? coordinationReply.coordination : null;
+	const coordinationProblem = coordinationReply?.kind === "failure" ? coordinationReply.problem : null;
+	const coordProjects =
+		coordination === null
+			? []
+			: selected === undefined
+				? coordination.projects
+				: coordination.projects.filter((p) => p.id === selected.id);
 	const tasks = projects.flatMap((project) => project.tasks);
 	const taskIds = new Set(tasks.map((task) => task.taskId));
 	const taskTitles = new Map(tasks.map((task) => [task.taskId, task.title]));
@@ -362,6 +380,24 @@ function Board({
 							>
 								Columns
 							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-lanes"
+								aria-pressed={viewMode === "lanes"}
+								onClick={() => onViewMode("lanes")}
+							>
+								Lanes
+							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-graph"
+								aria-pressed={viewMode === "graph"}
+								onClick={() => onViewMode("graph")}
+							>
+								Graph
+							</button>
 						</fieldset>
 						<fieldset className="coordinator-segmented">
 							<legend className="sr-only">Task card density</legend>
@@ -386,7 +422,38 @@ function Board({
 						</fieldset>
 					</div>
 				</header>
-				{visibleCount === 0 ? (
+				{coordination !== null ? (
+					<CoordinationBanner coordination={coordination} />
+				) : coordinationProblem !== null ? (
+					<CoordinationUnavailableBanner problem={coordinationProblem} />
+				) : null}
+				{viewMode === "lanes" ? (
+					coordinationProblem !== null || coordination === null ? (
+						<CoordinationUnavailableBoard view="lanes" problem={coordinationProblem ?? "unavailable"} />
+					) : (
+						<ParticipantLanesView
+							projects={coordProjects}
+							taskTitles={taskTitles}
+							onJumpToTask={(taskId) => {
+								onViewMode("list");
+								onJumpToTask(taskId);
+							}}
+						/>
+					)
+				) : viewMode === "graph" ? (
+					coordinationProblem !== null || coordination === null ? (
+						<CoordinationUnavailableBoard view="graph" problem={coordinationProblem ?? "unavailable"} />
+					) : (
+						<DependencyGraphView
+							projects={coordProjects}
+							taskTitles={taskTitles}
+							onJumpToTask={(taskId) => {
+								onViewMode("list");
+								onJumpToTask(taskId);
+							}}
+						/>
+					)
+				) : visibleCount === 0 ? (
 					<div className="coordinator-empty coordinator-empty-board">
 						<p className="coordinator-index">
 							{!countsKnown
@@ -574,6 +641,17 @@ function Board({
 						</div>
 					) : null}
 				</div>
+				{coordinationProblem !== null ? (
+					<div className="coordinator-scope-group" data-testid="coordinator-provenance-unavailable">
+						<h3>Coordination &amp; provenance</h3>
+						<p className="coordinator-empty">
+							Coordination projection unavailable ({coordinationProblem}). Worktree conflicts, hazards,
+							registered worktrees, and advisory reviews could not be established.
+						</p>
+					</div>
+				) : (
+					<CoordinationProvenancePanel projects={coordProjects} taskTitles={taskTitles} />
+				)}
 				<div className="coordinator-scope-group">
 					<h3>
 						Read findings <span className="coordinator-count">{findings.length} items</span>
@@ -654,7 +732,7 @@ export function CoordinatorWorkspace({
 	const [viewMode, setViewMode] = useState<ViewMode>("list");
 	const [density, setDensity] = useState<Density>("standard");
 	const [highlightedTask, setHighlightedTask] = useState<{ id: string; seq: number } | null>(null);
-	const { reply, busy, refresh } = useCoordinator(grant, workbench.launchId, () => {
+	const { reply, coordinationReply, busy, refresh } = useCoordinator(grant, workbench.launchId, () => {
 		focusPairing.current = refreshButton.current === document.activeElement;
 		setGrantRefused(true);
 		setFilters(NO_FILTERS);
@@ -853,6 +931,7 @@ export function CoordinatorWorkspace({
 					<>
 						<Board
 							status={status}
+							coordinationReply={coordinationReply}
 							filters={filters}
 							onFilters={setFilters}
 							viewMode={viewMode}

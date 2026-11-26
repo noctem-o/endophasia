@@ -466,6 +466,11 @@ describe("assignments and conflicts", () => {
 			sessionKey: "pi-live:launch:abc",
 			standing: "operator-declared",
 			liveness: "unknown",
+			livenessState: "unsupported-observation",
+			observationMode: "offline-projection",
+			terminationConfirmed: false,
+			lastRecordedAtMs: null,
+			instanceStatus: "undeclared",
 		});
 		expect(view?.findings).toEqual(
 			expect.arrayContaining(["session-liveness-unknown", "session-instance-undeclared"]),

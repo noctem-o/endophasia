@@ -659,7 +659,9 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 				grant: typeof grants === "string" ? grants : null,
 				body,
 			};
-			const coordinator = workbenchRequest.route.join("/") === "workspace/coordinator";
+			const coordinatorRoute = workbenchRequest.route.join("/");
+			const coordinator =
+				coordinatorRoute === "workspace/coordinator" || coordinatorRoute === "workspace/coordinator/coordination";
 			if (coordinator && method !== "GET") return sendRefusal(response, "method-not-allowed");
 			const answer =
 				coordinator && workbench instanceof EndoWorkspaceHostV0

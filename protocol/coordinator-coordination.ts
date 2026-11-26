@@ -18,10 +18,12 @@ import {
 	ENDO_COORDINATION_SESSION_SOURCES_V0,
 	ENDO_DEPENDENCY_CONDITIONS_V0,
 	ENDO_DEPENDENCY_ID_PATTERN_V0,
+	ENDO_GIT_OID_PATTERN_V0,
 	ENDO_HARNESS_FAMILIES_V0,
 	ENDO_PARTICIPANT_ID_PATTERN_V0,
 	ENDO_PARTICIPANT_ROLES_V0,
 	ENDO_WORKSPACE_REGISTRATIONS_V0,
+	ENDO_WORKTREE_ID_PATTERN_V0,
 	type EndoAccessIntentV0,
 	type EndoAssignmentStateV0,
 	type EndoCoordinationSessionSourceV0,
@@ -31,6 +33,15 @@ import {
 	type EndoWorkspaceRegistrationV0,
 	isEndoCanonicalPathV0,
 } from "./develop-coordination.ts";
+import {
+	ENDO_ADVISORY_REVIEW_VERDICTS_V0,
+	ENDO_REVIEW_ID_PATTERN_V0,
+	type EndoAdvisoryReviewVerdictV0,
+} from "./develop-coordination-reviews.ts";
+import {
+	ENDO_OFFLINE_SESSION_LIVENESS_STATES_V0,
+	type EndoOfflineSessionLivenessStateV0,
+} from "./develop-session-liveness.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0, ENDO_TASK_ID_PATTERN_V0 } from "./develop-tasks.ts";
 import { EndoInvalidRecordV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
 
@@ -52,6 +63,7 @@ export const ENDO_COORDINATION_ASSIGNMENT_FINDINGS_V0 = [
 	"worktree-not-registered",
 	"ended-without-process-confirmation",
 	"hazard-clearance-expired",
+	"recorded-instance-superseded",
 ] as const;
 export type EndoCoordinationAssignmentFindingV0 = (typeof ENDO_COORDINATION_ASSIGNMENT_FINDINGS_V0)[number];
 
@@ -103,6 +115,8 @@ export const ENDO_COORDINATION_GAPS_V0 = [
 	"attempts-unreadable",
 	"attempt-problems",
 	"receipts-truncated",
+	"reviews-unreadable",
+	"reviews-truncated",
 	"git-unavailable",
 	"protected-runs-unavailable",
 	"unknown-project",
@@ -148,10 +162,26 @@ export type EndoCandidateReceiptReadingV0 = (typeof ENDO_CANDIDATE_RECEIPT_READI
 export const ENDO_ATTEMPT_LINK_READINGS_V0 = ["resolved", "missing", "other-task", "unknown"] as const;
 export const ENDO_ATTEMPT_EXECUTION_READINGS_V0 = [
 	"workbench-authorized",
+	"adapter-authorized",
+	"adapter-accepted",
+	"adapter-refused",
+	"adapter-unknown",
+	"aborted-before-transport",
 	"route-claimed",
 	"none-recorded",
 	"unknown",
 ] as const;
+
+export const ENDO_SESSION_INSTANCE_STATUSES_V0 = [
+	"undeclared",
+	"recorded-match",
+	"recorded-instance-superseded",
+	"unverified",
+] as const;
+export type EndoSessionInstanceStatusV0 = (typeof ENDO_SESSION_INSTANCE_STATUSES_V0)[number];
+
+export const ENDO_REVIEW_DISCLOSURES_V0 = ["advisory-only-not-host-check", "not-operator-acceptance"] as const;
+export type EndoReviewDisclosureV0 = (typeof ENDO_REVIEW_DISCLOSURES_V0)[number];
 
 export interface EndoCoordinationAssignmentViewV0 {
 	assignmentId: string;
@@ -167,6 +197,11 @@ export interface EndoCoordinationAssignmentViewV0 {
 		sessionKey: string;
 		standing: "operator-declared";
 		liveness: "unknown";
+		livenessState?: EndoOfflineSessionLivenessStateV0;
+		observationMode?: "offline-projection";
+		terminationConfirmed?: false;
+		lastRecordedAtMs?: number | null;
+		instanceStatus?: EndoSessionInstanceStatusV0;
 	};
 	workspace: {
 		worktreePath: string;
@@ -224,12 +259,49 @@ export interface EndoCoordinationConflictViewV0 {
 	assignmentIds: string[];
 }
 
+export interface EndoCoordinationRegisteredWorktreeViewV0 {
+	worktreeId: string;
+	worktreePath: string;
+	label: string | null;
+	observation: "observed" | "mismatch" | "unavailable";
+	headCommit: string | null;
+	clean: boolean | null;
+}
+
+export interface EndoCoordinationReviewViewV0 {
+	reviewId: string;
+	candidateTaskId: string;
+	candidateId: string;
+	candidateKind: "git-commit" | "protected-candidate";
+	candidateRelation: "current-candidate" | "superseded-candidate" | "candidate-missing";
+	standing: "advisory-agent-review";
+	basis: "agent-reported";
+	verdict: EndoAdvisoryReviewVerdictV0;
+	findingCounts: {
+		critical: number;
+		high: number;
+		medium: number;
+		low: number;
+		info: number;
+	};
+	checkoutStanding: "controller-observed" | "unobserved";
+	checkoutCleanAtCandidate: boolean;
+	agentClaimedChecksPresent: boolean;
+	reviewerParticipantId: string;
+	reviewerHarnessFamily: EndoIntendedHarnessFamilyV0 | null;
+	assignmentId: string | null;
+	recordedAtMs: number;
+	disclosures: EndoReviewDisclosureV0[];
+}
+
 export interface EndoCoordinationProjectViewV0 {
 	id: string;
 	assignments: EndoCoordinationAssignmentViewV0[];
 	dependencies: EndoCoordinationDependencyViewV0[];
 	tasks: EndoCoordinationTaskViewV0[];
 	conflicts: EndoCoordinationConflictViewV0[];
+	registeredWorktrees?: EndoCoordinationRegisteredWorktreeViewV0[];
+	reviews?: EndoCoordinationReviewViewV0[];
 }
 
 export interface EndoCoordinatorCoordinationV0 {
@@ -326,7 +398,11 @@ export function validateEndoCoordinatorCoordinationV0(value: unknown): EndoCoord
 	const projects = list(r.projects, "projects");
 	const seen = new Set<string>();
 	for (const pv of projects) {
-		const p = closed(pv, ["id", "assignments", "dependencies", "tasks", "conflicts"], "project");
+		const projectKeys = ["id", "assignments", "dependencies", "tasks", "conflicts"];
+		if (typeof pv === "object" && pv !== null && Object.hasOwn(pv, "registeredWorktrees"))
+			projectKeys.push("registeredWorktrees");
+		if (typeof pv === "object" && pv !== null && Object.hasOwn(pv, "reviews")) projectKeys.push("reviews");
+		const p = closed(pv, projectKeys, "project");
 		match(p.id, ENDO_PROJECT_ID_PATTERN_V0, "project.id");
 		if (seen.has(p.id as string)) bad("a project repeats");
 		seen.add(p.id as string);
@@ -360,10 +436,32 @@ export function validateEndoCoordinatorCoordinationV0(value: unknown): EndoCoord
 			oneOf(v.intendedHarnessFamily, [...ENDO_HARNESS_FAMILIES_V0, null], "intendedHarnessFamily");
 			oneOf(v.taskBinding, ["current", "task-stale", "task-missing", "unknown"], "taskBinding");
 			if (v.session !== null) {
-				const ss = closed(v.session, ["source", "sessionKey", "standing", "liveness"], "session");
+				const sKeys = ["source", "sessionKey", "standing", "liveness"];
+				if (typeof v.session === "object" && v.session !== null) {
+					for (const opt of [
+						"livenessState",
+						"observationMode",
+						"terminationConfirmed",
+						"lastRecordedAtMs",
+						"instanceStatus",
+					]) {
+						if (Object.hasOwn(v.session, opt)) sKeys.push(opt);
+					}
+				}
+				const ss = closed(v.session, sKeys, "session");
 				oneOf(ss.source, ENDO_COORDINATION_SESSION_SOURCES_V0, "session.source");
 				if (typeof ss.sessionKey !== "string" || ss.sessionKey.length > 256) bad("session.sessionKey");
 				if (ss.standing !== "operator-declared" || ss.liveness !== "unknown") bad("session overclaims");
+				if (Object.hasOwn(ss, "livenessState"))
+					oneOf(ss.livenessState, ENDO_OFFLINE_SESSION_LIVENESS_STATES_V0, "session.livenessState");
+				if (Object.hasOwn(ss, "observationMode") && ss.observationMode !== "offline-projection")
+					bad("session.observationMode overclaims");
+				if (Object.hasOwn(ss, "terminationConfirmed") && ss.terminationConfirmed !== false)
+					bad("session.terminationConfirmed overclaims");
+				if (Object.hasOwn(ss, "lastRecordedAtMs") && ss.lastRecordedAtMs !== null)
+					count(ss.lastRecordedAtMs, "session.lastRecordedAtMs");
+				if (Object.hasOwn(ss, "instanceStatus"))
+					oneOf(ss.instanceStatus, ENDO_SESSION_INSTANCE_STATUSES_V0, "session.instanceStatus");
 			}
 			const w = closed(
 				v.workspace,
@@ -444,6 +542,78 @@ export function validateEndoCoordinatorCoordinationV0(value: unknown): EndoCoord
 			if (!isEndoCanonicalPathV0(c.worktreePath)) bad("conflict.worktreePath");
 			for (const id of list(c.assignmentIds, "conflict.assignmentIds"))
 				match(id, ENDO_ASSIGNMENT_ID_PATTERN_V0, "conflict.assignmentIds");
+		}
+		if (Object.hasOwn(p, "registeredWorktrees")) {
+			for (const x of list(p.registeredWorktrees, "registeredWorktrees")) {
+				const w = closed(
+					x,
+					["worktreeId", "worktreePath", "label", "observation", "headCommit", "clean"],
+					"registeredWorktree",
+				);
+				match(w.worktreeId, ENDO_WORKTREE_ID_PATTERN_V0, "registeredWorktree.worktreeId");
+				if (!isEndoCanonicalPathV0(w.worktreePath)) bad("registeredWorktree.worktreePath");
+				if (w.label !== null && (typeof w.label !== "string" || w.label.length > 280))
+					bad("registeredWorktree.label");
+				oneOf(w.observation, ["observed", "mismatch", "unavailable"], "registeredWorktree.observation");
+				nullableMatch(w.headCommit, ENDO_GIT_OID_PATTERN_V0, "registeredWorktree.headCommit");
+				oneOf(w.clean, [true, false, null], "registeredWorktree.clean");
+			}
+		}
+		if (Object.hasOwn(p, "reviews")) {
+			for (const x of list(p.reviews, "reviews")) {
+				const rv = closed(
+					x,
+					[
+						"reviewId",
+						"candidateTaskId",
+						"candidateId",
+						"candidateKind",
+						"candidateRelation",
+						"standing",
+						"basis",
+						"verdict",
+						"findingCounts",
+						"checkoutStanding",
+						"checkoutCleanAtCandidate",
+						"agentClaimedChecksPresent",
+						"reviewerParticipantId",
+						"reviewerHarnessFamily",
+						"assignmentId",
+						"recordedAtMs",
+						"disclosures",
+					],
+					"review",
+				);
+				match(rv.reviewId, ENDO_REVIEW_ID_PATTERN_V0, "review.reviewId");
+				match(rv.candidateTaskId, ENDO_TASK_ID_PATTERN_V0, "review.candidateTaskId");
+				match(rv.candidateId, ENDO_CANDIDATE_ID_PATTERN_V0, "review.candidateId");
+				oneOf(rv.candidateKind, ["git-commit", "protected-candidate"], "review.candidateKind");
+				oneOf(
+					rv.candidateRelation,
+					["current-candidate", "superseded-candidate", "candidate-missing"],
+					"review.candidateRelation",
+				);
+				if (rv.standing !== "advisory-agent-review" || rv.basis !== "agent-reported")
+					bad("review standing/basis overclaims");
+				oneOf(rv.verdict, ENDO_ADVISORY_REVIEW_VERDICTS_V0, "review.verdict");
+				const fc = closed(rv.findingCounts, ["critical", "high", "medium", "low", "info"], "review.findingCounts");
+				for (const k of ["critical", "high", "medium", "low", "info"] as const) count(fc[k], `findingCounts.${k}`);
+				oneOf(rv.checkoutStanding, ["controller-observed", "unobserved"], "review.checkoutStanding");
+				oneOf(rv.checkoutCleanAtCandidate, [true, false], "review.checkoutCleanAtCandidate");
+				if (rv.checkoutStanding === "unobserved" && rv.checkoutCleanAtCandidate === true)
+					bad("unobserved checkout cannot be cleanAtCandidate");
+				oneOf(rv.agentClaimedChecksPresent, [true, false], "review.agentClaimedChecksPresent");
+				match(rv.reviewerParticipantId, ENDO_PARTICIPANT_ID_PATTERN_V0, "review.reviewerParticipantId");
+				oneOf(rv.reviewerHarnessFamily, [...ENDO_HARNESS_FAMILIES_V0, null], "review.reviewerHarnessFamily");
+				nullableMatch(rv.assignmentId, ENDO_ASSIGNMENT_ID_PATTERN_V0, "review.assignmentId");
+				count(rv.recordedAtMs, "review.recordedAtMs");
+				codes(rv.disclosures, ENDO_REVIEW_DISCLOSURES_V0, "review.disclosures");
+				if (
+					!(rv.disclosures as string[]).includes("advisory-only-not-host-check") ||
+					!(rv.disclosures as string[]).includes("not-operator-acceptance")
+				)
+					bad("review omits required disclosures");
+			}
 		}
 	}
 	if (s.requested !== null) {

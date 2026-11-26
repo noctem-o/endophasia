@@ -16,9 +16,13 @@ const BUDGET = {
 };
 
 function parse(argv: readonly string[]) {
-	const [root, id, path, commit, worktree, commonDir, clean] = argv;
+	const [root, id, path, commit, worktree, commonDir, clean, ...flags] = argv;
+	const allowedFlags = new Set(["unsafe-coordination", "unsafe-reviews"]);
 	if (
-		(argv.length !== 7 && !(argv.length === 8 && argv[7] === "unsafe-coordination")) ||
+		argv.length < 7 ||
+		argv.length > 9 ||
+		!flags.every((f) => allowedFlags.has(f)) ||
+		new Set(flags).size !== flags.length ||
 		!root?.startsWith("/") ||
 		id === undefined ||
 		!ENDO_PROJECT_ID_PATTERN_V0.test(id) ||
@@ -34,7 +38,14 @@ function parse(argv: readonly string[]) {
 		throw new TypeError("invalid scope or HEAD observation");
 	const head: EndoReceiptCurrentV0 | null =
 		commit === "" ? null : { commit: commit!, worktree: worktree!, commonDir: commonDir!, clean: clean === "yes" };
-	return { root, id, path, head };
+	return {
+		root,
+		id,
+		path,
+		head,
+		unsafeCoordination: flags.includes("unsafe-coordination"),
+		unsafeReviews: flags.includes("unsafe-reviews"),
+	};
 }
 
 export async function projectStatusWorkerV0(argv: readonly string[]) {
@@ -49,24 +60,28 @@ export async function projectStatusWorkerV0(argv: readonly string[]) {
 }
 
 /**
- * The companion coordination projection, inside the same sandbox: the descriptor-pinned `develop/coordination.json` (when it exists), the
- * pinned task file, attempts and receipts. No Git and no protected run directory is reachable here, so every candidate's identity reads
- * `unavailable` (with the gaps saying why) and route reservations read `unknown`; the one worktree HEAD known is the host's observation
- * of the project's own path. Nothing here establishes liveness.
+ * The companion coordination projection, inside the same sandbox: the descriptor-pinned `develop/coordination.json` (when it exists),
+ * the pinned task file, attempts, receipts, and ONLY the requested project's advisory reviews. No Git and no protected run directory
+ * is reachable here, so every candidate's identity reads `unavailable` (with the gaps saying why) and route reservations read `unknown`;
+ * the one worktree HEAD known is the host's observation of the project's own path. Nothing here establishes liveness.
  */
 export async function projectCoordinationWorkerV0(argv: readonly string[]) {
-	const { root, id, head } = parse(argv);
+	const { root, id, head, unsafeCoordination, unsafeReviews } = parse(argv);
 	return readEndoCoordinatorCoordinationV0({
 		root,
 		projects: [id],
 		workspace: async (directory) => (head !== null && directory === head.worktree ? head : null),
 		routes: "unknown",
-		...(argv[7] ? { coordination: { ok: false as const, reason: "unsafe-path" as const } } : {}),
+		...(unsafeReviews ? { reviews: "unreadable" as const } : {}),
+		...(unsafeCoordination ? { coordination: { ok: false as const, reason: "unsafe-path" as const } } : {}),
 		budget: {
 			attemptEntries: BUDGET.attemptEntries,
 			attemptBytes: BUDGET.attemptBytes,
 			receiptFiles: BUDGET.receiptFiles,
 			receiptBytes: BUDGET.receiptBytes,
+			reviewFiles: 256,
+			reviewBytes: 2 * 1024 * 1024,
+			eventsBytes: BUDGET.eventsBytes,
 		},
 		gaps: ["git-unavailable", "protected-runs-unavailable"],
 	});

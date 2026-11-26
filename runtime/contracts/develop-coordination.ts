@@ -10,6 +10,7 @@
 import {
 	ENDO_COORDINATION_PROJECTION_AUTHORITY_V0,
 	ENDO_COORDINATOR_COORDINATION_SCHEMA_V0,
+	ENDO_REVIEW_DISCLOSURES_V0,
 	type EndoCandidateIdentityReadingV0,
 	type EndoCandidateReceiptReadingV0,
 	type EndoCandidateWorkspaceReadingV0,
@@ -22,8 +23,11 @@ import {
 	type EndoCoordinationGapV0,
 	type EndoCoordinationProjectViewV0,
 	type EndoCoordinationReadinessV0,
+	type EndoCoordinationRegisteredWorktreeViewV0,
+	type EndoCoordinationReviewViewV0,
 	type EndoCoordinationTaskViewV0,
 	type EndoCoordinatorCoordinationV0,
+	type EndoSessionInstanceStatusV0,
 } from "../../protocol/coordinator-coordination.ts";
 import { ENDO_ATTEMPT_ID_PATTERN_V0, endoAttemptPlanV0 } from "../../protocol/develop-attempts.ts";
 import {
@@ -45,12 +49,14 @@ import {
 	type EndoHazardSessionEvidenceV0,
 	endoHazardBasesFromSnapshotV0,
 } from "../../protocol/develop-coordination.ts";
+import type { EndoDevelopAdvisoryReviewV0 } from "../../protocol/develop-coordination-reviews.ts";
 import type {
 	EndoDevelopReceiptV0,
 	EndoReceiptCurrentV0,
 	EndoReceiptOutcomeV0,
 } from "../../protocol/develop-receipts.ts";
 import type { EndoDevelopTaskStatusV0 } from "../../protocol/develop-tasks.ts";
+import type { EndoAdapterAttemptRecordsV0 } from "../../storage/develop-adapter-authorizations.ts";
 import {
 	checkProtectedAttemptPresenceSyncV0,
 	type DevelopAttemptRoutesStoreV0,
@@ -62,6 +68,7 @@ import {
 	endoAttemptProblemsOfV0,
 } from "../../storage/develop-attempts.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
+import { endoOfflineSessionLivenessV0 } from "./develop-session-liveness.ts";
 import { endoPlannedReadingV0 } from "./develop-verification.ts";
 
 // ---- workspace conflicts (used by writers to refuse, and by readers to report) ------------------------------------------------------
@@ -136,7 +143,11 @@ export function endoAttemptExecutionEvidenceFromReadV0(
 		| { ok: true; entries: readonly EndoAttemptEntryV0[]; problems: readonly EndoAttemptProblemV0[] }
 		| { ok: false; reason?: string },
 	route: EndoHazardRouteEvidenceV0,
+	adapterRecords?: EndoAdapterAttemptRecordsV0,
+	assignmentId?: string,
 ): EndoAttemptExecutionEvidenceV0 {
+	// Always validate `develop/attempts/` first so unreadable/corrupt attempt records or conflicting workbench
+	// authorizations can NEVER be masked by an adapter pre-transport abort (Adversarial Finding #1).
 	if (!attemptsRead.ok) {
 		return {
 			route,
@@ -159,7 +170,84 @@ export function endoAttemptExecutionEvidenceFromReadV0(
 		return { route, authorization: { state: "unknown", reason: firstReason, problems: summary } };
 	}
 	const entry = attemptsRead.entries.find((e) => e.attempt.id === attemptId);
-	if (entry?.authorized != null) {
+	const hasWorkbenchAuth = entry?.authorized != null;
+
+	if (adapterRecords !== undefined) {
+		if (adapterRecords.authorization.state === "problem") {
+			const reason = toUnknownReason(adapterRecords.authorization.reason);
+			return {
+				route,
+				authorization: {
+					state: "unknown",
+					reason,
+					problems: [{ kind: "authorized", reason, count: 1 }],
+				},
+			};
+		}
+		if (adapterRecords.abort.state === "problem") {
+			const reason = toUnknownReason(adapterRecords.abort.reason);
+			return {
+				route,
+				authorization: {
+					state: "unknown",
+					reason,
+					problems: [{ kind: "other", reason, count: 1 }],
+				},
+			};
+		}
+		if (adapterRecords.outcome.state === "problem") {
+			const reason = toUnknownReason(adapterRecords.outcome.reason);
+			return {
+				route,
+				authorization: {
+					state: "unknown",
+					reason,
+					problems: [{ kind: "outcome", reason, count: 1 }],
+				},
+			};
+		}
+		if (adapterRecords.authorization.state === "present") {
+			// Conflicting dual authorizations (both Pi workbench AND adapter-live) fail closed as unknown.
+			if (hasWorkbenchAuth) {
+				return {
+					route,
+					authorization: {
+						state: "unknown",
+						reason: "invalid",
+						problems: [{ kind: "authorized", reason: "invalid", count: 1 }],
+					},
+				};
+			}
+			const auth = adapterRecords.authorization.record;
+			const assignmentMatches = assignmentId === undefined || auth.assignmentId === assignmentId;
+			const aborted =
+				assignmentMatches &&
+				adapterRecords.abort.state === "present" &&
+				adapterRecords.abort.record.authorizationId === auth.authorizationId &&
+				(assignmentId === undefined || adapterRecords.abort.record.assignmentId === assignmentId) &&
+				adapterRecords.outcome.state === "absent";
+			return {
+				route,
+				authorization: {
+					state: "adapter-authorized",
+					authorizationId: auth.authorizationId,
+					harnessFamily: auth.harnessFamily,
+					aborted,
+				},
+			};
+		}
+		if (adapterRecords.abort.state === "present" || adapterRecords.outcome.state === "present") {
+			return {
+				route,
+				authorization: {
+					state: "unknown",
+					reason: "orphan",
+					problems: [{ kind: "authorized", reason: "orphan", count: 1 }],
+				},
+			};
+		}
+	}
+	if (hasWorkbenchAuth && entry?.authorized != null) {
 		return {
 			route,
 			authorization: {
@@ -178,7 +266,7 @@ export function endoAttemptExecutionEvidenceFromReadV0(
 /** Canonical, bounded snapshot of observed execution evidence for an assignment. */
 export function endoHazardEvidenceSnapshotV0(
 	a: EndoAssignmentV0,
-	evidence: (attemptId: string) => EndoAttemptExecutionEvidenceV0,
+	evidence: (attemptId: string, assignmentId?: string) => EndoAttemptExecutionEvidenceV0,
 ): EndoHazardEvidenceSnapshotV0 {
 	const writableSession: EndoHazardSessionEvidenceV0 | null =
 		a.workspace.accessIntent === "read-write-intended" && a.session !== null
@@ -191,7 +279,7 @@ export function endoHazardEvidenceSnapshotV0(
 				}
 			: null;
 	const attempts = [...a.attemptIds].sort().map((attemptId) => {
-		const e = evidence(attemptId);
+		const e = evidence(attemptId, a.assignmentId);
 		return { attemptId, route: e.route, authorization: e.authorization };
 	});
 	return { writableSession, attempts };
@@ -245,7 +333,12 @@ export function endoUncoveredHazardBasesV0(
 	const ackByAttempt = new Map(acknowledged.attempts.map((item) => [item.attemptId, item]));
 	for (const cur of current.attempts) {
 		const ack = ackByAttempt.get(cur.attemptId);
-		if (cur.route.state === "claimed") {
+		const abortedAdapterLive =
+			cur.authorization.state === "adapter-authorized" &&
+			cur.authorization.aborted === true &&
+			cur.route.state === "claimed" &&
+			cur.route.route === "adapter-live";
+		if (cur.route.state === "claimed" && !abortedAdapterLive) {
 			if (ack?.route.state !== "claimed" || ack.route.route !== cur.route.route) {
 				uncovered.add("attempt-route-claimed");
 			}
@@ -261,6 +354,17 @@ export function endoUncoveredHazardBasesV0(
 				ack.authorization.authorizationEventId !== cur.authorization.authorizationEventId
 			) {
 				uncovered.add("attempt-authorized");
+			}
+		} else if (cur.authorization.state === "adapter-authorized") {
+			if (!cur.authorization.aborted) {
+				if (
+					ack?.authorization.state !== "adapter-authorized" ||
+					ack.authorization.authorizationId !== cur.authorization.authorizationId ||
+					ack.authorization.harnessFamily !== cur.authorization.harnessFamily ||
+					ack.authorization.aborted !== false
+				) {
+					uncovered.add("attempt-authorized");
+				}
 			}
 		} else if (cur.authorization.state === "unknown") {
 			if (
@@ -283,7 +387,7 @@ export function endoUncoveredHazardBasesV0(
  */
 export function endoTerminalHazardBasesV0(
 	a: EndoAssignmentV0,
-	evidence: (attemptId: string) => EndoAttemptExecutionEvidenceV0,
+	evidence: (attemptId: string, assignmentId?: string) => EndoAttemptExecutionEvidenceV0,
 ): EndoHazardBasisV0[] {
 	return endoHazardBasesFromSnapshotV0(endoHazardEvidenceSnapshotV0(a, evidence));
 }
@@ -338,7 +442,7 @@ export function endoEffectiveAssignmentFromSnapshotV0(
 
 export function endoEffectiveAssignmentV0(
 	a: EndoAssignmentV0,
-	evidence: (id: string) => EndoAttemptExecutionEvidenceV0,
+	evidence: (id: string, assignmentId?: string) => EndoAttemptExecutionEvidenceV0,
 ): EndoAssignmentV0 {
 	if (a.state === "active") return a;
 	return endoEffectiveAssignmentFromSnapshotV0(a, endoHazardEvidenceSnapshotV0(a, evidence));
@@ -428,6 +532,16 @@ export interface EndoCoordinationTaskFactV0 {
 	revision: number;
 }
 
+export interface EndoCoordinationSessionActivityInputV0 {
+	lastRecordedAtMs: number | null;
+	observedInstanceIds: readonly string[];
+	eventsAvailable: boolean;
+}
+
+export type EndoCoordinationProjectReviewsInputV0 =
+	| { ok: true; reviews: readonly EndoDevelopAdvisoryReviewV0[]; problems: number; truncated: boolean }
+	| { ok: false };
+
 export interface EndoCoordinationProjectionInputV0 {
 	readAtMs: number;
 	requested: readonly string[] | null;
@@ -444,6 +558,12 @@ export interface EndoCoordinationProjectionInputV0 {
 	receipts: (attemptId: string) => EndoReceiptSourceV0;
 	/** Route reservation per attempt, as read now; `unknown` when it could not be read (or is not mounted). */
 	route: (attemptId: string) => EndoHazardRouteEvidenceV0;
+	/** Optional E2 harness-neutral adapter authorization/abort/outcome reader per attempt. */
+	adapterAuthorizations?: (attemptId: string) => EndoAdapterAttemptRecordsV0;
+	/** Optional E2 project-scoped advisory reviews map (keyed by projectId). */
+	reviews?: ReadonlyMap<string, EndoCoordinationProjectReviewsInputV0>;
+	/** Optional E2 offline recorded session activity summary (keyed by sessionKey). Never claims live state. */
+	sessionActivity?: ReadonlyMap<string, EndoCoordinationSessionActivityInputV0>;
 	/** Re-verification of each candidate by candidate id, done by the caller (Git / protected-run reading), or `unavailable`. */
 	identity: ReadonlyMap<string, EndoCandidateIdentityReadingV0>;
 	/** The live HEAD of a worktree path, observed now by the caller; absent or null when it was not or could not be. */
@@ -501,8 +621,14 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 		: [];
 	if (unreadableAttempts.length > 0) gaps.add("attempt-problems");
 	const attemptRecordsComplete = input.attempts.ok && unreadableAttempts.length === 0;
-	const execution = (id: string): EndoAttemptExecutionEvidenceV0 =>
-		endoAttemptExecutionEvidenceFromReadV0(id, input.attempts, input.route(id));
+	const execution = (id: string, assignmentId?: string): EndoAttemptExecutionEvidenceV0 =>
+		endoAttemptExecutionEvidenceFromReadV0(
+			id,
+			input.attempts,
+			input.route(id),
+			input.adapterAuthorizations?.(id),
+			assignmentId,
+		);
 
 	const candidateEntry = new Map((file?.taskCandidates ?? []).map((t) => [t.taskId, t]));
 	const receiptReading = new Map<string, ReturnType<typeof endoCandidateReceiptReadingV0>>();
@@ -689,12 +815,51 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 				if (relation === "superseded-candidate") findings.add("target-candidate-superseded");
 				target = { ...a.targetCandidate, relation };
 			}
+			let sessionView: EndoCoordinationAssignmentViewV0["session"] = null;
 			if (a.session !== null) {
 				findings.add("session-liveness-unknown");
 				if (a.session.instanceId === null) findings.add("session-instance-undeclared");
+				const act = input.sessionActivity?.get(a.session.sessionKey);
+				const offline = endoOfflineSessionLivenessV0({
+					observedAtMs: input.readAtMs,
+					source: a.session.source,
+					harnessFamily: a.participant.intendedHarnessFamily,
+					sessionKey: a.session.sessionKey,
+					attachmentId: a.session.attachmentId,
+					instanceId: a.session.instanceId,
+					runtimeFingerprintId: a.session.runtimeFingerprintId,
+					lastRecordedAtMs: act?.lastRecordedAtMs ?? null,
+					eventsAvailable: act?.eventsAvailable ?? false,
+				});
+				let instanceStatus: EndoSessionInstanceStatusV0 = "unverified";
+				if (a.session.instanceId === null) {
+					instanceStatus = "undeclared";
+				} else if (act !== undefined && act.observedInstanceIds.length > 0) {
+					const latest = act.observedInstanceIds[act.observedInstanceIds.length - 1];
+					if (latest === a.session.instanceId) instanceStatus = "recorded-match";
+					else if (act.observedInstanceIds.includes(a.session.instanceId)) {
+						instanceStatus = "recorded-instance-superseded";
+						findings.add("recorded-instance-superseded");
+					} else {
+						instanceStatus = "recorded-instance-superseded";
+						findings.add("recorded-instance-superseded");
+					}
+				}
+				sessionView = {
+					source: a.session.source,
+					sessionKey: a.session.sessionKey,
+					standing: "operator-declared",
+					liveness: "unknown",
+					livenessState: offline.state as "liveness-unknown" | "stale-observation" | "unsupported-observation",
+					observationMode: "offline-projection",
+					terminationConfirmed: false,
+					lastRecordedAtMs: act?.lastRecordedAtMs ?? null,
+					instanceStatus,
+				};
 			}
 			const attempts = a.attemptIds.map((attemptId) => {
 				const e = execution(attemptId);
+				const adapterRec = input.adapterAuthorizations?.(attemptId);
 				const entry = entryById.get(attemptId);
 				const link = !input.attempts.ok
 					? ("unknown" as const)
@@ -703,16 +868,36 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 						: entry.attempt.taskId !== a.taskId
 							? ("other-task" as const)
 							: ("resolved" as const);
-				const ran =
-					e.authorization.state === "authorized"
-						? ("workbench-authorized" as const)
-						: e.route.state === "claimed"
-							? ("route-claimed" as const)
-							: e.authorization.state === "unknown" || e.route.state === "unknown"
-								? ("unknown" as const)
-								: ("none-recorded" as const);
+				let ran: EndoCoordinationAssignmentViewV0["attempts"][number]["execution"];
+				if (e.authorization.state === "authorized") {
+					ran = "workbench-authorized";
+				} else if (e.authorization.state === "adapter-authorized") {
+					if (e.authorization.aborted) ran = "aborted-before-transport";
+					else if (adapterRec?.outcome.state === "present") {
+						const st = adapterRec.outcome.record.status;
+						ran =
+							st === "accepted" ? "adapter-accepted" : st === "refused" ? "adapter-refused" : "adapter-unknown";
+					} else {
+						ran = "adapter-authorized";
+					}
+				} else if (e.route.state === "claimed") {
+					ran = "route-claimed";
+				} else if (e.authorization.state === "unknown" || e.route.state === "unknown") {
+					ran = "unknown";
+				} else {
+					ran = "none-recorded";
+				}
 				if (link === "missing" || link === "other-task") findings.add("attempt-link-unresolved");
-				if (ran === "workbench-authorized" || ran === "route-claimed") findings.add("attempt-execution-recorded");
+				if (
+					ran === "workbench-authorized" ||
+					ran === "adapter-authorized" ||
+					ran === "adapter-accepted" ||
+					ran === "adapter-refused" ||
+					ran === "adapter-unknown" ||
+					ran === "aborted-before-transport" ||
+					ran === "route-claimed"
+				)
+					findings.add("attempt-execution-recorded");
 				if (e.authorization.state === "unknown" || e.route.state === "unknown")
 					findings.add("attempt-evidence-unknown");
 				return { attemptId, link, execution: ran };
@@ -742,15 +927,7 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 				role: a.participant.role,
 				intendedHarnessFamily: a.participant.intendedHarnessFamily,
 				taskBinding,
-				session:
-					a.session === null
-						? null
-						: {
-								source: a.session.source,
-								sessionKey: a.session.sessionKey,
-								standing: "operator-declared" as const,
-								liveness: "unknown" as const,
-							},
+				session: sessionView,
 				workspace: {
 					worktreePath: a.workspace.worktreePath,
 					registration: a.workspace.registration,
@@ -763,12 +940,89 @@ export function endoCoordinationProjectionV0(input: EndoCoordinationProjectionIn
 				findings: [...findings].sort(),
 			};
 		});
+		const registeredWorktrees: EndoCoordinationRegisteredWorktreeViewV0[] = sorted(
+			(file?.registeredWorktrees ?? []).filter((w) => w.projectId === projectId),
+			(w) => w.worktreeId,
+		).map((w) => {
+			const obs = input.workspaces.get(w.worktreePath);
+			if (obs === undefined || obs === null) {
+				return {
+					worktreeId: w.worktreeId,
+					worktreePath: w.worktreePath,
+					label: w.label,
+					observation: "unavailable",
+					headCommit: null,
+					clean: null,
+				};
+			}
+			if (obs.commonDir !== w.commonDir || obs.worktree !== w.worktreePath) {
+				return {
+					worktreeId: w.worktreeId,
+					worktreePath: w.worktreePath,
+					label: w.label,
+					observation: "mismatch",
+					headCommit: null,
+					clean: null,
+				};
+			}
+			return {
+				worktreeId: w.worktreeId,
+				worktreePath: w.worktreePath,
+				label: w.label,
+				observation: "observed",
+				headCommit: obs.commit,
+				clean: obs.clean,
+			};
+		});
+		const projectReviewsInput = input.reviews?.get(projectId);
+		const reviewViews: EndoCoordinationReviewViewV0[] = [];
+		if (projectReviewsInput !== undefined) {
+			if (!projectReviewsInput.ok) {
+				gaps.add("reviews-unreadable");
+			} else {
+				if (projectReviewsInput.problems > 0) gaps.add("reviews-unreadable");
+				if (projectReviewsInput.truncated) gaps.add("reviews-truncated");
+				for (const rv of sorted(projectReviewsInput.reviews, (r) => r.reviewId)) {
+					if (rv.projectId !== projectId) continue;
+					const owner = candidateEntry.get(rv.candidateTaskId);
+					const exists = owner?.candidates.some((c) => c.candidateId === rv.candidateId) === true;
+					const candidateRelation = !exists
+						? ("candidate-missing" as const)
+						: owner?.currentCandidateId === rv.candidateId
+							? ("current-candidate" as const)
+							: ("superseded-candidate" as const);
+					const findingCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+					for (const f of rv.findings) findingCounts[f.severity] += 1;
+					reviewViews.push({
+						reviewId: rv.reviewId,
+						candidateTaskId: rv.candidateTaskId,
+						candidateId: rv.candidateId,
+						candidateKind: rv.subject.kind,
+						candidateRelation,
+						standing: "advisory-agent-review",
+						basis: "agent-reported",
+						verdict: rv.verdict,
+						findingCounts,
+						checkoutStanding: rv.checkout.standing,
+						checkoutCleanAtCandidate: rv.checkout.cleanAtCandidate,
+						agentClaimedChecksPresent: rv.agentClaimedChecks !== null,
+						reviewerParticipantId: rv.reviewer.participantId,
+						reviewerHarnessFamily: rv.reviewer.harnessFamily,
+						assignmentId: rv.assignmentId,
+						recordedAtMs: rv.recordedAtMs,
+						disclosures: [...ENDO_REVIEW_DISCLOSURES_V0],
+					});
+				}
+			}
+		}
 		return {
 			id: projectId,
 			assignments: assignmentViews,
 			dependencies,
 			tasks,
 			conflicts: conflicts.filter((c) => c.assignmentIds.some((id) => ids.has(id))),
+			registeredWorktrees,
+			reviews: reviewViews,
 		};
 	});
 	return {
@@ -800,11 +1054,42 @@ export function endoWorktreeConflictsV0(assignments: readonly EndoAssignmentV0[]
 		if (hazardous.length > 0)
 			out.push({ kind: "worktree-liveness-unverified", worktreePath, assignmentIds: ids(hazardous) });
 		if (writers.length >= 2) {
-			// The first writer needs no acknowledgement; every later one must carry the operator's. Counted, not ordered: confirmation
-			// times can tie, and an ordering would make the same file read differently.
-			const acknowledged = writers.filter((a) => !a.workspace.sharedWorktreeAcknowledged).length <= 1;
+			// E2 remediation of E1 §10.6 boolean sharedWorktreeAcknowledged limit:
+			// Every occupying writer pair (x, y) must be explicitly acknowledged by ID when E2 `acknowledgedConflictIds`
+			// metadata is present on either assignment, preventing an earlier boolean acknowledgement on an ended
+			// writer from silently excusing a new or reactivated unacknowledged overlap.
+			// Falls back to the legacy E1 counted rule ONLY when neither writer in the pair carries `acknowledgedConflictIds`.
+			let allPairsAcknowledged = true;
+			const hasAnyExplicitIds = writers.some((w) => w.workspace.acknowledgedConflictIds !== undefined);
+			if (hasAnyExplicitIds) {
+				for (let i = 0; i < writers.length && allPairsAcknowledged; i += 1) {
+					for (let j = i + 1; j < writers.length; j += 1) {
+						const x = writers[i] as EndoAssignmentV0;
+						const y = writers[j] as EndoAssignmentV0;
+						const pairExplicit =
+							x.workspace.acknowledgedConflictIds !== undefined ||
+							y.workspace.acknowledgedConflictIds !== undefined;
+						if (pairExplicit) {
+							const acked =
+								x.workspace.acknowledgedConflictIds?.includes(y.assignmentId) === true ||
+								y.workspace.acknowledgedConflictIds?.includes(x.assignmentId) === true;
+							if (!acked) {
+								allPairsAcknowledged = false;
+								break;
+							}
+						} else if (!x.workspace.sharedWorktreeAcknowledged && !y.workspace.sharedWorktreeAcknowledged) {
+							allPairsAcknowledged = false;
+							break;
+						}
+					}
+				}
+			} else {
+				allPairsAcknowledged = writers.filter((a) => !a.workspace.sharedWorktreeAcknowledged).length <= 1;
+			}
 			out.push({
-				kind: acknowledged ? "shared-writable-worktree-acknowledged" : "unacknowledged-worktree-write-overlap",
+				kind: allPairsAcknowledged
+					? "shared-writable-worktree-acknowledged"
+					: "unacknowledged-worktree-write-overlap",
 				worktreePath,
 				assignmentIds: ids(writers),
 			});

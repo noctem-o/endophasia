@@ -1,4 +1,8 @@
 import {
+	type EndoCoordinatorCoordinationV0,
+	validateEndoCoordinatorCoordinationV0,
+} from "../../../protocol/coordinator-coordination.ts";
+import {
 	ENDO_COORDINATOR_BASES_V0,
 	ENDO_COORDINATOR_PHASES_V0,
 	type EndoCoordinatorStatusV0,
@@ -139,3 +143,29 @@ export type CoordinatorProblem =
 export type CoordinatorReply =
 	| { kind: "status"; status: EndoCoordinatorStatusV0 }
 	| { kind: "failure"; problem: CoordinatorProblem };
+
+export type CoordinatorCoordinationReply =
+	| { kind: "coordination"; coordination: EndoCoordinatorCoordinationV0 }
+	| { kind: "failure"; problem: CoordinatorProblem };
+
+/** Strict read-only validation of the companion coordination projection received from the paired workspace host. */
+export function readCoordinatorCoordination(value: unknown): EndoCoordinatorCoordinationV0 | null {
+	try {
+		const coordination = validateEndoCoordinatorCoordinationV0(value);
+		const requested = coordination.scope.requested;
+		if (
+			requested === null ||
+			requested.length === 0 ||
+			!requested.every(namedId) ||
+			!unique(requested) ||
+			!unique(coordination.projects.map((p) => p.id)) ||
+			coordination.authority.assignmentIsAuthorization !== false ||
+			coordination.authority.readinessIsPermission !== false ||
+			coordination.basis.liveness !== "not-observed"
+		)
+			return null;
+		return coordination;
+	} catch {
+		return null;
+	}
+}

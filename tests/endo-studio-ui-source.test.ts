@@ -41,6 +41,7 @@ describe("the frontend's source", () => {
 				"model/course.ts",
 				"compare/CompareWorkspace.tsx",
 				"compare/Comparison.tsx",
+				"coordinator/CoordinationViews.tsx",
 				"coordinator/CoordinatorWorkspace.tsx",
 				"coordinator/Evidence.tsx",
 				"coordinator/read.ts",
@@ -135,13 +136,22 @@ describe("the frontend's source", () => {
 		);
 		expect(specifiers(coordinatorProtocol).every(({ typeOnly }) => typeOnly)).toBe(true);
 		expect(coordinatorProtocol).not.toMatch(/\b(import\(|require\(|fetch\(|process\.\w|Date\.now\(|Math\.random\()/);
+		const coordinationProtocol = code(
+			readFileSync(new URL("../protocol/coordinator-coordination.ts", import.meta.url), "utf8"),
+		);
+		expect(coordinationProtocol).not.toMatch(
+			/\b(import\(|require\(|fetch\(|process\.\w|Date\.now\(|Math\.random\()|from "node:/,
+		);
 		for (const [name, text] of Object.entries(sources)) {
 			for (const { typeOnly, specifier } of specifiers(text)) {
 				if (specifier.startsWith("./") || specifier.startsWith("../")) {
 					if (/protocol\//.test(specifier)) {
 						expect(specifier, `${name}: ${specifier}`).toMatch(/^(\.\.\/)+protocol\/[a-z-]+\.ts$/);
 						if (!typeOnly) {
-							expect(specifier).toBe("../../../protocol/coordinator-status.ts");
+							expect([
+								"../../../protocol/coordinator-status.ts",
+								"../../../protocol/coordinator-coordination.ts",
+							]).toContain(specifier);
 							expect([
 								"coordinator/CoordinatorWorkspace.tsx",
 								"coordinator/Evidence.tsx",
@@ -234,7 +244,7 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(26);
+		expect(api.match(/\/api\//g)?.length).toBe(27);
 		// Evolve Protected Experiment Inspector (EVOLVE-INSPECT-001): two fixed GET routes, gated by opaque selector, zero write routes.
 		expect(api).toContain("./api/v0/evolve/experiments");
 		expect(api).toMatch(/\.\/api\/v0\/evolve\/experiment\/\$\{request\.selector\}/);
@@ -249,9 +259,12 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/if \(!ompSelector\(request\.selector\)\)/);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(15);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(16);
 		const coordinator = api.slice(api.indexOf("export async function fetchCoordinator"));
 		expect(coordinator).toMatch(/new URL\("\.\/api\/v0\/workbench\/workspace\/coordinator", document\.baseURI\)/);
+		expect(coordinator).toMatch(
+			/new URL\("\.\/api\/v0\/workbench\/workspace\/coordinator\/coordination", document\.baseURI\)/,
+		);
 		expect(coordinator).toMatch(/method: "GET"/);
 		expect(coordinator).toMatch(/headers: \{ "X-Endo-Grant": grant \}/);
 		expect(coordinator).not.toMatch(/body:|method: "POST"/);

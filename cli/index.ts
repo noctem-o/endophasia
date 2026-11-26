@@ -28,7 +28,14 @@
 import { artifactsCommand, eventsCommand, ingestCommand, ledgerCommand, statusCommand } from "./commands.ts";
 import { COORDINATOR_COMMANDS_V0 } from "./coordinator.ts";
 import { ATTEMPT_COMMANDS_V0 } from "./develop-attempts.ts";
-import { ASSIGN_COMMANDS_V0, ASSIGN_USAGE_V0, CANDIDATE_COMMANDS_V0, DEP_COMMANDS_V0 } from "./develop-coordination.ts";
+import {
+	ASSIGN_COMMANDS_V0,
+	ASSIGN_USAGE_V0,
+	CANDIDATE_COMMANDS_V0,
+	DEP_COMMANDS_V0,
+	REVIEW_COMMANDS_V0,
+	WORKTREE_COMMANDS_V0,
+} from "./develop-coordination.ts";
 import { PROJECT_COMMANDS_V0, TASK_COMMANDS_V0 } from "./develop-tasks.ts";
 import { digestKeyCommand } from "./digest-key.ts";
 import { doctorCommand } from "./doctor.ts";
@@ -94,6 +101,8 @@ const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<vo
 		CANDIDATE_COMMANDS_V0,
 		"usage: endo candidate <declare|declare-protected|select|list> [<root> | --root dir] ...",
 	),
+	worktree: family(WORKTREE_COMMANDS_V0, "usage: endo worktree <register|unregister|list> [<root> | --root dir] ..."),
+	review: family(REVIEW_COMMANDS_V0, "usage: endo review <record|list|show> [<root> | --root dir] ..."),
 	coordinator: family(COORDINATOR_COMMANDS_V0, "usage: endo coordinator <status|brief|coordination> ..."),
 	steer: family(STEER_COMMANDS_V0, "usage: endo steer <propose|authorize|apply|status|close> <root> ..."),
 	experiment: family(

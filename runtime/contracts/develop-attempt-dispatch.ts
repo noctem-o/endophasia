@@ -13,6 +13,7 @@
 
 import { realpathSync } from "node:fs";
 import { dirname } from "node:path";
+import type { EndoCandidateIdentityReadingV0 } from "../../protocol/coordinator-coordination.ts";
 import {
 	ENDO_DEVELOP_ATTEMPT_AUTHORIZATION_SCHEMA_V0,
 	type EndoAttemptMessageRefV0,
@@ -25,12 +26,18 @@ import {
 	renderEndoDevelopBriefV0,
 } from "../../protocol/develop-attempts.ts";
 import { ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0 } from "../../protocol/workbench.ts";
+import { checkAdapterAuthorizationPresenceSyncV0 } from "../../storage/develop-adapter-authorizations.ts";
 import {
 	checkProtectedAttemptPresenceSyncV0,
 	DevelopAttemptRoutesStoreV0,
 } from "../../storage/develop-attempt-routes.ts";
 import { type DevelopAttemptsStoreV0, endoAttemptProblemsOfV0 } from "../../storage/develop-attempts.ts";
+import { DevelopCoordinationStoreV0 } from "../../storage/develop-coordination.ts";
 import type { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
+import {
+	primaryGitCommonDirSyncV0,
+	revalidateRegisteredSiblingPointerSyncV0,
+} from "../../storage/git-worktree-pointer.ts";
 import { endoBriefSha256V0 } from "./develop-attempt-execution.ts";
 
 /**
@@ -58,6 +65,10 @@ export type DevelopAttemptDispatchRefusalV0 =
 	| "outcome-recorded"
 	| "handed-off"
 	| "already-authorized"
+	| "assignment-required"
+	| "assignment-not-active"
+	| "session-binding-stale"
+	| "prerequisites-not-satisfied"
 	| "brief-too-large"
 	| "brief-unsafe"
 	| "storage-failed";
@@ -78,6 +89,14 @@ export const DEVELOP_ATTEMPT_DISPATCH_REFUSAL_WORDS_V0: Readonly<Record<DevelopA
 	"outcome-recorded": "an outcome (reported or abandoned) is already recorded for this attempt",
 	"handed-off": "you recorded handing this attempt to another agent; to send it to Pi as well, prepare a new attempt",
 	"already-authorized": "this attempt was already authorised to be sent once; to try again, prepare a new attempt",
+	"assignment-required":
+		"this attempt is linked to an assignment and must be authorized through the governed assignment commitment boundary",
+	"assignment-not-active":
+		"the assignment linked to this attempt is no longer active or its revision changed during approval",
+	"session-binding-stale":
+		"the live workbench session or attachment does not match the assignment's declared session binding",
+	"prerequisites-not-satisfied":
+		"one or more task dependencies for this assignment-linked attempt are not currently satisfied",
 	"brief-too-large": `the brief is longer than a workbench prompt (${ENDO_WORKBENCH_MAX_PROMPT_BYTES_V0} bytes)`,
 	"brief-unsafe": "the brief holds characters that cannot be shown faithfully on the terminal for approval",
 	"storage-failed": "the authorisation could not be recorded, so nothing was sent",
@@ -105,6 +124,9 @@ export interface DevelopAttemptBindingV0 {
 	proposalDigest: string;
 	authorizationEventId: string;
 	message: EndoAttemptMessageRefV0;
+	/** Optional live runtime process instance / fingerprint for assignment session-binding validation. */
+	instanceId?: string | null;
+	runtimeFingerprintId?: string | null;
 }
 
 export type DevelopAttemptDispatchResultV0<T> =
@@ -121,9 +143,18 @@ const realpath = (path: string): string | null => {
 	}
 };
 
+export interface DevelopAttemptAssignmentBindingV0 {
+	assignmentId: string;
+	expectedAssignmentRevision: number;
+	verifiedWorktree?: { commonDir: string; gitDir: string | null };
+	/** Prerequisite candidate identities verified outside `coordination.lock.<n>` by the host caller (Codex P2 #4). */
+	verifiedCandidates?: ReadonlyMap<string, EndoCandidateIdentityReadingV0>;
+}
+
 export class DevelopAttemptDispatchV0 {
 	readonly #tasks: DevelopTasksStoreV0;
 	readonly #attempts: DevelopAttemptsStoreV0;
+	readonly #root: string;
 	readonly #developDir: string;
 	readonly #routes: DevelopAttemptRoutesStoreV0;
 	readonly #projectId: string;
@@ -139,6 +170,7 @@ export class DevelopAttemptDispatchV0 {
 		this.#tasks = tasks;
 		this.#attempts = attempts;
 		this.#developDir = dirname(attempts.directory);
+		this.#root = dirname(this.#developDir);
 		this.#routes = new DevelopAttemptRoutesStoreV0(this.#developDir);
 		this.#projectId = config.projectId;
 		this.#launchDirectory = config.launchDirectory;
@@ -146,7 +178,10 @@ export class DevelopAttemptDispatchV0 {
 	}
 
 	/** Whether this attempt may be sent from this launch now, and what the operator would approve. Reads only. */
-	check(attemptId: string): DevelopAttemptDispatchResultV0<DevelopAttemptCandidateV0> {
+	check(
+		attemptId: string,
+		assignmentBinding?: DevelopAttemptAssignmentBindingV0,
+	): DevelopAttemptDispatchResultV0<DevelopAttemptCandidateV0> {
 		const refuse = (code: DevelopAttemptDispatchRefusalV0) => ({ ok: false as const, code });
 		if (!ENDO_ATTEMPT_ID_PATTERN_V0.test(attemptId)) return refuse("bad-request");
 		const read = this.#attempts.read();
@@ -165,14 +200,49 @@ export class DevelopAttemptDispatchV0 {
 		const protectedPresence = checkProtectedAttemptPresenceSyncV0(this.#developDir, attemptId);
 		if (protectedPresence === "present") return refuse("already-authorized");
 		if (protectedPresence === "problem") return refuse("unreadable");
+		const adapterPresence = checkAdapterAuthorizationPresenceSyncV0(this.#developDir, attemptId);
+		if (adapterPresence === "present") return refuse("already-authorized");
+		if (adapterPresence === "problem") return refuse("unreadable");
 		if (entry.outcome !== null) return refuse("outcome-recorded");
 		if (entry.handoff !== null) return refuse("handed-off");
 		const tasks = this.#tasks.read();
 		if (!tasks.ok) return refuse("tasks-unreadable");
 		const project = tasks.file.projects.find((p) => p.id === this.#projectId);
 		if (project === undefined) return refuse("other-project");
+		const coordRead = new DevelopCoordinationStoreV0(this.#root).read();
+		if (!coordRead.ok) return refuse("unreadable");
 		const registered = realpath(project.path);
-		if (registered === null || realpath(this.#launchDirectory) !== registered) return refuse("launch-not-registered");
+		const launchReal = realpath(this.#launchDirectory);
+		const isPrimary = registered !== null && launchReal === registered;
+		const primaryCommonDir = registered !== null ? primaryGitCommonDirSyncV0(registered) : null;
+		const isRegisteredSibling =
+			!isPrimary &&
+			launchReal !== null &&
+			primaryCommonDir !== null &&
+			coordRead.exists &&
+			(coordRead.file.registeredWorktrees ?? []).some(
+				(w) =>
+					w.projectId === this.#projectId &&
+					w.worktreePath === launchReal &&
+					revalidateRegisteredSiblingPointerSyncV0(w, primaryCommonDir).ok,
+			);
+		if (!isPrimary && !isRegisteredSibling) return refuse("launch-not-registered");
+		// E2-B anti-bypass: an attempt linked to an assignment in coordination.json cannot bypass assignment commitment.
+		if (coordRead.exists) {
+			const linked = coordRead.file.assignments.filter((a) => a.attemptIds.includes(attemptId));
+			if (linked.length > 0) {
+				if (assignmentBinding === undefined) return refuse("assignment-required");
+				const matched = linked.find((a) => a.assignmentId === assignmentBinding.assignmentId);
+				if (
+					matched === undefined ||
+					matched.state !== "active" ||
+					matched.revision !== assignmentBinding.expectedAssignmentRevision
+				)
+					return refuse("assignment-not-active");
+			}
+		} else if (assignmentBinding !== undefined) {
+			return refuse("assignment-not-active");
+		}
 		const task = tasks.file.tasks.find((t) => t.id === attempt.taskId && t.projectId === this.#projectId);
 		if (task === undefined) return refuse("task-not-found");
 		if (task.status === "done") return refuse("task-done");
@@ -198,12 +268,16 @@ export class DevelopAttemptDispatchV0 {
 	 * After the operator's approval, and before the broker records the send: check again, require the brief to be byte for byte the one that
 	 * was approved, and write the authorisation once. `already-authorized` when another writer (another workbench on this store, or a moment
 	 * ago) got there first; that record is left as it is.
+	 *
+	 * For assignment-linked attempts, linearises the route claim and authorization write inside `coordination.lock.<n>`
+	 * via `DevelopCoordinationStoreV0.commitAssignmentDispatch` so a concurrent revocation cannot be bypassed.
 	 */
 	authorize(
 		approved: DevelopAttemptCandidateV0,
 		binding: DevelopAttemptBindingV0,
+		assignmentBinding?: DevelopAttemptAssignmentBindingV0,
 	): DevelopAttemptDispatchResultV0<EndoDevelopAttemptAuthorizationV0> {
-		const now = this.check(approved.attemptId);
+		const now = this.check(approved.attemptId, assignmentBinding);
 		if (!now.ok) return now;
 		if (now.value.briefSha256 !== approved.briefSha256 || now.value.brief !== approved.brief)
 			return { ok: false, code: "task-words-changed" };
@@ -230,24 +304,70 @@ export class DevelopAttemptDispatchV0 {
 		} catch {
 			return { ok: false, code: "storage-failed" };
 		}
-		// Atomically claim the shared execution-route reservation before writing the workbench authorisation so concurrent
-		// workbench and protected-attempt dispatchers cannot both pass preflight and execute the same attempt.
-		const claimed = this.#routes.claim(approved.attemptId, "workbench", nowMs);
-		if (claimed !== "created") {
-			if (claimed === "exists") {
-				const existing = this.#routes.read(approved.attemptId);
-				return { ok: false, code: existing.state === "present" ? "already-authorized" : "unreadable" };
+
+		// E2-B: if assignment-linked, commit inside `coordination.lock.<n>` to linearise against revocation.
+		if (assignmentBinding !== undefined) {
+			const launchReal = realpath(this.#launchDirectory);
+			if (launchReal === null) return { ok: false, code: "launch-not-registered" };
+			const coordStore = new DevelopCoordinationStoreV0(this.#root, { now: this.#now });
+			const committed = coordStore.commitAssignmentDispatch({
+				assignmentId: assignmentBinding.assignmentId,
+				expectedAssignmentRevision: assignmentBinding.expectedAssignmentRevision,
+				expectedTaskRevision: approved.taskRevision,
+				projectId: this.#projectId,
+				taskId: approved.taskId,
+				attemptId: approved.attemptId,
+				expectedBriefSha256: approved.briefSha256,
+				worktreePath: launchReal,
+				...(assignmentBinding.verifiedWorktree === undefined
+					? {}
+					: { verifiedWorktree: assignmentBinding.verifiedWorktree }),
+				...(assignmentBinding.verifiedCandidates === undefined
+					? {}
+					: { verifiedCandidates: assignmentBinding.verifiedCandidates }),
+				sessionBinding: {
+					source: "pi-live",
+					sessionKey: `pi-live:persistent:${binding.session}`,
+					attachmentId: binding.attachment,
+					instanceId: binding.instanceId ?? null,
+					runtimeFingerprintId: binding.runtimeFingerprintId ?? null,
+				},
+				route: "workbench",
+				writeRouteRecord: () => this.#attempts.write(approved.attemptId, "authorized", record),
+			});
+			if (committed.ok) return { ok: true, value: record };
+			if (committed.code === "already-authorized") return { ok: false, code: "already-authorized" };
+			if (committed.code === "session-binding-stale") return { ok: false, code: "session-binding-stale" };
+			if (committed.code === "assignment-not-active" || committed.code === "stale-revision")
+				return { ok: false, code: "assignment-not-active" };
+			if (committed.code === "prerequisites-not-satisfied" || committed.code === "prerequisites-unknown")
+				return { ok: false, code: "prerequisites-not-satisfied" };
+			if (committed.code === "task-done") return { ok: false, code: "task-done" };
+			if (committed.code === "task-words-changed") return { ok: false, code: "task-words-changed" };
+			if (committed.code === "worktree-not-registered") return { ok: false, code: "launch-not-registered" };
+			if (committed.code === "unreadable") return { ok: false, code: "unreadable" };
+			return { ok: false, code: "storage-failed" };
+		}
+
+		// Linearise unlinked route claims inside `coordination.lock.<n>` so a concurrent `linkAttempt` cannot
+		// race between `check()` and `.route.json` claim (Adversarial Finding #2).
+		const coordStore = new DevelopCoordinationStoreV0(this.#root, { now: this.#now });
+		const claimed = coordStore.claimUnlinkedAttemptRoute({
+			attemptId: approved.attemptId,
+			route: "workbench",
+			recordedAtMs: nowMs,
+			writeRouteRecord: () => this.#attempts.write(approved.attemptId, "authorized", record),
+		});
+		if (claimed.ok) return { ok: true, value: record };
+		if (claimed.code === "assignment-required") return { ok: false, code: "assignment-required" };
+		if (claimed.code === "already-authorized" || claimed.code === "already-launched") {
+			if (claimed.routeClaimed) {
+				const after = this.#attempts.read();
+				const entry = after.ok ? after.entries.find((e) => e.attempt.id === approved.attemptId) : undefined;
+				return { ok: false, code: entry?.authorized ? "already-authorized" : "unreadable" };
 			}
-			return { ok: false, code: claimed === "unsafe-path" ? "unreadable" : "storage-failed" };
+			return { ok: false, code: "already-authorized" };
 		}
-		const written = this.#attempts.write(approved.attemptId, "authorized", record);
-		if (written === "created") return { ok: true, value: record };
-		if (written === "exists") {
-			// Only a valid authorisation at that name is "already authorised"; anything else there is unreadable, never taken for one.
-			const after = this.#attempts.read();
-			const entry = after.ok ? after.entries.find((e) => e.attempt.id === approved.attemptId) : undefined;
-			return { ok: false, code: entry?.authorized ? "already-authorized" : "unreadable" };
-		}
-		return { ok: false, code: written === "unsafe-path" ? "unreadable" : "storage-failed" };
+		return { ok: false, code: claimed.code === "unreadable" ? "unreadable" : "storage-failed" };
 	}
 }

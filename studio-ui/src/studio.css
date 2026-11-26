@@ -7068,7 +7068,8 @@ body:has(.develop[data-atmosphere="storm"]) .topbar {
 .tool-disclosure { min-width: 0; overflow-wrap: anywhere; }
 .tool-disclosure summary { cursor: pointer; }
 .tool-disclosure dl { margin: 0.5rem 0; }
-.tool-disclosure dl > div { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 0.5em; }
+.tool-disclosure dl > div { display: grid; grid-template-columns: minmax(6.5em, max-content) minmax(0, 1fr); gap: 0.5em; }
+.tool-disclosure dt { white-space: nowrap; }
 .tool-disclosure dd { margin: 0; }
 .tool-disclosure code { white-space: pre-wrap; }
 .tool-disclosure dd small { opacity: 0.75; }

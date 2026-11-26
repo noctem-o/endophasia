@@ -82,6 +82,7 @@ async function createCheckedFixture(
 		attachmentId?: string;
 		onNativeApprovalRequest?: ConstructorParameters<typeof CodexDevelopAdapterV0>[0]["onNativeApprovalRequest"];
 		logFile?: string;
+		triggerFile?: string;
 		maxRecordBytes?: number;
 	} = {},
 ) {
@@ -105,6 +106,7 @@ async function createCheckedFixture(
 		HOME: process.env.HOME ?? "",
 		FAKE_CODEX_SCENARIO: options.scenario ?? "default",
 		...(options.logFile === undefined ? {} : { FAKE_CODEX_LOG_FILE: options.logFile }),
+		...(options.triggerFile === undefined ? {} : { FAKE_CODEX_TRIGGER_FILE: options.triggerFile }),
 	};
 	const adapter = new CodexDevelopAdapterV0({
 		root,
@@ -1116,16 +1118,20 @@ describe("DEVELOP-CODEX-LIVE-001: D5 fail-closed native approvals", () => {
 			}
 		}
 
-		// 3. Idle-state native approval (sent before any turn is active) MUST fail closed even with accepting handler!
-		const logIdle = join(makeTempDir(), "wire-idle.json");
+		// 3. Idle-state native approval (sent after open() completes, before any turn is active) MUST fail closed even with accepting handler!
+		const idleDir = makeTempDir();
+		const logIdle = join(idleDir, "wire-idle.json");
+		const triggerIdle = join(idleDir, "trigger-idle");
 		const fxIdle = await createCheckedFixture({
 			scenario: "native-approval-idle",
 			logFile: logIdle,
+			triggerFile: triggerIdle,
 			onNativeApprovalRequest: async (req) =>
 				buildCodexNativeApprovalDecisionV0({ request: req, decision: "accept" }),
 		});
 		try {
 			await fxIdle.adapter.open();
+			writeFileSync(triggerIdle, "go\n", "utf8");
 			await expect
 				.poll(() => {
 					if (!existsSync(logIdle)) return null;
@@ -1141,15 +1147,19 @@ describe("DEVELOP-CODEX-LIVE-001: D5 fail-closed native approvals", () => {
 		}
 
 		// 4. Idle-state native approval with OMITTED turnId (`null === null` bypass check, Review #7) MUST fail closed!
-		const logIdleNull = join(makeTempDir(), "wire-idle-null-turn.json");
+		const idleNullDir = makeTempDir();
+		const logIdleNull = join(idleNullDir, "wire-idle-null-turn.json");
+		const triggerIdleNull = join(idleNullDir, "trigger-idle-null");
 		const fxIdleNull = await createCheckedFixture({
 			scenario: "native-approval-idle-null-turn",
 			logFile: logIdleNull,
+			triggerFile: triggerIdleNull,
 			onNativeApprovalRequest: async (req) =>
 				buildCodexNativeApprovalDecisionV0({ request: req, decision: "accept" }),
 		});
 		try {
 			await fxIdleNull.adapter.open();
+			writeFileSync(triggerIdleNull, "go\n", "utf8");
 			await expect
 				.poll(() => {
 					if (!existsSync(logIdleNull)) return null;

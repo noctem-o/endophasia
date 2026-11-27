@@ -1,0 +1,90 @@
+{
+	"mission": "S2-LIVE-001",
+	"recordedAtUtc": "2026-11-27T07:40:00Z",
+	"basis": "controller-observed-passive",
+	"repository": {
+		"worktreePath": "/home/noctem/.gemini/antigravity/worktrees/endophasia/live_coordinator_experiment_s2",
+		"branch": "research/s2-live-001",
+		"baselineOriginMain": "2f730eb68",
+		"baselinePr": "#191 (COORDINATOR-AUTOMATION-S2)",
+		"pinnedCliEntry": "/home/noctem/.gemini/antigravity/worktrees/endophasia/live_coordinator_experiment_s2/cli/index.ts",
+		"ambientEndoBin": {
+			"path": "/home/noctem/.local/bin/endo",
+			"targetDefaultRepo": "/home/noctem/projects/endophasia",
+			"targetDefaultHead": "99423a924",
+			"behindOriginMainByCommits": 31,
+			"note": "Do NOT invoke bare `endo` without pinning ENDOPHASIA_REPO or invoking the pinned worktree cli/index.ts directly."
+		}
+	},
+	"runtimeDependencies": {
+		"node": "v26.13.1",
+		"npm": "12.2.3",
+		"bubblewrap": "0.13.1",
+		"git": "/usr/bin/git (2.56.1)",
+		"xdgRuntimeDir": {
+			"path": "/run/user/1000",
+			"mode": "0700",
+			"owner": "noctem"
+		},
+		"openclaw": {
+			"binary": "/home/noctem/.local/bin/openclaw",
+			"resolvedEntry": "/home/noctem/.local/lib/node_modules/openclaw/openclaw.mjs",
+			"installedVersion": "2026.11.10",
+			"installedCommit": "6ea542f",
+			"gatewayServiceBaseline": {
+				"unit": "openclaw-gateway.service",
+				"activeState": "active",
+				"subState": "running",
+				"mainPid": 2965835,
+				"invocationId": "9c6deee269bb4f2a8528f0bef799ecad"
+			},
+			"compatibilityNote": "adapters/coordinator/openclaw.ts on origin/main pinned exact version 2026.11.7 only; minimal allowlist remediation adds verified 2026.11.10 while preserving fail-closed pinning and honest runtime.harness provenance."
+		}
+	},
+	"localInferenceEndpoint": {
+		"endpoint": "http://127.0.0.1:8091",
+		"serverPid": 1426952,
+		"serverBinary": "/home/noctem/llama-cpp/llama.cpp/build/bin/llama-server",
+		"serverCmdline": "/home/noctem/llama-cpp/llama.cpp/build/bin/llama-server --models-dir /home/noctem/models/inkling-2-mini/atomicchat --models-max 1 --host 127.0.0.1 --port 8091 --n-gpu-layers all --ctx-size 131072 --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0 --batch-size 1024 --ubatch-size 32 --parallel 1 --jinja --temp 1.0 --top-p 1.0 --top-k 0 --min-p 0.0",
+		"modelsDir": "/home/noctem/models/inkling-2-mini/atomicchat",
+		"ggufFilesInModelsDir": [
+			{
+				"filename": "Inkling-2-Mini-Uncensored-AD-Q4_K.gguf",
+				"bytes": 16525559776,
+				"derivedCanonicalModelId": "Inkling-2-Mini-Uncensored-AD-Q4_K"
+			}
+		],
+		"passiveObservation": {
+			"requestsSent": [
+				{ "method": "GET", "path": "/health", "status": 200, "body": { "status": "ok" } },
+				{
+					"method": "GET",
+					"path": "/props",
+					"status": 200,
+					"body": {
+						"role": "router",
+						"max_instances": 1,
+						"models_autoload": true,
+						"model_alias": "llama-server",
+						"model_path": "none",
+						"default_generation_settings": { "params": null, "n_ctx": 0 },
+						"ui_settings": {},
+						"build_info": "b12622-19bc41dbb",
+						"cors_proxy_enabled": false
+					}
+				}
+			],
+			"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+			"readiness": "model-unconfirmed",
+			"detail": "router-model-state-not-observed",
+			"capacityConfirmed": false,
+			"childWorkersObserved": 0,
+			"inferenceTokens": 0
+		}
+	},
+	"hostHardwarePassive": {
+		"cpu": "AMD Ryzen 7 5800X3D 8-Core Processor (16 threads)",
+		"memoryTotal": "31Gi",
+		"swapTotal": "8.0Gi"
+	}
+}

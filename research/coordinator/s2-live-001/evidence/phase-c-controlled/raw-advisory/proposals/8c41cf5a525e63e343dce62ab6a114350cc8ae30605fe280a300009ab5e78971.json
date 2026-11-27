@@ -1,0 +1,42 @@
+{
+	"authority": {
+		"executionAuthority": false,
+		"grants": "none",
+		"requiresOperatorConfirmationPerAttempt": true
+	},
+	"dedupKey": "01852d7ac802609cc5d4bc4082d59bc081496631a57896694a9ab991ccbe7f20",
+	"evidence": {
+		"admissionSemanticDigest": "4040cce2db08d4c87a503971b07c221036bf7680177f50ce3ca20ee96863e35c",
+		"facts": [
+			{
+				"fact": "task-status-blocked",
+				"subject": "endo.task.1467d1b3cd426317314cf61e6dea8840"
+			}
+		],
+		"projectionSha256": null,
+		"semanticDigest": "4040cce2db08d4c87a503971b07c221036bf7680177f50ce3ca20ee96863e35c"
+	},
+	"fireIdempotencyKey": "d3d9d6aa896535fc49c62bf4f944d0b559af51d1fc9dce9c78459cdc871c09e3",
+	"generatedAtMs": 1795766862758,
+	"kind": "resolve-blocked-task",
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"proposalId": "8c41cf5a525e63e343dce62ab6a114350cc8ae30605fe280a300009ab5e78971",
+	"rationale": {
+		"source": "model-briefing",
+		"turnId": "fcd0cea1cf91529bc0fe06eec3099f1b668a5ac9619259a586da2fcbf78ec9e3"
+	},
+	"scheduleId": "ctrl-on-change",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-proposal.v0",
+	"standing": "untrusted-advisory-proposal",
+	"subject": {
+		"assignmentId": null,
+		"candidateId": null,
+		"taskId": "endo.task.1467d1b3cd426317314cf61e6dea8840"
+	},
+	"turnId": "fcd0cea1cf91529bc0fe06eec3099f1b668a5ac9619259a586da2fcbf78ec9e3",
+	"uncertainties": [
+		"no-check-recorded"
+	]
+}
+

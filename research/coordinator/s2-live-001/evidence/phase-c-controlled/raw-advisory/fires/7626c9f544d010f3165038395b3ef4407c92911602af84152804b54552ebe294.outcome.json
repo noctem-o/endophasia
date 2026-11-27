@@ -1,0 +1,27 @@
+{
+	"actionKind": "emit-operator-proposal",
+	"completedAtMs": 1795767255471,
+	"detail": "semantic state unchanged since an attempt that did not publish a current briefing",
+	"gate": {
+		"completeness": "complete",
+		"gaps": [],
+		"lastAttemptedSemanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+		"lastConsideredSemanticDigest": "213dddfbfc70601ed824589c562e86eaf0baccee76d103d4225962f832040201",
+		"observedAtMs": 1795767255435,
+		"semanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+		"wakeReason": null
+	},
+	"holderId": "endo.advisory.1108697.9db4263c5980",
+	"idempotencyKey": "7626c9f544d010f3165038395b3ef4407c92911602af84152804b54552ebe294",
+	"inferenceDispatched": "no",
+	"leaseEpoch": 14,
+	"missedWindowCount": 0,
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"scheduleId": "ctrl-on-change",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+	"status": "skipped-already-attempted",
+	"turnId": null,
+	"windowStartMs": 1795767246000
+}
+

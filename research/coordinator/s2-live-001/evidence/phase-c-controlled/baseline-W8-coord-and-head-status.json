@@ -1,0 +1,220 @@
+{
+  "coordinatorStatus": {
+    "attention": [
+      {
+        "kind": "awaiting-your-review",
+        "subject": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf",
+        "text": "Task endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf awaits your review (verification: not-current)."
+      },
+      {
+        "kind": "evidence-stale",
+        "subject": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf",
+        "text": "Task endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf's checks are not current; recheck before relying on them."
+      }
+    ],
+    "authority": {
+      "decisionAuthority": "operator-only",
+      "grants": "none",
+      "kind": "read-only-projection",
+      "notes": [
+        "Reading this status writes nothing, moves no task, sends no prompt, launches no agent and changes no approval.",
+        "Task status is the operator's own record; an agent finishing or a run ending never moves a task.",
+        "DEVELOP records and the event log are unsigned local files writable by any same-uid process.",
+        "Attention items are advisory triage, not acceptance and not an authoritative verification PASS."
+      ],
+      "writes": "none"
+    },
+    "findings": [],
+    "notEstablished": [
+      "That a session is alive now: there is no read-only liveness probe, so an attached session that has said nothing for longer than the staleness window reads as last-observed.",
+      "Which task an unlinked session worked on: relationships are taken only from explicit records, never from names, prompt text or timestamps.",
+      "That an agent's reported result is true, or that a passing check satisfies a task's acceptance criteria.",
+      "Who or what wrote any changed byte in a working tree.",
+      "Verification of completed tasks: their receipts are not re-read by this status.",
+      "Protection against a same-uid process editing the records this status reads."
+    ],
+    "projects": [
+      {
+        "counts": {
+          "awaiting-review": 1,
+          "blocked": 0,
+          "completed": 0,
+          "in-progress": 1,
+          "open": 0
+        },
+        "freshness": {
+          "ageMs": 2,
+          "observedAtMs": 1795767123017,
+          "reason": null,
+          "state": "fresh"
+        },
+        "head": {
+          "clean": true,
+          "commit": "a75be446892e1864ee6b2ffa1894ec34dc36f37f"
+        },
+        "id": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+        "name": "s2-live-controlled",
+        "source": "operator-declared",
+        "tasks": [
+          {
+            "association": "unknown",
+            "attempts": {
+              "count": 1,
+              "latest": {
+                "id": "endo.attempt.8d9c8ead7d95ed4c5f21d04664ed35a4",
+                "preparedAtMs": 1795767003600,
+                "sendAuthorized": false,
+                "state": "prepared",
+                "stateBasis": "operator-declared"
+              }
+            },
+            "gaps": [
+              {
+                "code": "earlier-failure-not-current",
+                "text": "A failed receipt does not apply to the current clean HEAD. It is historical evidence, not a current failure."
+              },
+              {
+                "code": "checks-not-current",
+                "text": "A check receipt records commit c9b0cd9dfda58d29caa44e4146f5c38722f9f4a3, not current HEAD."
+              },
+              {
+                "code": "no-check-at-current-head",
+                "text": "No check receipt at the current HEAD was found."
+              },
+              {
+                "code": "review-without-passing-check",
+                "text": "It awaits review and this read did not establish a passing check at the current clean HEAD."
+              }
+            ],
+            "phase": "awaiting-review",
+            "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+            "revision": 2,
+            "sessions": [],
+            "status": "review",
+            "statusSource": "operator-declared",
+            "taskId": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf",
+            "title": "Fix subtraction bug in calc.mjs",
+            "updatedAtMs": 1795767003284,
+            "verification": {
+              "basis": "controller-observed-host-check",
+              "freshness": {
+                "ageMs": 2,
+                "observedAtMs": 1795767123017,
+                "reason": "A check receipt records commit c9b0cd9dfda58d29caa44e4146f5c38722f9f4a3, not current HEAD.",
+                "state": "stale"
+              },
+              "incomplete": false,
+              "moreResults": 0,
+              "receiptReadComplete": true,
+              "results": [
+                {
+                  "attemptId": "endo.attempt.8d9c8ead7d95ed4c5f21d04664ed35a4",
+                  "basis": "controller-observed",
+                  "command": "/usr/bin/node test.mjs",
+                  "commit": "c9b0cd9dfda58d29caa44e4146f5c38722f9f4a3",
+                  "freshness": "stale",
+                  "outcome": "failed",
+                  "reading": "unplanned",
+                  "receiptId": "endo.receipt.52da116b67169c595b6d5e069a56022c",
+                  "relation": "head-differs",
+                  "startedAtMs": 1795767004005
+                }
+              ],
+              "state": "not-current"
+            }
+          },
+          {
+            "association": "unknown",
+            "attempts": {
+              "count": 0,
+              "latest": null
+            },
+            "gaps": [
+              {
+                "code": "no-attempt",
+                "text": "No attempt record exists for this task."
+              },
+              {
+                "code": "no-check-recorded",
+                "text": "No verification receipt was found in the complete read of its attempts."
+              }
+            ],
+            "phase": "in-progress",
+            "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+            "revision": 2,
+            "sessions": [],
+            "status": "in-progress",
+            "statusSource": "operator-declared",
+            "taskId": "endo.task.1467d1b3cd426317314cf61e6dea8840",
+            "title": "Verify arithmetic module API",
+            "updatedAtMs": 1795767002324,
+            "verification": {
+              "basis": "controller-observed-host-check",
+              "freshness": {
+                "ageMs": null,
+                "observedAtMs": null,
+                "reason": "no check record was found; the absence of a record is not evidence about the work",
+                "state": "unavailable"
+              },
+              "incomplete": false,
+              "moreResults": 0,
+              "receiptReadComplete": true,
+              "results": [],
+              "state": "no-checks"
+            }
+          }
+        ]
+      }
+    ],
+    "readAtMs": 1795767123019,
+    "schemaVersion": "endo.coordinator-status.v0",
+    "scope": {
+      "projects": [
+        "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3"
+      ],
+      "requested": [
+        "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3"
+      ],
+      "unknown": []
+    },
+    "sessions": [],
+    "sources": {
+      "attempts": {
+        "detail": "1 attempt(s)",
+        "freshness": {
+          "ageMs": 0,
+          "observedAtMs": 1795767123019,
+          "reason": null,
+          "state": "fresh"
+        },
+        "state": "ready"
+      },
+      "events": {
+        "detail": "0 event(s)",
+        "freshness": {
+          "ageMs": 0,
+          "observedAtMs": 1795767123019,
+          "reason": null,
+          "state": "fresh"
+        },
+        "state": "ready"
+      },
+      "tasks": {
+        "detail": "task file revision 7",
+        "freshness": {
+          "ageMs": 0,
+          "observedAtMs": 1795767123019,
+          "reason": null,
+          "state": "fresh"
+        },
+        "state": "ready"
+      }
+    },
+    "staleAfterMs": 600000,
+    "unlistedSessions": {
+      "outOfScope": 0,
+      "unknownActive": 0,
+      "unknownRelationship": 0
+    }
+  }
+}

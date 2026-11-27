@@ -1,0 +1,70 @@
+{
+  "coordinatorCoordination": {
+    "authority": {
+      "assignmentIsAuthorization": false,
+      "decisionAuthority": "operator-only",
+      "grants": "none",
+      "kind": "read-only-projection",
+      "readinessIsPermission": false,
+      "writes": "none"
+    },
+    "basis": {
+      "attribution": "unsigned-local-record",
+      "consistency": "per-file-snapshot",
+      "liveness": "not-observed"
+    },
+    "gaps": [],
+    "projects": [
+      {
+        "assignments": [
+          {
+            "assignmentId": "endo.assignment.2620d2aa7291194ae07222cd1c728a21",
+            "attempts": [],
+            "findings": [],
+            "hazard": "none",
+            "intendedHarnessFamily": "pi",
+            "participantId": "worker-1",
+            "revision": 1,
+            "role": "builder",
+            "session": null,
+            "state": "active",
+            "targetCandidate": null,
+            "taskBinding": "current",
+            "taskId": "endo.task.1467d1b3cd426317314cf61e6dea8840",
+            "workspace": {
+              "accessIntent": "read-write-intended",
+              "registration": "project-path",
+              "sharedWorktreeAcknowledged": false,
+              "worktreePath": "/tmp/endo-s2-live-001/controlled/project"
+            }
+          }
+        ],
+        "conflicts": [],
+        "dependencies": [],
+        "id": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+        "registeredWorktrees": [],
+        "reviews": [],
+        "tasks": [
+          {
+            "candidates": [],
+            "currentCandidateId": null,
+            "readiness": "no-dependencies",
+            "taskId": "endo.task.1467d1b3cd426317314cf61e6dea8840"
+          }
+        ]
+      }
+    ],
+    "readAtMs": 1795767123359,
+    "schemaVersion": "endo.coordinator-coordination.v0",
+    "scope": {
+      "requested": [
+        "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3"
+      ]
+    },
+    "source": {
+      "reason": null,
+      "revision": 1,
+      "state": "ready"
+    }
+  }
+}

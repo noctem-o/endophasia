@@ -1,0 +1,76 @@
+{
+	"accounting": {
+		"admittedExchanges": 0,
+		"chargedCompletionRequests": 0,
+		"chargedGeneratedTokens": 0,
+		"inferenceElapsedMs": null,
+		"reportedCompletionTokens": null,
+		"reportedPromptTokens": null,
+		"reserved": {
+			"completionRequests": 2,
+			"generatedTokens": 4096,
+			"wallClockMs": 60000
+		},
+		"usageReportComplete": false
+	},
+	"actionKind": "generate-advisory-brief",
+	"admittedAtMs": 1795767254427,
+	"answer": null,
+	"authorizationId": "f68f5000f94a42acfbbbc39864a5a93dd722c4fbef7b363da02a8045ee0e36bb",
+	"availability": "not-dispatched",
+	"budgetSha256": "4b3939b20c515109043e4d754a7d9adaa845889b5a6d253998f6bef1b34c2610",
+	"effectivePoolSha256": null,
+	"fireIdempotencyKey": "8c7be74e0cbd71ee139583c7f35d49531c766703e79e0c4efbecc1bf7e7ae0ec",
+	"holderId": "endo.advisory.1108616.19feb0552046",
+	"leaseEpoch": 13,
+	"model": {
+		"capacityConfirmed": false,
+		"fallbackOccurred": false,
+		"harness": "none",
+		"inferenceFailover": "never",
+		"provider": "none",
+		"reportedModel": "none",
+		"selectedEndpoint": null,
+		"selectedMemberId": null,
+		"selectedModelId": null,
+		"selectedReadiness": null,
+		"skippedMembers": [
+			{
+				"memberId": "isolated-closed-port",
+				"reason": "unreachable"
+			}
+		]
+	},
+	"policySha256": "83bbbe853329e489568a82b6f27dc3f29140136efa0825857b41ffd897b3c510",
+	"poolSha256": "9492a6e06a65c1bb77f005c87e0c36a959c8e9da2014050d9b82ee9bb90b6580",
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"prompt": {
+		"instructionsSha256": "d564ba57fa0036d72037b0e1f6ae92f25ac97b16eec5486ea54f3d976e8c1586",
+		"promptSha256": null,
+		"questionSha256": null
+	},
+	"proposal": {
+		"outcome": "not-requested",
+		"proposalId": null,
+		"refusal": null
+	},
+	"publishedAtMs": 1795767254439,
+	"refusal": "no-eligible-member",
+	"scheduleId": "ctrl-outage",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-briefing.v0",
+	"source": {
+		"admissionObservedAtMs": 1795767254392,
+		"admissionSemanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+		"completeness": "complete",
+		"currency": "unknown-at-publication",
+		"evidence": null,
+		"gaps": [],
+		"publicationObservedAtMs": null,
+		"publicationSemanticDigest": null
+	},
+	"standing": "untrusted-model-interpretation",
+	"turnId": "34b9e54193f89603f2802bca9e272889e157c1eab28741cdf84da451012cf426",
+	"wakeReason": "first-observation"
+}
+

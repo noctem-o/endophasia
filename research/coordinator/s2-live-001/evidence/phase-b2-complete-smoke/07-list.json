@@ -1,0 +1,130 @@
+{
+	"advisory": {
+		"lease": {
+			"active": false,
+			"epoch": 1,
+			"expiresAtMs": 1795766323810,
+			"holderId": "endo.advisory.1086966.bd313711375e"
+		},
+		"problems": [],
+		"proposalCounts": {
+			"listed": 0,
+			"pending": 0,
+			"retained": 0,
+			"withheld": 0,
+			"withheldHint": null
+		},
+		"readAtMs": 1795766045942,
+		"schedules": [
+			{
+				"authorization": {
+					"authorization": {
+						"actionKind": "generate-advisory-brief",
+						"authorizationId": "5960a792695dcd9f5c60cdd0cf7e3cfaada416003ede135f09017cdf848df063",
+						"budget": {
+							"completionRequestsPerTurn": 2,
+							"maxGeneratedTokensPerPeriod": 4096,
+							"maxOutputTokensPerRequest": 2048,
+							"maxTurnWallClockMs": 180000,
+							"maxTurnsPerPeriod": 1,
+							"periodMs": 3600000
+						},
+						"expiresAtMs": 1795769618474,
+						"grantedAtMs": 1795766018474,
+						"policy": {
+							"observationSource": "recorded-or-passive-probe",
+							"permitCapacityUnknown": true,
+							"permitModelUnconfirmed": true,
+							"permitPartialObservation": false,
+							"recordedObservationMaxAgeMs": 600000
+						},
+						"pool": {
+							"members": [
+								{
+									"advisoryOnly": true,
+									"endpoint": "http://127.0.0.1:8091",
+									"kind": "local-openai-compat",
+									"maxOutputTokens": 2048,
+									"maxPromptBytes": 8192,
+									"memberId": "inkling",
+									"modelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+									"priority": 100,
+									"timeoutMs": 135000
+								}
+							],
+							"schemaVersion": "endo.coordinator-model-pool.v0",
+							"selection": {
+								"fallback": "none",
+								"unconfirmedModel": "permit"
+							}
+						},
+						"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+						"projectId": "endo.project.d2be055f71d5b69f74dc69bc8fbec814",
+						"revocation": null,
+						"revokedAtMs": null,
+						"scheduleId": "smoke-complete",
+						"scheduleIncarnation": "6c473340895320e2af596af7b48619763a4f32f85bbc27325caa6ac7731f6bf0",
+						"scheduleRevision": 2
+					},
+					"ok": true
+				},
+				"budget": {
+					"admissible": false,
+					"generatedTokensCharged": 612,
+					"inFlightTurns": 0,
+					"maxGeneratedTokensPerPeriod": 4096,
+					"maxTurnsPerPeriod": 1,
+					"periodMs": 3600000,
+					"periodStartMs": 1795762445942,
+					"refusal": "turns-exhausted",
+					"reservation": {
+						"completionRequests": 2,
+						"generatedTokens": 4096,
+						"wallClockMs": 180000
+					},
+					"turnsCharged": 1,
+					"uncertainTurns": 0
+				},
+				"schedule": {
+					"actionKind": "generate-advisory-brief",
+					"createdAtMs": 1795766017829,
+					"cursor": {
+						"completedOnce": true,
+						"lastAttemptedAtMs": 1795766023847,
+						"lastAttemptedSemanticDigest": "043de6eaf2f1f943534a366fc8f264196a1e2d746a9968d9727b6eec7cf53e6d",
+						"lastConsideredAtMs": 1795766044996,
+						"lastConsideredSemanticDigest": "043de6eaf2f1f943534a366fc8f264196a1e2d746a9968d9727b6eec7cf53e6d",
+						"lastConsumedWindowStartMs": 1795766022000,
+						"lastEvaluatedAtMs": 1795766023810,
+						"lastFireIdempotencyKey": "6e8255f16199c6928ceb40215dbb19ad0f58614f14b1ac78c8a6dbfea1c59689",
+						"lastFireStatus": "briefing-published"
+					},
+					"enabled": true,
+					"incarnation": "6c473340895320e2af596af7b48619763a4f32f85bbc27325caa6ac7731f6bf0",
+					"label": null,
+					"missedRunPolicy": "coalesce-once",
+					"projectId": "endo.project.d2be055f71d5b69f74dc69bc8fbec814",
+					"revision": 2,
+					"scheduleId": "smoke-complete",
+					"trigger": {
+						"atMs": 1795766022000,
+						"kind": "once"
+					},
+					"updatedAtMs": 1795766018152,
+					"wake": "on-change"
+				}
+			}
+		],
+		"schemaVersion": "endo.advisory-projection.v0",
+		"standing": "untrusted-advisory-state",
+		"turns": [
+			{
+				"admittedAtMs": 1795766023847,
+				"scheduleId": "smoke-complete",
+				"state": "settled",
+				"turnId": "303212615b1d55edcfa27b65bbbe330ac72c6ab1ca97df385c39209ed4985921"
+			}
+		]
+	}
+}
+

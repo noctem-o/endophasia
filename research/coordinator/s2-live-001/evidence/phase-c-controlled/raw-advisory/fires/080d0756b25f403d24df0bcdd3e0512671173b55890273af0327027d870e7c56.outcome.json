@@ -1,0 +1,27 @@
+{
+	"actionKind": "generate-advisory-brief",
+	"completedAtMs": 1795767308350,
+	"detail": "semantic state unchanged since an attempt that did not publish a current briefing",
+	"gate": {
+		"completeness": "complete",
+		"gaps": [],
+		"lastAttemptedSemanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+		"lastConsideredSemanticDigest": null,
+		"observedAtMs": 1795767308312,
+		"semanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+		"wakeReason": null
+	},
+	"holderId": "endo.advisory.1109331.4b64800007c2",
+	"idempotencyKey": "080d0756b25f403d24df0bcdd3e0512671173b55890273af0327027d870e7c56",
+	"inferenceDispatched": "no",
+	"leaseEpoch": 15,
+	"missedWindowCount": 0,
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"scheduleId": "ctrl-outage",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+	"status": "skipped-already-attempted",
+	"turnId": null,
+	"windowStartMs": 1795767306000
+}
+

@@ -1,0 +1,56 @@
+{
+  "tick": {
+    "tick": {
+      "holderId": "endo.advisory.1090734.6f72ce4387ee",
+      "inferenceDispatched": false,
+      "leaseEpoch": 2,
+      "ok": true,
+      "outcomes": [
+        {
+          "actionKind": "emit-operator-proposal",
+          "completedAtMs": 1795766266355,
+          "detail": "semantic state unchanged since the last considered briefing",
+          "gate": {
+            "completeness": "complete",
+            "gaps": [],
+            "lastAttemptedSemanticDigest": "e46d1d3f4a6caea5139cc1f2ef5a3c92b8d1a5f6a354b1cffae8261a22f443a4",
+            "lastConsideredSemanticDigest": "e46d1d3f4a6caea5139cc1f2ef5a3c92b8d1a5f6a354b1cffae8261a22f443a4",
+            "observedAtMs": 1795766266322,
+            "semanticDigest": "e46d1d3f4a6caea5139cc1f2ef5a3c92b8d1a5f6a354b1cffae8261a22f443a4",
+            "wakeReason": null
+          },
+          "holderId": "endo.advisory.1090734.6f72ce4387ee",
+          "idempotencyKey": "b81f0ce7e0e598cb1bc156b5b18402807f935b154de752588936ba05c9dd4dc5",
+          "inferenceDispatched": "no",
+          "leaseEpoch": 2,
+          "missedWindowCount": 0,
+          "projectId": "endo.project.8bcfb540786f15f18adf2c503738405c",
+          "scheduleId": "ctrl-on-change",
+          "scheduleRevision": 2,
+          "schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+          "status": "skipped-unchanged",
+          "turnId": null,
+          "windowStartMs": 1795766264000
+        }
+      ],
+      "recovered": [],
+      "schemaVersion": "endo.advisory-tick-result.v0",
+      "turnId": null
+    }
+  },
+  "elapsedMs": 367,
+  "newBriefings": [],
+  "proposals": {
+    "problems": [],
+    "proposalCounts": {
+      "listed": 0,
+      "pending": 0,
+      "retained": 0,
+      "withheld": 0,
+      "withheldHint": null
+    },
+    "proposals": [],
+    "readAtMs": 1795766266987,
+    "standing": "untrusted-advisory-state"
+  }
+}

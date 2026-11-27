@@ -1,0 +1,171 @@
+{
+  "tick": {
+    "tick": {
+      "holderId": "endo.advisory.1094130.c0ef0c316f9e",
+      "inferenceDispatched": true,
+      "leaseEpoch": 6,
+      "ok": true,
+      "outcomes": [
+        {
+          "actionKind": "generate-advisory-brief",
+          "completedAtMs": 1795766538563,
+          "detail": null,
+          "gate": null,
+          "holderId": "endo.advisory.1094130.c0ef0c316f9e",
+          "idempotencyKey": "2bd8c8af8dd82cd6a122d8667f30952557c4596ec477f192c6f97478feadd61e",
+          "inferenceDispatched": "yes",
+          "leaseEpoch": 6,
+          "missedWindowCount": 0,
+          "projectId": "endo.project.8bcfb540786f15f18adf2c503738405c",
+          "scheduleId": "ctrl-digest",
+          "scheduleRevision": 2,
+          "schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+          "status": "briefing-published",
+          "turnId": "43d2fcb8d821b065287607c66da92510d0f7fc3cc2a24fa5a17a88035aea714c",
+          "windowStartMs": 1795766504000
+        }
+      ],
+      "recovered": [],
+      "schemaVersion": "endo.advisory-tick-result.v0",
+      "turnId": "43d2fcb8d821b065287607c66da92510d0f7fc3cc2a24fa5a17a88035aea714c"
+    }
+  },
+  "elapsedMs": 32575,
+  "newBriefings": [
+    {
+      "accounting": {
+        "admittedExchanges": 2,
+        "chargedCompletionRequests": 2,
+        "chargedGeneratedTokens": 1361,
+        "inferenceElapsedMs": 32162,
+        "reportedCompletionTokens": 1361,
+        "reportedPromptTokens": 6045,
+        "reserved": {
+          "completionRequests": 2,
+          "generatedTokens": 4096,
+          "wallClockMs": 180000
+        },
+        "usageReportComplete": true
+      },
+      "actionKind": "generate-advisory-brief",
+      "admittedAtMs": 1795766506345,
+      "answer": "- One task is blocked (endo.task.01bdfa8f8a41a039bccdee9faebc01c1); counts show 0 in-progress, 0 awaiting-review, 0 completed, 0 open, 1 blocked. Attention: the blocked task.\n- Verification: no check is recorded for this task; freshness is unavailable, so verification is not established. No findings recorded.\n- Linked sessions: none recorded (0 linked sessions; sessions list empty). No one reported or observed recent activity.\n- Cannot establish: why the task is blocked, its association (unknown), or any verification outcome.\n- Next action: operator should inspect the blocked task and decide whether to unblock, re-scope, or send it for review.",
+      "authorizationId": "a1a4b98743112251c4a2cf84fe0927dcceb272a12af45d1d48b9623868092d37",
+      "availability": "available",
+      "budgetSha256": "2669bc1f109733f10a438566eea23123d5c9fa5b93e4857db96c80c8672d42db",
+      "effectivePoolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+      "fireIdempotencyKey": "2bd8c8af8dd82cd6a122d8667f30952557c4596ec477f192c6f97478feadd61e",
+      "holderId": "endo.advisory.1094130.c0ef0c316f9e",
+      "leaseEpoch": 6,
+      "model": {
+        "capacityConfirmed": false,
+        "fallbackOccurred": false,
+        "harness": "OpenClaw 2026.11.10",
+        "inferenceFailover": "never",
+        "provider": "llama.cpp (advisory pool member)",
+        "reportedModel": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+        "selectedEndpoint": "http://127.0.0.1:8091",
+        "selectedMemberId": "inkling",
+        "selectedModelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+        "selectedReadiness": "model-unconfirmed",
+        "skippedMembers": []
+      },
+      "policySha256": "83bbbe853329e489568a82b6f27dc3f29140136efa0825857b41ffd897b3c510",
+      "poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+      "projectId": "endo.project.8bcfb540786f15f18adf2c503738405c",
+      "prompt": {
+        "instructionsSha256": "d564ba57fa0036d72037b0e1f6ae92f25ac97b16eec5486ea54f3d976e8c1586",
+        "promptSha256": "4183238bc5cfb81e7a6fa9dab00ac9cbd02b7befc093c00c0b706852677effa3",
+        "questionSha256": null
+      },
+      "proposal": {
+        "outcome": "not-requested",
+        "proposalId": null,
+        "refusal": null
+      },
+      "publishedAtMs": 1795766538563,
+      "refusal": null,
+      "scheduleId": "ctrl-digest",
+      "scheduleRevision": 2,
+      "schemaVersion": "endo.develop-advisory-briefing.v0",
+      "source": {
+        "admissionObservedAtMs": 1795766506312,
+        "admissionSemanticDigest": "17b8d7c0df9f8fbd475463fcce03bc5ec8398df543269fe0be0fdc85d13a9b80",
+        "completeness": "complete",
+        "currency": "current-at-publication",
+        "evidence": {
+          "modelViewSha256": "27aba68f3bed9c8e3ddff7faac311bb39141e133d0a10e602e9fb2c785f05aad",
+          "projectionSha256": "201879065fd46bc5b01922953eff55de893396ba6eb6ebb39494bb6cb79ef69e",
+          "readAtMs": 1795766506312
+        },
+        "gaps": [],
+        "publicationObservedAtMs": 1795766538539,
+        "publicationSemanticDigest": "17b8d7c0df9f8fbd475463fcce03bc5ec8398df543269fe0be0fdc85d13a9b80"
+      },
+      "standing": "untrusted-model-interpretation",
+      "turnId": "43d2fcb8d821b065287607c66da92510d0f7fc3cc2a24fa5a17a88035aea714c",
+      "wakeReason": "digest-window"
+    }
+  ],
+  "proposals": {
+    "problems": [],
+    "proposalCounts": {
+      "listed": 1,
+      "pending": 1,
+      "retained": 1,
+      "withheld": 0,
+      "withheldHint": null
+    },
+    "proposals": [
+      {
+        "currency": "current",
+        "decidedAtMs": null,
+        "note": null,
+        "proposal": {
+          "authority": {
+            "executionAuthority": false,
+            "grants": "none",
+            "requiresOperatorConfirmationPerAttempt": true
+          },
+          "dedupKey": "2b72285b29c5036ba54f3b02c6d92280ba1110cfd7860791ab8dd7a21309dc61",
+          "evidence": {
+            "admissionSemanticDigest": "17b8d7c0df9f8fbd475463fcce03bc5ec8398df543269fe0be0fdc85d13a9b80",
+            "facts": [
+              {
+                "fact": "task-status-blocked",
+                "subject": "endo.task.01bdfa8f8a41a039bccdee9faebc01c1"
+              }
+            ],
+            "projectionSha256": null,
+            "semanticDigest": "17b8d7c0df9f8fbd475463fcce03bc5ec8398df543269fe0be0fdc85d13a9b80"
+          },
+          "fireIdempotencyKey": "65103b3b5d32c266758b77f3c86266fb1f86816c938705a3271981e7ba27359b",
+          "generatedAtMs": 1795766416483,
+          "kind": "resolve-blocked-task",
+          "projectId": "endo.project.8bcfb540786f15f18adf2c503738405c",
+          "proposalId": "0be920e0d267b450a5da3bf5da68aa0e082929f1a2174a65c55be63ff0657d73",
+          "rationale": {
+            "source": "model-briefing",
+            "turnId": "0200450c3ade9a504bbdfe788790401080a595f09bfb8ffe9c165f2c24a2bc76"
+          },
+          "scheduleId": "ctrl-on-change",
+          "scheduleRevision": 2,
+          "schemaVersion": "endo.develop-advisory-proposal.v0",
+          "standing": "untrusted-advisory-proposal",
+          "subject": {
+            "assignmentId": null,
+            "candidateId": null,
+            "taskId": "endo.task.01bdfa8f8a41a039bccdee9faebc01c1"
+          },
+          "turnId": "0200450c3ade9a504bbdfe788790401080a595f09bfb8ffe9c165f2c24a2bc76",
+          "uncertainties": [
+            "no-check-recorded"
+          ]
+        },
+        "queueState": "pending"
+      }
+    ],
+    "readAtMs": 1795766539211,
+    "standing": "untrusted-advisory-state"
+  }
+}

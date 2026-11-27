@@ -1,0 +1,41 @@
+{
+  "coordinatorCoordination": {
+    "authority": {
+      "assignmentIsAuthorization": false,
+      "decisionAuthority": "operator-only",
+      "grants": "none",
+      "kind": "read-only-projection",
+      "readinessIsPermission": false,
+      "writes": "none"
+    },
+    "basis": {
+      "attribution": "unsigned-local-record",
+      "consistency": "per-file-snapshot",
+      "liveness": "not-observed"
+    },
+    "gaps": [],
+    "projects": [
+      {
+        "assignments": [],
+        "conflicts": [],
+        "dependencies": [],
+        "id": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+        "registeredWorktrees": [],
+        "reviews": [],
+        "tasks": []
+      }
+    ],
+    "readAtMs": 1795766825996,
+    "schemaVersion": "endo.coordinator-coordination.v0",
+    "scope": {
+      "requested": [
+        "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3"
+      ]
+    },
+    "source": {
+      "reason": null,
+      "revision": null,
+      "state": "absent"
+    }
+  }
+}

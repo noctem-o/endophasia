@@ -1,0 +1,1 @@
+advisory schedule smoke enabled at revision 2; it runs nothing until revision 2 is authorized.

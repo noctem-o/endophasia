@@ -1,0 +1,17 @@
+coordinator status endo.coordinator-status.v0 read 2026-11-27T07:52:13.476Z (read-only; grants nothing; decisions are yours)
+  sources   tasks=ready/fresh attempts=missing/unavailable events=unavailable/unavailable
+  project   endo.project.e2225a56cdf4c6551c08ac17837f17ef s2-live-smoke [fresh] HEAD 40b72e724935
+    task    [open; operator-declared] endo.task.72c41dc3d7ec68eb9607cce94442aad8 S2-LIVE-001 smoke verification task — verification unavailable [unavailable]; attempts 0; sessions unknown
+      gap   attempt-records-missing: The store's attempt records are missing: its attempts and checks are unknown, not absent.
+  sessions  none listed
+  attention [source-unavailable] The attempt directory is absent: attempt records, their checks and links are unknown, not assumed absent.
+  attention [source-unavailable] The event log is absent or cannot be opened read-only: no session is known.
+  finding   [unavailable] attempt-records-missing: The attempt directory is absent: attempt records, their checks and links are unknown, not assumed absent.
+  finding   [unavailable] event-log-unavailable: The event log is absent or cannot be opened read-only: no session is known.
+  not established:
+    - That a session is alive now: there is no read-only liveness probe, so an attached session that has said nothing for longer than the staleness window reads as last-observed.
+    - Which task an unlinked session worked on: relationships are taken only from explicit records, never from names, prompt text or timestamps.
+    - That an agent's reported result is true, or that a passing check satisfies a task's acceptance criteria.
+    - Who or what wrote any changed byte in a working tree.
+    - Verification of completed tasks: their receipts are not re-read by this status.
+    - Protection against a same-uid process editing the records this status reads.

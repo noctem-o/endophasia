@@ -1,0 +1,13 @@
+{
+  "projectId": "endo.project.8bcfb540786f15f18adf2c503738405c",
+  "task1Id": "endo.task.01bdfa8f8a41a039bccdee9faebc01c1",
+  "initialHead": "0eb525a243b3772d8903dea66f59747d9629277a",
+  "anchor0Ms": 1795766204000,
+  "anchor0Iso": "2026-11-27T07:56:44Z",
+  "digestAnchorIso": "2026-11-27T08:01:44Z",
+  "storeDir": "/tmp/endo-s2-live-001/controlled/store",
+  "projectDir": "/tmp/endo-s2-live-001/controlled/project",
+  "llamaWorkersAtStart": [
+    "1085366 /home/noctem/llama-cpp/llama.cpp/build/bin/llama-server --host 127.0.0.1 --jinja --log-colors on --min-p 0.0 --port 48687 --temperature 1.0 --top-k 0 --top-p 1.0 --alias Inkling-2-Mini-Uncensored-AD-Q4_K --batch-size 1024 --ctx-size 131072 --cache-type-k q8_0 --cache-type-v q8_0 --flash-attn on --model /home/noctem/models/inkling-2-mini/atomicchat/Inkling-2-Mini-Uncensored-AD-Q4_K.gguf --n-gpu-layers all --parallel 1 --ubatch-size 32"
+  ]
+}

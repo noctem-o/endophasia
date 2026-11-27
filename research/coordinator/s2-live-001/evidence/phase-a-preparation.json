@@ -1,0 +1,72 @@
+{
+	"mission": "S2-LIVE-001",
+	"phase": "phase-a-preparation",
+	"recordedAtUtc": "2026-11-27T07:40:00Z",
+	"liveInferenceExecuted": false,
+	"inferenceTokensConsumed": 0,
+	"passiveEndpointChecks": {
+		"endpoint": "http://127.0.0.1:8091",
+		"healthStatus": 200,
+		"healthBody": { "status": "ok" },
+		"propsStatus": 200,
+		"propsBody": {
+			"role": "router",
+			"max_instances": 1,
+			"models_autoload": true,
+			"model_alias": "llama-server",
+			"model_path": "none",
+			"default_generation_settings": { "params": null, "n_ctx": 0 },
+			"ui_settings": {},
+			"build_info": "b12622-19bc41dbb",
+			"cors_proxy_enabled": false
+		},
+		"poolCheck": {
+			"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+			"selectedMemberId": "inkling",
+			"readiness": "model-unconfirmed",
+			"detail": "router-model-state-not-observed",
+			"backend": "llama.cpp-router",
+			"build": "b12622-19bc41dbb",
+			"capacityConfirmed": false,
+			"elapsedMs": 8,
+			"requests": [
+				{ "path": "/health", "status": 200 },
+				{ "path": "/props", "status": 200 }
+			],
+			"inferenceTokens": 0
+		},
+		"llamaServerChildWorkersBefore": 0,
+		"llamaServerChildWorkersAfter": 0
+	},
+	"experimentalSmokeStore": {
+		"storeRoot": "/tmp/endo-s2-live-001/smoke/store",
+		"projectPath": "/tmp/endo-s2-live-001/smoke/project",
+		"projectId": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+		"taskId": "endo.task.72c41dc3d7ec68eb9607cce94442aad8",
+		"poolFile": "/tmp/endo-s2-live-001/smoke/pool.json",
+		"initialGitHead": "40b72e724935",
+		"advisorySchedulesConfigured": 0,
+		"deterministicStatusSummary": {
+			"sources": { "tasks": "ready/fresh", "attempts": "missing/unavailable", "events": "unavailable/unavailable" },
+			"taskState": "open (operator-declared), verification unavailable, attempts 0, sessions unknown",
+			"gaps": ["attempt-records-missing", "event-log-unavailable"]
+		}
+	},
+	"isolatedDefectReproduction": {
+		"id": "S2-LIVE-001-DEFECT-01",
+		"summary": "Installed OpenClaw is 2026.11.10 (6ea542f), but adapters/coordinator/openclaw.ts hardcoded exact version === '2026.11.7', causing all live OpenClaw invocations to fail closed as runtime-unavailable before bubblewrap launch.",
+		"beforeRemediation": {
+			"command": "ENDO_COORDINATOR_OPENCLAW=$HOME/.local/bin/openclaw npx vitest --run tests/develop-advisory-s2.test.ts tests/coordinator-model-pool.test.ts tests/coordinator-brief.test.ts",
+			"result": "216 passed, 12 failed (all 6 M0 + all 6 M1 installed-OpenClaw fake-provider tests failed with runtime-unavailable, 0 completions)"
+		},
+		"afterMinimalRemediation": {
+			"file": "adapters/coordinator/openclaw.ts",
+			"change": "Added explicit verified allowlist ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0 = ['2026.11.7', '2026.11.10'] and updated runtime.harness to report the actual observed OpenClaw version.",
+			"command": "ENDO_COORDINATOR_OPENCLAW=$HOME/.local/bin/openclaw npx vitest --run tests/coordinator-brief.test.ts tests/coordinator-model-pool.test.ts tests/develop-advisory-s2.test.ts",
+			"result": "228 passed, 0 failed (12/12 installed-OpenClaw 2026.11.10 fake-provider security/wire/timeout/cancel tests passed; 50/50 S2 advisory tests passed)",
+			"gatewayBefore": { "mainPid": 2965835, "invocationId": "9c6deee269bb4f2a8528f0bef799ecad" },
+			"gatewayAfter": { "mainPid": 2965835, "invocationId": "9c6deee269bb4f2a8528f0bef799ecad" },
+			"llamaServerChildWorkersAfter": 0
+		}
+	}
+}

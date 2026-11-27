@@ -1,0 +1,39 @@
+{
+	"actionKind": "generate-advisory-brief",
+	"admittedAtMs": 1795765939806,
+	"authorizationId": "fddbf0e124988db9d27819568179a356015330aa151f26cde3e59083673e010a",
+	"budgetBefore": {
+		"generatedTokensCharged": 0,
+		"periodStartMs": 1795762339806,
+		"turnsCharged": 0,
+		"uncertainTurns": 0
+	},
+	"budgetSha256": "f28d72a6f1082176729668bf99994e60300c68b7fdaa42dfee993ac5b6596ac7",
+	"completeness": "partial",
+	"fireIdempotencyKey": "321e87022813f651502c3ae9fc0d0c21f9ef25d22fc15ad3ebb11525661167fb",
+	"gaps": [
+		"finding-attempt-records-missing",
+		"finding-event-log-unavailable",
+		"status-attempts-missing",
+		"status-events-unavailable"
+	],
+	"holderId": "endo.advisory.1085045.983cb113ea74",
+	"leaseEpoch": 1,
+	"observedAtMs": 1795765939775,
+	"policySha256": "57f200fd8b4d2d2924adfea7a4feb8b75c364bd93a9f2ed3e9a080a5d18ead7d",
+	"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+	"projectId": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+	"reservation": {
+		"completionRequests": 2,
+		"generatedTokens": 4096,
+		"wallClockMs": 180000
+	},
+	"scheduleId": "smoke",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-turn-admission.v0",
+	"semanticDigest": "a179199843a05e4a517275ca4807bb22972a8ad5884b65d0684b61f4dabee4f5",
+	"turnDeadlineMs": 1795766119806,
+	"turnId": "c8194014954472ac6e337e102c75acca8c11e46cabb756e7a1e11652a6f94194",
+	"wakeReason": "first-observation"
+}
+

@@ -1,0 +1,19 @@
+{
+	"actionKind": "emit-operator-proposal",
+	"completedAtMs": 1795766675425,
+	"detail": null,
+	"gate": null,
+	"holderId": "endo.advisory.1097530.a14d2fbb45cc",
+	"idempotencyKey": "d98d8dce4e2779c15200ebe7a6e6c1839230805de73f6e5e18e82fab896de046",
+	"inferenceDispatched": "yes",
+	"leaseEpoch": 1,
+	"missedWindowCount": 0,
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"scheduleId": "ctrl-on-change",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+	"status": "briefing-published",
+	"turnId": "1a765aee6755f40b53ae7022b678077713682f8b930aaf7d8a142ef23119b87f",
+	"windowStartMs": 1795766646000
+}
+

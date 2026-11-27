@@ -1,0 +1,18 @@
+{
+  "proposalId": "98a73d1d15e01a001dbbb9e56b745eaa5d9ceb1ca4029dfed1be49bd75dd020c",
+  "kind": "review-failing-verification",
+  "ack": {
+    "state": {
+      "authority": {
+        "affects": "advisory-queue-only",
+        "grants": "none"
+      },
+      "decidedAtMs": 1795767069669,
+      "disposition": "acknowledged",
+      "note": "Operator acknowledged during Phase C controlled validation",
+      "proposalId": "98a73d1d15e01a001dbbb9e56b745eaa5d9ceb1ca4029dfed1be49bd75dd020c",
+      "schemaVersion": "endo.develop-advisory-proposal-state.v0"
+    }
+  },
+  "nonAdvisoryUnchanged": true
+}

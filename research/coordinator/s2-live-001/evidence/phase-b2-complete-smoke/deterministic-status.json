@@ -1,0 +1,139 @@
+{
+	"coordinatorStatus": {
+		"attention": [],
+		"authority": {
+			"decisionAuthority": "operator-only",
+			"grants": "none",
+			"kind": "read-only-projection",
+			"notes": [
+				"Reading this status writes nothing, moves no task, sends no prompt, launches no agent and changes no approval.",
+				"Task status is the operator's own record; an agent finishing or a run ending never moves a task.",
+				"DEVELOP records and the event log are unsigned local files writable by any same-uid process.",
+				"Attention items are advisory triage, not acceptance and not an authoritative verification PASS."
+			],
+			"writes": "none"
+		},
+		"findings": [],
+		"notEstablished": [
+			"That a session is alive now: there is no read-only liveness probe, so an attached session that has said nothing for longer than the staleness window reads as last-observed.",
+			"Which task an unlinked session worked on: relationships are taken only from explicit records, never from names, prompt text or timestamps.",
+			"That an agent's reported result is true, or that a passing check satisfies a task's acceptance criteria.",
+			"Who or what wrote any changed byte in a working tree.",
+			"Verification of completed tasks: their receipts are not re-read by this status.",
+			"Protection against a same-uid process editing the records this status reads."
+		],
+		"projects": [
+			{
+				"counts": {
+					"awaiting-review": 0,
+					"blocked": 0,
+					"completed": 0,
+					"in-progress": 0,
+					"open": 1
+				},
+				"freshness": {
+					"ageMs": 1,
+					"observedAtMs": 1795766017483,
+					"reason": null,
+					"state": "fresh"
+				},
+				"head": {
+					"clean": true,
+					"commit": "c6d278f4c485a4132fc00589b73e6380722c81fd"
+				},
+				"id": "endo.project.d2be055f71d5b69f74dc69bc8fbec814",
+				"name": "s2-live-smoke-complete",
+				"source": "operator-declared",
+				"tasks": [
+					{
+						"association": "unknown",
+						"attempts": {
+							"count": 0,
+							"latest": null
+						},
+						"gaps": [
+							{
+								"code": "no-check-recorded",
+								"text": "No verification receipt was found in the complete read of its attempts."
+							}
+						],
+						"phase": "open",
+						"projectId": "endo.project.d2be055f71d5b69f74dc69bc8fbec814",
+						"revision": 0,
+						"sessions": [],
+						"status": "open",
+						"statusSource": "operator-declared",
+						"taskId": "endo.task.4513e43a42dfa1b7909b1609a67a4fc7",
+						"title": "Review initial repository setup",
+						"updatedAtMs": 1795766016472,
+						"verification": {
+							"basis": "controller-observed-host-check",
+							"freshness": {
+								"ageMs": null,
+								"observedAtMs": null,
+								"reason": "no check record was found; the absence of a record is not evidence about the work",
+								"state": "unavailable"
+							},
+							"incomplete": false,
+							"moreResults": 0,
+							"receiptReadComplete": true,
+							"results": [],
+							"state": "no-checks"
+						}
+					}
+				]
+			}
+		],
+		"readAtMs": 1795766017484,
+		"schemaVersion": "endo.coordinator-status.v0",
+		"scope": {
+			"projects": [
+				"endo.project.d2be055f71d5b69f74dc69bc8fbec814"
+			],
+			"requested": [
+				"endo.project.d2be055f71d5b69f74dc69bc8fbec814"
+			],
+			"unknown": []
+		},
+		"sessions": [],
+		"sources": {
+			"attempts": {
+				"detail": "0 attempt(s)",
+				"freshness": {
+					"ageMs": 0,
+					"observedAtMs": 1795766017484,
+					"reason": null,
+					"state": "fresh"
+				},
+				"state": "ready"
+			},
+			"events": {
+				"detail": "0 event(s)",
+				"freshness": {
+					"ageMs": 0,
+					"observedAtMs": 1795766017484,
+					"reason": null,
+					"state": "fresh"
+				},
+				"state": "ready"
+			},
+			"tasks": {
+				"detail": "task file revision 2",
+				"freshness": {
+					"ageMs": 0,
+					"observedAtMs": 1795766017484,
+					"reason": null,
+					"state": "fresh"
+				},
+				"state": "ready"
+			}
+		},
+		"staleAfterMs": 600000,
+		"unlistedSessions": {
+			"outOfScope": 0,
+			"unknownActive": 0,
+			"unknownRelationship": 0
+		}
+	}
+}
+

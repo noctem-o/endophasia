@@ -1,0 +1,18 @@
+{
+	"actionKind": "generate-advisory-brief",
+	"claimedAtMs": 1795767308306,
+	"holderId": "endo.advisory.1109331.4b64800007c2",
+	"idempotencyKey": "080d0756b25f403d24df0bcdd3e0512671173b55890273af0327027d870e7c56",
+	"leaseEpoch": 15,
+	"missedWindowsBefore": 0,
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"scheduleId": "ctrl-outage",
+	"scheduleIncarnation": "29332e47f8fb1a3c9b954d4b376ac3c68415fe5c0028664a8d00eeebc60cdd37",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-claim.v0",
+	"triggerCursor": "interval:60000:1795767246000",
+	"triggerKind": "interval",
+	"wake": "on-change",
+	"windowStartMs": 1795767306000
+}
+

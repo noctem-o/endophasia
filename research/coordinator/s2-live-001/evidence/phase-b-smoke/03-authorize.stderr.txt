@@ -1,0 +1,1 @@
+authorized smoke revision 2 (generate-advisory-brief, project endo.project.e2225a56cdf4c6551c08ac17837f17ef) until 2026-11-27T08:52:14.436Z: at most 1 turn(s) and 4096 generated tokens per 3600s. Proposals it produces grant nothing.

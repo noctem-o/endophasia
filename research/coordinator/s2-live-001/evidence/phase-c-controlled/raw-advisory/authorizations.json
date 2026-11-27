@@ -1,0 +1,152 @@
+{
+	"authorizations": [
+		{
+			"actionKind": "emit-operator-proposal",
+			"authorizationId": "496d971a75ef257677fbb388aedcc89936104e1782d3e37aadb1934b4ed18aa3",
+			"budget": {
+				"completionRequestsPerTurn": 2,
+				"maxGeneratedTokensPerPeriod": 40960,
+				"maxOutputTokensPerRequest": 2048,
+				"maxTurnWallClockMs": 180000,
+				"maxTurnsPerPeriod": 10,
+				"periodMs": 7200000
+			},
+			"expiresAtMs": 1795773840382,
+			"grantedAtMs": 1795766640382,
+			"policy": {
+				"observationSource": "recorded-or-passive-probe",
+				"permitCapacityUnknown": true,
+				"permitModelUnconfirmed": true,
+				"permitPartialObservation": false,
+				"recordedObservationMaxAgeMs": 600000
+			},
+			"pool": {
+				"members": [
+					{
+						"advisoryOnly": true,
+						"endpoint": "http://127.0.0.1:8091",
+						"kind": "local-openai-compat",
+						"maxOutputTokens": 2048,
+						"maxPromptBytes": 8192,
+						"memberId": "inkling",
+						"modelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+						"priority": 100,
+						"timeoutMs": 135000
+					}
+				],
+				"schemaVersion": "endo.coordinator-model-pool.v0",
+				"selection": {
+					"fallback": "none",
+					"unconfirmedModel": "permit"
+				}
+			},
+			"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+			"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+			"revocation": null,
+			"revokedAtMs": null,
+			"scheduleId": "ctrl-on-change",
+			"scheduleIncarnation": "15030d92834c70e4bef9b3875b1148db00807e082040024f3b3a0407e7bc3c55",
+			"scheduleRevision": 2
+		},
+		{
+			"actionKind": "generate-advisory-brief",
+			"authorizationId": "8875cb1cd90029a56cf0062ac1ae91d29aed8d5c7cdf1566512463b3609e246e",
+			"budget": {
+				"completionRequestsPerTurn": 2,
+				"maxGeneratedTokensPerPeriod": 12288,
+				"maxOutputTokensPerRequest": 2048,
+				"maxTurnWallClockMs": 180000,
+				"maxTurnsPerPeriod": 3,
+				"periodMs": 7200000
+			},
+			"expiresAtMs": 1795773841344,
+			"grantedAtMs": 1795766641344,
+			"policy": {
+				"observationSource": "recorded-or-passive-probe",
+				"permitCapacityUnknown": true,
+				"permitModelUnconfirmed": true,
+				"permitPartialObservation": false,
+				"recordedObservationMaxAgeMs": 600000
+			},
+			"pool": {
+				"members": [
+					{
+						"advisoryOnly": true,
+						"endpoint": "http://127.0.0.1:8091",
+						"kind": "local-openai-compat",
+						"maxOutputTokens": 2048,
+						"maxPromptBytes": 8192,
+						"memberId": "inkling",
+						"modelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+						"priority": 100,
+						"timeoutMs": 135000
+					}
+				],
+				"schemaVersion": "endo.coordinator-model-pool.v0",
+				"selection": {
+					"fallback": "none",
+					"unconfirmedModel": "permit"
+				}
+			},
+			"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+			"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+			"revocation": null,
+			"revokedAtMs": null,
+			"scheduleId": "ctrl-digest",
+			"scheduleIncarnation": "da1da2dcc2b0512ebbe2dd84bfcb080e57a894c65c81159500465002680dffb5",
+			"scheduleRevision": 2
+		},
+		{
+			"actionKind": "generate-advisory-brief",
+			"authorizationId": "f68f5000f94a42acfbbbc39864a5a93dd722c4fbef7b363da02a8045ee0e36bb",
+			"budget": {
+				"completionRequestsPerTurn": 2,
+				"maxGeneratedTokensPerPeriod": 8192,
+				"maxOutputTokensPerRequest": 2048,
+				"maxTurnWallClockMs": 60000,
+				"maxTurnsPerPeriod": 2,
+				"periodMs": 7200000
+			},
+			"expiresAtMs": 1795774454055,
+			"grantedAtMs": 1795767254055,
+			"policy": {
+				"observationSource": "recorded-or-passive-probe",
+				"permitCapacityUnknown": true,
+				"permitModelUnconfirmed": true,
+				"permitPartialObservation": false,
+				"recordedObservationMaxAgeMs": 600000
+			},
+			"pool": {
+				"members": [
+					{
+						"advisoryOnly": true,
+						"endpoint": "http://127.0.0.1:18099",
+						"kind": "local-openai-compat",
+						"maxOutputTokens": 2048,
+						"maxPromptBytes": 8192,
+						"memberId": "isolated-closed-port",
+						"modelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+						"priority": 100,
+						"timeoutMs": 30000
+					}
+				],
+				"schemaVersion": "endo.coordinator-model-pool.v0",
+				"selection": {
+					"fallback": "none",
+					"unconfirmedModel": "permit"
+				}
+			},
+			"poolSha256": "9492a6e06a65c1bb77f005c87e0c36a959c8e9da2014050d9b82ee9bb90b6580",
+			"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+			"revocation": null,
+			"revokedAtMs": null,
+			"scheduleId": "ctrl-outage",
+			"scheduleIncarnation": "29332e47f8fb1a3c9b954d4b376ac3c68415fe5c0028664a8d00eeebc60cdd37",
+			"scheduleRevision": 2
+		}
+	],
+	"revision": 3,
+	"schemaVersion": "endo.develop-advisory-authorizations.v0",
+	"updatedAtMs": 1795767254055
+}
+

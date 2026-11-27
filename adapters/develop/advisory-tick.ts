@@ -1153,6 +1153,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 
 	// ---- E: dispatch linearization point (lock) -----------------------------------------------------------------------------------
 	await hooks.beforeDispatchRecord?.({ turnId });
+	let dispatchMonotonicMs = 0;
 	const phaseE = store.withAdvisoryLockSync((s): EndoAdvisoryTurnDispatchV0 | EndoAdvisoryDispatchRefusalV0 => {
 		const nowMs = now();
 		const currentLease = s.store.readLease();
@@ -1181,12 +1182,13 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		if (!standing.ok)
 			return standing.refusal === "authorization-expired" ? "authorization-expired" : "authorization-revoked";
 		if (standing.authorization.authorizationId !== admission.authorizationId) return "authorization-revoked";
+		const nowMonoMs = monotonicNow();
 		const effectiveTimeoutMs = Math.floor(
 			Math.min(
 				member.timeoutMs,
 				admission.turnDeadlineMs - nowMs,
-				admission.turnDeadlineMs - admission.admittedAtMs - (monotonicNow() - turnStartedMs),
-				L.leaseTtlMs - (monotonicNow() - leaseStartedMs) - L.publicationMarginMs,
+				admission.turnDeadlineMs - admission.admittedAtMs - (nowMonoMs - turnStartedMs),
+				L.leaseTtlMs - (nowMonoMs - leaseStartedMs) - L.publicationMarginMs,
 				L.maxTurnWallClockMs,
 			),
 		);
@@ -1211,6 +1213,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			inferenceDeadlineMs: nowMs + effectiveTimeoutMs,
 			effectiveTimeoutMs,
 		};
+		dispatchMonotonicMs = nowMonoMs;
 		return s.writeDispatchOnce(dispatch) === "created" ? dispatch : "storage-failed";
 	});
 	if (!phaseE.ok) return notDispatched(phaseE.code === "busy" ? "lock-busy" : "storage-failed", selectionSummary);
@@ -1219,47 +1222,93 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	await hooks.afterDispatchRecord?.({ turnId });
 
 	// ---- F: inference (no lock; the selected member only; never failed over or replayed) ------------------------------------------
-	const remainingInferenceMs = Math.max(
-		1,
-		Math.min(dispatch.effectiveTimeoutMs, dispatch.inferenceDeadlineMs - now()),
+	const phaseFNowMs = now();
+	const phaseFMonoMs = monotonicNow();
+	const remainingInferenceMs = Math.floor(
+		Math.min(
+			dispatch.effectiveTimeoutMs - (phaseFMonoMs - dispatchMonotonicMs),
+			dispatch.inferenceDeadlineMs - phaseFNowMs,
+			admission.turnDeadlineMs - admission.admittedAtMs - (phaseFMonoMs - turnStartedMs),
+			L.leaseTtlMs - (phaseFMonoMs - leaseStartedMs) - L.publicationMarginMs,
+		),
 	);
+	const deadlineController = new AbortController();
+	let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+	if (remainingInferenceMs <= 0) {
+		deadlineController.abort(new DOMException("inference deadline exceeded", "TimeoutError"));
+	} else {
+		deadlineTimer = setTimeout(() => {
+			deadlineController.abort(new DOMException("inference deadline exceeded", "TimeoutError"));
+		}, remainingInferenceMs);
+		deadlineTimer.unref?.();
+	}
 	const target = Object.freeze({
 		...coordinatorTargetFromMemberV0(member),
-		timeoutMs: remainingInferenceMs,
+		timeoutMs: Math.max(1, remainingInferenceMs),
 		hostDeadline: true,
 	});
-	const run = options.run ?? (await import("../coordinator/openclaw.ts")).runOpenClawCoordinatorV0;
 	let trial: OpenClawCoordinatorTrialV0 | null = null;
 	const request = wantsProposal
 		? { projectId: admission.projectId, question: ENDO_ADVISORY_PROPOSAL_QUESTION_V0 }
 		: { projectId: admission.projectId };
 	let result: EndoCoordinatorBriefResultV0 | null;
 	try {
-		result = await briefFromCoordinatorSubstrateV0(request, {
-			brief: (r) =>
-				run(options.root, r, {
-					pinnedObservation: admissionObserved.read!,
-					target,
-					provider: "llama.cpp (advisory pool member)",
-					// Let target.hostDeadline enforce the inference deadline so timeouts classify as `inference-timeout` (F2).
-					trial: (t) => {
-						trial = t;
-					},
-				}),
-		});
+		if (deadlineController.signal.aborted) {
+			result = {
+				schemaVersion: "endo.coordinator-brief.v0",
+				projectId: admission.projectId,
+				runtime: { harness: "none", provider: "llama.cpp (advisory pool member)", model: member.modelId },
+				availability: "unavailable",
+				reason: "inference-timeout",
+			};
+		} else {
+			const run = options.run ?? (await import("../coordinator/openclaw.ts")).runOpenClawCoordinatorV0;
+			result = await briefFromCoordinatorSubstrateV0(request, {
+				brief: (r) =>
+					run(options.root, r, {
+						pinnedObservation: admissionObserved.read!,
+						target,
+						provider: "llama.cpp (advisory pool member)",
+						// Enforce the absolute dispatch deadline across runner setup and inference while classifying its abort as `inference-timeout`.
+						signal: deadlineController.signal,
+						deadlineSignal: deadlineController.signal,
+						trial: (t) => {
+							trial = t;
+						},
+					}),
+			});
+		}
 	} catch {
-		result = null;
+		result = deadlineController.signal.aborted
+			? {
+					schemaVersion: "endo.coordinator-brief.v0",
+					projectId: admission.projectId,
+					runtime: { harness: "none", provider: "llama.cpp (advisory pool member)", model: member.modelId },
+					availability: "unavailable",
+					reason: "inference-timeout",
+				}
+			: null;
+	} finally {
+		if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
 	}
 	const inferenceCompletedAtMs = now();
 	const inferenceCompletedMonotonicMs = monotonicNow();
+	const turnBudgetMs = admission.turnDeadlineMs - admission.admittedAtMs;
+	const inferenceMonotonicElapsedMs = inferenceCompletedMonotonicMs - turnStartedMs;
 	const inferenceWithinTurnDeadline =
-		inferenceCompletedMonotonicMs - turnStartedMs < admission.turnDeadlineMs - admission.admittedAtMs &&
+		inferenceMonotonicElapsedMs >= 0 &&
+		inferenceMonotonicElapsedMs < turnBudgetMs &&
+		inferenceCompletedAtMs >= admission.admittedAtMs &&
 		inferenceCompletedAtMs <= admission.turnDeadlineMs;
+	const dispatchDeadlineExceeded =
+		deadlineController.signal.aborted ||
+		inferenceCompletedAtMs > dispatch.inferenceDeadlineMs ||
+		inferenceCompletedMonotonicMs - dispatchMonotonicMs > dispatch.effectiveTimeoutMs;
 	if (result !== null && result.availability === "available") {
 		const reason =
 			result.runtime.model !== member.modelId
 				? "model-identity-mismatch"
-				: inferenceCompletedAtMs > dispatch.inferenceDeadlineMs
+				: dispatchDeadlineExceeded
 					? "inference-timeout"
 					: null;
 		if (reason !== null)
@@ -1270,6 +1319,13 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				availability: "unavailable",
 				reason,
 			};
+	} else if (
+		deadlineController.signal.aborted &&
+		result !== null &&
+		result.availability === "unavailable" &&
+		result.reason === "runtime-unavailable"
+	) {
+		result = { ...result, reason: "inference-timeout" };
 	}
 	await hooks.afterInference?.({ turnId });
 
@@ -1291,6 +1347,14 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	const final = result;
 	const published = store.withAdvisoryLockSync((s) => {
 		const nowMs = now();
+		const publishMonotonicElapsedMs = monotonicNow() - turnStartedMs;
+		const publicationBudgetMs = turnBudgetMs + L.publicationMarginMs;
+		const publicationDeadlineMs = admission.turnDeadlineMs + L.publicationMarginMs;
+		const publicationWithinMargin =
+			publishMonotonicElapsedMs >= 0 &&
+			publishMonotonicElapsedMs < publicationBudgetMs &&
+			nowMs >= admission.admittedAtMs &&
+			nowMs < publicationDeadlineMs;
 		const schedules = s.store.readSchedules();
 		const schedule =
 			schedules.ok && schedules.exists
@@ -1306,10 +1370,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 						nowMs,
 					});
 		const observationCommitted = ownsLease(s, nowMs) && persistObservation(s, nowMs, pub);
-		// Inference must finish within `turnDeadlineMs`, while Phase G + H may use `publicationMarginMs` inside `ownsLease` (F4).
+		// Inference must finish within `turnDeadlineMs`, while Phase G + H may use at most `publicationMarginMs` beyond it on both wall and monotonic clocks (F4).
 		const withheld = !ownsLease(s, nowMs)
 			? "lease-lost-in-flight"
-			: !inferenceWithinTurnDeadline
+			: !inferenceWithinTurnDeadline || !publicationWithinMargin
 				? "turn-deadline-exceeded"
 				: schedule === undefined ||
 						schedule.incarnation !== claim.scheduleIncarnation ||

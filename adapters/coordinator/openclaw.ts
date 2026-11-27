@@ -229,8 +229,9 @@ const execute = (args: string[], signal: AbortSignal, timeoutMs: number) =>
 		child.once("close", (code, sig) => done(!timedOut && !signal.aborted && code === 0 && sig === null));
 	});
 
-async function providerBuild(origin: string) {
-	const signal = AbortSignal.timeout(3000);
+async function providerBuild(origin: string, deadlineSignal?: AbortSignal) {
+	const timeout = AbortSignal.timeout(3000);
+	const signal = deadlineSignal === undefined ? timeout : AbortSignal.any([timeout, deadlineSignal]);
 	const response = await new Promise<IncomingMessage>((resolve, reject) => {
 		get(`${origin}/props`, { signal, agent: false }, resolve).once("error", reject);
 	});
@@ -389,17 +390,24 @@ export async function runOpenClawCoordinatorV0(
 		provider?: string;
 		/** Cancels the briefing: a cancelled briefing is unavailable, whatever arrived. */
 		signal?: AbortSignal;
+		/** Aborts the briefing when the caller's absolute dispatch/inference deadline expires (`inference-timeout`). */
+		deadlineSignal?: AbortSignal;
 		pinnedObservation?: {
 			readonly status: EndoCoordinatorStatusV0;
 			readonly coordination: EndoCoordinatorCoordinationV0;
 		};
 	} = {},
 ): Promise<EndoCoordinatorBriefResultV0> {
+	const started = performance.now();
 	const { projectId } = request;
 	const target: EndoCoordinatorModelTargetV0 = Object.freeze({
 		...(options.target ?? ENDO_COORDINATOR_M0_TARGET_V0),
 		...(options.origin === undefined ? {} : { origin: options.origin }),
 	});
+	const hostDeadlineAt = target.hostDeadline ? started + target.timeoutMs : null;
+	const isExternalCancellation = () => options.signal?.aborted === true && options.signal !== options.deadlineSignal;
+	const isDeadlineExceeded = () =>
+		options.deadlineSignal?.aborted === true || (hostDeadlineAt !== null && performance.now() >= hostDeadlineAt);
 	const runtime = { harness: HARNESS, provider: "llama.cpp (unidentified)", model: target.model };
 	const base = { schemaVersion: "endo.coordinator-brief.v0" as const, projectId, runtime };
 	const stages: EndoCoordinatorDiagnosticStageV1[] = [];
@@ -430,20 +438,26 @@ export async function runOpenClawCoordinatorV0(
 	} catch {
 		return unavailable("runtime-unavailable");
 	}
+	if (isExternalCancellation()) return unavailable("runtime-unavailable");
+	if (isDeadlineExceeded()) return unavailable("inference-timeout");
 	if (options.provider !== undefined) runtime.provider = options.provider;
 	else
 		try {
-			runtime.provider = await providerBuild(origin);
+			runtime.provider = await providerBuild(origin, options.deadlineSignal);
 		} catch {
+			if (isExternalCancellation()) return unavailable("runtime-unavailable");
+			if (isDeadlineExceeded()) return unavailable("inference-timeout");
 			return unavailable("model-unavailable");
 		}
-	if (options.signal?.aborted) return unavailable("runtime-unavailable");
+	if (isExternalCancellation()) return unavailable("runtime-unavailable");
+	if (isDeadlineExceeded()) return unavailable("inference-timeout");
 	stages.push("preflight");
-	const started = performance.now();
 	const status =
 		options.pinnedObservation === undefined
 			? await readCoordinatorBriefStatusV0(root, projectId)
 			: pinnedCoordinatorBriefStatusV0(root, projectId, options.pinnedObservation);
+	if (isExternalCancellation()) return unavailable("runtime-unavailable");
+	if (isDeadlineExceeded()) return unavailable("inference-timeout");
 	if (!status.ok) {
 		if (status.reason === "project-not-registered") return unavailable("project-out-of-scope");
 		if (status.reason === "output-too-large") return unavailable("status-output-too-large");
@@ -494,6 +508,12 @@ export async function runOpenClawCoordinatorV0(
 		});
 		relay = started_.relay;
 		stages.push("relay-started");
+		if (isExternalCancellation()) return unavailable("runtime-unavailable");
+		if (isDeadlineExceeded()) return unavailable("inference-timeout");
+		const remainingHostMs =
+			hostDeadlineAt === null ? target.timeoutMs : Math.floor(hostDeadlineAt - performance.now());
+		if (hostDeadlineAt !== null && remainingHostMs <= 0) return unavailable("inference-timeout");
+		const execTimeoutMs = hostDeadlineAt === null ? target.timeoutMs : Math.max(1, remainingHostMs);
 		const wire: ReturnType<typeof coordinatorWireV0> = started_.wire;
 		const mounts = modelRelayMountsV0(relay, directory);
 		const args = coordinatorBwrapV0(
@@ -536,7 +556,7 @@ export async function runOpenClawCoordinatorV0(
 				"--thinking",
 				"off",
 				"--timeout",
-				String(Math.ceil(target.timeoutMs / 1000)),
+				String(Math.max(1, Math.ceil(execTimeoutMs / 1000))),
 				"--json",
 				"--message-file",
 				`${SCRATCH}/prompt`,
@@ -544,9 +564,15 @@ export async function runOpenClawCoordinatorV0(
 			`${SCRATCH}/workspace`,
 		);
 		const inferenceStarted = performance.now();
-		const deadline = target.hostDeadline ? AbortSignal.timeout(target.timeoutMs) : undefined;
-		const signals = [abort.signal, options.signal, deadline].filter((s): s is AbortSignal => s !== undefined);
-		const ran = await execute(args, signals.length === 1 ? abort.signal : AbortSignal.any(signals), target.timeoutMs);
+		const deadline = hostDeadlineAt !== null ? AbortSignal.timeout(execTimeoutMs) : undefined;
+		const signals = [
+			...new Set(
+				[abort.signal, options.signal, options.deadlineSignal, deadline].filter(
+					(s): s is AbortSignal => s !== undefined,
+				),
+			),
+		];
+		const ran = await execute(args, signals.length === 1 ? abort.signal : AbortSignal.any(signals), execTimeoutMs);
 		const inferenceElapsedMs = Math.round(performance.now() - inferenceStarted);
 		await relay.close();
 		const recorderClean = relay.recordingFailures() === 0 && !existsSync(relay.socketPath);
@@ -571,8 +597,11 @@ export async function runOpenClawCoordinatorV0(
 		const diag = { openclawExitOk: ran.ok, wire: wire.trace };
 		const final = wire.trace.responses.at(-1);
 		let refusal: EndoCoordinatorBriefRefusalV0 | null = null;
-		if (options.signal?.aborted) refusal = "runtime-unavailable";
-		else if (deadline !== undefined && (deadline.aborted || inferenceElapsedMs >= target.timeoutMs))
+		if (isExternalCancellation()) refusal = "runtime-unavailable";
+		else if (
+			options.deadlineSignal?.aborted ||
+			(hostDeadlineAt !== null && (deadline?.aborted || performance.now() >= hostDeadlineAt))
+		)
 			refusal = "inference-timeout";
 		else if (wire.trace.refusal !== null) refusal = wire.trace.refusal;
 		else if (!recorderClean) refusal = "runtime-unavailable";
@@ -608,6 +637,8 @@ export async function runOpenClawCoordinatorV0(
 			toolSurface: [ENDO_COORDINATOR_TOOL_V0],
 		};
 	} catch {
+		if (isExternalCancellation()) return unavailable("runtime-unavailable");
+		if (isDeadlineExceeded()) return unavailable("inference-timeout");
 		return unavailable("runtime-unavailable");
 	} finally {
 		try {
@@ -636,6 +667,8 @@ export function preflightOpenClawCoordinatorV0(
 	request: EndoCoordinatorBriefRequestV0,
 	options: {
 		readonly openclaw?: string;
+		/** Optional override for the bwrap executable path checked during preflight (tests only; defaults to `/usr/bin/bwrap`). */
+		readonly bwrap?: string;
 		readonly target?: EndoCoordinatorModelTargetV0;
 		readonly origin?: string;
 		readonly pinnedObservation?: {
@@ -663,13 +696,16 @@ export function preflightOpenClawCoordinatorV0(
 	} catch {
 		return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR unreadable" };
 	}
+	const bwrapPath = options.bwrap ?? "/usr/bin/bwrap";
+	if (!bwrapPath.startsWith("/"))
+		return { ok: false, reason: "runtime-unavailable", detail: "bwrap path must be absolute" };
 	try {
-		const bwrapStat = statSync("/usr/bin/bwrap");
+		const bwrapStat = statSync(bwrapPath);
 		if (!bwrapStat.isFile())
-			return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap not a regular file" };
-		accessSync("/usr/bin/bwrap", constants.X_OK);
+			return { ok: false, reason: "runtime-unavailable", detail: `${bwrapPath} not a regular file` };
+		accessSync(bwrapPath, constants.X_OK);
 	} catch {
-		return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap unavailable or not executable" };
+		return { ok: false, reason: "runtime-unavailable", detail: `${bwrapPath} unavailable or not executable` };
 	}
 	let harness: string;
 	try {

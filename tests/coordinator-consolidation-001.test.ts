@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0,
 	preflightOpenClawCoordinatorV0,
+	runOpenClawCoordinatorV0,
 } from "../adapters/coordinator/openclaw.ts";
 import { COORDINATOR_INFERENCE_V0, coordinatorWireV0 } from "../adapters/coordinator/wire.ts";
 import {
@@ -65,20 +66,28 @@ describe("COORDINATOR-CONSOLIDATION-001: extracted production hardening & diagno
 		const runtimeDir = join(dir, "xdg");
 		mkdirSync(runtimeDir, { mode: 0o700 });
 		chmodSync(runtimeDir, 0o700);
+		const fakeBwrap = join(dir, "fake-bwrap");
+		writeFileSync(fakeBwrap, "#!/bin/sh\nexit 0\n", { mode: 0o700 });
+		chmodSync(fakeBwrap, 0o700);
+		const nonExecBwrap = join(dir, "non-exec-bwrap");
+		writeFileSync(nonExecBwrap, "#!/bin/sh\nexit 0\n", { mode: 0o600 });
+		chmodSync(nonExecBwrap, 0o600);
 		const prevXdg = process.env.XDG_RUNTIME_DIR;
 		process.env.XDG_RUNTIME_DIR = runtimeDir;
 		try {
 			const projectId = "endo.project.0123456789abcdef0123456789abcdef";
-			const pkgOk = join(dir, "oc-ok");
-			mkdirSync(pkgOk);
-			writeFileSync(join(pkgOk, "package.json"), JSON.stringify({ version: "2026.11.10" }));
-			writeFileSync(join(pkgOk, "openclaw.mjs"), "// ok\n");
-			const ok = preflightOpenClawCoordinatorV0(
-				dir,
-				{ projectId },
-				{ openclaw: join(pkgOk, "openclaw.mjs"), origin: "http://127.0.0.1:8091" },
-			);
-			expect(ok).toEqual({ ok: true, harness: "OpenClaw 2026.11.10" });
+			for (const version of ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0) {
+				const pkgOk = join(dir, `oc-ok-${version}`);
+				mkdirSync(pkgOk);
+				writeFileSync(join(pkgOk, "package.json"), JSON.stringify({ version }));
+				writeFileSync(join(pkgOk, "openclaw.mjs"), "// ok\n");
+				const ok = preflightOpenClawCoordinatorV0(
+					dir,
+					{ projectId },
+					{ openclaw: join(pkgOk, "openclaw.mjs"), bwrap: fakeBwrap, origin: "http://127.0.0.1:8091" },
+				);
+				expect(ok).toEqual({ ok: true, harness: `OpenClaw ${version}` });
+			}
 
 			const pkgBad = join(dir, "oc-bad");
 			mkdirSync(pkgBad);
@@ -87,9 +96,43 @@ describe("COORDINATOR-CONSOLIDATION-001: extracted production hardening & diagno
 			const bad = preflightOpenClawCoordinatorV0(
 				dir,
 				{ projectId },
-				{ openclaw: join(pkgBad, "openclaw.mjs"), origin: "http://127.0.0.1:8091" },
+				{ openclaw: join(pkgBad, "openclaw.mjs"), bwrap: fakeBwrap, origin: "http://127.0.0.1:8091" },
 			);
-			expect(bad).toMatchObject({ ok: false, reason: "runtime-unavailable" });
+			expect(bad).toEqual({
+				ok: false,
+				reason: "runtime-unavailable",
+				detail: "unsupported OpenClaw version: 2099.1.1",
+			});
+
+			const missingBwrap = preflightOpenClawCoordinatorV0(
+				dir,
+				{ projectId },
+				{
+					openclaw: join(dir, "oc-ok-2026.11.10", "openclaw.mjs"),
+					bwrap: join(dir, "missing-bwrap"),
+					origin: "http://127.0.0.1:8091",
+				},
+			);
+			expect(missingBwrap).toMatchObject({
+				ok: false,
+				reason: "runtime-unavailable",
+				detail: expect.stringContaining("unavailable or not executable"),
+			});
+
+			const unexecutableBwrap = preflightOpenClawCoordinatorV0(
+				dir,
+				{ projectId },
+				{
+					openclaw: join(dir, "oc-ok-2026.11.10", "openclaw.mjs"),
+					bwrap: nonExecBwrap,
+					origin: "http://127.0.0.1:8091",
+				},
+			);
+			expect(unexecutableBwrap).toMatchObject({
+				ok: false,
+				reason: "runtime-unavailable",
+				detail: expect.stringContaining("unavailable or not executable"),
+			});
 		} finally {
 			if (prevXdg === undefined) delete process.env.XDG_RUNTIME_DIR;
 			else process.env.XDG_RUNTIME_DIR = prevXdg;
@@ -365,5 +408,310 @@ describe("COORDINATOR-CONSOLIDATION-001: extracted production hardening & diagno
 		});
 		expect(proj.schedules[0]?.budget?.turnsCharged).toBe(0);
 		expect(proj.schedules[0]?.budget?.generatedTokensCharged).toBe(0);
+	});
+
+	it("preserves the absolute dispatch deadline across runner setup and distinguishes deadlineSignal from external cancellation", async () => {
+		const dir = scratch();
+		const runtimeDir = join(dir, "xdg");
+		mkdirSync(runtimeDir, { mode: 0o700 });
+		chmodSync(runtimeDir, 0o700);
+		const prevXdg = process.env.XDG_RUNTIME_DIR;
+		process.env.XDG_RUNTIME_DIR = runtimeDir;
+		try {
+			const projectId = "endo.project.0123456789abcdef0123456789abcdef";
+			const deadlineController = new AbortController();
+			deadlineController.abort(new DOMException("deadline expired", "TimeoutError"));
+			const deadlineRes = await runOpenClawCoordinatorV0(
+				dir,
+				{ projectId },
+				{
+					origin: "http://127.0.0.1:18099",
+					provider: "test-provider",
+					signal: deadlineController.signal,
+					deadlineSignal: deadlineController.signal,
+				},
+			);
+			expect(deadlineRes).toMatchObject({ availability: "unavailable", reason: "inference-timeout" });
+
+			const cancelController = new AbortController();
+			cancelController.abort();
+			const cancelRes = await runOpenClawCoordinatorV0(
+				dir,
+				{ projectId },
+				{
+					origin: "http://127.0.0.1:18099",
+					provider: "test-provider",
+					signal: cancelController.signal,
+				},
+			);
+			expect(cancelRes).toMatchObject({ availability: "unavailable", reason: "runtime-unavailable" });
+		} finally {
+			if (prevXdg === undefined) delete process.env.XDG_RUNTIME_DIR;
+			else process.env.XDG_RUNTIME_DIR = prevXdg;
+		}
+
+		// End-to-end through S2 advisory tick: dispatch passes an active deadline signal that aborts a stalled runner
+		// and classifies the refusal as `inference-timeout` rather than `runtime-unavailable`.
+		const { root, projectId } = await buildCoordinatorStoreV0();
+		let clock = 1_700_000_000_000;
+		const now = () => clock;
+		let mono = 10_000;
+		const monotonicNow = () => mono;
+		const pool = parseEndoCoordinatorModelPoolV0({
+			schemaVersion: "endo.coordinator-model-pool.v0",
+			selection: { fallback: "none", unconfirmedModel: "refuse" },
+			members: [
+				{
+					memberId: "m1",
+					kind: "local-openai-compat",
+					endpoint: "http://127.0.0.1:18099",
+					modelId: "test-model",
+					priority: 1,
+					maxPromptBytes: 8192,
+					maxOutputTokens: 2048,
+					timeoutMs: 60_000,
+					advisoryOnly: true,
+				},
+			],
+		});
+		expect(
+			addEndoAdvisoryScheduleV0(
+				root,
+				{
+					scheduleId: "sched-deadline",
+					label: "Deadline test",
+					projectId,
+					actionKind: "generate-advisory-brief",
+					wake: "on-change",
+					missedRunPolicy: "skip-and-report",
+					trigger: { kind: "interval", everyMs: 60_000, anchorMs: clock },
+				},
+				now,
+			).ok,
+		).toBe(true);
+		expect(setEndoAdvisoryScheduleEnabledV0(root, "sched-deadline", true, 1, now).ok).toBe(true);
+		expect(
+			authorizeEndoAdvisoryScheduleV0(
+				root,
+				{
+					scheduleId: "sched-deadline",
+					scheduleRevision: 2,
+					pool,
+					policy: {
+						observationSource: "recorded-or-passive-probe",
+						recordedObservationMaxAgeMs: 60_000,
+						permitCapacityUnknown: true,
+						permitModelUnconfirmed: false,
+						permitPartialObservation: true,
+					},
+					budget: {
+						periodMs: 3_600_000,
+						maxTurnsPerPeriod: 4,
+						completionRequestsPerTurn: 2,
+						maxOutputTokensPerRequest: 2048,
+						maxGeneratedTokensPerPeriod: 16_384,
+						maxTurnWallClockMs: 60_000,
+					},
+					lifetimeMs: 3_600_000,
+				},
+				now,
+			).ok,
+		).toBe(true);
+
+		let observedSignal: AbortSignal | undefined;
+		let observedDeadlineSignal: AbortSignal | undefined;
+		let observedTimeoutMs: number | undefined;
+		const tick = await runEndoAdvisoryTickV0({
+			root,
+			now,
+			monotonicNow,
+			observeMember: async (m) => ({
+				memberId: m.memberId,
+				endpoint: m.endpoint,
+				modelId: m.modelId,
+				basis: "controller-observed",
+				observedAtMs: now(),
+				elapsedMs: 5,
+				readiness: "ready",
+				detail: "slot-idle",
+				backend: "llama.cpp-single",
+				build: null,
+				requests: [{ path: "/health", status: 200 }],
+				inferenceTokens: 0,
+			}),
+			hooks: {
+				afterDispatchRecord: () => {
+					// Consume almost the entire 60s dispatch window before the runner even starts (leaving 50 ms).
+					clock += 59_950;
+					mono += 59_950;
+				},
+			},
+			run: async (_root, request, opts) => {
+				observedSignal = opts?.signal;
+				observedDeadlineSignal = opts?.deadlineSignal;
+				observedTimeoutMs = opts?.target?.timeoutMs;
+				await new Promise<void>((resolve) => {
+					if (opts?.signal?.aborted) {
+						resolve();
+						return;
+					}
+					opts?.signal?.addEventListener("abort", () => resolve(), { once: true });
+				});
+				return {
+					schemaVersion: "endo.coordinator-brief.v0",
+					projectId: request.projectId,
+					runtime: { harness: "OpenClaw 2026.11.10", provider: "test", model: "test-model" },
+					availability: "unavailable",
+					reason: "runtime-unavailable",
+				};
+			},
+		});
+		expect(tick.ok).toBe(true);
+		expect(observedTimeoutMs).toBe(50);
+		expect(observedSignal).toBeDefined();
+		expect(observedDeadlineSignal).toBe(observedSignal);
+		expect(observedSignal?.aborted).toBe(true);
+		const proj = readEndoAdvisoryProjectionV0(root, { now });
+		expect(proj.briefings[0]).toMatchObject({
+			availability: "unavailable",
+			refusal: "inference-timeout",
+		});
+	});
+
+	it("bounds Phase H publication by turnDeadlineMs + publicationMarginMs on both wall and monotonic clocks", async () => {
+		const runCase = async (scenario: "within-margin" | "wall-overrun" | "monotonic-overrun") => {
+			const { root, projectId } = await buildCoordinatorStoreV0();
+			let clock = 1_700_000_000_000;
+			const now = () => clock;
+			let mono = 10_000;
+			const monotonicNow = () => mono;
+			const pool = parseEndoCoordinatorModelPoolV0({
+				schemaVersion: "endo.coordinator-model-pool.v0",
+				selection: { fallback: "none", unconfirmedModel: "refuse" },
+				members: [
+					{
+						memberId: "m1",
+						kind: "local-openai-compat",
+						endpoint: "http://127.0.0.1:18099",
+						modelId: "test-model",
+						priority: 1,
+						maxPromptBytes: 8192,
+						maxOutputTokens: 2048,
+						timeoutMs: 60_000,
+						advisoryOnly: true,
+					},
+				],
+			});
+			expect(
+				addEndoAdvisoryScheduleV0(
+					root,
+					{
+						scheduleId: "sched-margin",
+						label: "Margin test",
+						projectId,
+						actionKind: "generate-advisory-brief",
+						wake: "on-change",
+						missedRunPolicy: "skip-and-report",
+						trigger: { kind: "interval", everyMs: 60_000, anchorMs: clock },
+					},
+					now,
+				).ok,
+			).toBe(true);
+			expect(setEndoAdvisoryScheduleEnabledV0(root, "sched-margin", true, 1, now).ok).toBe(true);
+			expect(
+				authorizeEndoAdvisoryScheduleV0(
+					root,
+					{
+						scheduleId: "sched-margin",
+						scheduleRevision: 2,
+						pool,
+						policy: {
+							observationSource: "recorded-or-passive-probe",
+							recordedObservationMaxAgeMs: 60_000,
+							permitCapacityUnknown: true,
+							permitModelUnconfirmed: false,
+							permitPartialObservation: true,
+						},
+						budget: {
+							periodMs: 3_600_000,
+							maxTurnsPerPeriod: 4,
+							completionRequestsPerTurn: 2,
+							maxOutputTokensPerRequest: 2048,
+							maxGeneratedTokensPerPeriod: 16_384,
+							// 60s turn budget inside a 300s lease -> publication margin expires at 60s + 20s = 80s.
+							maxTurnWallClockMs: 60_000,
+						},
+						lifetimeMs: 3_600_000,
+					},
+					now,
+				).ok,
+			).toBe(true);
+
+			const tick = await runEndoAdvisoryTickV0({
+				root,
+				now,
+				monotonicNow,
+				observeMember: async (m) => ({
+					memberId: m.memberId,
+					endpoint: m.endpoint,
+					modelId: m.modelId,
+					basis: "controller-observed",
+					observedAtMs: now(),
+					elapsedMs: 5,
+					readiness: "ready",
+					detail: "slot-idle",
+					backend: "llama.cpp-single",
+					build: null,
+					requests: [{ path: "/health", status: 200 }],
+					inferenceTokens: 0,
+				}),
+				run: async (_root, request, opts) => {
+					// Inference finishes cleanly at 30s (well within 60s turn budget).
+					clock += 30_000;
+					mono += 30_000;
+					return {
+						schemaVersion: "endo.coordinator-brief.v0",
+						projectId: request.projectId,
+						runtime: { harness: "OpenClaw 2026.11.10", provider: "test", model: "test-model" },
+						availability: "available",
+						answer: "Project status observed.",
+						evidence: {
+							readAtMs: opts?.pinnedObservation?.status.readAtMs ?? clock,
+							projectionSha256: "a".repeat(64),
+							modelViewSha256: "b".repeat(64),
+						},
+						toolSurface: ["endophasia_status"],
+					};
+				},
+				hooks: {
+					beforePublish: () => {
+						if (scenario === "within-margin") {
+							// Total elapsed 75s: past 60s turnDeadlineMs, but within 60s + 20s publicationMarginMs.
+							clock += 45_000;
+							mono += 45_000;
+						} else if (scenario === "wall-overrun") {
+							// Total elapsed 200s: inside 300s lease, but well past 80s turnDeadlineMs + publicationMarginMs.
+							clock += 170_000;
+							mono += 170_000;
+						} else {
+							// Wall clock stays at 30s, but monotonic elapsed reaches 85s (> 80s margin).
+							mono += 55_000;
+						}
+					},
+				},
+			});
+			expect(tick.ok).toBe(true);
+			return readEndoAdvisoryProjectionV0(root, { now }).briefings[0]!;
+		};
+
+		expect(await runCase("within-margin")).toMatchObject({ availability: "available", refusal: null });
+		expect(await runCase("wall-overrun")).toMatchObject({
+			availability: "withheld",
+			refusal: "turn-deadline-exceeded",
+		});
+		expect(await runCase("monotonic-overrun")).toMatchObject({
+			availability: "withheld",
+			refusal: "turn-deadline-exceeded",
+		});
 	});
 });

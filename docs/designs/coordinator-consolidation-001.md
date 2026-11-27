@@ -71,8 +71,8 @@ Every mechanism promoted to `main` in this PR preserves existing V0 defaults (`m
 5. **Bounded termination diagnostics (`endo.coordinator-brief-diagnostics.v1`, `reasoning-budget-exhausted`, sanitized `finishReason`, `rawReasoningStored: false`, `F6`/`F9`)** (`runtime/contracts/coordinator-brief.ts`, `adapters/coordinator/wire.ts`, `adapters/coordinator/openclaw.ts`).
 6. **S2 Advisory Tick lease/deadline/retention correctness fixes (`F1`/`F2`/`F4`/`F10`)** (`adapters/develop/advisory-tick.ts`):
    - Phase A immediately releases the advisory lease inside the same lock when no schedule is claimed.
-   - Phase F enforces the inference deadline via `target.hostDeadline` rather than an external abort signal that misclassified timeouts as `runtime-unavailable`.
-   - Phase H evaluates `turnDeadlineMs` against inference completion so Phases G+H may consume `publicationMarginMs` while holding a live lease.
+   - Phase F preserves the absolute dispatch deadline across runner setup and inference via `deadlineSignal` + `target.hostDeadline` while classifying deadline aborts as `inference-timeout` (and external cancellations as `runtime-unavailable`).
+   - Phase H evaluates `turnDeadlineMs` against inference completion and fences publication to `turnDeadlineMs + publicationMarginMs` on both wall and monotonic clocks inside `ownsLease`.
    - `pruneRetained` runs only while `ownsLease(s, nowMs)` holds.
 7. **A3 Grounding-Failure Diagnostic Schema Contract** (`endo.coordinator-grounding-failure-diagnostic.v1` in `runtime/contracts/coordinator-brief.ts`).
 

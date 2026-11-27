@@ -401,7 +401,16 @@ export interface EndoAdvisoryProjectionV0 {
 		readonly state: string;
 		readonly admittedAtMs: number;
 	}[];
+	/** Every pending proposal, always; decided and superseded ones newest first up to the limit. */
 	readonly proposals: readonly EndoAdvisoryProposalViewV0[];
+	/** What the proposal listing holds and what it left out, so a truncated list cannot be mistaken for a complete one. */
+	readonly proposalCounts: {
+		readonly retained: number;
+		readonly pending: number;
+		readonly listed: number;
+		readonly withheld: number;
+		readonly withheldHint: string | null;
+	};
 }
 
 /** Lock-free, bounded and read-only: creates nothing, takes no lock, contacts nothing. */
@@ -479,6 +488,9 @@ export function readEndoAdvisoryProjectionV0(
 			note: decision?.note ?? null,
 		});
 	}
+	const decided = proposalViews.filter((v) => v.queueState !== "pending");
+	const decidedListed = new Set(decided.slice(0, limit));
+	const listedProposals = proposalViews.filter((v) => v.queueState === "pending" || decidedListed.has(v));
 	return {
 		schemaVersion: "endo.advisory-projection.v0",
 		readAtMs: nowMs,
@@ -499,6 +511,16 @@ export function readEndoAdvisoryProjectionV0(
 			state: endoAdvisoryTurnChargeV0(t, currentLease).state,
 			admittedAtMs: t.admission.admittedAtMs,
 		})),
-		proposals: proposalViews.slice(0, Math.max(limit, L.maxProposalsRetained)),
+		proposals: listedProposals,
+		proposalCounts: {
+			retained: proposalViews.length,
+			pending: proposalViews.length - decided.length,
+			listed: listedProposals.length,
+			withheld: decided.length - decidedListed.size,
+			withheldHint:
+				decided.length > decidedListed.size
+					? `${decided.length - decidedListed.size} decided or superseded proposal(s) not listed; every pending one is. Raise --limit (up to 256) to list them.`
+					: null,
+		},
 	};
 }

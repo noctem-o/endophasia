@@ -4,7 +4,7 @@
 // are fakes, and both count every call so "zero inference" is an observed fact rather than a return value.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,6 +44,7 @@ import type {
 } from "../runtime/contracts/coordinator-model-pool.ts";
 import {
 	endoAdvisoryAuthorizationStandingV0,
+	endoAdvisoryBudgetStandingV0,
 	endoAdvisoryEffectivePoolV0,
 	endoAdvisoryParseProposalLineV0,
 	endoAdvisorySemanticObservationV0,
@@ -51,6 +52,7 @@ import {
 import { readEndoCoordinatorCoordinationV0 } from "../storage/coordinator-coordination.ts";
 import { readEndoCoordinatorStatusV0 } from "../storage/coordinator-status.ts";
 import { DevelopAdvisoryStoreV0 } from "../storage/develop-advisory.ts";
+import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopAutomationStoreV0 } from "../storage/develop-automation.ts";
 import { DevelopCoordinationStoreV0 } from "../storage/develop-coordination.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
@@ -1530,5 +1532,199 @@ describe("COORDINATOR-AUTOMATION-S2 independent-review regressions (R02, R04, R0
 		expect(run.calls).toHaveLength(0);
 		const t = store.listTurns(clock.t);
 		expect(t.ok && t.problems.some((p) => p.name === "budget-floor.json")).toBe(true);
+	});
+});
+
+describe("COORDINATOR-AUTOMATION-S2 Codex review regressions (C1-C3)", () => {
+	const shiftTimes = (value: unknown, delta: number): unknown => {
+		if (Array.isArray(value)) return value.map((v) => shiftTimes(v, delta));
+		if (value === null || typeof value !== "object") return value;
+		return Object.fromEntries(
+			Object.entries(value).map(([k, v]) => [
+				k,
+				typeof v === "number" && v >= BASE - 30 * 24 * HOUR && /(?:AtMs|DeadlineMs)$/.test(k)
+					? v + delta
+					: shiftTimes(v, delta),
+			]),
+		);
+	};
+
+	it("C1: a ledger past the old 4096-entry bound at a realistic rate still admits, and spend stays exact", async () => {
+		const root = tmp("endo-s2-c1-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId, wake: "digest-window" });
+		clock.at(windowAt(0));
+		expect(statusOf(await tick(root, clock, fakeRun(), observer("ready", clock)))).toEqual(["briefing-published"]);
+		const store = new DevelopAdvisoryStoreV0(root);
+		const [seed] = listTurns(root);
+		const seedCharge = seed!.briefing!.accounting.chargedGeneratedTokens;
+		const records = ["admitted", "dispatched", "briefing"].map((kind) => [
+			kind,
+			JSON.parse(readFileSync(join(store.turnsDir, seed!.admission.turnId + "." + kind + ".json"), "utf8")),
+		]) as [string, Record<string, unknown>][];
+		// Another schedule's history: one settled turn every 5 minutes for the last ~6.9 days (2000 turns, 6000 records).
+		const clones = 2000;
+		for (let i = 1; i <= clones; i++) {
+			const turnId = sha256HexV0("c1-clone-" + i);
+			const delta = -i * 5 * MIN;
+			for (const [kind, record] of records) {
+				const clone = { ...(shiftTimes(record, delta) as Record<string, unknown>), turnId };
+				if ("scheduleId" in clone) clone.scheduleId = "adv-other";
+				writeFileSync(
+					join(store.turnsDir, turnId + "." + kind + ".json"),
+					canonicalEndoJsonV0(clone as never) + "\n",
+				);
+			}
+		}
+		expect(readdirSync(store.turnsDir).length).toBeGreaterThan(4096);
+		const before = store.listTurns(clock.t);
+		expect(before).toMatchObject({ ok: true, problems: [] });
+		clock.at(windowAt(1));
+		const run = fakeRun();
+		expect(statusOf(await tick(root, clock, run, observer("ready", clock)))).toEqual(["briefing-published"]);
+		expect(run.calls).toHaveLength(1);
+		const view = readEndoAdvisoryProjectionV0(root, { now: clock.now });
+		expect(view.problems).toEqual([]);
+		const fresh = listTurns(root).find((t) => t.admission.admittedAtMs === windowAt(1));
+		expect(view.schedules[0]!.budget).toMatchObject({
+			turnsCharged: 2,
+			generatedTokensCharged: seedCharge + fresh!.briefing!.accounting.chargedGeneratedTokens,
+		});
+		const after = store.listTurns(clock.t);
+		if (!after.ok) throw new Error("ledger unreadable");
+		expect(after.entries).toHaveLength(clones + 2);
+		const other = endoAdvisoryBudgetStandingV0({
+			turns: after.entries.filter((t) => t.admission.scheduleId === "adv-other"),
+			budget: { ...BUDGET, periodMs: 7 * 24 * HOUR },
+			nowMs: clock.t,
+			currentLease: null,
+		});
+		expect(other).toMatchObject({ turnsCharged: clones, generatedTokensCharged: clones * seedCharge });
+	}, 120_000);
+
+	it("C2: every pending proposal is listed and can be acknowledged; a truncated history says what it withheld", async () => {
+		const root = tmp("endo-s2-c2-");
+		const clock = new Clock();
+		const { projectId, taskId } = project(root);
+		setStatus(root, projectId, taskId, "in-progress", "blocked");
+		configure(root, clock, { projectId, action: "emit-operator-proposal" });
+		clock.at(windowAt(0));
+		await tick(
+			root,
+			clock,
+			fakeRun({ answer: () => "PROPOSAL: resolve-blocked-task " + taskId }),
+			observer("ready", clock),
+		);
+		const [seed] = listProposals(root);
+		const store = new DevelopAdvisoryStoreV0(root, { now: clock.now });
+		const hex = (i: number, salt: string) => (salt + i.toString(16)).padStart(64, "0");
+		const pendingClones = 300;
+		const locked = store.withAdvisoryLockSync((s) => {
+			for (let i = 1; i <= pendingClones; i++)
+				s.writeProposalOnce({
+					...seed!.proposal,
+					proposalId: hex(i, "a"),
+					dedupKey: hex(i, "d"),
+					generatedAtMs: BASE - i,
+				});
+			for (let i = 1; i <= 20; i++) {
+				const proposalId = hex(i, "b");
+				s.writeProposalOnce({
+					...seed!.proposal,
+					proposalId,
+					dedupKey: hex(i, "e"),
+					generatedAtMs: BASE - 1000 - i,
+				});
+				s.writeProposalStateOnce({
+					schemaVersion: "endo.develop-advisory-proposal-state.v0",
+					proposalId,
+					disposition: "dismissed",
+					decidedAtMs: BASE,
+					note: null,
+					authority: { grants: "none", affects: "advisory-queue-only" },
+				});
+			}
+			return true;
+		});
+		expect(locked).toMatchObject({ ok: true });
+		const view = readEndoAdvisoryProjectionV0(root, { now: clock.now, limit: 5 });
+		const pending = view.proposals.filter((v) => v.queueState === "pending");
+		expect(pending).toHaveLength(pendingClones + 1);
+		expect(view.proposalCounts).toMatchObject({ pending: pendingClones + 1, withheld: 15 });
+		expect(view.proposalCounts.withheldHint).toMatch(/15 decided or superseded proposal\(s\) not listed/);
+		const oldest = hex(pendingClones, "a");
+		expect(pending.some((v) => v.proposal.proposalId === oldest)).toBe(true);
+		const cli = (...args: string[]) =>
+			spawnSync(process.execPath, [join(REPO_ROOT, "cli", "index.ts"), "advisory", ...args], {
+				encoding: "utf8",
+				env: { ...process.env },
+			});
+		const listed = cli("proposals", "--root", root, "--limit", "5", "--quiet");
+		expect(listed.status, listed.stderr).toBe(0);
+		const out = JSON.parse(listed.stdout);
+		expect(out.proposals).toHaveLength(pendingClones + 1);
+		expect(out.proposalCounts.withheld).toBe(15);
+		expect(cli("ack", "--root", root, "--proposal", oldest, "--quiet").status).toBe(0);
+		const acked = readEndoAdvisoryProjectionV0(root, { now: clock.now, limit: 256 });
+		expect(acked.proposals.find((v) => v.proposal.proposalId === oldest)?.queueState).toBe("acknowledged");
+		expect(acked.proposalCounts).toMatchObject({ pending: pendingClones, withheld: 0, withheldHint: null });
+	}, 60_000);
+
+	it("C3: a readable Git project's HEAD is observed, the observation is complete, and the pinned runner sees that HEAD", async () => {
+		const root = tmp("endo-s2-c3-");
+		const clock = new Clock();
+		const { projectId, repo } = project(root);
+		const git = (...args: string[]) => {
+			const r = spawnSync(
+				"/usr/bin/git",
+				["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
+				{
+					cwd: repo,
+					encoding: "utf8",
+					env: { PATH: process.env.PATH ?? "/usr/bin", HOME: repo, GIT_CONFIG_NOSYSTEM: "1" },
+				},
+			);
+			if (r.status !== 0) throw new Error("git " + args.join(" ") + ": " + r.stderr);
+			return r.stdout.trim();
+		};
+		git("init", "-q");
+		writeFileSync(join(repo, "README"), "s2\n");
+		git("add", "README");
+		git("commit", "-q", "-m", "init");
+		const commit = git("rev-parse", "HEAD");
+		// A store whose other sources are present and readable, so HEAD is the only thing under test.
+		mkdirSync(new DevelopAttemptsStoreV0(root).directory, { recursive: true });
+		mkdirSync(join(root, "events"), { recursive: true });
+		writeFileSync(join(root, "events", "events.log"), "");
+		const read = await defaultObserveAdvisoryProjectV0({ root, projectId, nowMs: BASE });
+		expect(read.status.projects[0]!.head).toMatchObject({ commit, clean: true });
+		const observation = endoAdvisorySemanticObservationV0(projectId, read.status, read.coordination);
+		expect(observation.gaps).not.toContain("finding-project-head-unavailable");
+		expect(observation.completeness).toBe("complete");
+		configure(root, clock, { projectId, policy: { permitPartialObservation: false } });
+		clock.at(windowAt(0));
+		const base = fakeRun();
+		let seenHead: string | null | undefined;
+		const run = {
+			...base,
+			run: (async (r: string, q: never, o: Record<string, any>) => {
+				seenHead = o.pinnedObservation?.status.projects[0]?.head?.commit ?? null;
+				return (base.run as any)(r, q, o);
+			}) as unknown as typeof base.run,
+		};
+		expect(statusOf(await tick(root, clock, run, observer("ready", clock)))).toEqual(["briefing-published"]);
+		expect(base.calls).toHaveLength(1);
+		expect(seenHead).toBe(commit);
+	});
+
+	it("C3: an unreadable HEAD stays honest: the project reads head-unavailable and the observation is partial", async () => {
+		const root = tmp("endo-s2-c3b-");
+		const { projectId } = project(root);
+		const read = await defaultObserveAdvisoryProjectV0({ root, projectId, nowMs: BASE });
+		expect(read.status.projects[0]!.head).toBeNull();
+		const observation = endoAdvisorySemanticObservationV0(projectId, read.status, read.coordination);
+		expect(observation.gaps).toContain("finding-project-head-unavailable");
+		expect(observation.completeness).toBe("partial");
 	});
 });

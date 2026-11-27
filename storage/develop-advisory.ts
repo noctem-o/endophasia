@@ -315,12 +315,12 @@ export class DevelopAdvisoryStoreV0 {
 		);
 	}
 
-	#names(dir: string): string[] | EndoAdvisoryListingFailureV0 {
+	#names(dir: string, max: number = L.maxDirectoryEntries): string[] | EndoAdvisoryListingFailureV0 {
 		const state = checkDirectoriesSyncV0([...this.#base(), dir]);
 		if (state === "missing") return [];
 		if (state !== "ok") return { ok: false, reason: state === "unsafe-path" ? "unsafe-path" : "io" };
 		try {
-			const names = readDirectoryNamesAtMostV0(dir, L.maxDirectoryEntries);
+			const names = readDirectoryNamesAtMostV0(dir, max);
 			return names === null ? { ok: false, reason: "too-many" } : names;
 		} catch {
 			return { ok: false, reason: "io" };
@@ -354,9 +354,12 @@ export class DevelopAdvisoryStoreV0 {
 		return { ok: true, entries, problems };
 	}
 
-	/** Every turn in the ledger. Fails closed (`too-many`) rather than undercounting when the directory exceeds its bound. */
+	/**
+	 * Every turn in the ledger, streamed. The bound is `maxTurnLedgerEntries`, derived from the budget ceilings and the retention window, not
+	 * the generic directory bound; past it the listing fails closed (`too-many`) rather than undercounting.
+	 */
 	listTurns(nowMs = this.#now()): EndoAdvisoryListingV0<EndoAdvisoryLedgerTurnV0> | EndoAdvisoryListingFailureV0 {
-		const names = this.#names(this.#turnsDir);
+		const names = this.#names(this.#turnsDir, L.maxTurnLedgerEntries);
 		if (!Array.isArray(names)) return names;
 		const ids = new Set<string>();
 		const problems: { name: string; reason: EndoAutomationReadProblemV0 }[] = [];
@@ -574,7 +577,7 @@ export class DevelopAdvisoryStoreV0 {
 			(!floor.exists || nowMs >= floor.value) &&
 			checkDirectoriesSyncV0([...this.#base(), this.#turnsDir]) === "ok"
 		) {
-			const scan = (visit: (admission: EndoAdvisoryTurnAdmissionV0) => void) => {
+			const scan = (visit: (admission: EndoAdvisoryTurnAdmissionV0, neverDispatched: boolean) => void) => {
 				const dir = opendirSync(this.#turnsDir);
 				try {
 					for (let entry = dir.readSync(); entry !== null; entry = dir.readSync()) {
@@ -605,21 +608,19 @@ export class DevelopAdvisoryStoreV0 {
 							)
 						)
 							continue;
-						visit(a.value);
+						visit(a.value, !d.exists && b.value.availability === "not-dispatched");
 					}
 				} finally {
 					dir.closeSync();
 				}
 			};
 			try {
-				const newest: EndoAdvisoryTurnAdmissionV0[] = [];
-				let count = 0;
-				scan((a) => {
-					count += 1;
-					newest.push(a);
-					newest.sort((a, b) => b.admittedAtMs - a.admittedAtMs || a.turnId.localeCompare(b.turnId));
-					if (newest.length > L.maxTerminalTurnsRetained) newest.pop();
-				});
+				const all: { readonly admittedAtMs: number; readonly turnId: string }[] = [];
+				scan((a) => all.push({ admittedAtMs: a.admittedAtMs, turnId: a.turnId }));
+				const count = all.length;
+				const newest = all
+					.sort((a, b) => b.admittedAtMs - a.admittedAtMs || a.turnId.localeCompare(b.turnId))
+					.slice(0, L.maxTerminalTurnsRetained);
 				if (
 					count > L.maxTerminalTurnsRetained &&
 					replaceJsonAtomicSync(
@@ -632,8 +633,9 @@ export class DevelopAdvisoryStoreV0 {
 				) {
 					this.#syncParents(this.#dir);
 					const keep = new Set(newest.map((a) => a.turnId));
-					scan((a) => {
-						if (keep.has(a.turnId) || a.admittedAtMs >= nowMs - L.maxBudgetPeriodMs) return;
+					// A never-dispatched turn is charged nothing, so it may go at any age; a dispatched one only after the budget window.
+					scan((a, neverDispatched) => {
+						if (keep.has(a.turnId) || (!neverDispatched && a.admittedAtMs >= nowMs - L.maxBudgetPeriodMs)) return;
 						for (const kind of ["briefing", "dispatched", "admitted"])
 							rm(join(this.#turnsDir, `${a.turnId}.${kind}.json`));
 						removed.turns += 1;

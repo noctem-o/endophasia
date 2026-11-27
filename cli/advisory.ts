@@ -279,12 +279,15 @@ function read(kind: "list" | "fires" | "briefings" | "proposals", argv: readonly
 			standing: projection.standing,
 			problems: projection.problems,
 			proposals: all ? projection.proposals : projection.proposals.filter((v) => v.queueState === "pending"),
+			proposalCounts: projection.proposalCounts,
 		});
 	if (!p.bools.has("--quiet")) {
 		const pending = projection.proposals.filter((v) => v.queueState === "pending");
 		process.stderr.write(
 			`advisory: ${projection.schedules.length} schedule(s); ${pending.length} pending proposal(s) (${pending.filter((v) => v.currency === "stale").length} stale); every briefing and proposal is untrusted model interpretation.\n`,
 		);
+		if (projection.proposalCounts.withheldHint !== null)
+			process.stderr.write(`advisory: ${projection.proposalCounts.withheldHint}\n`);
 	}
 }
 

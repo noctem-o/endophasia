@@ -17,6 +17,8 @@
 // full reservation, never retried and never released; recovery writes only a terminal fire outcome saying so.
 
 import { randomBytes } from "node:crypto";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import type { EndoCoordinatorCoordinationV0 } from "../../protocol/coordinator-coordination.ts";
 import type { EndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import {
@@ -52,6 +54,7 @@ import {
 	type EndoDevelopAutomationLeaseV0,
 	type EndoDevelopScheduleV0,
 } from "../../protocol/develop-automation.ts";
+import type { EndoReceiptCurrentV0 } from "../../protocol/develop-receipts.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	briefFromCoordinatorSubstrateV0,
@@ -96,9 +99,11 @@ import {
 	type EndoDevelopAdvisoryStoreOptionsV0,
 } from "../../storage/develop-advisory.ts";
 import { DevelopAutomationStoreV0 } from "../../storage/develop-automation.ts";
+import { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { probeLocalEndpointV0 } from "../coordinator/model-pool-probe.ts";
 import { coordinatorTargetFromMemberV0 } from "../coordinator/model-relay.ts";
 import type { OpenClawCoordinatorTrialV0, runOpenClawCoordinatorV0 } from "../coordinator/openclaw.ts";
+import { GitRevisionObserverV0 } from "../git/revision-observer.ts";
 
 const L = ENDO_ADVISORY_LIMITS_V0;
 const digest = (value: unknown): string => sha256HexV0(canonicalEndoJsonV0(value as never));
@@ -172,17 +177,61 @@ const STATUS_BUDGET = {
 };
 const COORD_BUDGET = { ...STATUS_BUDGET, reviewFiles: 256, reviewBytes: 2 << 20 };
 
-/** The lock-free bounded projection read S1's observer performs, for one project. */
+/**
+ * HEAD of one project's registered path, observed the way the briefing status reader observes it (adapters/coordinator/status.ts):
+ * the read-only Git revision observer at /usr/bin/git with HOME unset, every Git call under GIT_LIMITS_V0's timeout and output bound,
+ * refusing a .git that is not a plain directory or is a linked worktree. Null (so the status reports project-head-unavailable and the
+ * observation is partial) whenever HEAD cannot be read; never a guess.
+ */
+export async function observeAdvisoryProjectHeadV0(
+	root: string,
+	projectId: string,
+	options: { readonly gitPath?: string } = {},
+): Promise<{ readonly path: string; readonly head: EndoReceiptCurrentV0 | null } | null> {
+	const tasks = new DevelopTasksStoreV0(root).read();
+	if (!tasks.ok || !tasks.exists) return null;
+	const project = tasks.file.projects.find((p) => p.id === projectId);
+	if (project === undefined) return null;
+	try {
+		if (!existsSync(project.path)) return { path: project.path, head: null };
+		const projectRoot = realpathSync(project.path);
+		const git = lstatSync(join(projectRoot, ".git"), { throwIfNoEntry: false });
+		if (
+			git === undefined ||
+			!git.isDirectory() ||
+			lstatSync(join(projectRoot, ".git", "commondir"), { throwIfNoEntry: false })
+		)
+			return { path: project.path, head: null };
+		const observed = await new GitRevisionObserverV0({
+			gitPath: options.gitPath ?? "/usr/bin/git",
+			env: { HOME: "/nonexistent" },
+		}).observe(projectRoot);
+		if (!observed.ok || observed.observation.linked) return { path: project.path, head: null };
+		const o = observed.observation;
+		return {
+			path: project.path,
+			head: { commit: o.commit, worktree: o.worktree, commonDir: o.commonDir, clean: o.dirty.length === 0 },
+		};
+	} catch {
+		return { path: project.path, head: null };
+	}
+}
+
+/** The lock-free bounded projection read S1's observer performs, for one project, with its HEAD observed once and shared by both reads. */
 export async function defaultObserveAdvisoryProjectV0(args: {
 	readonly root: string;
 	readonly projectId: string;
 	readonly nowMs: number;
+	readonly gitPath?: string;
 }): Promise<EndoAdvisoryProjectReadV0> {
+	const observed = await observeAdvisoryProjectHeadV0(args.root, args.projectId, { gitPath: args.gitPath });
+	const head = observed?.head ?? null;
 	const status = await readEndoCoordinatorStatusV0({
 		root: args.root,
 		projects: [args.projectId],
 		now: () => args.nowMs,
 		budget: STATUS_BUDGET,
+		current: async (directory) => (observed !== null && directory === observed.path ? head : null),
 	});
 	const coordination = await readEndoCoordinatorCoordinationV0({
 		root: args.root,
@@ -190,6 +239,7 @@ export async function defaultObserveAdvisoryProjectV0(args: {
 		now: () => args.nowMs,
 		routes: "read",
 		budget: COORD_BUDGET,
+		workspace: async (directory) => (head !== null && directory === head.worktree ? head : null),
 	});
 	return { status, coordination };
 }

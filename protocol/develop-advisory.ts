@@ -206,6 +206,15 @@ export const ENDO_ADVISORY_LIMITS_V0 = Object.freeze({
 	maxRecordBytes: 64 * 1024,
 	maxDirectoryEntries: 4096,
 	maxTerminalTurnsRetained: 512,
+	/**
+	 * The most turns the ledger can legitimately hold, derived from the ceilings rather than fixed: every charged turn inside the
+	 * mandatory 7-day retention window (32 schedules x 96 turns per period x 168 one-hour periods), plus the 512 settled turns kept
+	 * beyond it, plus up to 512 recent never-dispatched turns (they charge nothing, so retention may prune them at any age), plus the
+	 * one turn in flight. A ledger larger than this is over capacity or corrupt and admission fails closed.
+	 */
+	maxLedgerTurns: 32 * 96 * 168 + 512 + 512 + 1,
+	/** Three records per turn, plus write-once temporaries a crashed writer may leave. */
+	maxTurnLedgerEntries: 3 * (32 * 96 * 168 + 512 + 512 + 1) + 64,
 	maxProposalsRetained: 256,
 	maxPendingProposalsPerProject: 16,
 	maxAnswerBytes: 4096,

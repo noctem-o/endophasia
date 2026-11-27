@@ -265,6 +265,8 @@ async function tick(argv: readonly string[]): Promise<void> {
 					ENDO_COORDINATOR_VISIBILITY_MODES_V1,
 					"--visibility",
 				);
+	if (visibilityMode === "status-and-coordination-v1" && briefingMode !== "grounded-v1")
+		throw new TypeError("--visibility status-and-coordination-v1 requires --briefing-mode grounded-v1");
 	announceEndoRootV0({ root: p.root, defaultNote: p.defaultNote, rest: [] });
 	const result = await runEndoAdvisoryTickV0({
 		root: p.root,

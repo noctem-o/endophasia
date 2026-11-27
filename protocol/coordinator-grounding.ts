@@ -7,9 +7,10 @@
 //     via `endophasia_status`, carrying snapshot-local `evidenceRef` identifiers on every visible entity
 //     and an optional bounded, project-scoped coordination projection.
 //   - `endo.coordinator-grounded-brief.v1`: the strict JSON structure the model must emit in `grounded-v1`
-//     mode. Every factual claim and uncertainty is bound to an explicit `(subjectKind, subjectId, evidenceRef)`
-//     verified mechanically against the model-visible snapshot. Recommendations are bounded and labeled
-//     as untrusted model interpretation; no unrestricted prose field can bypass validation.
+//     mode. Every factual claim, uncertainty, recommendation, and proposal is bound to an explicit
+//     `(subjectKind, subjectId, evidenceRef)` verified mechanically against the model-visible snapshot.
+//     Zero model-supplied free prose enters the rendered operator briefing; all recommendation text is
+//     rendered deterministically by the host from closed, snapshot-verified `rationaleCode` values.
 
 import { ENDO_ADVISORY_PROPOSAL_KINDS_V0, type EndoAdvisoryProposalKindV0 } from "./develop-advisory.ts";
 import {
@@ -34,19 +35,18 @@ export type EndoCoordinatorVisibilityModeV1 = (typeof ENDO_COORDINATOR_VISIBILIT
 
 export const ENDO_COORDINATOR_GROUNDING_LIMITS_V1 = Object.freeze({
 	maxResponseBytes: 16 * 1024,
+	maxRenderedAnswerBytes: 4096,
 	minClaims: 1,
-	maxClaims: 24,
-	maxUncertainties: 16,
-	maxRecommendations: 5,
+	maxClaims: 16,
+	maxUncertainties: 10,
+	maxRecommendations: 4,
 	maxSupportingRefs: 4,
-	maxRationaleChars: 240,
 	maxAssignments: 16,
 	maxDependencies: 24,
 	maxCandidates: 24,
 	maxWorktrees: 16,
 	maxConflicts: 16,
 	maxReviews: 16,
-	maxProposalEligibilityEntries: 32,
 });
 
 export const ENDO_COORDINATOR_SUBJECT_KINDS_V1 = [
@@ -131,6 +131,28 @@ export const ENDO_COORDINATOR_RECOMMENDATION_KINDS_V1 = [
 ] as const;
 export type EndoCoordinatorRecommendationKindV1 = (typeof ENDO_COORDINATOR_RECOMMENDATION_KINDS_V1)[number];
 
+export const ENDO_COORDINATOR_RATIONALE_CODES_V1 = [
+	"failing-check-at-head",
+	"review-contradicts-failing-check",
+	"review-lacks-passing-check",
+	"unplanned-pass-incomplete-verification",
+	"historical-failure-not-current",
+	"verification-not-current-or-incomplete",
+	"task-blocked",
+	"liveness-hazard-unverified",
+	"active-assignment-present",
+	"unassigned-open-task",
+	"open-task-in-scope",
+	"worktree-write-conflict",
+	"dependency-unsatisfied",
+	"advisory-review-flagged-issues",
+	"advisory-review-present",
+	"store-sources-incomplete",
+	"coordination-unavailable-or-truncated",
+	"no-actionable-issues-observed",
+] as const;
+export type EndoCoordinatorRationaleCodeV1 = (typeof ENDO_COORDINATOR_RATIONALE_CODES_V1)[number];
+
 export const ENDO_COORDINATOR_RECOMMENDATION_PRIORITIES_V1 = ["high", "medium", "low"] as const;
 export type EndoCoordinatorRecommendationPriorityV1 = (typeof ENDO_COORDINATOR_RECOMMENDATION_PRIORITIES_V1)[number];
 
@@ -155,7 +177,7 @@ export interface EndoCoordinatorRecommendationV1 {
 	readonly subjectId: string;
 	readonly supportingRefs: readonly string[];
 	readonly priority: EndoCoordinatorRecommendationPriorityV1;
-	readonly rationale: string;
+	readonly rationaleCode: EndoCoordinatorRationaleCodeV1;
 }
 
 export interface EndoCoordinatorGroundedProposalV1 {
@@ -364,8 +386,7 @@ export interface EndoCoordinatorModelViewV1 {
 
 const L = ENDO_COORDINATOR_GROUNDING_LIMITS_V1;
 const EVIDENCE_REF_PATTERN = /^ev:[a-z]+(?::[a-zA-Z0-9._-]{1,96})?$/;
-const VALUE_PATTERN = /^[^\u0000-\u001f\u007f-\u009f]{1,96}$/;
-const RATIONALE_PATTERN = /^[^\u0000-\u001f\u007f-\u009f]{1,240}$/;
+const VALUE_PATTERN = /^[a-zA-Z0-9._:/-]{1,96}$/;
 const SESSION_REF_PATTERN = /^session:[0-9]{1,4}$/;
 const CONFLICT_REF_PATTERN = /^conflict:[0-9]{1,4}$/;
 
@@ -457,6 +478,7 @@ export function validateEndoCoordinatorGroundedBriefV1(value: unknown): EndoCoor
 	if (r.schemaVersion !== ENDO_COORDINATOR_GROUNDED_BRIEF_SCHEMA_V1) fail("groundedBrief.schemaVersion mismatch");
 	if (!Array.isArray(r.claims) || r.claims.length < L.minClaims || r.claims.length > L.maxClaims)
 		fail(`groundedBrief.claims must have ${L.minClaims}..${L.maxClaims} entries`);
+	const seenClaims = new Set<string>();
 	const claims: EndoCoordinatorClaimV1[] = r.claims.map((entry, i) => {
 		const c = closed(entry, ["subjectKind", "subjectId", "predicate", "value", "evidenceRef"], `claims[${i}]`);
 		const subjectKind = oneOf(c.subjectKind, ENDO_COORDINATOR_SUBJECT_KINDS_V1, `claims[${i}].subjectKind`);
@@ -465,11 +487,15 @@ export function validateEndoCoordinatorGroundedBriefV1(value: unknown): EndoCoor
 		if (typeof c.value !== "string" || !VALUE_PATTERN.test(c.value)) fail(`claims[${i}].value is invalid`);
 		if (typeof c.evidenceRef !== "string" || !EVIDENCE_REF_PATTERN.test(c.evidenceRef))
 			fail(`claims[${i}].evidenceRef is invalid`);
+		const key = `${subjectKind}|${subjectId}|${predicate}|${c.value}|${c.evidenceRef}`;
+		if (seenClaims.has(key)) fail(`claims[${i}] duplicates an earlier claim`);
+		seenClaims.add(key);
 		return Object.freeze({ subjectKind, subjectId, predicate, value: c.value, evidenceRef: c.evidenceRef });
 	});
 
 	if (!Array.isArray(r.uncertainties) || r.uncertainties.length > L.maxUncertainties)
 		fail(`groundedBrief.uncertainties exceeds limit of ${L.maxUncertainties}`);
+	const seenUncertainties = new Set<string>();
 	const uncertainties: EndoCoordinatorUncertaintyV1[] = r.uncertainties.map((entry, i) => {
 		const u = closed(entry, ["subjectKind", "subjectId", "code", "evidenceRef"], `uncertainties[${i}]`);
 		const subjectKind = oneOf(u.subjectKind, ENDO_COORDINATOR_SUBJECT_KINDS_V1, `uncertainties[${i}].subjectKind`);
@@ -477,15 +503,19 @@ export function validateEndoCoordinatorGroundedBriefV1(value: unknown): EndoCoor
 		const code = oneOf(u.code, ENDO_COORDINATOR_UNCERTAINTY_CODES_V1, `uncertainties[${i}].code`);
 		if (typeof u.evidenceRef !== "string" || !EVIDENCE_REF_PATTERN.test(u.evidenceRef))
 			fail(`uncertainties[${i}].evidenceRef is invalid`);
+		const key = `${subjectKind}|${subjectId}|${code}|${u.evidenceRef}`;
+		if (seenUncertainties.has(key)) fail(`uncertainties[${i}] duplicates an earlier uncertainty`);
+		seenUncertainties.add(key);
 		return Object.freeze({ subjectKind, subjectId, code, evidenceRef: u.evidenceRef });
 	});
 
 	if (!Array.isArray(r.recommendations) || r.recommendations.length > L.maxRecommendations)
 		fail(`groundedBrief.recommendations exceeds limit of ${L.maxRecommendations}`);
+	const seenRecs = new Set<string>();
 	const recommendations: EndoCoordinatorRecommendationV1[] = r.recommendations.map((entry, i) => {
 		const rec = closed(
 			entry,
-			["kind", "subjectKind", "subjectId", "supportingRefs", "priority", "rationale"],
+			["kind", "subjectKind", "subjectId", "supportingRefs", "priority", "rationaleCode"],
 			`recommendations[${i}]`,
 		);
 		const kind = oneOf(rec.kind, ENDO_COORDINATOR_RECOMMENDATION_KINDS_V1, `recommendations[${i}].kind`);
@@ -501,9 +531,12 @@ export function validateEndoCoordinatorGroundedBriefV1(value: unknown): EndoCoor
 			rec.supportingRefs.length > L.maxSupportingRefs
 		)
 			fail(`recommendations[${i}].supportingRefs must have 1..${L.maxSupportingRefs} entries`);
+		const seenRefs = new Set<string>();
 		const supportingRefs = rec.supportingRefs.map((ref, j) => {
 			if (typeof ref !== "string" || !EVIDENCE_REF_PATTERN.test(ref))
 				fail(`recommendations[${i}].supportingRefs[${j}] is invalid`);
+			if (seenRefs.has(ref)) fail(`recommendations[${i}].supportingRefs[${j}] duplicates an earlier ref`);
+			seenRefs.add(ref);
 			return ref;
 		});
 		const priority = oneOf(
@@ -511,21 +544,21 @@ export function validateEndoCoordinatorGroundedBriefV1(value: unknown): EndoCoor
 			ENDO_COORDINATOR_RECOMMENDATION_PRIORITIES_V1,
 			`recommendations[${i}].priority`,
 		);
-		if (
-			typeof rec.rationale !== "string" ||
-			rec.rationale.trim().length === 0 ||
-			!RATIONALE_PATTERN.test(rec.rationale)
-		)
-			fail(`recommendations[${i}].rationale must be single-line safe text (1..${L.maxRationaleChars} chars)`);
-		if (/^proposal\s*:/i.test(rec.rationale.trim()) || /\bPROPOSAL:/i.test(rec.rationale))
-			fail(`recommendations[${i}].rationale cannot contain PROPOSAL directives`);
+		const rationaleCode = oneOf(
+			rec.rationaleCode,
+			ENDO_COORDINATOR_RATIONALE_CODES_V1,
+			`recommendations[${i}].rationaleCode`,
+		);
+		const recKey = `${kind}|${subjectKind}|${subjectId}|${rationaleCode}`;
+		if (seenRecs.has(recKey)) fail(`recommendations[${i}] duplicates an earlier recommendation`);
+		seenRecs.add(recKey);
 		return Object.freeze({
 			kind,
 			subjectKind,
 			subjectId,
 			supportingRefs: Object.freeze(supportingRefs),
 			priority,
-			rationale: rec.rationale.trim(),
+			rationaleCode,
 		});
 	});
 

@@ -1,6 +1,8 @@
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
+	accessSync,
+	constants,
 	existsSync,
 	lstatSync,
 	mkdirSync,
@@ -8,6 +10,7 @@ import {
 	readFileSync,
 	realpathSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { get, type IncomingMessage } from "node:http";
@@ -348,8 +351,10 @@ export async function runOpenClawCoordinatorV0(
 	}
 	const briefingMode: EndoCoordinatorBriefingModeV1 = options.briefingMode ?? "legacy-v0";
 	const visibilityMode: EndoCoordinatorVisibilityModeV1 = options.visibilityMode ?? "status-v0";
+	if (visibilityMode === "status-and-coordination-v1" && briefingMode !== "grounded-v1")
+		return unavailable("malformed-selector");
 	const modelViewV1 =
-		briefingMode === "grounded-v1" || visibilityMode === "status-and-coordination-v1"
+		briefingMode === "grounded-v1"
 			? buildEndoCoordinatorModelViewV1({
 					projectId,
 					statusView: status.view,
@@ -577,8 +582,13 @@ export function preflightOpenClawCoordinatorV0(
 	} catch {
 		return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR cannot be stat'd" };
 	}
-	if (!existsSync("/usr/bin/bwrap"))
-		return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap is missing" };
+	try {
+		if (!statSync("/usr/bin/bwrap").isFile())
+			return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap is not a regular file" };
+		accessSync("/usr/bin/bwrap", constants.X_OK);
+	} catch {
+		return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap is missing or not executable" };
+	}
 	let installedVersion: string;
 	try {
 		const home = userInfo().homedir;
@@ -605,6 +615,13 @@ export function preflightOpenClawCoordinatorV0(
 	}
 	const briefingMode: EndoCoordinatorBriefingModeV1 = options.briefingMode ?? "legacy-v0";
 	const visibilityMode: EndoCoordinatorVisibilityModeV1 = options.visibilityMode ?? "status-v0";
+	if (visibilityMode === "status-and-coordination-v1" && briefingMode !== "grounded-v1") {
+		return {
+			ok: false,
+			reason: "malformed-selector",
+			detail: "status-and-coordination-v1 visibility requires grounded-v1 briefing mode",
+		};
+	}
 	const instructions =
 		briefingMode === "grounded-v1" ? ENDO_COORDINATOR_GROUNDED_INSTRUCTIONS_V1 : ENDO_COORDINATOR_INSTRUCTIONS_V0;
 	const prompt = `${instructions}\n\nProject in scope: ${projectId}.${request.question === undefined ? "" : `\nOperator asks: ${request.question}`}`;
@@ -614,7 +631,7 @@ export function preflightOpenClawCoordinatorV0(
 		const status = pinnedCoordinatorBriefStatusV0(root, projectId, options.pinnedObservation);
 		if (!status.ok) return { ok: false, reason: "status-unavailable", detail: status.reason };
 		const modelViewV1 =
-			briefingMode === "grounded-v1" || visibilityMode === "status-and-coordination-v1"
+			briefingMode === "grounded-v1"
 				? buildEndoCoordinatorModelViewV1({
 						projectId,
 						statusView: status.view,

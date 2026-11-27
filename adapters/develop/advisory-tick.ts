@@ -42,7 +42,6 @@ import {
 	type EndoAdvisoryFireOutcomeStatusV0,
 	type EndoAdvisoryFireOutcomeV0,
 	type EndoAdvisoryGateRecordV0,
-	type EndoAdvisoryObservationsFileV0,
 	type EndoAdvisoryProposalLinkV0,
 	type EndoAdvisoryProposalV0,
 	type EndoAdvisoryPublicationCurrencyV0,
@@ -65,9 +64,11 @@ import {
 	type EndoCoordinatorBriefResultV0,
 } from "../../runtime/contracts/coordinator-brief.ts";
 import {
+	buildEndoCoordinatorModelViewV1,
 	ENDO_ADVISORY_GROUNDED_PROPOSAL_QUESTION_SHA256_V1,
 	ENDO_ADVISORY_GROUNDED_PROPOSAL_QUESTION_V1,
 	ENDO_COORDINATOR_GROUNDED_INSTRUCTIONS_SHA256_V1,
+	endoCoordinatorModelViewSha256V1,
 } from "../../runtime/contracts/coordinator-grounding.ts";
 import {
 	coordinatorModelPoolSha256V0,
@@ -1142,18 +1143,25 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	// ---- D.5: non-inference local runtime preflight (no lock, BEFORE dispatch linearization) --------------------------------------
 	// Ensures local runtime/config mismatches (e.g. unverified OpenClaw version, unsafe XDG_RUNTIME_DIR, missing bwrap) refuse as
 	// `not-dispatched` with 0 token charge rather than burning a full reservation after Phase E. Phase F still re-checks for TOCTOU.
-	if (options.preflight !== undefined) {
-		const pf = options.preflight();
-		if (!pf.ok) return notDispatched("runtime-preflight-failed", selectionSummary);
-	} else if (options.run === undefined) {
-		const { preflightOpenClawCoordinatorV0 } = await import("../coordinator/openclaw.ts");
-		const pf = preflightOpenClawCoordinatorV0(options.root, request, {
-			target: coordinatorTargetFromMemberV0(member),
-			pinnedObservation: admissionObserved.read!,
-			briefingMode,
-			visibilityMode,
-		});
-		if (!pf.ok) return notDispatched("runtime-preflight-failed", selectionSummary);
+	if (visibilityMode === "status-and-coordination-v1" && briefingMode !== "grounded-v1")
+		return notDispatched("runtime-preflight-failed", selectionSummary);
+	try {
+		if (options.preflight !== undefined) {
+			const pf = options.preflight();
+			if (!pf.ok) return notDispatched("runtime-preflight-failed", selectionSummary);
+		} else if (options.run === undefined) {
+			if (admissionObserved.read === null) return notDispatched("runtime-preflight-failed", selectionSummary);
+			const { preflightOpenClawCoordinatorV0 } = await import("../coordinator/openclaw.ts");
+			const pf = preflightOpenClawCoordinatorV0(options.root, request, {
+				target: coordinatorTargetFromMemberV0(member),
+				pinnedObservation: admissionObserved.read,
+				briefingMode,
+				visibilityMode,
+			});
+			if (!pf.ok) return notDispatched("runtime-preflight-failed", selectionSummary);
+		}
+	} catch {
+		return notDispatched("runtime-preflight-failed", selectionSummary);
 	}
 
 	// ---- E: dispatch linearization point (lock) -----------------------------------------------------------------------------------
@@ -1271,13 +1279,38 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 
 	// ---- G: publication observation (no lock) -------------------------------------------------------------------------------------
 	const pub = await observe();
+	let expectedModelViewSha256: string | null = null;
+	if (briefingMode === "grounded-v1" && admissionObserved.read !== null) {
+		try {
+			const { pinnedCoordinatorBriefStatusV0 } = await import("../coordinator/openclaw.ts");
+			const pinned = pinnedCoordinatorBriefStatusV0(options.root, admission.projectId, admissionObserved.read);
+			if (pinned.ok) {
+				expectedModelViewSha256 = endoCoordinatorModelViewSha256V1(
+					buildEndoCoordinatorModelViewV1({
+						projectId: admission.projectId,
+						statusView: pinned.view,
+						coordination: pinned.coordination,
+						visibilityMode,
+					}),
+				);
+			}
+		} catch {
+			expectedModelViewSha256 = null;
+		}
+	}
+	const modelViewMatches =
+		briefingMode !== "grounded-v1" ||
+		(expectedModelViewSha256 !== null &&
+			result?.availability === "available" &&
+			result.evidence.modelViewSha256 === expectedModelViewSha256);
 	const currency: EndoAdvisoryPublicationCurrencyV0 =
 		pub.observation.semanticDigest === null
 			? "unknown-at-publication"
 			: pub.observation.semanticDigest === admission.semanticDigest
 				? result?.availability === "available" &&
 					admissionObserved.read !== null &&
-					result.evidence.projectionSha256 === digest(admissionObserved.read.status)
+					result.evidence.projectionSha256 === digest(admissionObserved.read.status) &&
+					modelViewMatches
 					? "current-at-publication"
 					: "unknown-at-publication"
 				: "stale-at-publication";

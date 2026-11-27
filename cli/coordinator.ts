@@ -93,6 +93,8 @@ async function brief(argv: readonly string[]): Promise<void> {
 		} else throw new TypeError(usage);
 	}
 	if (projectId === undefined) throw new TypeError(usage);
+	if (visibilityMode === "status-and-coordination-v1" && briefingMode !== "grounded-v1")
+		throw new TypeError("--visibility status-and-coordination-v1 requires --briefing-mode grounded-v1");
 	if (memberId !== undefined && poolPath === undefined)
 		throw new TypeError("--member selects a member of a pool: give the pool with --pool <config.json>");
 	const { readCoordinatorModelPoolFileV0, pooledCoordinatorV0 } = await import(

@@ -116,6 +116,7 @@ export type EndoAdvisoryWithheldReasonV0 = (typeof ENDO_ADVISORY_WITHHELD_REASON
 export const ENDO_ADVISORY_DISPATCH_REFUSALS_V0 = [
 	"no-eligible-member",
 	"capacity-unknown-not-permitted",
+	"runtime-preflight-failed",
 	"authorization-revoked",
 	"authorization-expired",
 	"schedule-changed",

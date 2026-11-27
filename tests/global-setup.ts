@@ -17,11 +17,15 @@ declare module "vitest" {
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
 
 export default async function setup(project: TestProject): Promise<() => void> {
-	const { buildStudioUi } = (await import(join(REPO_ROOT, "scripts", "build-studio-ui.mjs"))) as {
-		buildStudioUi(outDir?: string): Promise<{ outDir: string }>;
-	};
-	const built = await buildStudioUi(join(REPO_ROOT, "studio-ui", "dist"));
-	project.provide("studioUiDistDir", built.outDir);
+	if (process.env.ENDO_SKIP_STUDIO_UI_PREBUILD !== "1") {
+		const { buildStudioUi } = (await import(join(REPO_ROOT, "scripts", "build-studio-ui.mjs"))) as {
+			buildStudioUi(outDir?: string): Promise<{ outDir: string }>;
+		};
+		const built = await buildStudioUi(join(REPO_ROOT, "studio-ui", "dist"));
+		project.provide("studioUiDistDir", built.outDir);
+	} else {
+		project.provide("studioUiDistDir", "");
+	}
 
 	const directory = project.config.provide?.digestKeyDirectory;
 	return () => {

@@ -11,7 +11,10 @@
  *   route, worktree or candidate, or accepts or merges anything.
  */
 
-import { readCoordinatorModelPoolFileV0 } from "../adapters/coordinator/model-pool.ts";
+import {
+	readCoordinatorModelPoolFileAnyV1,
+	readCoordinatorResourceProfileFileV1,
+} from "../adapters/coordinator/model-pool.ts";
 import {
 	addEndoAdvisoryScheduleV0,
 	authorizeEndoAdvisoryScheduleV0,
@@ -29,6 +32,7 @@ import {
 	type EndoCoordinatorBriefingModeV1,
 	type EndoCoordinatorVisibilityModeV1,
 } from "../protocol/coordinator-grounding.ts";
+import { ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1 } from "../protocol/coordinator-model-pool.ts";
 import {
 	ENDO_ADVISORY_ACTION_KINDS_V0,
 	ENDO_ADVISORY_OBSERVATION_SOURCES_V0,
@@ -60,7 +64,7 @@ const ADD_USAGE =
 const TOGGLE_USAGE =
 	"usage: endo advisory <enable|disable|remove> [<root> | --root dir] --id <scheduleId> [--revision <n>] [--quiet]";
 const AUTHORIZE_USAGE =
-	"usage: endo advisory authorize [<root> | --root dir] --id <scheduleId> --revision <n> --pool <pool.json> --period <duration> --max-turns <n> --max-output-tokens <n> --max-generated-tokens <n> --turn-timeout <seconds> --expires-in <duration> [--observation <recorded-only|recorded-or-passive-probe>] [--observation-max-age <duration>] [--permit-capacity-unknown] [--permit-model-unconfirmed] [--permit-partial-observation] [--quiet]";
+	"usage: endo advisory authorize [<root> | --root dir] --id <scheduleId> --revision <n> --pool <pool.json> [--resource-profile <profile.json>] --period <duration> --max-turns <n> --max-output-tokens <n> --max-generated-tokens <n> --turn-timeout <seconds> --expires-in <duration> [--observation <recorded-only|recorded-or-passive-probe>] [--observation-max-age <duration>] [--permit-capacity-unknown] [--permit-model-unconfirmed] [--permit-partial-observation] [--quiet]";
 const REVOKE_USAGE = "usage: endo advisory revoke [<root> | --root dir] --id <scheduleId> [--quiet]";
 const TICK_USAGE =
 	"usage: endo advisory tick [<root> | --root dir] [--briefing-mode <legacy-v0|grounded-v1>] [--visibility <status-v0|status-and-coordination-v1>] [--quiet]";
@@ -192,6 +196,7 @@ function authorize(argv: readonly string[]): void {
 			"--id",
 			"--revision",
 			"--pool",
+			"--resource-profile",
 			"--period",
 			"--max-turns",
 			"--max-output-tokens",
@@ -204,7 +209,14 @@ function authorize(argv: readonly string[]): void {
 		["--permit-capacity-unknown", "--permit-model-unconfirmed", "--permit-partial-observation", "--quiet"],
 		AUTHORIZE_USAGE,
 	);
-	const pool = readCoordinatorModelPoolFileV0(required(p.values, "--pool", AUTHORIZE_USAGE));
+	const pool = readCoordinatorModelPoolFileAnyV1(required(p.values, "--pool", AUTHORIZE_USAGE));
+	const profilePath = p.values.get("--resource-profile");
+	const resourceProfile =
+		profilePath !== undefined
+			? readCoordinatorResourceProfileFileV1(profilePath)
+			: pool.schemaVersion === ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1
+				? pool.resourceProfile
+				: undefined;
 	const policy = validateEndoAdvisoryPolicyV0({
 		permitCapacityUnknown: p.bools.has("--permit-capacity-unknown"),
 		permitModelUnconfirmed: p.bools.has("--permit-model-unconfirmed"),
@@ -216,20 +228,32 @@ function authorize(argv: readonly string[]): void {
 		),
 		recordedObservationMaxAgeMs: parseEndoDurationMsV0(p.values.get("--observation-max-age") ?? "10m"),
 	});
-	const budget = validateEndoAdvisoryBudgetV0({
-		periodMs: parseEndoDurationMsV0(required(p.values, "--period", AUTHORIZE_USAGE)),
-		maxTurnsPerPeriod: requiredInt(p.values, "--max-turns", AUTHORIZE_USAGE),
-		completionRequestsPerTurn: 2,
-		maxOutputTokensPerRequest: requiredInt(p.values, "--max-output-tokens", AUTHORIZE_USAGE),
-		maxGeneratedTokensPerPeriod: requiredInt(p.values, "--max-generated-tokens", AUTHORIZE_USAGE),
-		maxTurnWallClockMs: requiredInt(p.values, "--turn-timeout", AUTHORIZE_USAGE) * 1000,
-	});
+	const budget = validateEndoAdvisoryBudgetV0(
+		{
+			periodMs: parseEndoDurationMsV0(required(p.values, "--period", AUTHORIZE_USAGE)),
+			maxTurnsPerPeriod: requiredInt(p.values, "--max-turns", AUTHORIZE_USAGE),
+			completionRequestsPerTurn: 2,
+			maxOutputTokensPerRequest: requiredInt(p.values, "--max-output-tokens", AUTHORIZE_USAGE),
+			maxGeneratedTokensPerPeriod: requiredInt(p.values, "--max-generated-tokens", AUTHORIZE_USAGE),
+			maxTurnWallClockMs: requiredInt(p.values, "--turn-timeout", AUTHORIZE_USAGE) * 1000,
+		},
+		"budget",
+		resourceProfile,
+	);
 	const lifetimeMs = parseEndoDurationMsV0(required(p.values, "--expires-in", AUTHORIZE_USAGE));
 	const scheduleId = required(p.values, "--id", AUTHORIZE_USAGE);
 	const scheduleRevision = requiredInt(p.values, "--revision", AUTHORIZE_USAGE);
 	announceEndoRootV0({ root: p.root, defaultNote: p.defaultNote, rest: [] });
 	const authorization = unwrap(
-		authorizeEndoAdvisoryScheduleV0(p.root, { scheduleId, scheduleRevision, pool, policy, budget, lifetimeMs }),
+		authorizeEndoAdvisoryScheduleV0(p.root, {
+			scheduleId,
+			scheduleRevision,
+			pool,
+			...(resourceProfile === undefined ? {} : { resourceProfile }),
+			policy,
+			budget,
+			lifetimeMs,
+		}),
 	);
 	printJson({ authorization });
 	if (!p.bools.has("--quiet"))

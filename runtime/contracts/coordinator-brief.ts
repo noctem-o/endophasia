@@ -37,6 +37,8 @@ export type EndoCoordinatorBriefRefusalV0 =
 	| "project-out-of-scope"
 	| "model-unavailable"
 	| "generation-limit"
+	| "reasoning-budget-exhausted"
+	| "unsupported-reasoning-control"
 	| "receipt-absence-unestablished"
 	| "event-absence-unestablished"
 	| "tool-expansion-suggested"
@@ -67,12 +69,65 @@ export interface EndoCoordinatorBriefRuntimeV0 {
 	readonly model: string;
 }
 
+export type EndoCoordinatorTerminationClassV1 =
+	| "published"
+	| "reasoning-budget-exhausted"
+	| "generation-limit"
+	| "inference-timeout"
+	| "unsupported-reasoning-control"
+	| "model-unavailable"
+	| "grounding-refused"
+	| "runtime-unavailable"
+	| "other-refusal";
+
+export type EndoCoordinatorDiagnosticStageV1 =
+	| "preflight"
+	| "status-read"
+	| "relay-started"
+	| "exchange-1"
+	| "tool-dispatched"
+	| "exchange-2"
+	| "validated";
+
+/**
+ * Bounded per-exchange diagnostic metadata captured on the wire.
+ * Never persists raw reasoning traces: only character/token counts and completion stop reasons.
+ */
+export interface EndoCoordinatorExchangeDiagnosticV1 {
+	readonly exchange: number;
+	readonly finishReason: string | null;
+	readonly toolCalled: boolean;
+	readonly sawReasoning: boolean;
+	readonly reasoningChars: number;
+	readonly sawVisibleContent: boolean;
+	readonly visibleChars: number;
+	readonly promptTokens: number | null;
+	readonly completionTokens: number | null;
+	/** Server-reported `usage.completion_tokens_details.reasoning_tokens`, or null when unreported. Never estimated. */
+	readonly reasoningTokens: number | null;
+}
+
+/** Structured, evidence-supported termination diagnostics (`COORDINATOR-REASONING-001` §8). */
+export interface EndoCoordinatorBriefDiagnosticsV1 {
+	readonly schemaVersion: "endo.coordinator-brief-diagnostics.v1";
+	readonly terminationClass: EndoCoordinatorTerminationClassV1;
+	readonly stagesReached: readonly EndoCoordinatorDiagnosticStageV1[];
+	readonly openclawExitOk: boolean | null;
+	readonly exchanges: readonly EndoCoordinatorExchangeDiagnosticV1[];
+	readonly effectiveMaxOutputTokens: number;
+	readonly reasoningControlMode: "unchanged" | "reasoning-effort" | "reasoning-budget-tokens";
+	/** Constant attestation that raw reasoning content is never stored in diagnostics. */
+	readonly rawReasoningStored: false;
+}
+
 type BriefBase = {
 	readonly schemaVersion: "endo.coordinator-brief.v0";
 	readonly projectId: string;
 	readonly runtime: EndoCoordinatorBriefRuntimeV0;
 	/** Present only when the briefing used a Coordinator Model Pool (`--pool`); absent on the M0 path. */
 	readonly modelPool?: EndoCoordinatorModelPoolProvenanceV0;
+	/** Optional bounded termination diagnostics (`COORDINATOR-REASONING-001` §8). Never contains raw reasoning text. */
+	readonly diagnostics?: EndoCoordinatorBriefDiagnosticsV1;
 };
 
 export type EndoCoordinatorBriefResultV0 = BriefBase &
@@ -93,19 +148,59 @@ export interface EndoCoordinatorBriefSubstrateV0 {
 	brief(request: EndoCoordinatorBriefRequestV0): Promise<EndoCoordinatorBriefResultV0>;
 }
 
+function terminationClassForRefusalV1(reason: EndoCoordinatorBriefRefusalV0): EndoCoordinatorTerminationClassV1 {
+	switch (reason) {
+		case "reasoning-budget-exhausted":
+		case "generation-limit":
+		case "inference-timeout":
+		case "unsupported-reasoning-control":
+		case "model-unavailable":
+		case "runtime-unavailable":
+			return reason;
+		case "grounding-malformed":
+		case "grounding-claim-unsupported":
+		case "grounding-subject-unknown":
+		case "grounding-evidence-ref-invalid":
+		case "receipt-absence-unestablished":
+		case "event-absence-unestablished":
+		case "tool-expansion-suggested":
+		case "verification-positive-contradiction":
+		case "ungrounded":
+			return "grounding-refused";
+		default:
+			return "other-refusal";
+	}
+}
+
+export function overrideCoordinatorDiagnosticsOnRefusalV1(
+	diagnostics: EndoCoordinatorBriefDiagnosticsV1 | undefined,
+	reason: EndoCoordinatorBriefRefusalV0,
+): EndoCoordinatorBriefDiagnosticsV1 | undefined {
+	if (diagnostics === undefined) return undefined;
+	return Object.freeze({
+		...diagnostics,
+		terminationClass: terminationClassForRefusalV1(reason),
+		stagesReached: Object.freeze(diagnostics.stagesReached.filter((s) => s !== "validated")),
+	});
+}
+
 export async function briefFromCoordinatorSubstrateV0(
 	request: EndoCoordinatorBriefRequestV0,
 	substrate: EndoCoordinatorBriefSubstrateV0,
 ): Promise<EndoCoordinatorBriefResultV0> {
 	const result = await substrate.brief(request);
-	const refuse = (reason: EndoCoordinatorBriefRefusalV0): EndoCoordinatorBriefResultV0 => ({
-		schemaVersion: "endo.coordinator-brief.v0",
-		projectId: request.projectId,
-		runtime: result.runtime,
-		...(result.modelPool === undefined ? {} : { modelPool: result.modelPool }),
-		availability: "unavailable",
-		reason,
-	});
+	const refuse = (reason: EndoCoordinatorBriefRefusalV0): EndoCoordinatorBriefResultV0 => {
+		const diagnostics = overrideCoordinatorDiagnosticsOnRefusalV1(result.diagnostics, reason);
+		return {
+			schemaVersion: "endo.coordinator-brief.v0",
+			projectId: request.projectId,
+			runtime: result.runtime,
+			...(result.modelPool === undefined ? {} : { modelPool: result.modelPool }),
+			...(diagnostics === undefined ? {} : { diagnostics }),
+			availability: "unavailable",
+			reason,
+		};
+	};
 	if (result.projectId !== request.projectId || result.schemaVersion !== "endo.coordinator-brief.v0")
 		return refuse("ungrounded");
 	if (result.availability === "unavailable") return result;

@@ -5,10 +5,11 @@
 // inference request will succeed, and never permission to do anything but attempt one advisory briefing.
 
 import {
+	type EndoCoordinatorModelPoolAnyV1,
 	type EndoCoordinatorModelPoolMemberV0,
-	type EndoCoordinatorModelPoolV0,
 	orderedCoordinatorPoolMembersV0,
 } from "../../protocol/coordinator-model-pool.ts";
+import type { EndoCoordinatorResourceProfileV1 } from "../../protocol/coordinator-resource-policy.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 
 /**
@@ -125,7 +126,7 @@ export type EndoCoordinatorSelectionV0 = SelectionBase &
 
 /** Whether an observed member may be selected under the pool's policy. */
 export function coordinatorMemberEligibleV0(
-	pool: EndoCoordinatorModelPoolV0,
+	pool: EndoCoordinatorModelPoolAnyV1,
 	readiness: EndoCoordinatorMemberReadinessV0,
 ): boolean {
 	if (readiness === "ready" || readiness === "capacity-unknown") return true;
@@ -139,7 +140,7 @@ export function coordinatorMemberEligibleV0(
  * ineligible the selection is refused, never switched.
  */
 export async function selectCoordinatorModelV0(
-	pool: EndoCoordinatorModelPoolV0,
+	pool: EndoCoordinatorModelPoolAnyV1,
 	request: EndoCoordinatorSelectionRequestV0,
 	observe: EndoCoordinatorMemberObserverV0,
 ): Promise<EndoCoordinatorSelectionV0> {
@@ -188,8 +189,13 @@ export async function selectCoordinatorModelV0(
 }
 
 /** The digest naming a validated pool in provenance: SHA-256 of its canonical JSON. */
-export function coordinatorModelPoolSha256V0(pool: EndoCoordinatorModelPoolV0): string {
+export function coordinatorModelPoolSha256V0(pool: EndoCoordinatorModelPoolAnyV1): string {
 	return sha256HexV0(canonicalEndoJsonV0(pool));
+}
+
+/** The digest naming a validated governed resource profile: SHA-256 of its canonical JSON. */
+export function endoCoordinatorResourceProfileSha256V1(profile: EndoCoordinatorResourceProfileV1): string {
+	return sha256HexV0(canonicalEndoJsonV0(profile));
 }
 
 /** Bounded measurements of one pooled briefing attempt. Unknown values stay null; nothing here is persisted. */

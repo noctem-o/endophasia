@@ -7,7 +7,11 @@
 // revision are two separate operator acts. Disabling or removing a schedule also marks its live grant superseded.
 
 import { randomBytes } from "node:crypto";
-import type { EndoCoordinatorModelPoolV0 } from "../../protocol/coordinator-model-pool.ts";
+import type { EndoCoordinatorModelPoolAnyV1 } from "../../protocol/coordinator-model-pool.ts";
+import {
+	type EndoCoordinatorResourceProfileV1,
+	validateEndoCoordinatorResourceProfileV1,
+} from "../../protocol/coordinator-resource-policy.ts";
 import {
 	ENDO_ADVISORY_AUTHORIZATIONS_SCHEMA_V0,
 	ENDO_ADVISORY_LIMITS_V0,
@@ -32,7 +36,10 @@ import {
 import type { EndoScheduleMissedRunPolicyV0, EndoScheduleTriggerV0 } from "../../protocol/develop-automation.ts";
 import { EndoInvalidRecordV0 } from "../../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
-import { coordinatorModelPoolSha256V0 } from "../../runtime/contracts/coordinator-model-pool.ts";
+import {
+	coordinatorModelPoolSha256V0,
+	endoCoordinatorResourceProfileSha256V1,
+} from "../../runtime/contracts/coordinator-model-pool.ts";
 import {
 	type EndoAdvisoryAuthorizationStandingV0,
 	type EndoAdvisoryBudgetStandingV0,
@@ -274,7 +281,9 @@ export interface AuthorizeEndoAdvisoryInputV0 {
 	readonly scheduleId: string;
 	/** Required: the exact revision the operator reviewed. A grant never binds "whatever revision is current". */
 	readonly scheduleRevision: number;
-	readonly pool: EndoCoordinatorModelPoolV0;
+	readonly pool: EndoCoordinatorModelPoolAnyV1;
+	/** Opt-in governed cognitive resource policy (`COORDINATOR-REASONING-001`). Omit for V0 limits. */
+	readonly resourceProfile?: EndoCoordinatorResourceProfileV1;
 	readonly policy: EndoAdvisoryPolicyV0;
 	readonly budget: EndoAdvisoryBudgetV0;
 	readonly lifetimeMs: number;
@@ -289,6 +298,12 @@ export function authorizeEndoAdvisoryScheduleV0(
 	return mutate(root, now, (s, nowMs) => {
 		const schedule = findSchedule(readSchedulesOrEmpty(s), input.scheduleId, input.scheduleRevision);
 		if (!schedule.enabled) throw new Refusal("not-enabled", "enable the schedule first; enabling bumps its revision");
+		const resourceProfile =
+			input.resourceProfile === undefined
+				? undefined
+				: validateEndoCoordinatorResourceProfileV1(input.resourceProfile, "resourceProfile");
+		const resourceProfileSha256 =
+			resourceProfile === undefined ? undefined : endoCoordinatorResourceProfileSha256V1(resourceProfile);
 		const grant = {
 			scheduleId: schedule.scheduleId,
 			scheduleIncarnation: schedule.incarnation,
@@ -297,6 +312,7 @@ export function authorizeEndoAdvisoryScheduleV0(
 			actionKind: schedule.actionKind,
 			poolSha256: coordinatorModelPoolSha256V0(input.pool),
 			pool: input.pool,
+			...(resourceProfile === undefined ? {} : { resourceProfile, resourceProfileSha256 }),
 			policy: input.policy,
 			budget: input.budget,
 			grantedAtMs: nowMs,

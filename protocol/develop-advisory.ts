@@ -26,15 +26,24 @@
 import {
 	ENDO_COORDINATOR_MODEL_ID_PATTERN_V0,
 	ENDO_COORDINATOR_MODEL_POOL_MEMBER_ID_PATTERN_V0,
-	type EndoCoordinatorModelPoolV0,
+	ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1,
+	type EndoCoordinatorModelPoolAnyV1,
+	parseEndoCoordinatorModelPoolAnyV1,
 	parseEndoCoordinatorModelPoolV0,
 } from "./coordinator-model-pool.ts";
 import {
+	ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1,
+	type EndoCoordinatorResourceProfileV1,
+	validateEndoCoordinatorResourceProfileV1,
+} from "./coordinator-resource-policy.ts";
+import {
+	ENDO_DEVELOP_AUTOMATION_LEASE_SCHEMA_V0,
 	ENDO_HOLDER_ID_PATTERN_V0,
 	ENDO_SCHEDULE_ID_PATTERN_V0,
 	ENDO_SCHEDULE_MISSED_RUN_POLICIES_V0,
 	ENDO_SCHEDULE_TRIGGER_KINDS_V0,
 	ENDO_SHA256_HEX_PATTERN_V0,
+	type EndoDevelopAutomationLeaseV0,
 	type EndoScheduleMissedRunPolicyV0,
 	type EndoScheduleTriggerKindV0,
 	type EndoScheduleTriggerV0,
@@ -250,6 +259,7 @@ export const ENDO_ADVISORY_LIMITS_V0 = Object.freeze({
 	minAuthorizationLifetimeMs: 60_000,
 });
 const L = ENDO_ADVISORY_LIMITS_V0;
+const G = ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1;
 
 // ---- Types -------------------------------------------------------------------------------------------------------------------------
 
@@ -331,7 +341,10 @@ export interface EndoAdvisoryAuthorizationV0 {
 	readonly projectId: string;
 	readonly actionKind: EndoAdvisoryActionKindV0;
 	readonly poolSha256: string;
-	readonly pool: EndoCoordinatorModelPoolV0;
+	readonly pool: EndoCoordinatorModelPoolAnyV1;
+	/** Opt-in governed cognitive resource policy (`COORDINATOR-REASONING-001`). Absent on V0 grants. */
+	readonly resourceProfile?: EndoCoordinatorResourceProfileV1;
+	readonly resourceProfileSha256?: string;
 	readonly policy: EndoAdvisoryPolicyV0;
 	readonly budget: EndoAdvisoryBudgetV0;
 	readonly grantedAtMs: number;
@@ -433,6 +446,7 @@ export interface EndoAdvisoryTurnAdmissionV0 {
 	readonly actionKind: EndoAdvisoryActionKindV0;
 	readonly authorizationId: string;
 	readonly poolSha256: string;
+	readonly resourceProfileSha256?: string;
 	readonly policySha256: string;
 	readonly budgetSha256: string;
 	readonly leaseEpoch: number;
@@ -463,6 +477,7 @@ export interface EndoAdvisoryTurnDispatchV0 {
 	readonly authorizationId: string;
 	readonly scheduleRevision: number;
 	readonly effectivePoolSha256: string;
+	readonly resourceProfileSha256?: string;
 	readonly selectedMemberId: string;
 	readonly selectedModelId: string;
 	readonly selectedEndpoint: string;
@@ -541,6 +556,7 @@ export interface EndoAdvisoryBriefingV0 {
 	readonly authorizationId: string;
 	readonly poolSha256: string;
 	readonly effectivePoolSha256: string | null;
+	readonly resourceProfileSha256?: string;
 	readonly policySha256: string;
 	readonly budgetSha256: string;
 	readonly prompt: {
@@ -622,6 +638,19 @@ function closed(value: unknown, keys: readonly string[], at: string): Record<str
 	const unknown = endoFirstUnknownKeyV0(record, keys);
 	if (unknown !== undefined) fail(`${at} has an unknown field ${JSON.stringify(String(unknown))}`);
 	for (const k of keys) if (!Object.hasOwn(record, k)) fail(`${at}.${k} is required`);
+	return record;
+}
+function closedWithOptional(
+	value: unknown,
+	requiredKeys: readonly string[],
+	optionalKeys: readonly string[],
+	at: string,
+): Record<string, unknown> {
+	if (!isPlainJsonObjectV0(value)) fail(`${at} must be a JSON object`);
+	const record = value as Record<string, unknown>;
+	const unknown = endoFirstUnknownKeyV0(record, [...requiredKeys, ...optionalKeys]);
+	if (unknown !== undefined) fail(`${at} has an unknown field ${JSON.stringify(String(unknown))}`);
+	for (const k of requiredKeys) if (!Object.hasOwn(record, k)) fail(`${at}.${k} is required`);
 	return record;
 }
 function oneOf<T extends string>(value: unknown, allowed: readonly T[], at: string): T {
@@ -842,7 +871,19 @@ export function validateEndoAdvisoryPolicyV0(value: unknown, at = "policy"): End
 	});
 }
 
-export function validateEndoAdvisoryBudgetV0(value: unknown, at = "budget"): EndoAdvisoryBudgetV0 {
+export function validateEndoAdvisoryBudgetV0(
+	value: unknown,
+	at = "budget",
+	resourceProfile?: EndoCoordinatorResourceProfileV1,
+): EndoAdvisoryBudgetV0 {
+	if (resourceProfile !== undefined && resourceProfile.tier === "reflex")
+		fail(`${at} cannot be authorized under non-inference tier "reflex"`);
+	const maxOutputTokensCap = resourceProfile?.maxOutputTokensPerRequest ?? L.maxOutputTokensPerRequest;
+	const maxGeneratedPerPeriodCap =
+		resourceProfile === undefined
+			? L.maxGeneratedTokensPerPeriod
+			: L.maxTurnsPerPeriod * L.completionRequestsPerTurn * resourceProfile.maxOutputTokensPerRequest;
+	const maxTurnWallClockCap = resourceProfile?.advisoryTurnDeadlineMs ?? L.maxTurnWallClockMs;
 	const r = closed(
 		value,
 		[
@@ -855,17 +896,21 @@ export function validateEndoAdvisoryBudgetV0(value: unknown, at = "budget"): End
 		],
 		at,
 	);
+	const minOutputTokensFloor =
+		resourceProfile?.reasoningControl.mode === "reasoning-budget-tokens"
+			? Math.max(L.minOutputTokensPerRequest, resourceProfile.reasoningControl.tokens + G.minVisibleHeadroomTokens)
+			: L.minOutputTokensPerRequest;
 	const maxTurnsPerPeriod = int(r.maxTurnsPerPeriod, 1, L.maxTurnsPerPeriod, `${at}.maxTurnsPerPeriod`);
 	const maxOutputTokensPerRequest = int(
 		r.maxOutputTokensPerRequest,
-		L.minOutputTokensPerRequest,
-		L.maxOutputTokensPerRequest,
+		minOutputTokensFloor,
+		maxOutputTokensCap,
 		`${at}.maxOutputTokensPerRequest`,
 	);
 	const maxGeneratedTokensPerPeriod = int(
 		r.maxGeneratedTokensPerPeriod,
 		L.completionRequestsPerTurn * L.minOutputTokensPerRequest,
-		L.maxGeneratedTokensPerPeriod,
+		maxGeneratedPerPeriodCap,
 		`${at}.maxGeneratedTokensPerPeriod`,
 	);
 	if (maxGeneratedTokensPerPeriod < L.completionRequestsPerTurn * maxOutputTokensPerRequest)
@@ -879,14 +924,14 @@ export function validateEndoAdvisoryBudgetV0(value: unknown, at = "budget"): End
 		maxTurnWallClockMs: int(
 			r.maxTurnWallClockMs,
 			L.minTurnWallClockMs,
-			L.maxTurnWallClockMs,
+			maxTurnWallClockCap,
 			`${at}.maxTurnWallClockMs`,
 		),
 	});
 }
 
 export function validateEndoAdvisoryAuthorizationV0(value: unknown, at = "authorization"): EndoAdvisoryAuthorizationV0 {
-	const r = closed(
+	const r = closedWithOptional(
 		value,
 		[
 			"authorizationId",
@@ -904,16 +949,53 @@ export function validateEndoAdvisoryAuthorizationV0(value: unknown, at = "author
 			"revokedAtMs",
 			"revocation",
 		],
+		["resourceProfile", "resourceProfileSha256"],
 		at,
 	);
-	let pool: EndoCoordinatorModelPoolV0;
+	const hasProfile = Object.hasOwn(r, "resourceProfile") && r.resourceProfile !== undefined;
+	const hasProfileSha = Object.hasOwn(r, "resourceProfileSha256") && r.resourceProfileSha256 !== undefined;
+	if (hasProfile !== hasProfileSha) fail(`${at}.resourceProfile and resourceProfileSha256 must be set together`);
+	let resourceProfile: EndoCoordinatorResourceProfileV1 | undefined;
+	let resourceProfileSha256: string | undefined;
+	if (hasProfile) {
+		resourceProfile = validateEndoCoordinatorResourceProfileV1(r.resourceProfile, `${at}.resourceProfile`);
+		if (resourceProfile.tier === "reflex")
+			fail(`${at}.resourceProfile.tier cannot be "reflex": inference authorizations require an inference tier`);
+		resourceProfileSha256 = sha(r.resourceProfileSha256, `${at}.resourceProfileSha256`);
+	}
+	let pool: EndoCoordinatorModelPoolAnyV1;
 	try {
-		pool = parseEndoCoordinatorModelPoolV0(r.pool);
+		pool =
+			resourceProfile === undefined
+				? parseEndoCoordinatorModelPoolV0(r.pool)
+				: parseEndoCoordinatorModelPoolAnyV1(r.pool);
 	} catch (error) {
 		return fail(`${at}.pool: ${(error as Error).message}`);
 	}
 	if (pool.members.some((m) => m.kind !== "local-openai-compat"))
 		fail(`${at}.pool may hold only local members: S2 does not authorise hosted inference`);
+	if (resourceProfile !== undefined) {
+		if (
+			pool.schemaVersion === ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1 &&
+			JSON.stringify(pool.resourceProfile) !== JSON.stringify(resourceProfile)
+		) {
+			fail(`${at}.pool.resourceProfile must exactly match ${at}.resourceProfile`);
+		}
+		const minMemberOutputTokens =
+			resourceProfile.reasoningControl.mode === "reasoning-budget-tokens"
+				? resourceProfile.reasoningControl.tokens + G.minVisibleHeadroomTokens
+				: L.minOutputTokensPerRequest;
+		for (const m of pool.members) {
+			if (m.maxOutputTokens > resourceProfile.maxOutputTokensPerRequest)
+				fail(`${at}.pool member ${JSON.stringify(m.memberId)} maxOutputTokens exceeds resourceProfile ceiling`);
+			if (m.maxOutputTokens < minMemberOutputTokens)
+				fail(
+					`${at}.pool member ${JSON.stringify(m.memberId)} maxOutputTokens leaves insufficient visible headroom for reasoningControl`,
+				);
+			if (m.timeoutMs > resourceProfile.modelExecutionTimeoutMs)
+				fail(`${at}.pool member ${JSON.stringify(m.memberId)} timeoutMs exceeds resourceProfile ceiling`);
+		}
+	}
 	const grantedAtMs = ms(r.grantedAtMs, `${at}.grantedAtMs`);
 	const expiresAtMs = ms(r.expiresAtMs, `${at}.expiresAtMs`);
 	const lifetime = expiresAtMs - grantedAtMs;
@@ -934,8 +1016,9 @@ export function validateEndoAdvisoryAuthorizationV0(value: unknown, at = "author
 		actionKind: actionOf(r.actionKind, `${at}.actionKind`),
 		poolSha256: sha(r.poolSha256, `${at}.poolSha256`),
 		pool,
+		...(resourceProfile === undefined ? {} : { resourceProfile, resourceProfileSha256 }),
 		policy: validateEndoAdvisoryPolicyV0(r.policy, `${at}.policy`),
-		budget: validateEndoAdvisoryBudgetV0(r.budget, `${at}.budget`),
+		budget: validateEndoAdvisoryBudgetV0(r.budget, `${at}.budget`, resourceProfile),
 		grantedAtMs,
 		expiresAtMs,
 		revokedAtMs,
@@ -1132,23 +1215,49 @@ export function validateEndoAdvisoryFireOutcomeV0(value: unknown): EndoAdvisoryF
 
 // ---- Turns -------------------------------------------------------------------------------------------------------------------------
 
-function validateReservation(value: unknown, at: string): EndoAdvisoryReservationV0 {
+/**
+ * S2 advisory duty lease validator. Same closed record shape as S1 (`endo.develop-automation-lease.v0`), but permits
+ * TTLs up to the governed V1 cognitive-resource ceiling (`1_200_000` ms) for S2 advisory duty leases only.
+ * S1's own `validateEndoDevelopAutomationLeaseV0` stays strictly capped at 300,000 ms.
+ */
+export function validateEndoAdvisoryLeaseV0(value: unknown): EndoDevelopAutomationLeaseV0 {
+	const r = closed(
+		value,
+		["schemaVersion", "holderId", "epoch", "acquiredAtMs", "expiresAtMs", "releasedAtMs"],
+		"advisory lease",
+	);
+	literal(r.schemaVersion, ENDO_DEVELOP_AUTOMATION_LEASE_SCHEMA_V0, "advisory lease.schemaVersion");
+	const acquiredAtMs = ms(r.acquiredAtMs, "advisory lease.acquiredAtMs");
+	const expiresAtMs = ms(r.expiresAtMs, "advisory lease.expiresAtMs");
+	if (expiresAtMs <= acquiredAtMs) fail("advisory lease.expiresAtMs must be strictly after acquiredAtMs");
+	if (expiresAtMs - acquiredAtMs > G.maxLeaseTtlMs) fail(`advisory lease TTL exceeds maximum ${G.maxLeaseTtlMs} ms`);
+	const releasedAtMs = nInt(r.releasedAtMs, 1, MAX_EPOCH_MS, "advisory lease.releasedAtMs");
+	return Object.freeze({
+		schemaVersion: ENDO_DEVELOP_AUTOMATION_LEASE_SCHEMA_V0,
+		holderId: holderOf(r.holderId, "advisory lease.holderId"),
+		epoch: epochOf(r.epoch, "advisory lease.epoch"),
+		acquiredAtMs,
+		expiresAtMs,
+		releasedAtMs,
+	});
+}
+
+function validateReservation(value: unknown, at: string, governedV1: boolean): EndoAdvisoryReservationV0 {
 	const r = closed(value, ["completionRequests", "generatedTokens", "wallClockMs"], at);
+	const maxGeneratedTokens = governedV1
+		? G.maxAggregateGeneratedTokensPerTurn
+		: L.completionRequestsPerTurn * L.maxOutputTokensPerRequest;
+	const maxWallClockMs = governedV1 ? G.maxLeaseTtlMs : L.leaseTtlMs;
 	return Object.freeze({
 		completionRequests: int(r.completionRequests, 0, L.completionRequestsPerTurn, `${at}.completionRequests`),
-		generatedTokens: int(
-			r.generatedTokens,
-			0,
-			L.completionRequestsPerTurn * L.maxOutputTokensPerRequest,
-			`${at}.generatedTokens`,
-		),
-		wallClockMs: int(r.wallClockMs, 0, L.leaseTtlMs, `${at}.wallClockMs`),
+		generatedTokens: int(r.generatedTokens, 0, maxGeneratedTokens, `${at}.generatedTokens`),
+		wallClockMs: int(r.wallClockMs, 0, maxWallClockMs, `${at}.wallClockMs`),
 	});
 }
 
 export function validateEndoAdvisoryTurnAdmissionV0(value: unknown): EndoAdvisoryTurnAdmissionV0 {
 	const at = "advisory turn admission";
-	const r = closed(
+	const r = closedWithOptional(
 		value,
 		[
 			"schemaVersion",
@@ -1174,9 +1283,16 @@ export function validateEndoAdvisoryTurnAdmissionV0(value: unknown): EndoAdvisor
 			"reservation",
 			"budgetBefore",
 		],
+		["resourceProfileSha256"],
 		at,
 	);
 	literal(r.schemaVersion, ENDO_ADVISORY_TURN_ADMISSION_SCHEMA_V0, `${at}.schemaVersion`);
+	const resourceProfileSha256 =
+		Object.hasOwn(r, "resourceProfileSha256") && r.resourceProfileSha256 !== undefined
+			? sha(r.resourceProfileSha256, `${at}.resourceProfileSha256`)
+			: undefined;
+	const governedV1 = resourceProfileSha256 !== undefined;
+	const maxLeaseSpanMs = governedV1 ? G.maxLeaseTtlMs : L.leaseTtlMs;
 	const b = closed(
 		r.budgetBefore,
 		["periodStartMs", "turnsCharged", "generatedTokensCharged", "uncertainTurns"],
@@ -1184,7 +1300,7 @@ export function validateEndoAdvisoryTurnAdmissionV0(value: unknown): EndoAdvisor
 	);
 	const admittedAtMs = ms(r.admittedAtMs, `${at}.admittedAtMs`);
 	const turnDeadlineMs = ms(r.turnDeadlineMs, `${at}.turnDeadlineMs`);
-	if (turnDeadlineMs <= admittedAtMs || turnDeadlineMs - admittedAtMs > L.leaseTtlMs)
+	if (turnDeadlineMs <= admittedAtMs || turnDeadlineMs - admittedAtMs > maxLeaseSpanMs)
 		fail(`${at}.turnDeadlineMs must fall within one advisory lease of admission`);
 	return Object.freeze({
 		schemaVersion: ENDO_ADVISORY_TURN_ADMISSION_SCHEMA_V0,
@@ -1196,6 +1312,7 @@ export function validateEndoAdvisoryTurnAdmissionV0(value: unknown): EndoAdvisor
 		actionKind: actionOf(r.actionKind, `${at}.actionKind`),
 		authorizationId: sha(r.authorizationId, `${at}.authorizationId`),
 		poolSha256: sha(r.poolSha256, `${at}.poolSha256`),
+		...(resourceProfileSha256 === undefined ? {} : { resourceProfileSha256 }),
 		policySha256: sha(r.policySha256, `${at}.policySha256`),
 		budgetSha256: sha(r.budgetSha256, `${at}.budgetSha256`),
 		leaseEpoch: epochOf(r.leaseEpoch, `${at}.leaseEpoch`),
@@ -1207,7 +1324,7 @@ export function validateEndoAdvisoryTurnAdmissionV0(value: unknown): EndoAdvisor
 		completeness: oneOf(r.completeness, ["complete", "partial"] as const, `${at}.completeness`),
 		observedAtMs: ms(r.observedAtMs, `${at}.observedAtMs`),
 		gaps: codes(r.gaps, L.maxGaps, `${at}.gaps`),
-		reservation: validateReservation(r.reservation, `${at}.reservation`),
+		reservation: validateReservation(r.reservation, `${at}.reservation`, governedV1),
 		budgetBefore: Object.freeze({
 			periodStartMs: int(b.periodStartMs, 0, MAX_EPOCH_MS, `${at}.budgetBefore.periodStartMs`),
 			turnsCharged: int(b.turnsCharged, 0, Number.MAX_SAFE_INTEGER, `${at}.budgetBefore.turnsCharged`),
@@ -1238,7 +1355,7 @@ const LOOPBACK_ORIGIN = /^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/;
 
 export function validateEndoAdvisoryTurnDispatchV0(value: unknown): EndoAdvisoryTurnDispatchV0 {
 	const at = "advisory turn dispatch";
-	const r = closed(
+	const r = closedWithOptional(
 		value,
 		[
 			"schemaVersion",
@@ -1260,9 +1377,15 @@ export function validateEndoAdvisoryTurnDispatchV0(value: unknown): EndoAdvisory
 			"inferenceDeadlineMs",
 			"effectiveTimeoutMs",
 		],
+		["resourceProfileSha256"],
 		at,
 	);
 	literal(r.schemaVersion, ENDO_ADVISORY_TURN_DISPATCH_SCHEMA_V0, `${at}.schemaVersion`);
+	const resourceProfileSha256 =
+		Object.hasOwn(r, "resourceProfileSha256") && r.resourceProfileSha256 !== undefined
+			? sha(r.resourceProfileSha256, `${at}.resourceProfileSha256`)
+			: undefined;
+	const maxEffectiveTimeoutMs = resourceProfileSha256 !== undefined ? G.maxTurnWallClockMs : L.maxTurnWallClockMs;
 	return Object.freeze({
 		schemaVersion: ENDO_ADVISORY_TURN_DISPATCH_SCHEMA_V0,
 		turnId: sha(r.turnId, `${at}.turnId`),
@@ -1272,6 +1395,7 @@ export function validateEndoAdvisoryTurnDispatchV0(value: unknown): EndoAdvisory
 		authorizationId: sha(r.authorizationId, `${at}.authorizationId`),
 		scheduleRevision: revisionOf(r.scheduleRevision, `${at}.scheduleRevision`),
 		effectivePoolSha256: sha(r.effectivePoolSha256, `${at}.effectivePoolSha256`),
+		...(resourceProfileSha256 === undefined ? {} : { resourceProfileSha256 }),
 		selectedMemberId: pat(
 			r.selectedMemberId,
 			ENDO_COORDINATOR_MODEL_POOL_MEMBER_ID_PATTERN_V0,
@@ -1288,7 +1412,7 @@ export function validateEndoAdvisoryTurnDispatchV0(value: unknown): EndoAdvisory
 		effectiveTimeoutMs: int(
 			r.effectiveTimeoutMs,
 			L.minInferenceWindowMs,
-			L.maxTurnWallClockMs,
+			maxEffectiveTimeoutMs,
 			`${at}.effectiveTimeoutMs`,
 		),
 	});
@@ -1298,7 +1422,7 @@ const nCount = (value: unknown, at: string) => nInt(value, 0, Number.MAX_SAFE_IN
 
 export function validateEndoAdvisoryBriefingV0(value: unknown): EndoAdvisoryBriefingV0 {
 	const at = "advisory briefing";
-	const r = closed(
+	const r = closedWithOptional(
 		value,
 		[
 			"schemaVersion",
@@ -1328,9 +1452,15 @@ export function validateEndoAdvisoryBriefingV0(value: unknown): EndoAdvisoryBrie
 			"standing",
 			"proposal",
 		],
+		["resourceProfileSha256"],
 		at,
 	);
 	literal(r.schemaVersion, ENDO_ADVISORY_BRIEFING_SCHEMA_V0, `${at}.schemaVersion`);
+	const resourceProfileSha256 =
+		Object.hasOwn(r, "resourceProfileSha256") && r.resourceProfileSha256 !== undefined
+			? sha(r.resourceProfileSha256, `${at}.resourceProfileSha256`)
+			: undefined;
+	const governedV1 = resourceProfileSha256 !== undefined;
 	const p = closed(r.prompt, ["instructionsSha256", "questionSha256", "promptSha256"], `${at}.prompt`);
 	const s = closed(
 		r.source,
@@ -1430,6 +1560,7 @@ export function validateEndoAdvisoryBriefingV0(value: unknown): EndoAdvisoryBrie
 		authorizationId: sha(r.authorizationId, `${at}.authorizationId`),
 		poolSha256: sha(r.poolSha256, `${at}.poolSha256`),
 		effectivePoolSha256: nSha(r.effectivePoolSha256, `${at}.effectivePoolSha256`),
+		...(resourceProfileSha256 === undefined ? {} : { resourceProfileSha256 }),
 		policySha256: sha(r.policySha256, `${at}.policySha256`),
 		budgetSha256: sha(r.budgetSha256, `${at}.budgetSha256`),
 		prompt: Object.freeze({
@@ -1465,7 +1596,7 @@ export function validateEndoAdvisoryBriefingV0(value: unknown): EndoAdvisoryBrie
 			inferenceFailover: literal(m.inferenceFailover, "never" as const, `${at}.model.inferenceFailover`),
 		}),
 		accounting: Object.freeze({
-			reserved: validateReservation(a.reserved, `${at}.accounting.reserved`),
+			reserved: validateReservation(a.reserved, `${at}.accounting.reserved`, governedV1),
 			admittedExchanges: nCount(a.admittedExchanges, `${at}.accounting.admittedExchanges`),
 			reportedPromptTokens: nCount(a.reportedPromptTokens, `${at}.accounting.reportedPromptTokens`),
 			reportedCompletionTokens: nCount(a.reportedCompletionTokens, `${at}.accounting.reportedCompletionTokens`),
@@ -1619,6 +1750,7 @@ export const ENDO_ADVISORY_VERSION_TABLES_V0 = Object.freeze({
 		ENDO_ADVISORY_AUTHORIZATIONS_SCHEMA_V0,
 		validateEndoAdvisoryAuthorizationsFileV0,
 	),
+	lease: table("develop-advisory-lease", ENDO_DEVELOP_AUTOMATION_LEASE_SCHEMA_V0, validateEndoAdvisoryLeaseV0),
 	observations: table(
 		"develop-advisory-observations",
 		ENDO_ADVISORY_OBSERVATIONS_SCHEMA_V0,

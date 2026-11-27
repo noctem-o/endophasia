@@ -6,12 +6,19 @@
 // bounds, no redirect following (the response gate admits only a 200 event stream), and no credential of any provider.
 
 import {
+	ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0,
 	type EndoCoordinatorModelPoolMemberV0,
 	endoCoordinatorLoopbackOriginV0,
 } from "../../protocol/coordinator-model-pool.ts";
+import {
+	ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1,
+	type EndoCoordinatorReasoningControlV1,
+	type EndoCoordinatorResourceProfileV1,
+	validateEndoCoordinatorResourceProfileV1,
+} from "../../protocol/coordinator-resource-policy.ts";
 import type { EndoCaptureLogV0 } from "../openai-proxy/capture-log.ts";
 import { type EndoModelRelayPolicyV0, type EndoModelRelayV0, startModelRelayV0 } from "../sandbox/model-relay.ts";
-import { COORDINATOR_INFERENCE_V0, coordinatorWireV0 } from "./wire.ts";
+import { COORDINATOR_INFERENCE_V0, coordinatorWireV0, type EndoCoordinatorWireInferenceV0 } from "./wire.ts";
 
 export const ENDO_COORDINATOR_ROUTE_V0 = "/v1/chat/completions";
 
@@ -32,6 +39,12 @@ export interface EndoCoordinatorModelTargetV0 {
 	 * (`inference-timeout`). On for pool members; off for the M0 target, whose 135 s agent timeout and 155 s kill are unchanged.
 	 */
 	readonly hostDeadline: boolean;
+	/** Optional context-window declaration for OpenClaw client-side guard (defaults to 32,768 when unset). */
+	readonly contextWindowTokens?: number;
+	/** Optional relay byte transfer cap (defaults to 8 MiB when unset; scales up for deep/extended profiles). */
+	readonly relayMaxTransferredBytes?: number;
+	/** Optional explicit reasoning control (`unchanged` by default). */
+	readonly reasoningControl?: EndoCoordinatorReasoningControlV1;
 }
 
 /** M0's binding, unchanged: the default when no pool is given. */
@@ -46,11 +59,46 @@ export const ENDO_COORDINATOR_M0_TARGET_V0: EndoCoordinatorModelTargetV0 = Objec
 });
 
 /** The frozen target for a validated local member. Throws for a hosted member: M1 has no hosted execution. */
-export function coordinatorTargetFromMemberV0(member: EndoCoordinatorModelPoolMemberV0): EndoCoordinatorModelTargetV0 {
+export function coordinatorTargetFromMemberV0(
+	member: EndoCoordinatorModelPoolMemberV0,
+	resourceProfile?: EndoCoordinatorResourceProfileV1,
+): EndoCoordinatorModelTargetV0 {
 	if (member.kind !== "local-openai-compat" || member.advisoryOnly !== true)
 		throw new TypeError("only a local advisory member can be a Coordinator inference target in M1");
 	if (!endoCoordinatorLoopbackOriginV0(member.endpoint).ok)
 		throw new TypeError("the member's endpoint is not the IPv4 loopback");
+	if (resourceProfile !== undefined) {
+		const validated = validateEndoCoordinatorResourceProfileV1(resourceProfile);
+		if (validated.tier === "reflex")
+			throw new TypeError('cannot create an inference target under non-inference tier "reflex"');
+		if (member.maxOutputTokens > validated.maxOutputTokensPerRequest)
+			throw new TypeError("member maxOutputTokens exceeds governed resourceProfile ceiling");
+		if (
+			validated.reasoningControl.mode === "reasoning-budget-tokens" &&
+			member.maxOutputTokens <
+				validated.reasoningControl.tokens + ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1.minVisibleHeadroomTokens
+		) {
+			throw new TypeError("member maxOutputTokens leaves insufficient visible headroom for reasoningControl");
+		}
+		if (member.timeoutMs > validated.modelExecutionTimeoutMs)
+			throw new TypeError("member timeoutMs exceeds governed resourceProfile ceiling");
+		return Object.freeze({
+			origin: member.endpoint,
+			model: member.modelId,
+			maxOutputTokens: member.maxOutputTokens,
+			maxPromptBytes: member.maxPromptBytes,
+			timeoutMs: member.timeoutMs,
+			pinResponseModel: true,
+			hostDeadline: true,
+			contextWindowTokens: validated.contextWindowTokens,
+			relayMaxTransferredBytes: validated.relayMaxTransferredBytes,
+			reasoningControl: validated.reasoningControl,
+		});
+	}
+	if (member.maxOutputTokens > ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.maxOutputTokens.max)
+		throw new TypeError("member maxOutputTokens exceeds V0 ceiling without an explicit governed resourceProfile");
+	if (member.timeoutMs > ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.timeoutMs.max)
+		throw new TypeError("member timeoutMs exceeds V0 ceiling without an explicit governed resourceProfile");
 	return Object.freeze({
 		origin: member.endpoint,
 		model: member.modelId,
@@ -62,18 +110,42 @@ export function coordinatorTargetFromMemberV0(member: EndoCoordinatorModelPoolMe
 	});
 }
 
-export type EndoCoordinatorInferenceV0 = Readonly<Record<keyof typeof COORDINATOR_INFERENCE_V0, number>>;
+export type EndoCoordinatorInferenceV0 = EndoCoordinatorWireInferenceV0;
 
-/** The exact inference parameters the wire admits for a target: M0's, with the target's generation bound. */
-export const coordinatorInferenceForV0 = (target: EndoCoordinatorModelTargetV0): EndoCoordinatorInferenceV0 =>
-	Object.freeze({ ...COORDINATOR_INFERENCE_V0, max_tokens: target.maxOutputTokens });
+/** The exact inference parameters the wire admits for a target: M0's, with the target's generation bound and explicit reasoning control. */
+export function coordinatorInferenceForV0(target: EndoCoordinatorModelTargetV0): EndoCoordinatorInferenceV0 {
+	const control = target.reasoningControl;
+	if (control?.mode === "reasoning-effort") {
+		return Object.freeze({
+			...COORDINATOR_INFERENCE_V0,
+			max_tokens: target.maxOutputTokens,
+			reasoning_effort: control.effort,
+		});
+	}
+	if (control?.mode === "reasoning-budget-tokens") {
+		return Object.freeze({
+			...COORDINATOR_INFERENCE_V0,
+			max_tokens: target.maxOutputTokens,
+			reasoning_budget_tokens: control.tokens,
+		});
+	}
+	return Object.freeze({ ...COORDINATOR_INFERENCE_V0, max_tokens: target.maxOutputTokens });
+}
 
 export function coordinatorRelayPolicyV0(target: EndoCoordinatorModelTargetV0): EndoModelRelayPolicyV0 {
+	const maxTransferredBytes = target.relayMaxTransferredBytes ?? 8 * 1024 * 1024;
+	if (
+		!Number.isSafeInteger(maxTransferredBytes) ||
+		maxTransferredBytes < 1 ||
+		maxTransferredBytes > ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1.maxRelayTransferredBytes
+	) {
+		throw new TypeError("target relayMaxTransferredBytes exceeds governed ceiling");
+	}
 	return {
 		routes: [{ method: "POST", path: ENDO_COORDINATOR_ROUTE_V0 }],
 		model: target.model,
 		maxRequestBytes: 512 * 1024,
-		maxTransferredBytes: 8 * 1024 * 1024,
+		maxTransferredBytes,
 		maxConnections: 4,
 		maxTotalConnections: 8,
 		maxExchanges: 2,

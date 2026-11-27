@@ -138,6 +138,14 @@ export function portIsFree(port: number): Promise<boolean> {
 		probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(true)));
 	});
 }
+/**
+ * Fail-closed process liveness check for owned child termination verification:
+ * - `ESRCH` -> confirmed absent (`false`).
+ * - `EPERM` -> ownership/state unknown, fails closed (`true`).
+ * - Linux `/proc/<pid>/stat` state `Z` (zombie) or `X` (dead) -> terminated executable awaiting reaping (`false`),
+ *   unable to execute instructions or hold sockets/FDs; non-`ENOENT` `/proc` read errors fail closed (`true`).
+ * PID reuse during `terminate()` is bounded because `ProcessGroupV0`'s keeper retains the child until `release()`.
+ */
 const pidAlive = (pid: number) => {
 	try {
 		process.kill(pid, 0);
@@ -154,12 +162,12 @@ const pidAlive = (pid: number) => {
 	return true;
 };
 
-/** True only when `pid` itself holds an open socket descriptor matching a listener on `port`. */
+/** True only when `pid` itself holds an open socket descriptor matching an IPv4 loopback listener on `port`. */
 function pidOwnsListenerPort(pid: number, port: number): boolean {
 	const tcp = readFileSync(`/proc/${pid}/net/tcp`, "utf8");
 	const inodes = new Set(
 		parseTcpListenersV0(tcp)
-			.filter((entry) => entry.port === port)
+			.filter((entry) => entry.port === port && entry.address === "127.0.0.1")
 			.map((entry) => entry.inode),
 	);
 	if (inodes.size === 0) return false;

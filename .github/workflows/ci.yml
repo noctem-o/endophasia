@@ -116,7 +116,7 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: node scripts/run-test-partition.mjs --class=fast --json-out="$RUNNER_TEMP/vitest-fast.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-fast.json" --step-summary
+      - run: node scripts/run-test-partition.mjs --class=fast --strict-accounting --json-out="$RUNNER_TEMP/vitest-fast.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-fast.json" --step-summary
       - name: Upload sanitized CI diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -138,7 +138,7 @@ jobs:
           cache: npm
       - run: npm ci
       # ENDO_REQUIRE_BROWSER makes the Studio frontend's browser suite fail, not skip, on a runner without Chromium.
-      - run: node scripts/run-test-partition.mjs --class=browser --json-out="$RUNNER_TEMP/vitest-browser.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-browser.json" --step-summary
+      - run: node scripts/run-test-partition.mjs --class=browser --strict-accounting --json-out="$RUNNER_TEMP/vitest-browser.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-browser.json" --step-summary
         env:
           ENDO_REQUIRE_BROWSER: "1"
       - name: Upload sanitized CI diagnostics
@@ -173,7 +173,7 @@ jobs:
           fi
       # Ubuntu 24.04 ships GNU coreutils 9.4, whose mv has no --exchange: here the reference-replacement tests check the
       # up-front refusal, and the exchange job below checks the exchange itself.
-      - run: node scripts/run-test-partition.mjs --class=process --shard=${{ matrix.shard }}/4 --json-out="$RUNNER_TEMP/vitest-process-${{ matrix.shard }}.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-process-${{ matrix.shard }}.json" --step-summary
+      - run: node scripts/run-test-partition.mjs --class=process --shard=${{ matrix.shard }}/4 --strict-accounting --json-out="$RUNNER_TEMP/vitest-process-${{ matrix.shard }}.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-process-${{ matrix.shard }}.json" --step-summary
       - name: Upload sanitized CI diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -308,3 +308,57 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx vitest --run tests/conformance-lab.test.ts tests/prime-097-conformance.test.ts tests/prime-097-review5.test.ts
+
+  # Stable, fail-closed aggregate merge gate (CI-RELIABILITY-001 F4):
+  # Runs even if any upstream job fails, is cancelled, or is skipped (`if: always()`), and requires
+  # explicit `success` from every required general and specialist job so internal shard changes never
+  # break required status checks and skipped jobs can never produce a false-green gate.
+  ci-verification:
+    name: CI verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    if: always()
+    needs:
+      - trust-reader
+      - trust004-freeze
+      - check
+      - test-fast
+      - test-browser
+      - test-process
+      - live-scopes
+      - package
+      - package-floor
+      - acceptance
+      - exchange
+    steps:
+      - name: Require explicit success from every general and specialist verification job
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          node -e '
+            const required = [
+              "trust-reader",
+              "trust004-freeze",
+              "check",
+              "test-fast",
+              "test-browser",
+              "test-process",
+              "live-scopes",
+              "package",
+              "package-floor",
+              "acceptance",
+              "exchange",
+            ];
+            const needs = JSON.parse(process.env.NEEDS_JSON || "{}");
+            const failures = [];
+            for (const job of required) {
+              const result = needs[job]?.result;
+              console.log(`${job}: ${result ?? "MISSING"}`);
+              if (result !== "success") failures.push(`${job}=${result ?? "MISSING"}`);
+            }
+            if (failures.length > 0) {
+              console.error(`CI verification failed: ${failures.join(", ")}`);
+              process.exit(1);
+            }
+            console.log(`CI verification passed: all ${required.length} required jobs succeeded.`);
+          '

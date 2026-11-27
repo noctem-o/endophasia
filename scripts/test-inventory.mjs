@@ -432,12 +432,19 @@ export function validateCoverageAccounting(rootDir = REPO_ROOT, shardPlan = { fa
 		const fastJob = extractJob("test-fast");
 		if (!fastJob || !fastJob.includes("--class=fast")) {
 			errors.push('ci.yml job "test-fast" is missing or does not run --class=fast');
+		} else if (!fastJob.includes("--strict-accounting")) {
+			errors.push('ci.yml job "test-fast" must enable --strict-accounting');
 		}
 		const browserJob = extractJob("test-browser");
 		if (!browserJob || !browserJob.includes("--class=browser")) {
 			errors.push('ci.yml job "test-browser" is missing or does not run --class=browser');
-		} else if (!/ENDO_REQUIRE_BROWSER:\s*"1"/.test(browserJob)) {
-			errors.push('ci.yml job "test-browser" must set ENDO_REQUIRE_BROWSER: "1"');
+		} else {
+			if (!/ENDO_REQUIRE_BROWSER:\s*"1"/.test(browserJob)) {
+				errors.push('ci.yml job "test-browser" must set ENDO_REQUIRE_BROWSER: "1"');
+			}
+			if (!browserJob.includes("--strict-accounting")) {
+				errors.push('ci.yml job "test-browser" must enable --strict-accounting');
+			}
 		}
 		const processJob = extractJob("test-process");
 		const expectedShards = Array.from({ length: shardPlan.process }, (_, idx) => idx + 1).join(", ");
@@ -445,8 +452,39 @@ export function validateCoverageAccounting(rootDir = REPO_ROOT, shardPlan = { fa
 			errors.push(
 				`ci.yml job "test-process" is missing or does not run --class=process --shard=\${{ matrix.shard }}/${shardPlan.process}`,
 			);
-		} else if (!processJob.includes(`shard: [${expectedShards}]`)) {
-			errors.push(`ci.yml job "test-process" matrix.shard must be [${expectedShards}]`);
+		} else {
+			if (!processJob.includes(`shard: [${expectedShards}]`)) {
+				errors.push(`ci.yml job "test-process" matrix.shard must be [${expectedShards}]`);
+			}
+			if (!processJob.includes("--strict-accounting")) {
+				errors.push('ci.yml job "test-process" must enable --strict-accounting');
+			}
+		}
+		const aggregateJob = extractJob("ci-verification");
+		const requiredAggregateDeps = [
+			"trust-reader",
+			"trust004-freeze",
+			"check",
+			"test-fast",
+			"test-browser",
+			"test-process",
+			"live-scopes",
+			"package",
+			"package-floor",
+			"acceptance",
+			"exchange",
+		];
+		if (!aggregateJob) {
+			errors.push('ci.yml is missing required aggregate job "ci-verification"');
+		} else {
+			if (!/if:\s*always\(\)/.test(aggregateJob)) {
+				errors.push('ci.yml job "ci-verification" must set `if: always()` to prevent skipped-job false greens');
+			}
+			for (const dep of requiredAggregateDeps) {
+				if (!aggregateJob.includes(`- ${dep}`)) {
+					errors.push(`ci.yml job "ci-verification" must depend on "${dep}"`);
+				}
+			}
 		}
 		for (const [jobName, spec] of Object.entries(SPECIALIST_SUITES)) {
 			const block = extractJob(jobName);

@@ -2,9 +2,10 @@
 //
 // Distinguishes:
 // - a running executable from an unreaped dead zombie (`Z` / `X` state in `/proc/<pid>/stat`), because POSIX
-//   `kill(pid, 0)` returns 0 on a zombie until PID 1 reaps it;
+//   `kill(pid, 0)` returns 0 on a zombie until PID 1 reaps it (while `EPERM` or non-`ENOENT` errors fail closed as `true`);
 // - non-ephemeral loopback ports from Linux's active ephemeral range (`ip_local_port_range`, typically 32768–60999),
-//   eliminating bind-release-rebind collisions with concurrent `listen(0)` and outbound TCP sockets in sibling workers.
+//   reducing (though not eliminating) bind-close-rebind collision probability with concurrent `listen(0)` and outbound
+//   TCP sockets in sibling workers. Worker/PID bucketing does NOT constitute an exclusive OS port reservation.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
@@ -44,8 +45,12 @@ export function loopbackPortIsFreeV0(port: number): Promise<boolean> {
 let portCursor = 0;
 
 /**
- * Allocate a verified-free loopback port outside Linux's active ephemeral port range (`ip_local_port_range`)
- * when possible, partitioned by Vitest worker ID and PID to prevent cross-worker bind-release-rebind races.
+ * Select a currently free loopback port outside Linux's active ephemeral port range (`ip_local_port_range`)
+ * when possible, partitioned by Vitest worker ID and PID to reduce cross-worker bind-close-rebind collisions.
+ *
+ * Limitation: because the probe socket is closed before the caller binds the returned port, a residual
+ * bind-close-rebind race still exists if another host process chooses the exact same non-ephemeral port;
+ * callers whose protocol supports inherited listeners or `listen(0)` should prefer those over pre-probed ports.
  */
 export async function allocateIsolatedLoopbackPortV0(): Promise<number> {
 	let ephemeralMin = 32768;

@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "endo.coordinator-reasoning-001.pin.v1",
+  "mission": "COORDINATOR-REASONING-001",
+  "status": "phase-a-prepared-awaiting-live-authorization",
+  "repository": "noctem-o/endophasia",
+  "branchStack": {
+    "pr192": {
+      "branch": "research/s2-live-001",
+      "headSha": "6d8d164215b4e80ae2ba6ed3cc60b80da548c639",
+      "status": "open-draft-untouched"
+    },
+    "pr193": {
+      "branch": "feat/coordinator-grounding-002",
+      "headSha": "efd8599cd2fdba7ede46cb12f53b3a91ea689feb",
+      "frozenExperimentSha": "b1c6b7be989fe7ca21ed1cdfbd5266b310684d7e",
+      "status": "open-draft-untouched"
+    },
+    "current": {
+      "branch": "research/coordinator-reasoning-001",
+      "baseBranch": "feat/coordinator-grounding-002",
+      "baseSha": "efd8599cd2fdba7ede46cb12f53b3a91ea689feb"
+    }
+  },
+  "frozenCognitionArchitecture": {
+    "condition": "C",
+    "briefingMode": "grounded-v1",
+    "visibilityMode": "status-and-coordination-v1",
+    "groundedBriefSchema": "endo.coordinator-grounded-brief.v1",
+    "modelViewSchema": "endo.coordinator-model-view.v1",
+    "instructionsSha256": "c50ada62528e0fe0b96c18cefa9bf2bddd7ed0da5db54e575508bd9cb23b6ecc",
+    "proposalQuestionSha256": "1cbdd8ea2f6c18f9c979ec431d9ef9781e807dffae599c2759089939b07cc53d",
+    "sampling": {
+      "temperature": 0,
+      "top_k": 1,
+      "top_p": 1,
+      "min_p": 0,
+      "seed": 101
+    },
+    "maxAnswerBytes": 4096,
+    "completionRequestsPerTurn": 2
+  },
+  "targetLocalServer": {
+    "endpoint": "http://127.0.0.1:8091",
+    "modelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+    "observedBackend": "llama.cpp b12622",
+    "observedHarness": "OpenClaw 2026.11.10"
+  },
+  "plannedConditions": [
+    {
+      "id": "R0",
+      "source": "historical-baseline-s2-live-002",
+      "tier": "v0-legacy",
+      "maxOutputTokensPerRequest": 2048,
+      "maxAggregateReservedPerTurn": 4096,
+      "memberTimeoutMs": 135000,
+      "turnDeadlineMs": 180000,
+      "publicationReserveMs": 20000,
+      "leaseTtlMs": 300000,
+      "relayMaxTransferredBytes": 8388608,
+      "reasoningControl": { "mode": "unchanged" }
+    },
+    {
+      "id": "R1",
+      "phase": "C",
+      "tier": "light",
+      "maxOutputTokensPerRequest": 4096,
+      "maxAggregateReservedPerTurn": 8192,
+      "contextWindowTokens": 32768,
+      "memberTimeoutMs": 360000,
+      "turnDeadlineMs": 420000,
+      "publicationReserveMs": 60000,
+      "leaseTtlMs": 480000,
+      "relayMaxTransferredBytes": 16777216,
+      "reasoningControl": { "mode": "unchanged" }
+    },
+    {
+      "id": "R2",
+      "phase": "C",
+      "tier": "deliberate",
+      "maxOutputTokensPerRequest": 8192,
+      "maxAggregateReservedPerTurn": 16384,
+      "contextWindowTokens": 32768,
+      "memberTimeoutMs": 480000,
+      "turnDeadlineMs": 540000,
+      "publicationReserveMs": 60000,
+      "leaseTtlMs": 600000,
+      "relayMaxTransferredBytes": 25165824,
+      "reasoningControl": { "mode": "unchanged" }
+    },
+    {
+      "id": "R3",
+      "phase": "B",
+      "tier": "deep",
+      "maxOutputTokensPerRequest": 16384,
+      "maxAggregateReservedPerTurn": 32768,
+      "contextWindowTokens": 65536,
+      "memberTimeoutMs": 720000,
+      "turnDeadlineMs": 780000,
+      "publicationReserveMs": 60000,
+      "leaseTtlMs": 840000,
+      "relayMaxTransferredBytes": 33554432,
+      "reasoningControl": { "mode": "unchanged" }
+    },
+    {
+      "id": "R4",
+      "phase": "D-optional-fallback",
+      "tier": "extended",
+      "maxOutputTokensPerRequest": 24576,
+      "maxAggregateReservedPerTurn": 49152,
+      "contextWindowTokens": 131072,
+      "memberTimeoutMs": 1080000,
+      "turnDeadlineMs": 1140000,
+      "publicationReserveMs": 60000,
+      "leaseTtlMs": 1200000,
+      "relayMaxTransferredBytes": 50331648,
+      "reasoningControl": { "mode": "unchanged" }
+    }
+  ],
+  "plannedScenarios": ["S5-W8-mixed-head", "S8-multi-agent"],
+  "liveBudgets": {
+    "phaseB": { "turns": 2, "maxReservedTokens": 65536 },
+    "phaseC": { "turns": 4, "maxReservedTokens": 49152 },
+    "phaseBPlusC": { "turns": 6, "maxReservedTokens": 114688 },
+    "optionalPhaseDR4": { "turns": 2, "maxReservedTokens": 98304 },
+    "hardAggregateCeilingTurns": 8
+  }
+}

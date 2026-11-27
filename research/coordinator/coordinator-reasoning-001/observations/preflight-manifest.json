@@ -1,0 +1,258 @@
+{
+  "schemaVersion": "endo.coordinator-reasoning-001.preflight.v1",
+  "generatedAt": "2026-11-27T12:42:44.746Z",
+  "liveInferenceContacted": false,
+  "frozenArchitecture": {
+    "briefingMode": "grounded-v1",
+    "visibilityMode": "status-and-coordination-v1",
+    "instructionsSha256": "c50ada62528e0fe0b96c18cefa9bf2bddd7ed0da5db54e575508bd9cb23b6ecc",
+    "proposalQuestionSha256": "1cbdd8ea2f6c18f9c979ec431d9ef9781e807dffae599c2759089939b07cc53d",
+    "sampling": {
+      "temperature": 0,
+      "top_k": 1,
+      "top_p": 1,
+      "min_p": 0,
+      "seed": 101,
+      "max_tokens": 2048
+    },
+    "maxAnswerBytes": 4096
+  },
+  "conditions": [
+    {
+      "id": "R1",
+      "tier": "light",
+      "resourceProfileSha256": "49d28c330f8fc9b0687e0da8fe01525bbeeb6afd24f2c2df7cdc041072bdfd52",
+      "poolSha256AtLiveEndpoint": "9eb6901224626fad3fbd4357e0eda2eaefb3e37315c091c9aec81e1a7776fcde",
+      "profile": {
+        "schemaVersion": "endo.coordinator-resource-policy.v1",
+        "tier": "light",
+        "contextWindowTokens": 32768,
+        "maxOutputTokensPerRequest": 4096,
+        "reasoningControl": {
+          "mode": "unchanged"
+        },
+        "desiredVisibleAnswerTokens": 1024,
+        "desiredVisibleAnswerTokensAdvisoryOnly": true,
+        "completionRequestsPerTurn": 2,
+        "maxAggregateGeneratedTokensPerTurn": 8192,
+        "modelExecutionTimeoutMs": 360000,
+        "advisoryTurnDeadlineMs": 420000,
+        "publicationReserveMs": 60000,
+        "advisoryLeaseTtlMs": 480000,
+        "relayMaxTransferredBytes": 16777216,
+        "maxAnswerBytes": 4096
+      }
+    },
+    {
+      "id": "R2",
+      "tier": "deliberate",
+      "resourceProfileSha256": "b9b41c69b4fc8dedabd3262303cc9e7e12f1a7f69be23f817141399a624c563c",
+      "poolSha256AtLiveEndpoint": "31e678ff4d53d5faf561d74336846bd4a65ba4f3efb08e871c648ce9d6d02ebc",
+      "profile": {
+        "schemaVersion": "endo.coordinator-resource-policy.v1",
+        "tier": "deliberate",
+        "contextWindowTokens": 32768,
+        "maxOutputTokensPerRequest": 8192,
+        "reasoningControl": {
+          "mode": "unchanged"
+        },
+        "desiredVisibleAnswerTokens": 1024,
+        "desiredVisibleAnswerTokensAdvisoryOnly": true,
+        "completionRequestsPerTurn": 2,
+        "maxAggregateGeneratedTokensPerTurn": 16384,
+        "modelExecutionTimeoutMs": 480000,
+        "advisoryTurnDeadlineMs": 540000,
+        "publicationReserveMs": 60000,
+        "advisoryLeaseTtlMs": 600000,
+        "relayMaxTransferredBytes": 25165824,
+        "maxAnswerBytes": 4096
+      }
+    },
+    {
+      "id": "R3",
+      "tier": "deep",
+      "resourceProfileSha256": "e8d94d93b7d109b4fe9f1ccb6071171c82b0cff0864786081777a4508ec43a69",
+      "poolSha256AtLiveEndpoint": "b01be95a39373c67d017167d298777c070179c7879d6c6162d6768f63f96b2e5",
+      "profile": {
+        "schemaVersion": "endo.coordinator-resource-policy.v1",
+        "tier": "deep",
+        "contextWindowTokens": 65536,
+        "maxOutputTokensPerRequest": 16384,
+        "reasoningControl": {
+          "mode": "unchanged"
+        },
+        "desiredVisibleAnswerTokens": 1024,
+        "desiredVisibleAnswerTokensAdvisoryOnly": true,
+        "completionRequestsPerTurn": 2,
+        "maxAggregateGeneratedTokensPerTurn": 32768,
+        "modelExecutionTimeoutMs": 720000,
+        "advisoryTurnDeadlineMs": 780000,
+        "publicationReserveMs": 60000,
+        "advisoryLeaseTtlMs": 840000,
+        "relayMaxTransferredBytes": 33554432,
+        "maxAnswerBytes": 4096
+      }
+    },
+    {
+      "id": "R4",
+      "tier": "extended",
+      "resourceProfileSha256": "50bdad0d3622817e0a66658104e073eadac021bc49b641b4cbdca665f7753c7d",
+      "poolSha256AtLiveEndpoint": "4f7516bb81dcb93a9579659034631880ef1684fb2f53d5e5fa556bfe168a6187",
+      "profile": {
+        "schemaVersion": "endo.coordinator-resource-policy.v1",
+        "tier": "extended",
+        "contextWindowTokens": 131072,
+        "maxOutputTokensPerRequest": 24576,
+        "reasoningControl": {
+          "mode": "unchanged"
+        },
+        "desiredVisibleAnswerTokens": 1024,
+        "desiredVisibleAnswerTokensAdvisoryOnly": true,
+        "completionRequestsPerTurn": 2,
+        "maxAggregateGeneratedTokensPerTurn": 49152,
+        "modelExecutionTimeoutMs": 1080000,
+        "advisoryTurnDeadlineMs": 1140000,
+        "publicationReserveMs": 60000,
+        "advisoryLeaseTtlMs": 1200000,
+        "relayMaxTransferredBytes": 50331648,
+        "maxAnswerBytes": 4096
+      }
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "S5-W8-mixed-head",
+      "actionKind": "emit-operator-proposal",
+      "wake": "on-change",
+      "completeness": "complete",
+      "gaps": [],
+      "modelViewBytes": 2717,
+      "taskCount": 2,
+      "assignmentCount": 1,
+      "dependencyCount": 0,
+      "candidateCount": 0,
+      "conflictCount": 0,
+      "reviewCount": 0,
+      "staticPriorityBaseline": {
+        "topAction": {
+          "priority": 5,
+          "kind": "investigate-incomplete-verification",
+          "subject": "endo.task.1e025c05d55e63096ca5d95d95e4778a",
+          "rule": "not-current-or-incomplete"
+        },
+        "totalSignals": 2,
+        "ranked": [
+          {
+            "priority": 5,
+            "kind": "investigate-incomplete-verification",
+            "subject": "endo.task.1e025c05d55e63096ca5d95d95e4778a",
+            "rule": "not-current-or-incomplete"
+          },
+          {
+            "priority": 6,
+            "kind": "review-awaiting-review",
+            "subject": "endo.task.1e025c05d55e63096ca5d95d95e4778a",
+            "rule": "awaiting-review"
+          }
+        ]
+      },
+      "openclawPreflightByCondition": {
+        "R1": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        },
+        "R2": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        },
+        "R3": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        },
+        "R4": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        }
+      }
+    },
+    {
+      "id": "S8-multi-agent",
+      "actionKind": "emit-operator-proposal",
+      "wake": "on-change",
+      "completeness": "complete",
+      "gaps": [],
+      "modelViewBytes": 6217,
+      "taskCount": 2,
+      "assignmentCount": 3,
+      "dependencyCount": 1,
+      "candidateCount": 1,
+      "conflictCount": 2,
+      "reviewCount": 1,
+      "staticPriorityBaseline": {
+        "topAction": {
+          "priority": 1,
+          "kind": "resolve-worktree-conflict",
+          "subject": "conflict:0",
+          "rule": "worktree-conflict"
+        },
+        "totalSignals": 6,
+        "ranked": [
+          {
+            "priority": 1,
+            "kind": "resolve-worktree-conflict",
+            "subject": "conflict:0",
+            "rule": "worktree-conflict"
+          },
+          {
+            "priority": 1,
+            "kind": "resolve-worktree-conflict",
+            "subject": "conflict:1",
+            "rule": "worktree-conflict"
+          },
+          {
+            "priority": 2,
+            "kind": "investigate-liveness-hazard",
+            "subject": "endo.assignment.f6efb9cbd0cbe88d8fe46ceac7ddbb27",
+            "rule": "liveness-hazard"
+          },
+          {
+            "priority": 3,
+            "kind": "resolve-unsatisfied-dependency",
+            "subject": "endo.dep.e820f9a598a2e111715ef3ea91d87ca3",
+            "rule": "unsatisfied-dependency"
+          },
+          {
+            "priority": 4,
+            "kind": "inspect-advisory-review",
+            "subject": "endo.review.9d4d40d24b197bf3cb68ba82d37affb0",
+            "rule": "changes-requested"
+          },
+          {
+            "priority": 6,
+            "kind": "review-awaiting-review",
+            "subject": "endo.task.f9cecb14cd180acc31412f13198ced78",
+            "rule": "awaiting-review"
+          }
+        ]
+      },
+      "openclawPreflightByCondition": {
+        "R1": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        },
+        "R2": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        },
+        "R3": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        },
+        "R4": {
+          "ok": true,
+          "harness": "OpenClaw 2026.11.10"
+        }
+      }
+    }
+  ]
+}

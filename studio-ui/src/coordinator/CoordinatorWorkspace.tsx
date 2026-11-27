@@ -9,6 +9,7 @@ import { FieldLayer, FieldLegend, useReducedMotion } from "../develop/Field.tsx"
 import type { FieldSignal } from "../model/field.ts";
 import type { Atmosphere } from "../model/weather.ts";
 import type { WorkbenchState } from "../model/workbench.ts";
+import { type AttentionTarget, buildDeterministicAttention } from "./attention.ts";
 import {
 	CoordinationBanner,
 	CoordinationProvenancePanel,
@@ -18,7 +19,13 @@ import {
 	ParticipantLanesView,
 } from "./CoordinationViews.tsx";
 import { Freshness, SessionCard, TaskCard, Timestamp } from "./Evidence.tsx";
-import { ATTENTION_LABELS, type CoordinatorCoordinationReply, type CoordinatorProblem } from "./read.ts";
+import { AdvisoryHistoryView, DeterministicAttentionView, ResourcesView, SchedulesView } from "./OperationsViews.tsx";
+import {
+	ATTENTION_LABELS,
+	type CoordinatorCoordinationReply,
+	type CoordinatorOperationsReply,
+	type CoordinatorProblem,
+} from "./read.ts";
 import { useCoordinator } from "./use-coordinator.ts";
 
 const PHASES = ["open", "in-progress", "blocked", "awaiting-review", "completed"] as const;
@@ -56,7 +63,7 @@ interface Filters {
 	phase: EndoCoordinatorPhaseV0 | null;
 }
 
-type ViewMode = "list" | "columns" | "lanes" | "graph";
+type ViewMode = "list" | "columns" | "lanes" | "graph" | "attention" | "resources" | "schedules" | "advisory";
 type Density = "standard" | "compact";
 
 const NO_FILTERS: Filters = { project: null, phase: null };
@@ -164,6 +171,7 @@ function SummaryStrip({ status, filters }: { status: EndoCoordinatorStatusV0; fi
 function Board({
 	status,
 	coordinationReply,
+	operationsReply,
 	filters,
 	onFilters,
 	viewMode,
@@ -176,6 +184,7 @@ function Board({
 }: {
 	status: EndoCoordinatorStatusV0;
 	coordinationReply: CoordinatorCoordinationReply | null;
+	operationsReply: CoordinatorOperationsReply | null;
 	filters: Filters;
 	onFilters(filters: Filters): void;
 	viewMode: ViewMode;
@@ -191,6 +200,26 @@ function Board({
 	const projects = selected === undefined ? status.projects : [selected];
 	const coordination = coordinationReply?.kind === "coordination" ? coordinationReply.coordination : null;
 	const coordinationProblem = coordinationReply?.kind === "failure" ? coordinationReply.problem : null;
+	const rawOperations = operationsReply?.kind === "operations" ? operationsReply.operations : null;
+	const operationsScopeValid = rawOperations === null || status.scope.projects.includes(rawOperations.projectId);
+	const operations = operationsScopeValid ? rawOperations : null;
+	const operationsProblem: CoordinatorProblem | null =
+		operationsReply?.kind === "failure" ? operationsReply.problem : !operationsScopeValid ? "invalid" : null;
+	const deterministicAttention = buildDeterministicAttention({
+		status,
+		coordination,
+		operations,
+		coordinationProblem,
+		operationsProblem,
+	});
+	const handleAttentionNavigate = (target: AttentionTarget) => {
+		if (target.kind === "task") {
+			onViewMode("list");
+			onJumpToTask(target.taskId);
+			return;
+		}
+		onViewMode(target.kind);
+	};
 	const coordProjects =
 		coordination === null
 			? []
@@ -400,6 +429,45 @@ function Board({
 							</button>
 						</fieldset>
 						<fieldset className="coordinator-segmented">
+							<legend className="sr-only">Operational views</legend>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-attention"
+								aria-pressed={viewMode === "attention"}
+								onClick={() => onViewMode("attention")}
+							>
+								Attention ({deterministicAttention.counts.total})
+							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-resources"
+								aria-pressed={viewMode === "resources"}
+								onClick={() => onViewMode("resources")}
+							>
+								Resources
+							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-schedules"
+								aria-pressed={viewMode === "schedules"}
+								onClick={() => onViewMode("schedules")}
+							>
+								Schedules
+							</button>
+							<button
+								type="button"
+								className="coordinator-seg-btn"
+								data-testid="coordinator-view-advisory"
+								aria-pressed={viewMode === "advisory"}
+								onClick={() => onViewMode("advisory")}
+							>
+								Advisory
+							</button>
+						</fieldset>
+						<fieldset className="coordinator-segmented">
 							<legend className="sr-only">Task card density</legend>
 							<button
 								type="button"
@@ -427,7 +495,23 @@ function Board({
 				) : coordinationProblem !== null ? (
 					<CoordinationUnavailableBanner problem={coordinationProblem} />
 				) : null}
-				{viewMode === "lanes" ? (
+				{viewMode === "attention" ? (
+					<DeterministicAttentionView attention={deterministicAttention} onNavigate={handleAttentionNavigate} />
+				) : viewMode === "resources" ? (
+					<ResourcesView operations={operations} problem={operationsProblem} />
+				) : viewMode === "schedules" ? (
+					<SchedulesView operations={operations} problem={operationsProblem} />
+				) : viewMode === "advisory" ? (
+					<AdvisoryHistoryView
+						operations={operations}
+						problem={operationsProblem}
+						taskTitles={taskTitles}
+						onJumpToTask={(taskId) => {
+							onViewMode("list");
+							onJumpToTask(taskId);
+						}}
+					/>
+				) : viewMode === "lanes" ? (
 					coordinationProblem !== null || coordination === null ? (
 						<CoordinationUnavailableBoard view="lanes" problem={coordinationProblem ?? "unavailable"} />
 					) : (
@@ -566,7 +650,17 @@ function Board({
 					<h3>
 						Attention <span className="coordinator-count">{attention.length} items</span>
 					</h3>
-					<p className="coordinator-muted">Advisory triage, not a verification verdict.</p>
+					<p className="coordinator-muted">
+						Advisory triage, not a verification verdict.{" "}
+						<button
+							type="button"
+							className="coordinator-link-btn"
+							data-testid="coordinator-open-attention-view"
+							onClick={() => onViewMode("attention")}
+						>
+							Full rules view ({deterministicAttention.counts.total}) →
+						</button>
+					</p>
 					{attention.length === 0 ? (
 						<p className="coordinator-empty">No attention items were reported for this view.</p>
 					) : (
@@ -732,13 +826,14 @@ export function CoordinatorWorkspace({
 	const [viewMode, setViewMode] = useState<ViewMode>("list");
 	const [density, setDensity] = useState<Density>("standard");
 	const [highlightedTask, setHighlightedTask] = useState<{ id: string; seq: number } | null>(null);
-	const { reply, coordinationReply, busy, refresh } = useCoordinator(grant, workbench.launchId, () => {
-		focusPairing.current = refreshButton.current === document.activeElement;
-		setGrantRefused(true);
-		setFilters(NO_FILTERS);
-		setHighlightedTask(null);
-		onGrantRequired();
-	});
+	const { reply, coordinationReply, operationsReply, busy, lastSuccessAtMs, autoRefresh, toggleAutoRefresh, refresh } =
+		useCoordinator(grant, workbench.launchId, () => {
+			focusPairing.current = refreshButton.current === document.activeElement;
+			setGrantRefused(true);
+			setFilters(NO_FILTERS);
+			setHighlightedTask(null);
+			onGrantRequired();
+		});
 	useLayoutEffect(() => {
 		if (grant !== null) {
 			setGrantRefused(false);
@@ -875,24 +970,41 @@ export function CoordinatorWorkspace({
 							<div className="coordinator-tags">
 								<span className="coordinator-readonly">Read-only</span>
 								{grant !== null ? (
-									<button
-										type="button"
-										className="btn"
-										ref={refreshButton}
-										data-testid="coordinator-refresh"
-										aria-disabled={busy}
-										onClick={refresh}
-									>
-										{busy ? "Reading…" : "Refresh"}
-									</button>
+									<>
+										<button
+											type="button"
+											className="coordinator-link-btn"
+											data-testid="coordinator-auto-refresh"
+											aria-pressed={autoRefresh}
+											onClick={toggleAutoRefresh}
+										>
+											{autoRefresh ? "Auto-refresh: 30s" : "Auto-refresh: Off"}
+										</button>
+										<button
+											type="button"
+											className="btn"
+											ref={refreshButton}
+											data-testid="coordinator-refresh"
+											aria-disabled={busy}
+											onClick={refresh}
+										>
+											{busy ? "Reading…" : "Refresh"}
+										</button>
+									</>
 								) : null}
 							</div>
 							<p className="coordinator-muted">
 								{status === null ? (
-									"No snapshot shown"
+									lastSuccessAtMs === null ? (
+										"No snapshot shown"
+									) : (
+										<>
+											Last successful read · <Timestamp ms={lastSuccessAtMs} />
+										</>
+									)
 								) : (
 									<>
-										Snapshot · <Timestamp ms={status.readAtMs} />
+										Recorded state as of <Timestamp ms={status.readAtMs} />
 									</>
 								)}
 							</p>
@@ -932,6 +1044,7 @@ export function CoordinatorWorkspace({
 						<Board
 							status={status}
 							coordinationReply={coordinationReply}
+							operationsReply={operationsReply}
 							filters={filters}
 							onFilters={setFilters}
 							viewMode={viewMode}

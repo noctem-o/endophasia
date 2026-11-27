@@ -6,8 +6,10 @@ import type { EndoObserveRepresentationSceneV0 } from "../../protocol/observe-re
 import type { EndoOmpSessionV0 } from "../../protocol/omp-observation.ts";
 import {
 	type CoordinatorCoordinationReply,
+	type CoordinatorOperationsReply,
 	type CoordinatorReply,
 	readCoordinatorCoordination,
+	readCoordinatorOperations,
 	readCoordinatorStatus,
 } from "./coordinator/read.ts";
 import { type AttemptsReply, readAttempts } from "./model/attempts-wire.ts";
@@ -994,6 +996,41 @@ export async function fetchCoordinatorCoordination(
 			return record === null
 				? { kind: "failure", problem: "invalid" }
 				: { kind: "coordination", coordination: record };
+		} catch {
+			return { kind: "failure", problem: cancel.aborted ? "unreachable" : timeout.aborted ? "timeout" : "invalid" };
+		}
+	} catch {
+		return { kind: "failure", problem: timeout.aborted ? "timeout" : "unreachable" };
+	}
+}
+
+export async function fetchCoordinatorOperations(
+	grant: string,
+	cancel: AbortSignal,
+): Promise<CoordinatorOperationsReply> {
+	const timeout = AbortSignal.timeout(60_000);
+	try {
+		const response = await fetch(new URL("./api/v0/workbench/workspace/coordinator/operations", document.baseURI), {
+			method: "GET",
+			credentials: "omit",
+			referrerPolicy: "no-referrer",
+			redirect: "error",
+			cache: "no-store",
+			headers: { "X-Endo-Grant": grant },
+			signal: AbortSignal.any([cancel, timeout]),
+		});
+		if (response.status === 401) return { kind: "failure", problem: "grant-required" };
+		if (response.status === 403) return { kind: "failure", problem: "forbidden" };
+		if (response.status === 404) return { kind: "failure", problem: "not-found" };
+		if (response.status === 429) return { kind: "failure", problem: "too-many-requests" };
+		if (response.status !== 200) return { kind: "failure", problem: "unavailable" };
+		if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? ""))
+			return { kind: "failure", problem: "invalid" };
+		try {
+			const parsed = await readBoundedJson(response, MAX_COORDINATOR_RESPONSE_BYTES);
+			if (!parsed.ok) return { kind: "failure", problem: "invalid" };
+			const record = readCoordinatorOperations(parsed.value);
+			return record === null ? { kind: "failure", problem: "invalid" } : { kind: "operations", operations: record };
 		} catch {
 			return { kind: "failure", problem: cancel.aborted ? "unreachable" : timeout.aborted ? "timeout" : "invalid" };
 		}

@@ -1,0 +1,82 @@
+{
+  "verifiedAtUtc": "2026-11-27T09:43:38.971Z",
+  "gitHead": "b1c6b7be989fe7ca21ed1cdfbd5266b310684d7e",
+  "workingTreeClean": true,
+  "existingLiveLedgerExists": false,
+  "runtime": {
+    "nodeVersion": "v26.13.1",
+    "openclawVersion": "OpenClaw 2026.11.10 (6ea542f)",
+    "bwrapVersion": "bubblewrap 0.13.1",
+    "xdgRuntimeDirPresent": true
+  },
+  "passiveEndpointObservation": {
+    "endpoint": "http://127.0.0.1:8091",
+    "healthStatus": 200,
+    "propsRole": "router",
+    "propsBuildInfo": "b12622-19bc41dbb",
+    "modelsCount": 3,
+    "targetModelPresent": true,
+    "targetModelEntry": {
+      "id": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+      "aliases": [],
+      "tags": [],
+      "object": "model",
+      "owned_by": "llamacpp",
+      "created": 1795772618,
+      "status": {
+        "value": "loaded",
+        "ctxSize": 131072,
+        "parallel": 1,
+        "cacheTypeK": "q8_0",
+        "cacheTypeV": "q8_0",
+        "flashAttn": "on",
+        "serverDefaultSampling": {
+          "temperature": 1,
+          "top_k": 0,
+          "top_p": 1,
+          "min_p": 0
+        },
+        "hostPathsRedacted": true
+      },
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ]
+      },
+      "source": "models_dir",
+      "can_remove": false,
+      "context_length": 1048576,
+      "meta": {
+        "vocab_type": 2,
+        "n_vocab": 200058,
+        "n_ctx": 131072,
+        "n_ctx_train": 1048576,
+        "n_embd": 2304,
+        "n_params": 26070385152,
+        "size": 16513582080,
+        "ftype": "Q4_K - Medium"
+      }
+    },
+    "llamaServerProcessCount": 2,
+    "warmStateInference": "warm-worker-resident"
+  },
+  "effectiveSampling": {
+    "temperature": 0,
+    "top_k": 1,
+    "top_p": 1,
+    "min_p": 0,
+    "seed": 101,
+    "max_tokens": 2048
+  },
+  "frozenPrompts": {
+    "legacyInstructionsSha256": "d564ba57fa0036d72037b0e1f6ae92f25ac97b16eec5486ea54f3d976e8c1586",
+    "legacyQuestionSha256": "42da2baa7af15b3cef3dafcdec49144d16d58a4618bc2fe95bef45901f0538ad",
+    "groundedInstructionsSha256": "c50ada62528e0fe0b96c18cefa9bf2bddd7ed0da5db54e575508bd9cb23b6ecc",
+    "groundedInstructionsBytes": 4922,
+    "groundedQuestionSha256": "1cbdd8ea2f6c18f9c979ec431d9ef9781e807dffae599c2759089939b07cc53d",
+    "groundedQuestionBytes": 275
+  }
+}

@@ -1,0 +1,985 @@
+{
+  "recordedAtUtc": "2026-11-27T09:38:09.489Z",
+  "liveInferenceExecuted": false,
+  "poolMemberTimeoutMs": 135000,
+  "advisoryTurnWallClockMs": 180000,
+  "aggregateLiveTurnCeiling": 24,
+  "scenarios": [
+    {
+      "scenarioId": "S1-B1-partial",
+      "wake": "on-change",
+      "actionKind": "generate-advisory-brief",
+      "permitPartialObservation": true,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "partial",
+        "gaps": [
+          "finding-attempt-records-missing",
+          "finding-event-log-unavailable",
+          "status-attempts-missing",
+          "status-events-unavailable"
+        ],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "missing",
+          "events": "unavailable"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 0,
+          "awaiting-review": 0,
+          "completed": 0,
+          "open": 1,
+          "blocked": 0
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "open",
+            "verificationState": "unavailable",
+            "incomplete": true,
+            "results": [],
+            "gaps": [
+              "attempt-records-missing"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "absent",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [],
+          "dependencies": [],
+          "candidates": [],
+          "worktrees": [],
+          "conflicts": [],
+          "reviews": []
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "investigate-incomplete-verification"
+            ]
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "investigate-incomplete-verification"
+            ]
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 991,
+          "priorSeed": null
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1360,
+          "priorSeed": null
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 1677,
+          "priorSeed": null
+        }
+      }
+    },
+    {
+      "scenarioId": "S2-W0-unassigned",
+      "wake": "on-change",
+      "actionKind": "emit-operator-proposal",
+      "permitPartialObservation": false,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "complete",
+        "gaps": [],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "ready",
+          "events": "ready"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 0,
+          "awaiting-review": 0,
+          "completed": 0,
+          "open": 1,
+          "blocked": 0
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "open",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-check-recorded"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "absent",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [],
+          "dependencies": [],
+          "candidates": [],
+          "worktrees": [],
+          "conflicts": [],
+          "reviews": []
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": []
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": []
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 760,
+          "priorSeed": null
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1092,
+          "priorSeed": null
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 1409,
+          "priorSeed": null
+        }
+      }
+    },
+    {
+      "scenarioId": "S3-W3-blocked",
+      "wake": "on-change",
+      "actionKind": "emit-operator-proposal",
+      "permitPartialObservation": false,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "complete",
+        "gaps": [],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "ready",
+          "events": "ready"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 0,
+          "awaiting-review": 0,
+          "completed": 0,
+          "open": 0,
+          "blocked": 1
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "blocked",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-check-recorded"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "absent",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [],
+          "dependencies": [],
+          "candidates": [],
+          "worktrees": [],
+          "conflicts": [],
+          "reviews": []
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "resolve-blocked-task"
+            ]
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "resolve-blocked-task"
+            ]
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 835,
+          "priorSeed": null
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1189,
+          "priorSeed": null
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 1506,
+          "priorSeed": null
+        }
+      }
+    },
+    {
+      "scenarioId": "S4-W6-review-fail",
+      "wake": "on-change",
+      "actionKind": "emit-operator-proposal",
+      "permitPartialObservation": false,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "complete",
+        "gaps": [],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "ready",
+          "events": "ready"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 1,
+          "awaiting-review": 1,
+          "completed": 0,
+          "open": 0,
+          "blocked": 0
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "awaiting-review",
+            "verificationState": "failing",
+            "incomplete": false,
+            "results": [
+              {
+                "outcome": "failed",
+                "relation": "at-head"
+              }
+            ],
+            "gaps": [
+              "review-without-passing-check"
+            ]
+          },
+          {
+            "slot": "T2",
+            "phase": "in-progress",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-attempt",
+              "no-check-recorded"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "absent",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [],
+          "dependencies": [],
+          "candidates": [],
+          "worktrees": [],
+          "conflicts": [],
+          "reviews": []
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-failing-verification",
+              "review-awaiting-review"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": []
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-failing-verification",
+              "review-awaiting-review"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": []
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1408,
+          "priorSeed": null
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1936,
+          "priorSeed": null
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 2253,
+          "priorSeed": null
+        }
+      }
+    },
+    {
+      "scenarioId": "S5-W8-mixed-head",
+      "wake": "on-change",
+      "actionKind": "emit-operator-proposal",
+      "permitPartialObservation": false,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "complete",
+        "gaps": [],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "ready",
+          "events": "ready"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 1,
+          "awaiting-review": 1,
+          "completed": 0,
+          "open": 0,
+          "blocked": 0
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "awaiting-review",
+            "verificationState": "not-current",
+            "incomplete": false,
+            "results": [
+              {
+                "outcome": "failed",
+                "relation": "head-differs"
+              }
+            ],
+            "gaps": [
+              "earlier-failure-not-current",
+              "checks-not-current",
+              "no-check-at-current-head",
+              "review-without-passing-check"
+            ]
+          },
+          {
+            "slot": "T2",
+            "phase": "in-progress",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-attempt",
+              "no-check-recorded"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "ready",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [
+            {
+              "slot": "A1",
+              "task": "T2",
+              "state": "active",
+              "role": "builder",
+              "hazard": "none",
+              "hasSession": false,
+              "sessionLiveness": null,
+              "terminationConfirmed": null,
+              "accessIntent": "read-write-intended",
+              "registration": "project-path",
+              "hasTargetCandidate": false,
+              "findings": []
+            }
+          ],
+          "dependencies": [],
+          "candidates": [],
+          "worktrees": [],
+          "conflicts": [],
+          "reviews": []
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review",
+              "investigate-incomplete-verification"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": []
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review",
+              "investigate-incomplete-verification"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": [
+              "consider-attempt-for-assignment"
+            ]
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1341,
+          "priorSeed": null
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1877,
+          "priorSeed": null
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 2755,
+          "priorSeed": null
+        }
+      }
+    },
+    {
+      "scenarioId": "S6-W9-unplanned-pass",
+      "wake": "on-change",
+      "actionKind": "emit-operator-proposal",
+      "permitPartialObservation": false,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "complete",
+        "gaps": [],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "ready",
+          "events": "ready"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 1,
+          "awaiting-review": 1,
+          "completed": 0,
+          "open": 0,
+          "blocked": 0
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "awaiting-review",
+            "verificationState": "incomplete",
+            "incomplete": true,
+            "results": [
+              {
+                "outcome": "passed",
+                "relation": "at-head"
+              }
+            ],
+            "gaps": [
+              "receipt-history-unverifiable"
+            ]
+          },
+          {
+            "slot": "T2",
+            "phase": "in-progress",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-attempt",
+              "no-check-recorded"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "ready",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [
+            {
+              "slot": "A1",
+              "task": "T2",
+              "state": "active",
+              "role": "builder",
+              "hazard": "none",
+              "hasSession": false,
+              "sessionLiveness": null,
+              "terminationConfirmed": null,
+              "accessIntent": "read-write-intended",
+              "registration": "project-path",
+              "hasTargetCandidate": false,
+              "findings": []
+            }
+          ],
+          "dependencies": [],
+          "candidates": [],
+          "worktrees": [],
+          "conflicts": [],
+          "reviews": []
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review",
+              "investigate-incomplete-verification"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": []
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review",
+              "investigate-incomplete-verification"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": [
+              "consider-attempt-for-assignment"
+            ]
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1181,
+          "priorSeed": null
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1717,
+          "priorSeed": null
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 2595,
+          "priorSeed": null
+        }
+      }
+    },
+    {
+      "scenarioId": "S7-W10-digest",
+      "wake": "digest-window",
+      "actionKind": "generate-advisory-brief",
+      "permitPartialObservation": false,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "complete",
+        "gaps": [],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "ready",
+          "events": "ready"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 1,
+          "awaiting-review": 1,
+          "completed": 0,
+          "open": 0,
+          "blocked": 0
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "awaiting-review",
+            "verificationState": "incomplete",
+            "incomplete": true,
+            "results": [
+              {
+                "outcome": "passed",
+                "relation": "at-head"
+              }
+            ],
+            "gaps": [
+              "receipt-history-unverifiable"
+            ]
+          },
+          {
+            "slot": "T2",
+            "phase": "in-progress",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-attempt",
+              "no-check-recorded"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "ready",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [
+            {
+              "slot": "A1",
+              "task": "T2",
+              "state": "active",
+              "role": "builder",
+              "hazard": "none",
+              "hasSession": false,
+              "sessionLiveness": null,
+              "terminationConfirmed": null,
+              "accessIntent": "read-write-intended",
+              "registration": "project-path",
+              "hasTargetCandidate": false,
+              "findings": []
+            }
+          ],
+          "dependencies": [],
+          "candidates": [],
+          "worktrees": [],
+          "conflicts": [],
+          "reviews": []
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review",
+              "investigate-incomplete-verification"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": []
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review",
+              "investigate-incomplete-verification"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": [
+              "consider-attempt-for-assignment"
+            ]
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1181,
+          "priorSeed": {
+            "seedTurnId": "965846a6f0550232fd8eb0af6780f7414eac127fd77f3e7ad56577668fe2ca4c",
+            "lastConsideredSemanticDigest": "6bfb982e9e2fd34e721c4f80304899d81247b085a04d7b2a815e2e75aa3f0711",
+            "onChangeWouldBe": "skipped-unchanged",
+            "digestAdmitsReason": "digest-window"
+          }
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1717,
+          "priorSeed": {
+            "seedTurnId": "06991eb485456839b712c86d953b800d049192ab738c516d560aa8cb1b8e6edd",
+            "lastConsideredSemanticDigest": "c8abced235880206bf82d8fbacbd880ef9e81cb9641a0a51192a37a61dafc9be",
+            "onChangeWouldBe": "skipped-unchanged",
+            "digestAdmitsReason": "digest-window"
+          }
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 2595,
+          "priorSeed": {
+            "seedTurnId": "ec4f64e89282e30d76f58c8a51f05ef6e1ffeb5a68756511d73ec8403b91aba2",
+            "lastConsideredSemanticDigest": "4df4aed8172490866dd5f267840612863a400d2519e5b59f08b157a31645a9bc",
+            "onChangeWouldBe": "skipped-unchanged",
+            "digestAdmitsReason": "digest-window"
+          }
+        }
+      }
+    },
+    {
+      "scenarioId": "S8-multi-agent",
+      "wake": "on-change",
+      "actionKind": "emit-operator-proposal",
+      "permitPartialObservation": false,
+      "abcSemanticallyEquivalent": true,
+      "observedState": {
+        "completeness": "complete",
+        "gaps": [],
+        "sources": {
+          "tasks": "ready",
+          "attempts": "ready",
+          "events": "ready"
+        },
+        "head": "clean",
+        "counts": {
+          "in-progress": 1,
+          "awaiting-review": 1,
+          "completed": 0,
+          "open": 0,
+          "blocked": 0
+        },
+        "tasks": [
+          {
+            "slot": "T1",
+            "phase": "awaiting-review",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-attempt",
+              "no-check-recorded",
+              "review-without-passing-check"
+            ]
+          },
+          {
+            "slot": "T2",
+            "phase": "in-progress",
+            "verificationState": "no-checks",
+            "incomplete": false,
+            "results": [],
+            "gaps": [
+              "no-check-recorded"
+            ]
+          }
+        ],
+        "coordination": {
+          "sourceState": "ready",
+          "completeness": "complete",
+          "truncated": false,
+          "gaps": [],
+          "assignments": [
+            {
+              "slot": "A1",
+              "task": "T2",
+              "state": "revoked",
+              "role": "builder",
+              "hazard": "liveness-unverified",
+              "hasSession": true,
+              "sessionLiveness": "unknown",
+              "terminationConfirmed": false,
+              "accessIntent": "read-write-intended",
+              "registration": "project-path",
+              "hasTargetCandidate": false,
+              "findings": [
+                "ended-without-process-confirmation",
+                "session-liveness-unknown",
+                "worktree-liveness-unverified"
+              ]
+            },
+            {
+              "slot": "A2",
+              "task": "T2",
+              "state": "active",
+              "role": "builder",
+              "hazard": "none",
+              "hasSession": true,
+              "sessionLiveness": "unknown",
+              "terminationConfirmed": false,
+              "accessIntent": "read-write-intended",
+              "registration": "project-path",
+              "hasTargetCandidate": false,
+              "findings": [
+                "session-liveness-unknown"
+              ]
+            },
+            {
+              "slot": "A3",
+              "task": "T1",
+              "state": "active",
+              "role": "reviewer",
+              "hazard": "none",
+              "hasSession": false,
+              "sessionLiveness": null,
+              "terminationConfirmed": null,
+              "accessIntent": "read-only-intended",
+              "registration": "registered-sibling",
+              "hasTargetCandidate": true,
+              "findings": [
+                "prerequisites-not-satisfied"
+              ]
+            }
+          ],
+          "dependencies": [
+            {
+              "slot": "D1",
+              "dependent": "T1",
+              "prerequisite": "T2",
+              "condition": "candidate-has-passing-receipt",
+              "satisfaction": "unsatisfied",
+              "reasons": [
+                "candidate-identity-unavailable",
+                "no-receipt-for-candidate"
+              ]
+            }
+          ],
+          "candidates": [
+            {
+              "slot": "C1",
+              "task": "T2",
+              "kind": "git-commit",
+              "relation": "current",
+              "identity": "unavailable",
+              "receipts": "none"
+            }
+          ],
+          "worktrees": [
+            {
+              "observation": "unavailable",
+              "clean": null
+            }
+          ],
+          "conflicts": [
+            {
+              "kind": "shared-writable-worktree-acknowledged",
+              "assignmentSlots": [
+                "A1",
+                "A2"
+              ]
+            },
+            {
+              "kind": "worktree-liveness-unverified",
+              "assignmentSlots": [
+                "A1"
+              ]
+            }
+          ],
+          "reviews": [
+            {
+              "candidateTask": "T2",
+              "candidateRelation": "current-candidate",
+              "standing": "advisory-agent-review",
+              "basis": "agent-reported",
+              "verdict": "changes-requested",
+              "findingCounts": {
+                "critical": 0,
+                "high": 1,
+                "medium": 1,
+                "low": 0,
+                "info": 0
+              }
+            }
+          ]
+        },
+        "proposalEligibilityB": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": []
+          }
+        ],
+        "proposalEligibilityC": [
+          {
+            "slot": "T1",
+            "eligibleKinds": [
+              "review-awaiting-review",
+              "consider-attempt-for-assignment"
+            ]
+          },
+          {
+            "slot": "T2",
+            "eligibleKinds": [
+              "investigate-liveness-hazard",
+              "consider-attempt-for-assignment"
+            ]
+          }
+        ]
+      },
+      "conditions": {
+        "A": {
+          "briefingMode": "legacy-v0",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1161,
+          "priorSeed": null
+        },
+        "B": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-v0",
+          "modelViewBytes": 1659,
+          "priorSeed": null
+        },
+        "C": {
+          "briefingMode": "grounded-v1",
+          "visibilityMode": "status-and-coordination-v1",
+          "modelViewBytes": 6255,
+          "priorSeed": null
+        }
+      }
+    }
+  ]
+}

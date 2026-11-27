@@ -3,6 +3,12 @@
 // no subcommand here writes, moves a task, prompts, launches, attaches or approves.
 
 import { endoCoordinatorStaleAfterV0, readEndoCoordinatorStatusV0 } from "../adapters/develop/coordinator-status.ts";
+import {
+	ENDO_COORDINATOR_BRIEFING_MODES_V1,
+	ENDO_COORDINATOR_VISIBILITY_MODES_V1,
+	type EndoCoordinatorBriefingModeV1,
+	type EndoCoordinatorVisibilityModeV1,
+} from "../protocol/coordinator-grounding.ts";
 import { ENDO_COORDINATOR_MODEL_POOL_MEMBER_ID_PATTERN_V0 } from "../protocol/coordinator-model-pool.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
@@ -44,11 +50,17 @@ async function status(argv: readonly string[]): Promise<void> {
 
 async function brief(argv: readonly string[]): Promise<void> {
 	const usage =
-		"usage: endo coordinator brief [<root> | --root dir] --project <id> [--pool <config.json> [--member <memberId>]] [--quiet]";
-	const taken = takeEndoRootV0(argv, 0, new Set(["--project", "--pool", "--member"]));
+		"usage: endo coordinator brief [<root> | --root dir] --project <id> [--pool <config.json> [--member <memberId>]] [--briefing-mode <legacy-v0|grounded-v1>] [--visibility <status-v0|status-and-coordination-v1>] [--quiet]";
+	const taken = takeEndoRootV0(
+		argv,
+		0,
+		new Set(["--project", "--pool", "--member", "--briefing-mode", "--visibility"]),
+	);
 	let projectId: string | undefined;
 	let poolPath: string | undefined;
 	let memberId: string | undefined;
+	let briefingMode: EndoCoordinatorBriefingModeV1 | undefined;
+	let visibilityMode: EndoCoordinatorVisibilityModeV1 | undefined;
 	let quiet = false;
 	const rest = [...taken.rest];
 	while (rest.length > 0) {
@@ -68,9 +80,21 @@ async function brief(argv: readonly string[]): Promise<void> {
 				throw new TypeError(
 					"--member needs one memberId from the pool file (lowercase letters, digits, inner hyphens)",
 				);
+		} else if (flag === "--briefing-mode" && briefingMode === undefined) {
+			const val = rest.shift();
+			if (val === undefined || !(ENDO_COORDINATOR_BRIEFING_MODES_V1 as readonly string[]).includes(val))
+				throw new TypeError(`--briefing-mode must be one of ${ENDO_COORDINATOR_BRIEFING_MODES_V1.join(", ")}`);
+			briefingMode = val as EndoCoordinatorBriefingModeV1;
+		} else if (flag === "--visibility" && visibilityMode === undefined) {
+			const val = rest.shift();
+			if (val === undefined || !(ENDO_COORDINATOR_VISIBILITY_MODES_V1 as readonly string[]).includes(val))
+				throw new TypeError(`--visibility must be one of ${ENDO_COORDINATOR_VISIBILITY_MODES_V1.join(", ")}`);
+			visibilityMode = val as EndoCoordinatorVisibilityModeV1;
 		} else throw new TypeError(usage);
 	}
 	if (projectId === undefined) throw new TypeError(usage);
+	if (visibilityMode === "status-and-coordination-v1" && briefingMode !== "grounded-v1")
+		throw new TypeError("--visibility status-and-coordination-v1 requires --briefing-mode grounded-v1");
 	if (memberId !== undefined && poolPath === undefined)
 		throw new TypeError("--member selects a member of a pool: give the pool with --pool <config.json>");
 	const { readCoordinatorModelPoolFileV0, pooledCoordinatorV0 } = await import(
@@ -82,10 +106,17 @@ async function brief(argv: readonly string[]): Promise<void> {
 			`--member ${memberId} is not in the pool; its members are: ${pool.members.map((m) => m.memberId).join(", ")}`,
 		);
 	announceEndoRootV0(taken);
+	const modeOpts = {
+		...(briefingMode === undefined ? {} : { briefingMode }),
+		...(visibilityMode === undefined ? {} : { visibilityMode }),
+	};
 	const substrate =
 		pool === undefined
-			? (await import("../adapters/coordinator/openclaw.ts")).openClawCoordinatorV0(taken.root)
-			: pooledCoordinatorV0(taken.root, pool, memberId === undefined ? {} : { memberId });
+			? (await import("../adapters/coordinator/openclaw.ts")).openClawCoordinatorV0(taken.root, modeOpts)
+			: pooledCoordinatorV0(taken.root, pool, {
+					...(memberId === undefined ? {} : { memberId }),
+					...modeOpts,
+				});
 	const coordinatorBrief = await briefFromCoordinatorSubstrateV0({ projectId }, substrate);
 	process.stdout.write(canonicalEndoJsonV0({ coordinatorBrief }));
 	if (!quiet) {

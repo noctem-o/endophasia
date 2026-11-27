@@ -1,0 +1,56 @@
+{
+	"mission": "COORDINATOR-GROUNDING-002 / S2-LIVE-002",
+	"stage1OfflineReplayCompleted": true,
+	"stage2PreflightDryRunCompleted": true,
+	"stage2LiveExecuted": true,
+	"stage2LiveTurnsDispatched": 24,
+	"stage2LiveTotalChargedGeneratedTokens": 44757,
+	"stage3BlindedEvaluationCompleted": true,
+	"phaseDVerdict": "blocked",
+	"phaseDActivated": false,
+	"baseline": {
+		"pr192Branch": "research/s2-live-001",
+		"pr192Head": "6d8d164215b4e80ae2ba6ed3cc60b80da548c639",
+		"s2MergedMain": "2f730eb680e87d04d3a41bbb9d398e6b9a97794c",
+		"openclawFixCommit": "ce126a53ab4067ac55695367a06395a5ab5a74df",
+		"frozenImplementationCommit": "e9793b343",
+		"frozenHarnessCommit": "b1c6b7be989fe7ca21ed1cdfbd5266b310684d7e"
+	},
+	"frozenPromptPin": {
+		"briefingSchema": "endo.coordinator-grounded-brief.v1",
+		"modelViewSchema": "endo.coordinator-model-view.v1",
+		"instructionsBytes": 4922,
+		"instructionsSha256": "c50ada62528e0fe0b96c18cefa9bf2bddd7ed0da5db54e575508bd9cb23b6ecc",
+		"proposalQuestionBytes": 275,
+		"proposalQuestionSha256": "1cbdd8ea2f6c18f9c979ec431d9ef9781e807dffae599c2759089939b07cc53d"
+	},
+	"pinnedRuntime": {
+		"endpoint": "http://127.0.0.1:8091",
+		"modelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+		"llamaCppBuild": "b12622-19bc41dbb",
+		"openclawVersion": "2026.11.10",
+		"bubblewrapVersion": "0.13.1",
+		"nodeVersion": "v26.13.1",
+		"warmStateAtStart": "loaded-worker-resident",
+		"sampling": {
+			"temperature": 0,
+			"top_k": 1,
+			"top_p": 1,
+			"min_p": 0,
+			"seed": 101,
+			"max_tokens": 2048
+		}
+	},
+	"stage2ProposedCeilings": {
+		"scenarios": 8,
+		"conditions": ["A-legacy-v0", "B-grounded-v1-status-only", "C-grounded-v1-status-and-coordination"],
+		"maxLiveTurnsAggregate": 24,
+		"maxCompletionRequestsPerTurn": 2,
+		"maxOutputTokensPerRequest": 2048,
+		"maxReservedGeneratedTokensTotal": 98304,
+		"poolMemberTimeoutMs": 135000,
+		"advisoryTurnWallClockMs": 180000,
+		"concurrencyPerStore": 1,
+		"operationalAuthority": "none"
+	}
+}

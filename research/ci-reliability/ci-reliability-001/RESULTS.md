@@ -33,11 +33,35 @@
 
 ### 2.2 Hosted GitHub Actions Validation (`ubuntu-24.04` 4-vCPU Runners)
 
-*Pending initial draft PR hosted CI run — to be populated immediately after pushing `feat/ci-reliability-001` and observing the draft PR workflow execution.*
+Measured directly on Draft PR `#197` (`feat/ci-reliability-001`, head `7a8a989cf`, GitHub Actions Run [`46044910606`](https://github.com/noctem-o/endophasia/actions/runs/46044910606), Attempt 1 — **14 / 14 jobs passed on first attempt**, **0 failures**, **0 reruns**):
 
-## 3. Honest Assessment (Pre-Hosted Validation)
+| Job | Conclusion | Job Wall (s) | Vitest Wall (s) | `maxWorkers` | Files Reported | Tests Passed / Total (Skipped) | Slowest File |
+|---|---|---:|---:|---:|---:|---|---|
+| `Typecheck and lint` | **success** | **34 s** | — | — | — | `typecheck`, `lint`, `test:inventory`, Python + C++17 | — |
+| `Test (fast)` | **success** | **51 s** | 34.6 s | 4 | 148 / 148 | 3,193 / 3,240 (47) | `tests/develop-attention.test.ts` (5.5 s) |
+| `Test (browser)` | **success** | **262 s** | 248.6 s | 2 | 27 / 27 | 311 / 336 (25) | `tests/endo-studio-observe-browser.test.ts` (59.7 s) |
+| `Test (process 1/4)` | **success** | **315 s** | 291.5 s | 3 | 39 / 39 | 1,065 / 1,139 (74) | `tests/intervention.test.ts` (247.7 s) |
+| `Test (process 2/4)` | **success** | **228 s** | 211.8 s | 3 | 39 / 39 | 1,040 / 1,062 (22) | `tests/task-owned-provenance-aa.test.ts` (180.6 s) |
+| `Test (process 3/4)` | **success** | **265 s** | 247.6 s | 3 | 43 / 43 | 896 / 931 (35) | `tests/endo-workbench-interventions-live.test.ts` (164.6 s) |
+| `Test (process 4/4)` | **success** | **222 s** | 211.6 s | 3 | 43 / 43 | 1,275 / 1,329 (54) | `tests/cassette-replay.test.ts` (118.0 s) |
+| `TRUST-004 operator freeze` | **success** | **20 s** | — | — | — | Full-history tag check | — |
+| `Reference exchange` (`fedora:42`) | **success** | **34 s** | — | — | — | `mv --exchange` suites | — |
+| `Packaged CLI floor (22.19.0)` | **success** | **51 s** | — | — | — | `build` + `test:package` (`ENDO_REQUIRE_BROWSER=1`) | — |
+| `Clean-install acceptance` (Pi 1.0.0) | **success** | **52 s** | — | — | — | `build` + `test:acceptance` (`ENDO_REQUIRE_BROWSER=1`) | — |
+| `Packaged CLI` (Node 22) | **success** | **60 s** | — | — | — | `build` + `test:package` (`ENDO_REQUIRE_BROWSER=1`) | — |
+| `TRUST reader` (real `bwrap`) | **success** | **75 s** | — | — | — | Pinned `bwrap` + shallow guest reanalysis | — |
+| `Live process containment` | **success** | **150 s** | — | — | — | Real `systemd --user` scopes + exact `jq` check | — |
 
-- **Coverage equivalence:** **Established** — all 336 baseline test files plus 3 new CI-reliability unit test files (339 total, 8,037 cases) execute across disjoint partitions verified automatically in CI (`npm run test:inventory`), and all 8 specialist jobs remain unchanged.
-- **Reliability improvement:** **Supported for confirmed defects; long-term `>= 99%` fleet rate pending post-merge sample (`n >= 20–30` hosted runs)** — all 5 active `main` failure modes (F3, F4, F5, F6, F7) and the Studio UI race (B5) have root-cause fixes with deterministic regressions and 72/72 passing local repetition/contention trials.
-- **Performance improvement:** **Projected ~35–43% median elapsed reduction on hosted runners; pending hosted CI measurement on draft PR** — local workstation timings do not prove hosted GitHub Actions speedup; hosted validation will confirm actual `test-fast`, `test-browser`, and `test-process 1/4..4/4` durations and shard balance.
-- **Production promotion:** **Conditional** on green initial hosted CI validation on the draft PR and operator review.
+**Hosted Totals & Baseline Comparison (`n = 1` vs `n = 19` Attempt-1 passing / `n = 28` all passing baseline):**
+- **Hosted coverage equivalence:** **339 / 339 unique files**, **0 duplicates**, **8,037 total tests** (`7,780 passed`, `257 opt-in/host-capability skipped`, **0 failed**); all 6 sanitized `ci-diagnostics-*.json` artifacts uploaded cleanly (1.2–3.0 KB each, verified zero `/home/noctem` or secret leakage).
+- **Workflow elapsed time:** **315 s (5m 15s)** vs Attempt-1 baseline median **443.0 s (7m 23s)** (**-28.9%, -128 s**) and all-passing baseline median **420.0 s (7m 00s)** (**-25.0%, -105 s**).
+- **Fast feedback time (`Test (fast)` + `Typecheck and lint`):** **51 s** (down from waiting for full ~7m alphabetical shards).
+- **Process shard imbalance (`max - min`):** **93 s job wall (79.9 s Vitest)** vs baseline **148.0 s median / 270.0 s max**; remaining gap is bounded by the single-file duration of `tests/intervention.test.ts` (247.7 s on `process 1/4`).
+- **Single-attempt runner-minutes:** **30.3 runner-minutes** across all 14 jobs (vs ~26.2 runner-minutes median for a single passing baseline attempt + 9.0% wasted rerun compute).
+
+## 3. Honest Assessment
+
+- **Coverage equivalence:** **Established** — proven both locally and on hosted GitHub Actions (`339 / 339` unique files, `8,037` tests, `0` duplicates, `0` drops, `.github/workflows/ci.yml` cross-checked automatically by `npm run test:inventory`, all 8 specialist jobs preserved and passing).
+- **Reliability improvement:** **Supported for confirmed defects (long-term `>= 99%` fleet rate pending `n >= 20–30` post-merge hosted runs)** — all 5 active `main` failure modes (F3, F4, F5, F6, F7) and the Studio UI race (B5) have root-cause fixes with deterministic regressions, passed **72 / 72** local repetition and 6-core contention runs, and passed **14 / 14** jobs on Attempt 1 of hosted Run `46044910606`. Sample size `n = 1` on hosted CI is explicitly insufficient to statistically prove a 99% fleet rate without post-merge observation.
+- **Performance improvement:** **Supported (initial hosted `n = 1`: -28.9% vs Attempt-1 median / -25.0% vs all-passing median; 51 s fast unit feedback)** — further reduction below ~260 s on hosted CI would require splitting `tests/intervention.test.ts` (247.7 s single file) into two test files as a future follow-up.
+- **Production promotion:** **Ready for operator review** (Draft PR `#197` open targeting `main`; not merged; branch protection untouched).

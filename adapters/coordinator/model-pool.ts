@@ -6,6 +6,10 @@
 // and the result is the selected member's result or unavailable. Nothing here writes to the store or any other durable state.
 
 import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
+import type {
+	EndoCoordinatorBriefingModeV1,
+	EndoCoordinatorVisibilityModeV1,
+} from "../../protocol/coordinator-grounding.ts";
 import {
 	ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0,
 	ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V0,
@@ -206,6 +210,8 @@ export function pooledCoordinatorV0(
 		readonly observe?: EndoCoordinatorMemberObserverV0;
 		readonly run?: typeof runOpenClawCoordinatorV0;
 		readonly signal?: AbortSignal;
+		readonly briefingMode?: EndoCoordinatorBriefingModeV1;
+		readonly visibilityMode?: EndoCoordinatorVisibilityModeV1;
 	} = {},
 ): EndoCoordinatorBriefSubstrateV0 {
 	const poolSha256 = coordinatorModelPoolSha256V0(pool);
@@ -262,6 +268,8 @@ export function pooledCoordinatorV0(
 				target,
 				provider: providerLabel(selection.observation),
 				...(options.signal === undefined ? {} : { signal: options.signal }),
+				...(options.briefingMode === undefined ? {} : { briefingMode: options.briefingMode }),
+				...(options.visibilityMode === undefined ? {} : { visibilityMode: options.visibilityMode }),
 				trial: (t) => {
 					trial = t;
 				},

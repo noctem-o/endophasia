@@ -24,6 +24,12 @@ import {
 } from "../adapters/develop/advisory-operator.ts";
 import { runEndoAdvisoryTickV0 } from "../adapters/develop/advisory-tick.ts";
 import {
+	ENDO_COORDINATOR_BRIEFING_MODES_V1,
+	ENDO_COORDINATOR_VISIBILITY_MODES_V1,
+	type EndoCoordinatorBriefingModeV1,
+	type EndoCoordinatorVisibilityModeV1,
+} from "../protocol/coordinator-grounding.ts";
+import {
 	ENDO_ADVISORY_ACTION_KINDS_V0,
 	ENDO_ADVISORY_OBSERVATION_SOURCES_V0,
 	ENDO_ADVISORY_WAKE_POLICIES_V0,
@@ -56,7 +62,8 @@ const TOGGLE_USAGE =
 const AUTHORIZE_USAGE =
 	"usage: endo advisory authorize [<root> | --root dir] --id <scheduleId> --revision <n> --pool <pool.json> --period <duration> --max-turns <n> --max-output-tokens <n> --max-generated-tokens <n> --turn-timeout <seconds> --expires-in <duration> [--observation <recorded-only|recorded-or-passive-probe>] [--observation-max-age <duration>] [--permit-capacity-unknown] [--permit-model-unconfirmed] [--permit-partial-observation] [--quiet]";
 const REVOKE_USAGE = "usage: endo advisory revoke [<root> | --root dir] --id <scheduleId> [--quiet]";
-const TICK_USAGE = "usage: endo advisory tick [<root> | --root dir] [--quiet]";
+const TICK_USAGE =
+	"usage: endo advisory tick [<root> | --root dir] [--briefing-mode <legacy-v0|grounded-v1>] [--visibility <status-v0|status-and-coordination-v1>] [--quiet]";
 const READ_USAGE =
 	"usage: endo advisory <list|fires|briefings|proposals> [<root> | --root dir] [--limit <n>] [--all] [--quiet]";
 const DECIDE_USAGE =
@@ -243,9 +250,27 @@ function revoke(argv: readonly string[]): void {
 }
 
 async function tick(argv: readonly string[]): Promise<void> {
-	const p = parseFlags(argv, [], ["--quiet"], TICK_USAGE);
+	const p = parseFlags(argv, ["--briefing-mode", "--visibility"], ["--quiet"], TICK_USAGE);
+	const rawBriefing = p.values.get("--briefing-mode");
+	const rawVisibility = p.values.get("--visibility");
+	const briefingMode =
+		rawBriefing === undefined
+			? undefined
+			: parseEnum<EndoCoordinatorBriefingModeV1>(rawBriefing, ENDO_COORDINATOR_BRIEFING_MODES_V1, "--briefing-mode");
+	const visibilityMode =
+		rawVisibility === undefined
+			? undefined
+			: parseEnum<EndoCoordinatorVisibilityModeV1>(
+					rawVisibility,
+					ENDO_COORDINATOR_VISIBILITY_MODES_V1,
+					"--visibility",
+				);
 	announceEndoRootV0({ root: p.root, defaultNote: p.defaultNote, rest: [] });
-	const result = await runEndoAdvisoryTickV0({ root: p.root });
+	const result = await runEndoAdvisoryTickV0({
+		root: p.root,
+		...(briefingMode === undefined ? {} : { briefingMode }),
+		...(visibilityMode === undefined ? {} : { visibilityMode }),
+	});
 	printJson({ tick: result });
 	if (!result.ok) throw new Error(`advisory tick refused: ${result.refusal}: ${result.detail}`);
 	if (!p.bools.has("--quiet")) {

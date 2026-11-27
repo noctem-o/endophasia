@@ -20,6 +20,10 @@ import { randomBytes } from "node:crypto";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { EndoCoordinatorCoordinationV0 } from "../../protocol/coordinator-coordination.ts";
+import type {
+	EndoCoordinatorBriefingModeV1,
+	EndoCoordinatorVisibilityModeV1,
+} from "../../protocol/coordinator-grounding.ts";
 import type { EndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import {
 	ENDO_ADVISORY_BRIEFING_SCHEMA_V0,
@@ -60,6 +64,11 @@ import {
 	briefFromCoordinatorSubstrateV0,
 	type EndoCoordinatorBriefResultV0,
 } from "../../runtime/contracts/coordinator-brief.ts";
+import {
+	ENDO_ADVISORY_GROUNDED_PROPOSAL_QUESTION_SHA256_V1,
+	ENDO_ADVISORY_GROUNDED_PROPOSAL_QUESTION_V1,
+	ENDO_COORDINATOR_GROUNDED_INSTRUCTIONS_SHA256_V1,
+} from "../../runtime/contracts/coordinator-grounding.ts";
 import {
 	coordinatorModelPoolSha256V0,
 	type EndoCoordinatorMemberObserverV0,
@@ -142,6 +151,12 @@ export interface RunEndoAdvisoryTickOptionsV0 {
 	readonly observeMember?: EndoCoordinatorMemberObserverV0;
 	/** The M0 runner (injected by tests; the production default is the sandboxed OpenClaw briefing). */
 	readonly run?: typeof runOpenClawCoordinatorV0;
+	/** Optional non-inference preflight hook run BEFORE Phase E links the dispatch record. */
+	readonly preflight?: () => { readonly ok: boolean; readonly detail?: string };
+	/** Briefing grounding mode (`legacy-v0` default for compatibility; `grounded-v1` for subject-scoped claims). */
+	readonly briefingMode?: EndoCoordinatorBriefingModeV1;
+	/** Model-visible evidence mode (`status-v0` default; `status-and-coordination-v1` includes bounded coordination). */
+	readonly visibilityMode?: EndoCoordinatorVisibilityModeV1;
 	readonly storeOptions?: Omit<EndoDevelopAdvisoryStoreOptionsV0, "now">;
 	readonly hooks?: EndoAdvisoryTickHooksV0;
 }
@@ -914,6 +929,18 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	await hooks.afterAdmission?.({ turnId });
 
 	type Selection = { readonly skipped: readonly EndoAdvisorySkippedMemberV0[]; readonly fallback: boolean };
+	const briefingMode: EndoCoordinatorBriefingModeV1 = options.briefingMode ?? "legacy-v0";
+	const visibilityMode: EndoCoordinatorVisibilityModeV1 = options.visibilityMode ?? "status-v0";
+	const groundedInstructionsSha =
+		briefingMode === "grounded-v1"
+			? ENDO_COORDINATOR_GROUNDED_INSTRUCTIONS_SHA256_V1
+			: ENDO_ADVISORY_INSTRUCTIONS_SHA256_V0;
+	const groundedQuestionSha =
+		briefingMode === "grounded-v1"
+			? ENDO_ADVISORY_GROUNDED_PROPOSAL_QUESTION_SHA256_V1
+			: ENDO_ADVISORY_PROPOSAL_QUESTION_SHA256_V0;
+	const promptQuestion =
+		briefingMode === "grounded-v1" ? ENDO_ADVISORY_GROUNDED_PROPOSAL_QUESTION_V1 : ENDO_ADVISORY_PROPOSAL_QUESTION_V0;
 	const notRequested: EndoAdvisoryProposalLinkV0 = { outcome: "not-requested", proposalId: null, refusal: null };
 	const wantsProposal = admission.actionKind === "emit-operator-proposal";
 	const proposalUnavailable: EndoAdvisoryProposalLinkV0 = wantsProposal
@@ -981,8 +1008,8 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			policySha256: admission.policySha256,
 			budgetSha256: admission.budgetSha256,
 			prompt: {
-				instructionsSha256: ENDO_ADVISORY_INSTRUCTIONS_SHA256_V0,
-				questionSha256: wantsProposal ? ENDO_ADVISORY_PROPOSAL_QUESTION_SHA256_V0 : null,
+				instructionsSha256: groundedInstructionsSha,
+				questionSha256: wantsProposal ? groundedQuestionSha : null,
 				promptSha256: args.trial?.promptSha256 ?? null,
 			},
 			source: {
@@ -1108,6 +1135,26 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	const member = selection.member;
 	const readiness = selection.observation.readiness;
 	const fallbackOccurred = selection.fallbackOccurred;
+	const request = wantsProposal
+		? { projectId: admission.projectId, question: promptQuestion }
+		: { projectId: admission.projectId };
+
+	// ---- D.5: non-inference local runtime preflight (no lock, BEFORE dispatch linearization) --------------------------------------
+	// Ensures local runtime/config mismatches (e.g. unverified OpenClaw version, unsafe XDG_RUNTIME_DIR, missing bwrap) refuse as
+	// `not-dispatched` with 0 token charge rather than burning a full reservation after Phase E. Phase F still re-checks for TOCTOU.
+	if (options.preflight !== undefined) {
+		const pf = options.preflight();
+		if (!pf.ok) return notDispatched("runtime-preflight-failed", selectionSummary);
+	} else if (options.run === undefined) {
+		const { preflightOpenClawCoordinatorV0 } = await import("../coordinator/openclaw.ts");
+		const pf = preflightOpenClawCoordinatorV0(options.root, request, {
+			target: coordinatorTargetFromMemberV0(member),
+			pinnedObservation: admissionObserved.read!,
+			briefingMode,
+			visibilityMode,
+		});
+		if (!pf.ok) return notDispatched("runtime-preflight-failed", selectionSummary);
+	}
 
 	// ---- E: dispatch linearization point (lock) -----------------------------------------------------------------------------------
 	await hooks.beforeDispatchRecord?.({ turnId });
@@ -1184,9 +1231,6 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	});
 	const run = options.run ?? (await import("../coordinator/openclaw.ts")).runOpenClawCoordinatorV0;
 	let trial: OpenClawCoordinatorTrialV0 | null = null;
-	const request = wantsProposal
-		? { projectId: admission.projectId, question: ENDO_ADVISORY_PROPOSAL_QUESTION_V0 }
-		: { projectId: admission.projectId };
 	let result: EndoCoordinatorBriefResultV0 | null;
 	try {
 		result = await briefFromCoordinatorSubstrateV0(request, {
@@ -1196,6 +1240,9 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 					target,
 					provider: "llama.cpp (advisory pool member)",
 					signal: AbortSignal.timeout(Math.max(1, dispatch.inferenceDeadlineMs - now())),
+					...(briefingMode === "legacy-v0" ? {} : { briefingMode }),
+					...(visibilityMode === "status-v0" ? {} : { visibilityMode }),
+					...(briefingMode === "grounded-v1" && wantsProposal ? { includeProposalLine: true } : {}),
 					trial: (t) => {
 						trial = t;
 					},

@@ -531,6 +531,113 @@ export async function runOpenClawCoordinatorV0(
 	}
 }
 
-export function openClawCoordinatorV0(root: string): EndoCoordinatorBriefSubstrateV0 {
-	return { brief: (request) => runOpenClawCoordinatorV0(root, request) };
+export type OpenClawCoordinatorPreflightResultV0 =
+	| { readonly ok: true; readonly harness: string }
+	| { readonly ok: false; readonly reason: EndoCoordinatorBriefRefusalV0; readonly detail: string };
+
+/**
+ * Deterministic local non-inference preflight for the sandboxed OpenClaw runner (COORDINATOR-GROUNDING-002 §6).
+ * Performs zero network I/O, spawns zero subprocesses, and contacts no model endpoint.
+ * Intended to run BEFORE S2 Phase E links `turns/<id>.dispatched.json` so a local runtime mismatch
+ * (unsupported OpenClaw version, unsafe XDG_RUNTIME_DIR, missing bwrap, oversized prompt/status)
+ * refuses as `not-dispatched` with 0 token charge. `runOpenClawCoordinatorV0` still re-checks every
+ * condition at execution time to remain safe against TOCTOU changes.
+ */
+export function preflightOpenClawCoordinatorV0(
+	root: string,
+	request: EndoCoordinatorBriefRequestV0,
+	options: {
+		readonly openclaw?: string;
+		readonly target?: EndoCoordinatorModelTargetV0;
+		readonly origin?: string;
+		readonly pinnedObservation?: {
+			readonly status: EndoCoordinatorStatusV0;
+			readonly coordination: EndoCoordinatorCoordinationV0;
+		};
+		readonly briefingMode?: EndoCoordinatorBriefingModeV1;
+		readonly visibilityMode?: EndoCoordinatorVisibilityModeV1;
+	} = {},
+): OpenClawCoordinatorPreflightResultV0 {
+	const { projectId } = request;
+	if (!ENDO_PROJECT_ID_PATTERN_V0.test(projectId))
+		return { ok: false, reason: "malformed-selector", detail: "malformed project selector" };
+	const target: EndoCoordinatorModelTargetV0 = Object.freeze({
+		...(options.target ?? ENDO_COORDINATOR_M0_TARGET_V0),
+		...(options.origin === undefined ? {} : { origin: options.origin }),
+	});
+	if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(target.origin))
+		return { ok: false, reason: "model-unavailable", detail: "target origin is not IPv4 loopback" };
+	const scratch = process.env.XDG_RUNTIME_DIR;
+	if (!scratch?.startsWith("/"))
+		return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR is unset or relative" };
+	try {
+		const stat = lstatSync(scratch);
+		if (!stat.isDirectory() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
+			return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR is not a private 0700 directory" };
+	} catch {
+		return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR cannot be stat'd" };
+	}
+	if (!existsSync("/usr/bin/bwrap"))
+		return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap is missing" };
+	let installedVersion: string;
+	try {
+		const home = userInfo().homedir;
+		const installed = options.openclaw ?? [join(home, ".local/bin/openclaw"), "/usr/bin/openclaw"].find(existsSync);
+		if (installed === undefined)
+			return { ok: false, reason: "runtime-unavailable", detail: "OpenClaw executable not found" };
+		const entry = realpathSync(installed);
+		const packageDir = dirname(entry);
+		const parsedVersion = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version;
+		if (
+			!entry.endsWith("/openclaw.mjs") ||
+			typeof parsedVersion !== "string" ||
+			!(ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0 as readonly string[]).includes(parsedVersion)
+		) {
+			return {
+				ok: false,
+				reason: "runtime-unavailable",
+				detail: `unsupported OpenClaw version ${String(parsedVersion)}`,
+			};
+		}
+		installedVersion = parsedVersion;
+	} catch {
+		return { ok: false, reason: "runtime-unavailable", detail: "OpenClaw runtime could not be inspected" };
+	}
+	const briefingMode: EndoCoordinatorBriefingModeV1 = options.briefingMode ?? "legacy-v0";
+	const visibilityMode: EndoCoordinatorVisibilityModeV1 = options.visibilityMode ?? "status-v0";
+	const instructions =
+		briefingMode === "grounded-v1" ? ENDO_COORDINATOR_GROUNDED_INSTRUCTIONS_V1 : ENDO_COORDINATOR_INSTRUCTIONS_V0;
+	const prompt = `${instructions}\n\nProject in scope: ${projectId}.${request.question === undefined ? "" : `\nOperator asks: ${request.question}`}`;
+	if (Buffer.byteLength(prompt) > target.maxPromptBytes)
+		return { ok: false, reason: "request-too-large", detail: "prompt exceeds target.maxPromptBytes" };
+	if (options.pinnedObservation !== undefined) {
+		const status = pinnedCoordinatorBriefStatusV0(root, projectId, options.pinnedObservation);
+		if (!status.ok) return { ok: false, reason: "status-unavailable", detail: status.reason };
+		const modelViewV1 =
+			briefingMode === "grounded-v1" || visibilityMode === "status-and-coordination-v1"
+				? buildEndoCoordinatorModelViewV1({
+						projectId,
+						statusView: status.view,
+						coordination: status.coordination,
+						visibilityMode,
+					})
+				: null;
+		const toolText = JSON.stringify({
+			availability: "available",
+			status: modelViewV1 ?? status.view,
+		});
+		if (Buffer.byteLength(toolText) > 256 * 1024)
+			return { ok: false, reason: "status-output-too-large", detail: "model view exceeds 256 KiB bound" };
+	}
+	return { ok: true, harness: `OpenClaw ${installedVersion}` };
+}
+
+export function openClawCoordinatorV0(
+	root: string,
+	options: {
+		readonly briefingMode?: EndoCoordinatorBriefingModeV1;
+		readonly visibilityMode?: EndoCoordinatorVisibilityModeV1;
+	} = {},
+): EndoCoordinatorBriefSubstrateV0 {
+	return { brief: (request) => runOpenClawCoordinatorV0(root, request, options) };
 }

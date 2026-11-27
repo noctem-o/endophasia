@@ -48,6 +48,7 @@ import {
 } from "./status.ts";
 import type { coordinatorWireV0 } from "./wire.ts";
 
+export const ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0 = Object.freeze(["2026.11.7", "2026.11.10"] as const);
 export const ENDO_COORDINATOR_HARNESS_V0 = "OpenClaw 2026.11.7";
 const HARNESS = ENDO_COORDINATOR_HARNESS_V0;
 const PROVIDER = "endo-local";
@@ -343,11 +344,14 @@ export async function runOpenClawCoordinatorV0(
 		if (installed === undefined) return unavailable("runtime-unavailable");
 		const entry = realpathSync(installed);
 		const packageDir = dirname(entry);
+		const installedVersion = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version;
 		if (
 			!entry.endsWith("/openclaw.mjs") ||
-			JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version !== "2026.11.7"
+			typeof installedVersion !== "string" ||
+			!(ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0 as readonly string[]).includes(installedVersion)
 		)
 			return unavailable("runtime-unavailable");
+		runtime.harness = `OpenClaw ${installedVersion}`;
 		directory = mkdtempSync(join(scratch, "brief-"));
 		const agent = join(directory, "agent");
 		mkdirSync(agent, { mode: 0o700 });

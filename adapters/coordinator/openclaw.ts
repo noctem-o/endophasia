@@ -18,6 +18,10 @@ import {
 	type EndoCoordinatorCoordinationV0,
 	validateEndoCoordinatorCoordinationV0,
 } from "../../protocol/coordinator-coordination.ts";
+import type {
+	EndoCoordinatorBriefingModeV1,
+	EndoCoordinatorVisibilityModeV1,
+} from "../../protocol/coordinator-grounding.ts";
 import { type EndoCoordinatorStatusV0, validateEndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -30,6 +34,12 @@ import {
 	type EndoCoordinatorBriefResultV0,
 	type EndoCoordinatorBriefSubstrateV0,
 } from "../../runtime/contracts/coordinator-brief.ts";
+import {
+	buildEndoCoordinatorModelViewV1,
+	ENDO_COORDINATOR_GROUNDED_INSTRUCTIONS_V1,
+	endoCoordinatorModelViewSha256V1,
+	validateAndRenderGroundedBriefV1,
+} from "../../runtime/contracts/coordinator-grounding.ts";
 import { endoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { EndoCaptureLogV0 } from "../openai-proxy/capture-log.ts";
 import { bridgedCommandV0, type EndoModelRelayV0, modelRelayMountsV0 } from "../sandbox/model-relay.ts";
@@ -283,6 +293,12 @@ export async function runOpenClawCoordinatorV0(
 			readonly status: EndoCoordinatorStatusV0;
 			readonly coordination: EndoCoordinatorCoordinationV0;
 		};
+		/** `legacy-v0` (default for M0/M1 compatibility) or `grounded-v1` (subject-scoped typed claims). */
+		briefingMode?: EndoCoordinatorBriefingModeV1;
+		/** `status-v0` (default) or `status-and-coordination-v1` (adds bounded one-project coordination view). */
+		visibilityMode?: EndoCoordinatorVisibilityModeV1;
+		/** When `grounded-v1` is used for `emit-operator-proposal`, deterministically render the trailing `PROPOSAL:` line. */
+		includeProposalLine?: boolean;
 	} = {},
 ): Promise<EndoCoordinatorBriefResultV0> {
 	const { projectId } = request;
@@ -330,9 +346,33 @@ export async function runOpenClawCoordinatorV0(
 			return unavailable(status.reason);
 		return unavailable("status-unavailable");
 	}
-	const toolOutcome = { availability: "available", status: status.view };
+	const briefingMode: EndoCoordinatorBriefingModeV1 = options.briefingMode ?? "legacy-v0";
+	const visibilityMode: EndoCoordinatorVisibilityModeV1 = options.visibilityMode ?? "status-v0";
+	const modelViewV1 =
+		briefingMode === "grounded-v1" || visibilityMode === "status-and-coordination-v1"
+			? buildEndoCoordinatorModelViewV1({
+					projectId,
+					statusView: status.view,
+					coordination: status.coordination,
+					visibilityMode,
+				})
+			: null;
+	const evidence =
+		modelViewV1 === null
+			? status.evidence
+			: {
+					readAtMs: status.evidence.readAtMs,
+					projectionSha256: status.evidence.projectionSha256,
+					modelViewSha256: endoCoordinatorModelViewSha256V1(modelViewV1),
+				};
+	const toolOutcome =
+		modelViewV1 === null
+			? { availability: "available", status: status.view }
+			: { availability: "available", status: modelViewV1 };
 	const toolText = JSON.stringify(toolOutcome);
-	const prompt = `${ENDO_COORDINATOR_INSTRUCTIONS_V0}\n\nProject in scope: ${projectId}.${request.question === undefined ? "" : `\nOperator asks: ${request.question}`}`;
+	const instructions =
+		briefingMode === "grounded-v1" ? ENDO_COORDINATOR_GROUNDED_INSTRUCTIONS_V1 : ENDO_COORDINATOR_INSTRUCTIONS_V0;
+	const prompt = `${instructions}\n\nProject in scope: ${projectId}.${request.question === undefined ? "" : `\nOperator asks: ${request.question}`}`;
 	if (Buffer.byteLength(prompt) > target.maxPromptBytes) return unavailable("request-too-large");
 	if (Buffer.byteLength(toolText) > 256 * 1024) return unavailable("status-output-too-large");
 	let directory: string | undefined;
@@ -434,7 +474,7 @@ export async function runOpenClawCoordinatorV0(
 			wire: wire.trace,
 			dispatched,
 			toolOutcome: wire.trace.statusDelivered ? toolOutcome : null,
-			evidence: status.evidence,
+			evidence,
 			latencyMs: Math.round(performance.now() - started),
 			inferenceElapsedMs,
 			admittedExchanges: relay.admitted(),
@@ -453,13 +493,30 @@ export async function runOpenClawCoordinatorV0(
 		if (!dispatched || !wire.trace.statusDelivered) return unavailable("ungrounded");
 		if (final?.finish === "length") return unavailable("generation-limit");
 		if (final?.finish !== "stop" || !final.text.trim()) return unavailable("ungrounded");
+		if (briefingMode === "grounded-v1") {
+			const validated = validateAndRenderGroundedBriefV1({
+				rawText: final.text,
+				modelView: modelViewV1!,
+				modelViewSha256: evidence.modelViewSha256,
+				includeProposalLine: options.includeProposalLine === true,
+			});
+			if (!validated.ok) return unavailable(validated.reason);
+			return {
+				...base,
+				availability: "available",
+				answer: validated.renderedAnswer,
+				evidence,
+				toolSurface: [ENDO_COORDINATOR_TOOL_V0],
+				grounding: validated.summary,
+			};
+		}
 		const unsupported = coordinatorAnswerRefusalV0(final.text, status.view);
 		if (unsupported !== null) return unavailable(unsupported);
 		return {
 			...base,
 			availability: "available",
 			answer: final.text.trim(),
-			evidence: status.evidence,
+			evidence,
 			toolSurface: [ENDO_COORDINATOR_TOOL_V0],
 		};
 	} catch {

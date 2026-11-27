@@ -1,3 +1,4 @@
+import type { EndoCoordinatorGroundedBriefSummaryV1 } from "../../protocol/coordinator-grounding.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../../protocol/develop-tasks.ts";
 import type { EndoCoordinatorModelPoolProvenanceV0 } from "./coordinator-model-pool.ts";
 
@@ -48,7 +49,11 @@ export type EndoCoordinatorBriefRefusalV0 =
 	| "member-unavailable"
 	| "member-not-permitted"
 	| "model-identity-mismatch"
-	| "inference-timeout";
+	| "inference-timeout"
+	| "grounding-malformed"
+	| "grounding-claim-unsupported"
+	| "grounding-subject-unknown"
+	| "grounding-evidence-ref-invalid";
 
 export interface EndoCoordinatorBriefEvidenceV0 {
 	readonly readAtMs: number;
@@ -77,6 +82,8 @@ export type EndoCoordinatorBriefResultV0 = BriefBase &
 				readonly answer: string;
 				readonly evidence: EndoCoordinatorBriefEvidenceV0;
 				readonly toolSurface: readonly [typeof ENDO_COORDINATOR_TOOL_V0];
+				/** Present only when the briefing used `grounded-v1` subject-scoped validation. */
+				readonly grounding?: EndoCoordinatorGroundedBriefSummaryV1;
 		  }
 		| { readonly availability: "unavailable"; readonly reason: EndoCoordinatorBriefRefusalV0 }
 	);

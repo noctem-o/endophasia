@@ -1728,3 +1728,162 @@ describe("COORDINATOR-AUTOMATION-S2 Codex review regressions (C1-C3)", () => {
 		expect(observation.completeness).toBe("partial");
 	});
 });
+
+describe("COORDINATOR-AUTOMATION-S2 Codex review regressions (C4-C6)", () => {
+	const gitIn =
+		(repo: string) =>
+		(...args: string[]) => {
+			const r = spawnSync(
+				"/usr/bin/git",
+				["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
+				{
+					cwd: repo,
+					encoding: "utf8",
+					env: { PATH: process.env.PATH ?? "/usr/bin", HOME: repo, GIT_CONFIG_NOSYSTEM: "1" },
+				},
+			);
+			if (r.status !== 0) throw new Error("git " + args.join(" ") + ": " + r.stderr);
+			return r.stdout.trim();
+		};
+
+	it("C4: a full observation history never drops the project a tick just observed and published as current", async () => {
+		const root = tmp("endo-s2-c4-");
+		const clock = new Clock();
+		const { projectId, taskId } = project(root);
+		setStatus(root, projectId, taskId, "in-progress", "blocked");
+		configure(root, clock, { projectId, action: "emit-operator-proposal" });
+		const fakes = Array.from({ length: 64 }, (_, i) => "endo.project." + i.toString(16).padStart(32, "0"));
+		expect(fakes.every((f) => f < projectId)).toBe(true);
+		const store = new DevelopAdvisoryStoreV0(root, { now: clock.now });
+		expect(
+			store.withAdvisoryLockSync((s) =>
+				s.writeObservations({
+					schemaVersion: "endo.develop-advisory-observations.v0",
+					updatedAtMs: BASE,
+					projects: fakes.map((p) => ({
+						projectId: p,
+						semanticDigest: "f".repeat(64),
+						completeness: "complete",
+						observedAtMs: BASE - HOUR,
+						leaseEpoch: 1,
+					})),
+				} as never),
+			),
+		).toMatchObject({ ok: true, result: "committed" });
+		clock.at(windowAt(0));
+		expect(
+			statusOf(
+				await tick(
+					root,
+					clock,
+					fakeRun({ answer: () => "PROPOSAL: resolve-blocked-task " + taskId }),
+					observer("ready", clock),
+				),
+			),
+		).toEqual(["briefing-published"]);
+		expect(listTurns(root)[0]!.briefing!.source.currency).toBe("current-at-publication");
+		const observations = store.readObservations();
+		if (!observations.ok || !observations.exists) throw new Error("observations unreadable");
+		expect(observations.value.projects).toHaveLength(64);
+		expect(observations.value.projects.some((p) => p.projectId === projectId)).toBe(true);
+		const view = readEndoAdvisoryProjectionV0(root, { now: clock.now });
+		expect(view.proposals).toHaveLength(1);
+		expect(view.proposals[0]!.currency).toBe("current");
+	});
+
+	it("C5: renewing a 16-member grant past the byte bound compacts revoked history and never leaves the schedule unauthorized", () => {
+		const root = tmp("endo-s2-c5-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		const big = pool(Array.from({ length: 16 }, (_, i) => "member-" + i));
+		const { revision } = configure(root, clock, { projectId, pool: big });
+		const store = new DevelopAdvisoryStoreV0(root);
+		for (let i = 0; i < 140; i++) {
+			clock.at(clock.t + MIN);
+			const renewed = authorizeEndoAdvisoryScheduleV0(
+				root,
+				{
+					scheduleId: "adv-1",
+					scheduleRevision: revision,
+					pool: big,
+					policy: POLICY,
+					budget: BUDGET,
+					lifetimeMs: 7 * 24 * HOUR,
+				},
+				clock.now,
+			);
+			expect(renewed, "renewal " + (i + 1)).toMatchObject({ ok: true });
+			const standing = readEndoAdvisoryProjectionV0(root, { now: clock.now }).schedules[0]!.authorization;
+			expect(standing.ok, "standing after renewal " + (i + 1)).toBe(true);
+		}
+		const file = readFileSync(join(store.dir, "authorizations.json"));
+		expect(file.length).toBeLessThanOrEqual(512 * 1024);
+		const read = store.readAuthorizations();
+		if (!read.ok || !read.exists) throw new Error("authorizations unreadable");
+		expect(read.value.authorizations.filter((a) => a.revokedAtMs === null)).toHaveLength(1);
+		// The state an earlier build could leave behind (grant revoked, no successor) is recovered by authorizing again.
+		ok(revokeEndoAdvisoryAuthorizationV0(root, "adv-1", clock.now));
+		expect(readEndoAdvisoryProjectionV0(root, { now: clock.now }).schedules[0]!.authorization.ok).toBe(false);
+		clock.at(clock.t + MIN);
+		ok(
+			authorizeEndoAdvisoryScheduleV0(
+				root,
+				{
+					scheduleId: "adv-1",
+					scheduleRevision: revision,
+					pool: big,
+					policy: POLICY,
+					budget: BUDGET,
+					lifetimeMs: 7 * 24 * HOUR,
+				},
+				clock.now,
+			),
+		);
+		expect(readEndoAdvisoryProjectionV0(root, { now: clock.now }).schedules[0]!.authorization.ok).toBe(true);
+	}, 60_000);
+
+	it("C6: HEAD moving A -> B -> A makes the proposal grounded on A pending again and B's superseded", async () => {
+		const root = tmp("endo-s2-c6-");
+		const clock = new Clock();
+		const { projectId, taskId, repo } = project(root);
+		const git = gitIn(repo);
+		git("init", "-q");
+		writeFileSync(join(repo, "README"), "a\n");
+		git("add", "README");
+		git("commit", "-q", "-m", "A");
+		const a = git("rev-parse", "HEAD");
+		writeFileSync(join(repo, "README"), "b\n");
+		git("commit", "-q", "-am", "B");
+		const b = git("rev-parse", "HEAD");
+		git("reset", "-q", "--hard", a);
+		setStatus(root, projectId, taskId, "in-progress", "blocked");
+		configure(root, clock, { projectId, action: "emit-operator-proposal" });
+		const answer = { answer: () => "PROPOSAL: resolve-blocked-task " + taskId };
+		clock.at(windowAt(0));
+		expect(statusOf(await tick(root, clock, fakeRun(answer), observer("ready", clock)))).toEqual([
+			"briefing-published",
+		]);
+		git("reset", "-q", "--hard", b);
+		clock.at(windowAt(1));
+		expect(statusOf(await tick(root, clock, fakeRun(answer), observer("ready", clock)))).toEqual([
+			"briefing-published",
+		]);
+		git("reset", "-q", "--hard", a);
+		clock.at(windowAt(2));
+		expect(statusOf(await tick(root, clock, fakeRun(answer), observer("ready", clock)))).toEqual([
+			"briefing-published",
+		]);
+		const outcomes = [...listTurns(root)]
+			.sort((x, y) => x.admission.admittedAtMs - y.admission.admittedAtMs)
+			.map((t) => t.briefing!.proposal.outcome);
+		expect(outcomes).toEqual(["created", "created", "deduplicated"]);
+		const view = readEndoAdvisoryProjectionV0(root, { now: clock.now });
+		expect(view.proposals).toHaveLength(2);
+		const pending = view.proposals.filter((v) => v.queueState === "pending");
+		expect(pending).toHaveLength(1);
+		expect(pending[0]!.currency).toBe("current");
+		const superseded = view.proposals.find((v) => v.queueState === "superseded")!;
+		expect(superseded.currency).toBe("stale");
+		expect(pending[0]!.proposal.generatedAtMs).toBeLessThan(superseded.proposal.generatedAtMs);
+	});
+});

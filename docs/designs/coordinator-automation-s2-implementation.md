@@ -204,6 +204,22 @@ A second review by Codex at `15d8c69a2` (the operator marked the draft ready for
 
 Residual for C1: admission reads the whole ledger, so its cost grows linearly with ledger size. At the C1 workload the S2 test file took 2.5 s. At the theoretical bound (about 1.5 M records) it would be slow but correct. The bound also assumes operators do not churn schedule ids within a week, because each new id gets a fresh per-schedule budget. A ledger past the bound refuses rather than undercounting.
 
+A third review by Codex, at `e7c804a7c`, raised three more P2 findings. All three are fixed. Each regression test asserts the observable effect and fails when run against `e7c804a7c`:
+- C4: the project the tick just observed is missing from the observation history.
+- C5: renewal 88 fails with `storage-failed`.
+- C6: the pending proposal reads `stale`.
+
+| Finding | Fix | Regression test |
+| :--- | :--- | :--- |
+| C4 trimming the 64-project observation history kept a fixed lexicographic prefix, so it could discard the project just observed, and a proposal published as current then read `unknown` | The just-observed project is always kept. The bound evicts other projects in this order: first those no schedule names, then the least recently observed. After writing, the tick reads the record back and confirms it holds this observation for this lease epoch. Otherwise admission records `failed`, or publication is withheld as `publication-observation-not-committed`. It is never a publication with unknown currency | C4: 64 other projects that all sort before ours are already observed. The tick publishes `current-at-publication`, the history still holds 64 entries including ours, and the proposal reads `current` |
+| C5 authorization history was bounded by count, not bytes. With 16-member pools a renewal failed `storage-failed` at grant 88, after the previous grant had already been revoked | Supersession and the replacement are one write, so a refused write leaves the old grant untouched. Oldest revoked grants are evicted until both the count and the serialized byte bound hold. If the live grants alone cannot fit, the operation refuses (`too-many`) and nothing is written. Recovery for a schedule an earlier build left unauthorized is `endo advisory authorize` again, which compacts the history | C5: 140 renewals of a 16-member grant all succeed, each leaving the schedule authorized, with the file at or under 512 KiB and one live grant. Revoke followed by authorize recovers |
+| C6 when HEAD returned A -> B -> A, the original proposal for A was reused but stayed `superseded`, because pending was decided by `generatedAtMs` alone, and B's stale proposal stayed pending | Supersession is ordered by when a proposal was last grounded on its own evidence: its creation, or any later published briefing that re-derived exactly that proposal (outcome `created` or `deduplicated`, read from the turn ledger). The projection and the tick's pending-queue cap use the same rule | C6: a real Git project goes A -> B -> A with the blocked task unchanged. Outcomes are created, created, deduplicated. The proposal for A is the only pending one and reads `current`, and B's reads `superseded` and `stale` |
+
+Residual for C6: re-derivation is read from retained briefings. If retention has pruned every briefing that re-derived a proposal (older than 7 days and outside the newest 512 turns), ordering falls back to creation time.
+
+Follow-up policy for later reviews: further findings in the capacity, retention or visibility classes are recorded here as known follow-ups with their reproductions, not fixed under S2.
+
+
 ## 10. CLI
 
 ```

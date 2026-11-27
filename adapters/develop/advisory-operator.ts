@@ -31,6 +31,7 @@ import {
 } from "../../protocol/develop-advisory.ts";
 import type { EndoScheduleMissedRunPolicyV0, EndoScheduleTriggerV0 } from "../../protocol/develop-automation.ts";
 import { EndoInvalidRecordV0 } from "../../protocol/versioned.ts";
+import { canonicalEndoJsonV0 } from "../../runtime/contracts/canonical-json.ts";
 import { coordinatorModelPoolSha256V0 } from "../../runtime/contracts/coordinator-model-pool.ts";
 import {
 	type EndoAdvisoryAuthorizationStandingV0,
@@ -39,7 +40,9 @@ import {
 	endoAdvisoryAuthorizationIdV0,
 	endoAdvisoryAuthorizationStandingV0,
 	endoAdvisoryBudgetStandingV0,
+	endoAdvisoryNewestProposalsV0,
 	endoAdvisoryProposalCurrencyV0,
+	endoAdvisoryProposalGroundedAtV0,
 	endoAdvisoryTurnChargeV0,
 } from "../../runtime/contracts/develop-advisory.ts";
 import { DevelopAdvisoryStoreV0, type EndoAdvisoryLockedSessionV0 } from "../../storage/develop-advisory.ts";
@@ -307,16 +310,28 @@ export function authorizeEndoAdvisoryScheduleV0(
 			revokedAtMs: null,
 			revocation: null,
 		});
-		supersedeLiveGrants(s, schedule.scheduleId, nowMs, "superseded");
+		// One write: the previous grant is superseded in the same file that adds its replacement, so a refused write leaves the old
+		// grant exactly as it was, never a revoked grant with no successor.
 		const file = readAuthorizationsOrEmpty(s);
-		const authorizations = [...file.authorizations, authorization];
-		// Bounded history: drop the oldest revoked grants first; a live grant is never dropped.
-		while (authorizations.length > L.maxAuthorizations) {
+		const authorizations = [
+			...file.authorizations.map((a) =>
+				a.scheduleId === schedule.scheduleId && a.revokedAtMs === null
+					? { ...a, revokedAtMs: Math.max(nowMs, a.grantedAtMs), revocation: "superseded" as const }
+					: a,
+			),
+			authorization,
+		];
+		const next = () => ({ ...file, revision: file.revision + 1, updatedAtMs: nowMs, authorizations });
+		const bytes = () => Buffer.byteLength(`${canonicalEndoJsonV0(next() as never)}\n`, "utf8");
+		// Bounded history, by count and by serialized bytes: drop the oldest revoked grants first; a live grant is never dropped. This
+		// also compacts any history written before the byte bound was enforced, so re-running authorize is always the recovery.
+		while (authorizations.length > L.maxAuthorizations || bytes() > L.maxFileBytes) {
 			const i = authorizations.findIndex((a) => a.revokedAtMs !== null);
-			if (i < 0) throw new Refusal("too-many", "too many live advisory authorizations");
+			if (i < 0)
+				throw new Refusal("too-many", "the live advisory authorizations alone exceed the authorization file bound");
 			authorizations.splice(i, 1);
 		}
-		commit(s.writeAuthorizations({ ...file, revision: file.revision + 1, updatedAtMs: nowMs, authorizations }));
+		commit(s.writeAuthorizations(next()));
 		return authorization;
 	});
 }
@@ -466,10 +481,12 @@ export function readEndoAdvisoryProjectionV0(
 			p,
 		]),
 	);
-	const newest = new Map<string, string>();
+	const newest = endoAdvisoryNewestProposalsV0(
+		(proposals.ok ? proposals.entries : []).map((e) => e.proposal),
+		endoAdvisoryProposalGroundedAtV0(turns.ok ? turns.entries : []),
+	);
 	const proposalViews: EndoAdvisoryProposalViewV0[] = [];
 	for (const e of proposals.ok ? proposals.entries : []) {
-		if (!newest.has(e.proposal.dedupKey)) newest.set(e.proposal.dedupKey, e.proposal.proposalId);
 		const decision = [...e.dispositions].sort((x, y) => x.decidedAtMs - y.decidedAtMs)[0];
 		const queueState: EndoAdvisoryProposalQueueStateV0 =
 			decision !== undefined

@@ -601,6 +601,45 @@ export function endoAdvisorySettledChargeV0(args: {
 
 // ---- Proposals ---------------------------------------------------------------------------------------------------------------------
 
+/**
+ * When each proposal was last grounded on its own evidence: its creation, or any later briefing that re-derived exactly that proposal
+ * (outcome created or deduplicated). A state that returns to an earlier digest reuses the earlier proposal; this is what makes it the
+ * newest recommendation again.
+ */
+export function endoAdvisoryProposalGroundedAtV0(
+	turns: readonly EndoAdvisoryLedgerTurnV0[],
+): ReadonlyMap<string, number> {
+	const at = new Map<string, number>();
+	for (const t of turns) {
+		const b = t.briefing;
+		if (b === null || b.proposal.proposalId === null) continue;
+		if (b.proposal.outcome !== "created" && b.proposal.outcome !== "deduplicated") continue;
+		at.set(b.proposal.proposalId, Math.max(at.get(b.proposal.proposalId) ?? 0, b.publishedAtMs));
+	}
+	return at;
+}
+
+/** The newest proposal per dedup key, ordered by when it was last grounded (creation or re-derivation), then creation, then id. */
+export function endoAdvisoryNewestProposalsV0(
+	proposals: readonly { readonly proposalId: string; readonly dedupKey: string; readonly generatedAtMs: number }[],
+	groundedAt: ReadonlyMap<string, number>,
+): ReadonlyMap<string, string> {
+	const rank = (p: (typeof proposals)[number]) => Math.max(p.generatedAtMs, groundedAt.get(p.proposalId) ?? 0);
+	const best = new Map<string, (typeof proposals)[number]>();
+	for (const p of proposals) {
+		const cur = best.get(p.dedupKey);
+		if (
+			cur === undefined ||
+			rank(p) > rank(cur) ||
+			(rank(p) === rank(cur) &&
+				(p.generatedAtMs > cur.generatedAtMs ||
+					(p.generatedAtMs === cur.generatedAtMs && p.proposalId > cur.proposalId)))
+		)
+			best.set(p.dedupKey, p);
+	}
+	return new Map([...best].map(([k, p]) => [k, p.proposalId]));
+}
+
 /** The fixed operator question an `emit-operator-proposal` turn adds through the existing briefing request. Part of the prompt identity. */
 export const ENDO_ADVISORY_PROPOSAL_QUESTION_V0 = `After your bullets, end with one final line containing exactly one of: "PROPOSAL: none" or "PROPOSAL: <kind> <taskId>", where <kind> is one of ${ENDO_ADVISORY_PROPOSAL_KINDS_V0.join(", ")}, and <taskId> is a task id exactly as the status shows it. A proposal is only something for the operator to consider; it authorizes nothing.`;
 

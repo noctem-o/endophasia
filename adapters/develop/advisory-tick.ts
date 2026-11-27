@@ -77,8 +77,10 @@ import {
 	endoAdvisoryExcludedMembersV0,
 	endoAdvisoryFireIdempotencyKeyV0,
 	endoAdvisoryGroundProposalV0,
+	endoAdvisoryNewestProposalsV0,
 	endoAdvisoryParseProposalLineV0,
 	endoAdvisoryPolicySha256V0,
+	endoAdvisoryProposalGroundedAtV0,
 	endoAdvisoryProposalIdV0,
 	endoAdvisoryReservationV0,
 	endoAdvisorySemanticObservationV0,
@@ -660,24 +662,44 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		if (!ownsLease(s, nowMs)) return false;
 		const file = s.store.readObservations();
 		if (!file.ok) return false;
-		const projects = file.exists ? file.value.projects : [];
+		const schedules = s.store.readSchedules();
+		const scheduled = new Set(
+			schedules.ok && schedules.exists ? schedules.value.schedules.map((x) => x.projectId) : [],
+		);
+		// The just-observed project is always kept; the bound evicts projects no schedule names first, then the least recently observed.
+		const others = (file.exists ? file.value.projects : [])
+			.filter((p) => p.projectId !== claim.projectId)
+			.sort(
+				(x, y) =>
+					Number(scheduled.has(y.projectId)) - Number(scheduled.has(x.projectId)) ||
+					y.observedAtMs - x.observedAtMs ||
+					(x.projectId < y.projectId ? -1 : 1),
+			)
+			.slice(0, L.maxObservedProjects - 1);
+		const projects = [
+			...others,
+			{
+				projectId: claim.projectId,
+				semanticDigest: observed.observation.semanticDigest,
+				completeness: observed.observation.completeness,
+				observedAtMs: observed.observedAtMs,
+				leaseEpoch: lease.epoch,
+			},
+		].sort((x, y) => (x.projectId < y.projectId ? -1 : 1));
+		if (
+			s.writeObservations({ schemaVersion: ENDO_ADVISORY_OBSERVATIONS_SCHEMA_V0, updatedAtMs: nowMs, projects }) !==
+			"committed"
+		)
+			return false;
+		// Publication rests on this record: confirm it holds the observation just made before anything is published as current.
+		const back = s.store.readObservations();
+		const mine =
+			back.ok && back.exists ? back.value.projects.find((p) => p.projectId === claim.projectId) : undefined;
 		return (
-			s.writeObservations({
-				schemaVersion: ENDO_ADVISORY_OBSERVATIONS_SCHEMA_V0,
-				updatedAtMs: nowMs,
-				projects: [
-					...projects.filter((p) => p.projectId !== claim.projectId),
-					{
-						projectId: claim.projectId,
-						semanticDigest: observed.observation.semanticDigest,
-						completeness: observed.observation.completeness,
-						observedAtMs: observed.observedAtMs,
-						leaseEpoch: lease.epoch,
-					},
-				]
-					.sort((x, y) => (x.projectId < y.projectId ? -1 : 1))
-					.slice(0, L.maxObservedProjects),
-			}) === "committed"
+			mine !== undefined &&
+			mine.semanticDigest === observed.observation.semanticDigest &&
+			mine.observedAtMs === observed.observedAtMs &&
+			mine.leaseEpoch === lease.epoch
 		);
 	};
 
@@ -1346,9 +1368,11 @@ function linkProposal(
 	if (!listing.ok) return refused("storage-failed");
 	if (listing.entries.some((e) => e.proposal.proposalId === proposalId))
 		return { outcome: "deduplicated", proposalId, refusal: null };
-	const newest = new Map<string, string>();
-	for (const e of listing.entries)
-		if (!newest.has(e.proposal.dedupKey)) newest.set(e.proposal.dedupKey, e.proposal.proposalId);
+	const ledger = s.store.listTurns(nowMs);
+	const newest = endoAdvisoryNewestProposalsV0(
+		listing.entries.map((e) => e.proposal),
+		endoAdvisoryProposalGroundedAtV0(ledger.ok ? ledger.entries : []),
+	);
 	const pending = listing.entries.filter(
 		(e) =>
 			e.proposal.projectId === admission.projectId &&

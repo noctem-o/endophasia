@@ -38,6 +38,30 @@ export const WORKSTATION_PATH_EXCEPTIONS = new Set(["tests/steering-raw-data.tes
 export const BROWSER_TEXT_ONLY_FILES = new Set(["tests/release-readiness.test.ts"]);
 
 /**
+ * Explicit allowlist of optional/host-capability suites permitted to report all tests skipped on
+ * standard general `ubuntu-24.04` CI runners (no raw study archives, no `ENDO_SHOTS_DIR`, no real Pi/OMP
+ * binary, no `/usr/bin/bwrap` user-namespace sandbox). Every other test file is mandatory and MUST execute
+ * at least one passing test case during strict CI execution reconciliation (F3).
+ */
+export const PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS = Object.freeze({
+	"tests/endo-studio-atmosphere-shots.test.ts": "opt-in visual screenshot capture (ENDO_SHOTS_DIR)",
+	"tests/endo-studio-density-shots.test.ts": "opt-in visual screenshot capture (ENDO_SHOTS_DIR)",
+	"tests/endo-studio-field-shots.test.ts": "opt-in visual screenshot capture (ENDO_SHOTS_DIR)",
+	"tests/completion-cap-raw-data.test.ts": "out-of-repository archived raw study dataset (rawDataAvailable)",
+	"tests/discriminating-tasks-raw-data.test.ts": "out-of-repository archived raw study dataset (rawDataAvailable)",
+	"tests/experiment-raw-data.test.ts": "out-of-repository archived raw study dataset (rawDataAvailable)",
+	"tests/path-sensitivity-raw-data.test.ts": "out-of-repository archived raw study dataset (rawDataAvailable)",
+	"tests/steering-raw-data.test.ts": "out-of-repository archived raw study dataset (rawDataAvailable)",
+	"tests/pi-real-replay.test.ts": "opt-in real Pi runtime replay (ENDO_PI_EXECUTABLE)",
+	"tests/pi-real-runtime.test.ts": "opt-in real Pi runtime suite (ENDO_PI_EXECUTABLE)",
+	"tests/acp-omp-real.test.ts": "opt-in real Oh My Pi ACP suite (ENDO_OMP_EXECUTABLE)",
+	"tests/coordinator-coordination-sandbox.test.ts": "requires /usr/bin/bwrap + unprivileged user namespaces",
+	"tests/protected-launch-window.test.ts": "requires /usr/bin/bwrap + unprivileged user namespaces / ENDO_REAL_SCOPES",
+	"tests/protected-model-run.test.ts": "requires /usr/bin/bwrap + unprivileged user namespaces / ENDO_REAL_SCOPES",
+	"tests/protected-staged-run.test.ts": "requires /usr/bin/bwrap + unprivileged user namespaces / ENDO_REAL_SCOPES",
+});
+
+/**
  * Explicit inventory of specialist CI verification jobs and their targeted test files / commands.
  * Used by coverage accounting to prove all specialist invariants remain present and wired.
  */

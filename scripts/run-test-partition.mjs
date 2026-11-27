@@ -1,23 +1,38 @@
 #!/usr/bin/env node
-// Partitioned, duration-balanced Vitest runner for both local development and CI (CI-RELIABILITY-001).
+// Partitioned, duration-balanced Vitest runner for both local development and CI
+// (CI-RELIABILITY-001, hardened with F3 fail-closed execution reconciliation & F6 confidential summaries).
 //
 // Usage:
 //   node scripts/run-test-partition.mjs --class=fast|browser|process|all [--shard=k/n] [--max-workers=N]
-//     [--json-out=<path>] [--diagnostics-out=<path>] [--step-summary] [-- <extra vitest args>]
+//     [--strict-accounting] [--json-out=<path>] [--diagnostics-out=<path>] [--step-summary]
+//     [-- <extra vitest args (local partial mode only; rejected in --strict-accounting)>]
 //
 // Guarantees:
 // - Never masks or alters Vitest's failing exit code.
-// - Always keeps Vitest file isolation enabled (`--isolate` default).
-// - Uses deterministic LPT sharding from `scripts/test-inventory.mjs` and schedules slowest files first.
+// - In `--strict-accounting` mode (used by CI), rejects passthrough filters that weaken completeness or
+//   isolation, generates a fresh per-invocation JSON report, reconciles exact expected vs observed file
+//   identities, fails closed on missing/unexpected/duplicate/zero-test/all-skipped-mandatory suites, and
+//   never allows Vitest exit code 0 to override a failed reconciliation.
+// - Always keeps Vitest file isolation enabled (`isolate: true`).
+// - Diagnostic artifacts and `$GITHUB_STEP_SUMMARY` emit only host-generated failure categories, error
+//   class names, normalized paths, sanitized bounded labels, and source locations — never raw assertion
+//   diffs, tokens, capability URLs, environment dumps, or private fixture payloads.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { availableParallelism, cpus, freemem, platform, release, totalmem } from "node:os";
+import { randomBytes } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { availableParallelism, cpus, freemem, platform, release, tmpdir, totalmem } from "node:os";
 import { dirname, join } from "node:path";
+import {
+	escapeMarkdownCell,
+	reconcileVitestExecution,
+	validateStrictPassthroughArgs,
+} from "./reconcile-test-execution.mjs";
 import {
 	allocateLptShard,
 	defaultMaxWorkersForClass,
 	EXECUTION_CLASSES,
+	PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS,
 	partitionTestFiles,
 	REPO_ROOT,
 } from "./test-inventory.mjs";
@@ -38,6 +53,7 @@ let jsonOut = null;
 /** @type {string | null} */
 let diagnosticsOut = null;
 let writeStepSummary = false;
+let strictAccounting = false;
 let dryRun = false;
 
 for (let i = 0; i < ownArgs.length; i++) {
@@ -83,6 +99,8 @@ for (let i = 0; i < ownArgs.length; i++) {
 		diagnosticsOut = v;
 	} else if (flag === "--step-summary") {
 		writeStepSummary = true;
+	} else if (flag === "--strict-accounting") {
+		strictAccounting = true;
 	} else if (flag === "--dry-run") {
 		dryRun = true;
 	} else {
@@ -91,15 +109,29 @@ for (let i = 0; i < ownArgs.length; i++) {
 	}
 }
 
+if (strictAccounting && passthroughArgs.length > 0) {
+	const violations = validateStrictPassthroughArgs(passthroughArgs);
+	if (violations.length > 0) {
+		for (const v of violations) console.error(`[ci-partition] ERROR: ${v}`);
+		process.exit(2);
+	}
+}
+
 const { allFiles, classes, hints } = partitionTestFiles(REPO_ROOT);
 const poolFiles = cls === "all" ? allFiles : classes[cls];
 const allocation = allocateLptShard(poolFiles, hints.durationsMs, shardIndex, shardCount, hints.defaultWeightMs);
 const maxWorkers = maxWorkersOverride ?? defaultMaxWorkersForClass(cls);
+const executionMode = strictAccounting
+	? "strict-complete"
+	: passthroughArgs.length > 0
+		? "partial-local"
+		: "local-partition";
 
 if (dryRun) {
 	console.log(
 		JSON.stringify(
 			{
+				mode: executionMode,
 				class: cls,
 				shard: `${shardIndex}/${shardCount}`,
 				maxWorkers,
@@ -120,15 +152,31 @@ if (allocation.files.length === 0) {
 	process.exit(1);
 }
 
+// Allocate a fresh, invocation-unique report file whenever strict accounting or diagnostics is enabled
+// so stale reports from earlier attempts can never be reused.
+let ownedReportTempDir = null;
+let effectiveJsonOut = jsonOut;
+if (!effectiveJsonOut && (strictAccounting || diagnosticsOut || writeStepSummary)) {
+	ownedReportTempDir = mkdtempSync(join(tmpdir(), "endo-vitest-report-"));
+	effectiveJsonOut = join(ownedReportTempDir, `vitest-${process.pid}-${randomBytes(6).toString("hex")}.json`);
+}
+if (effectiveJsonOut) {
+	mkdirSync(dirname(effectiveJsonOut), { recursive: true });
+	if (existsSync(effectiveJsonOut)) {
+		// Remove any stale report at the requested path prior to running Vitest.
+		unlinkSync(effectiveJsonOut);
+	}
+}
+
 const vitestBin = join(REPO_ROOT, "node_modules", "vitest", "vitest.mjs");
 const vitestArgs = [vitestBin, "run", `--maxWorkers=${maxWorkers}`];
 
-if (jsonOut) {
-	mkdirSync(dirname(jsonOut), { recursive: true });
-	vitestArgs.push("--reporter=default", "--reporter=json", `--outputFile.json=${jsonOut}`);
+if (effectiveJsonOut) {
+	vitestArgs.push("--reporter=default", "--reporter=json", `--outputFile.json=${effectiveJsonOut}`);
 }
 
-vitestArgs.push(...passthroughArgs, ...allocation.files);
+// Pass rooted file paths; strict accounting additionally reconciles exact observed vs expected file sets.
+vitestArgs.push(...passthroughArgs, ...allocation.files.map((f) => join(REPO_ROOT, f)));
 
 const env = { ...process.env };
 if (cls === "fast") {
@@ -136,21 +184,66 @@ if (cls === "fast") {
 }
 
 console.log(
-	`[ci-partition] class=${cls} shard=${shardIndex}/${shardCount} files=${allocation.files.length} maxWorkers=${maxWorkers} estWeight=${(allocation.shardWeightMs / 1000).toFixed(1)}s`,
+	`[ci-partition] mode=${executionMode} class=${cls} shard=${shardIndex}/${shardCount} files=${allocation.files.length} maxWorkers=${maxWorkers} estWeight=${(allocation.shardWeightMs / 1000).toFixed(1)}s`,
 );
+if (executionMode === "partial-local") {
+	console.log(
+		"[ci-partition] NOTE: targeted local passthrough args active; complete partition execution accounting is NOT enforced.",
+	);
+}
 
 const startedAt = new Date();
-const t0 = Date.now();
+const startedAtMs = Date.now();
 const result = spawnSync(process.execPath, vitestArgs, {
 	cwd: REPO_ROOT,
 	env,
 	stdio: "inherit",
 });
-const elapsedMs = Date.now() - t0;
-const exitCode = result.status ?? 1;
+const endedAtMs = Date.now();
+const elapsedMs = endedAtMs - startedAtMs;
+const vitestExitCode = result.status ?? 1;
+const vitestSignal = result.signal ?? null;
+
+let reconciliation = null;
+if (effectiveJsonOut) {
+	reconciliation = reconcileVitestExecution({
+		repoRoot: REPO_ROOT,
+		expectedFiles: allocation.files,
+		reportPath: effectiveJsonOut,
+		startedAtMs,
+		endedAtMs,
+		vitestExitCode,
+		vitestSignal,
+		permittedOptionalWholeFileSkips: PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS,
+	});
+}
+
+// Fail-closed exit code calculation:
+// - Never mask a non-zero Vitest exit code.
+// - In strict accounting mode, Vitest exit 0 NEVER overrides a failed reconciliation.
+const finalExitCode =
+	vitestExitCode !== 0 ? vitestExitCode : strictAccounting && (!reconciliation || !reconciliation.ok) ? 1 : 0;
+
+if (strictAccounting && reconciliation) {
+	if (reconciliation.ok) {
+		console.log(
+			`[ci-accounting] PASS reconciled ${reconciliation.summary.observedFileCount}/${reconciliation.summary.expectedFileCount} exact files ` +
+				`(${reconciliation.summary.passedTests} passed, ${reconciliation.summary.skippedTests} skipped, ` +
+				`${reconciliation.summary.permittedWholeFileSkips.length} permitted optional whole-file skip(s))`,
+		);
+	} else {
+		console.error(
+			`[ci-accounting] FAIL execution reconciliation failed (${reconciliation.errors.length} issue(s)):`,
+		);
+		for (const err of reconciliation.errors) {
+			console.error(`  - [${err.code}] ${err.detail}`);
+		}
+	}
+}
 
 if (diagnosticsOut || writeStepSummary) {
-	const summary = buildSanitizedSummary({
+	const summary = buildConfidentialSummary({
+		executionMode,
 		cls,
 		shardIndex,
 		shardCount,
@@ -158,9 +251,10 @@ if (diagnosticsOut || writeStepSummary) {
 		allocation,
 		startedAt: startedAt.toISOString(),
 		elapsedMs,
-		exitCode,
-		signal: result.signal ?? null,
-		jsonOut,
+		vitestExitCode,
+		finalExitCode,
+		signal: vitestSignal,
+		reconciliation,
 	});
 	if (diagnosticsOut) {
 		mkdirSync(dirname(diagnosticsOut), { recursive: true });
@@ -172,92 +266,65 @@ if (diagnosticsOut || writeStepSummary) {
 	}
 }
 
-process.exit(exitCode);
+if (ownedReportTempDir) {
+	rmSync(ownedReportTempDir, { recursive: true, force: true });
+}
+
+process.exit(finalExitCode);
 
 /**
- * Produces a bounded, sanitized CI diagnostics object (no secrets, no full env dump, no developer HOME paths).
+ * Produces a bounded, confidential CI diagnostics summary (`endo.ci-diagnostics.v1`).
+ * Deliberately omits raw assertion payloads/diffs, tokens, capability URLs, environment dumps,
+ * and private fixture contents; retains host-generated failure categories, error names, normalized
+ * paths, sanitized labels, locations, and exact execution reconciliation metadata.
+ *
  * @param {object} opts
  */
-function buildSanitizedSummary(opts) {
-	const { cls, shardIndex, shardCount, maxWorkers, allocation, startedAt, elapsedMs, exitCode, signal, jsonOut } = opts;
-	/** @type {Array<{ file: string, status: string, durationMs: number, passed: number, failed: number, skipped: number }>} */
-	const fileResults = [];
-	/** @type {Array<{ file: string, fullName: string, message: string }>} */
-	const failures = [];
-	let numTotalTests = 0;
-	let numPassedTests = 0;
-	let numFailedTests = 0;
-	let numPendingTests = 0;
+function buildConfidentialSummary(opts) {
+	const {
+		executionMode,
+		cls,
+		shardIndex,
+		shardCount,
+		maxWorkers,
+		allocation,
+		startedAt,
+		elapsedMs,
+		vitestExitCode,
+		finalExitCode,
+		signal,
+		reconciliation,
+	} = opts;
 
-	if (jsonOut && existsSync(jsonOut)) {
-		try {
-			const parsed = JSON.parse(readFileSync(jsonOut, "utf8"));
-			numTotalTests = Number(parsed.numTotalTests ?? 0);
-			numPassedTests = Number(parsed.numPassedTests ?? 0);
-			numFailedTests = Number(parsed.numFailedTests ?? 0);
-			numPendingTests = Number(parsed.numPendingTests ?? 0);
-			const prefix = `${REPO_ROOT.replace(/\\/g, "/")}`;
-			for (const suite of parsed.testResults ?? []) {
-				const rawName = String(suite.name ?? "").replace(/\\/g, "/");
-				const relFile = rawName.startsWith(prefix)
-					? rawName.slice(prefix.length)
-					: rawName.replace(/\/(?:home|Users)\/[^/\s:)]+/g, "<home>");
-				const durationMs =
-					typeof suite.endTime === "number" && typeof suite.startTime === "number"
-						? Math.max(0, Math.round(suite.endTime - suite.startTime))
-						: 0;
-				const assertions = Array.isArray(suite.assertionResults) ? suite.assertionResults : [];
-				let passed = 0;
-				let failed = 0;
-				let skipped = 0;
-				for (const a of assertions) {
-					if (a.status === "passed") passed++;
-					else if (a.status === "failed") {
-						failed++;
-						const rawMsg = Array.isArray(a.failureMessages) ? a.failureMessages.join("\n") : "";
-						failures.push({
-							file: relFile,
-							fullName: String(a.fullName ?? a.title ?? "unknown"),
-							message: sanitizeMessage(rawMsg, prefix),
-						});
-					} else {
-						skipped++;
-					}
-				}
-				if (suite.status === "failed" && failed === 0) {
-					failures.push({
-						file: relFile,
-						fullName: "(suite-level error)",
-						message: sanitizeMessage(String(suite.message ?? "suite failed without assertion details"), prefix),
-					});
-				}
-				fileResults.push({
-					file: relFile,
-					status: String(suite.status ?? "unknown"),
-					durationMs,
-					passed,
-					failed,
-					skipped,
-				});
-			}
-		} catch (err) {
-			failures.push({
-				file: "(vitest-json-reporter)",
-				fullName: "(parse-error)",
-				message: String(err instanceof Error ? err.message : err),
-			});
-		}
-	}
-
-	fileResults.sort((a, b) => b.durationMs - a.durationMs || (a.file < b.file ? -1 : 1));
 	const gitSha = spawnSync("git", ["rev-parse", "--short=12", "HEAD"], { cwd: REPO_ROOT, encoding: "utf8" });
 	const vitestPkg = JSON.parse(readFileSync(join(REPO_ROOT, "node_modules", "vitest", "package.json"), "utf8"));
+	const fileResults = reconciliation?.fileResults ?? [];
+	const failures = reconciliation?.failures ?? [];
+	const recSummary = reconciliation?.summary ?? {
+		expectedFileCount: allocation.files.length,
+		observedFileCount: 0,
+		missingFiles: [],
+		unexpectedFiles: [],
+		duplicateFiles: [],
+		zeroTestFiles: [],
+		mandatoryWholeFileSkips: [],
+		permittedWholeFileSkips: [],
+		totalTests: 0,
+		passedTests: 0,
+		failedTests: 0,
+		skippedTests: 0,
+		todoTests: 0,
+	};
 
 	return {
 		schemaVersion: "endo.ci-diagnostics.v1",
+		confidentialityNote:
+			"Host-generated failure categories and bounded identifiers only; raw assertion values, diffs, env dumps, and transcripts are omitted.",
+		executionMode,
 		startedAt,
 		elapsedMs,
-		exitCode,
+		vitestExitCode,
+		exitCode: finalExitCode,
 		signal,
 		partition: {
 			class: cls,
@@ -266,6 +333,18 @@ function buildSanitizedSummary(opts) {
 			allocatedFileCount: allocation.files.length,
 			estimatedWeightMs: allocation.shardWeightMs,
 			classImbalanceMs: allocation.imbalanceMs,
+		},
+		reconciliation: {
+			ok: reconciliation ? reconciliation.ok : false,
+			errors: (reconciliation?.errors ?? []).slice(0, 25),
+			expectedFileCount: recSummary.expectedFileCount,
+			observedFileCount: recSummary.observedFileCount,
+			missingFileCount: recSummary.missingFiles.length,
+			unexpectedFileCount: recSummary.unexpectedFiles.length,
+			duplicateFileCount: recSummary.duplicateFiles.length,
+			zeroTestFileCount: recSummary.zeroTestFiles.length,
+			mandatoryWholeFileSkipCount: recSummary.mandatoryWholeFileSkips.length,
+			permittedWholeFileSkips: recSummary.permittedWholeFileSkips,
 		},
 		environment: {
 			nodeVersion: process.version,
@@ -281,11 +360,11 @@ function buildSanitizedSummary(opts) {
 			requireBrowser: process.env.ENDO_REQUIRE_BROWSER === "1",
 		},
 		totals: {
-			filesReported: fileResults.length,
-			testsTotal: numTotalTests,
-			testsPassed: numPassedTests,
-			testsFailed: numFailedTests,
-			testsPending: numPendingTests,
+			filesReported: recSummary.observedFileCount,
+			testsTotal: recSummary.totalTests,
+			testsPassed: recSummary.passedTests,
+			testsFailed: recSummary.failedTests,
+			testsPending: recSummary.skippedTests + recSummary.todoTests,
 		},
 		slowestFiles: fileResults.slice(0, 15),
 		failures: failures.slice(0, 50),
@@ -300,41 +379,47 @@ function buildSanitizedSummary(opts) {
 	};
 }
 
-/**
- * Strips absolute repo/home paths and truncates failure messages for safe CI summary artifacts.
- * @param {string} msg
- * @param {string} repoPrefix
- */
-function sanitizeMessage(msg, repoPrefix) {
-	const cleaned = msg
-		.replaceAll(repoPrefix, "<repo>/")
-		.replace(/\/(?:home|Users)\/[^/\s:)]+/g, "<home>")
-		.trim();
-	return cleaned.length > 1200 ? `${cleaned.slice(0, 1200)}\n...(truncated)` : cleaned;
-}
-
-/** @param {ReturnType<typeof buildSanitizedSummary>} summary */
+/** @param {ReturnType<typeof buildConfidentialSummary>} summary */
 function formatStepSummaryMarkdown(summary) {
 	const lines = [];
 	const statusLabel = summary.exitCode === 0 ? "PASS" : `FAIL (exit ${summary.exitCode})`;
+	const acctLabel = summary.reconciliation.ok ? "RECONCILED" : "ACCOUNTING FAILED";
 	lines.push(
-		`### Test Partition: \`${summary.partition.class}\` (${summary.partition.shard}) — ${statusLabel}`,
+		`### Test Partition: \`${summary.partition.class}\` (${summary.partition.shard}) — ${statusLabel} [${acctLabel}]`,
 	);
 	lines.push("");
 	lines.push(
-		`- **Wall time:** ${(summary.elapsedMs / 1000).toFixed(1)}s | **Files:** ${summary.totals.filesReported}/${summary.partition.allocatedFileCount} | **Tests:** ${summary.totals.testsPassed} passed, ${summary.totals.testsFailed} failed, ${summary.totals.testsPending} skipped`,
+		`- **Wall time:** ${(summary.elapsedMs / 1000).toFixed(1)}s | **Mode:** \`${summary.executionMode}\` | **Files:** ${summary.reconciliation.observedFileCount}/${summary.reconciliation.expectedFileCount} | **Tests:** ${summary.totals.testsPassed} passed, ${summary.totals.testsFailed} failed, ${summary.totals.testsPending} skipped`,
 	);
 	lines.push(
 		`- **Workers:** \`maxWorkers=${summary.partition.maxWorkers}\` on ${summary.environment.cpuCount} vCPU / ${summary.environment.totalMemMiB} MiB RAM (Node ${summary.environment.nodeVersion}, Vitest ${summary.environment.vitestVersion})`,
 	);
+	if (summary.reconciliation.permittedWholeFileSkips.length > 0) {
+		lines.push(
+			`- **Permitted optional whole-file skips:** ${summary.reconciliation.permittedWholeFileSkips.length} (${summary.reconciliation.permittedWholeFileSkips.map((s) => `\`${escapeMarkdownCell(s.file, 80)}\``).join(", ")})`,
+		);
+	}
 	lines.push("");
 
-	if (summary.failures.length > 0) {
-		lines.push("#### Failures");
+	if (!summary.reconciliation.ok && summary.reconciliation.errors.length > 0) {
+		lines.push("#### Execution Accounting Issues");
 		lines.push("");
-		for (const f of summary.failures.slice(0, 10)) {
-			const firstLine = f.message.split("\n")[0] ?? "";
-			lines.push(`- \`${f.file}\` — **${f.fullName}**: \`${firstLine.slice(0, 220)}\``);
+		for (const e of summary.reconciliation.errors.slice(0, 10)) {
+			lines.push(`- \`${escapeMarkdownCell(e.code, 48)}\`: ${escapeMarkdownCell(e.detail, 180)}`);
+		}
+		lines.push("");
+	}
+
+	if (summary.failures.length > 0) {
+		lines.push("#### Failures (host-generated categories; see job logs for full details)");
+		lines.push("");
+		lines.push("| File | Test | Category | Error | Location |");
+		lines.push("|---|---|---|---|---|");
+		for (const f of summary.failures.slice(0, 15)) {
+			const loc = f.location ? `L${f.location.line}:C${f.location.column}` : "—";
+			lines.push(
+				`| \`${escapeMarkdownCell(f.file, 90)}\` | ${escapeMarkdownCell(f.fullName, 120)} | \`${escapeMarkdownCell(f.category, 32)}\` | \`${escapeMarkdownCell(f.errorName, 48)}\` | ${loc} |`,
+			);
 		}
 		lines.push("");
 	}
@@ -346,7 +431,7 @@ function formatStepSummaryMarkdown(summary) {
 		lines.push("|---|---:|---|---:|");
 		for (const f of summary.slowestFiles.slice(0, 10)) {
 			lines.push(
-				`| \`${f.file}\` | ${(f.durationMs / 1000).toFixed(2)}s | ${f.status} | ${f.passed}/${f.passed + f.failed + f.skipped} |`,
+				`| \`${escapeMarkdownCell(f.file, 90)}\` | ${(f.durationMs / 1000).toFixed(2)}s | ${escapeMarkdownCell(f.status, 16)} | ${f.passed}/${f.passed + f.failed + f.skipped} |`,
 			);
 		}
 		lines.push("");

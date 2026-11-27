@@ -61,7 +61,7 @@ describe("CI observability and history analysis", () => {
 		const fastCount = partitionTestFiles(REPO_ROOT).classes.fast.length;
 		const singleFastShard = `${fastCount}/${fastCount}`;
 
-		// Passing 1-file slice of the fast partition (runs in <2s instead of transforming all fast files).
+		// Passing 1-file slice of the fast partition under --strict-accounting (runs in <2s).
 		const passRun = spawnSync(
 			process.execPath,
 			[
@@ -69,6 +69,7 @@ describe("CI observability and history analysis", () => {
 				"--class=fast",
 				`--shard=${singleFastShard}`,
 				"--max-workers=1",
+				"--strict-accounting",
 				`--json-out=${jsonOut}`,
 				`--diagnostics-out=${diagOut}`,
 				"--step-summary",
@@ -82,13 +83,19 @@ describe("CI observability and history analysis", () => {
 		expect(passRun.status, passRun.stderr).toBe(0);
 		const diag = JSON.parse(readFileSync(diagOut, "utf8")) as {
 			schemaVersion: string;
+			executionMode: string;
 			exitCode: number;
 			partition: { class: string; maxWorkers: number; allocatedFileCount: number };
+			reconciliation: { ok: boolean; expectedFileCount: number; observedFileCount: number };
 			environment: { nodeVersion: string; vitestVersion: string };
 			totals: { filesReported: number; testsPassed: number; testsFailed: number };
 		};
 		expect(diag.schemaVersion).toBe("endo.ci-diagnostics.v1");
+		expect(diag.executionMode).toBe("strict-complete");
 		expect(diag.exitCode).toBe(0);
+		expect(diag.reconciliation.ok).toBe(true);
+		expect(diag.reconciliation.observedFileCount).toBe(1);
+		expect(diag.reconciliation.expectedFileCount).toBe(1);
 		expect(diag.partition.class).toBe("fast");
 		expect(diag.partition.maxWorkers).toBe(1);
 		expect(diag.partition.allocatedFileCount).toBe(1);
@@ -97,7 +104,7 @@ describe("CI observability and history analysis", () => {
 		expect(diag.totals.testsFailed).toBe(0);
 		const summaryMd = readFileSync(summaryFile, "utf8");
 		expect(summaryMd).toContain("Test Partition: `fast`");
-		expect(summaryMd).toContain("PASS");
+		expect(summaryMd).toContain("PASS [RECONCILED]");
 
 		// Verify a failing Vitest invocation propagates its non-zero exit code intact.
 		const failDiag = join(scratch, "fail-diag.json");

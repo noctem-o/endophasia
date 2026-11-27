@@ -6,6 +6,7 @@ export const FAST_DURATION_THRESHOLD_MS: number;
 export const DEFAULT_UNMEASURED_WEIGHT_MS: number;
 export const WORKSTATION_PATH_EXCEPTIONS: ReadonlySet<string>;
 export const BROWSER_TEXT_ONLY_FILES: ReadonlySet<string>;
+export const PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS: Readonly<Record<string, string>>;
 
 export interface SpecialistSuiteSpec {
 	readonly description: string;

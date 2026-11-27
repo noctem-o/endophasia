@@ -4,11 +4,9 @@
 //
 // These are the old page's browser tests (tests/endo-cockpit-ui-browser.test.ts) carried over to the React frontend, with the same
 // questions asked of the same stores: the old page may be retired only because everything it was held to is held here.
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { readEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
@@ -30,26 +28,19 @@ import { get, serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 
 const executable = findBrowser();
-const repo = fileURLToPath(new URL("../", import.meta.url));
 let browser: Browser | null = null;
-let dist = "";
 let ui: Record<string, Uint8Array> = {};
 
 const required = process.env.ENDO_REQUIRE_BROWSER === "1";
 beforeAll(async () => {
 	if (executable === null && required)
 		throw new Error("ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
-	dist = mkdtempSync(join(tmpdir(), "endo-studio-observe-dist-"));
-	const { buildStudioUi } = (await import(join(repo, "scripts/build-studio-ui.mjs"))) as {
-		buildStudioUi(outDir: string): Promise<{ outDir: string }>;
-	};
-	await buildStudioUi(dist);
-	ui = loadEndoStudioUiFilesV0(dist);
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	ui = loadEndoStudioUiFilesV0(await ensureSharedStudioUiDir());
 	if (executable !== null) browser = await Browser.launch(executable);
 }, 90_000);
 afterAll(async () => {
 	await browser?.close();
-	rmSync(dist, { recursive: true, force: true });
 	removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true }));
 });
 afterEach(stopServers);

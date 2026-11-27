@@ -599,7 +599,7 @@ Full catalog of studies, designs and limits: [research/README.md](research/READM
 
 | Need | Start here |
 | :--- | :--- |
-| Install & browser usage | [Installation](docs/install.md) · [Studio & workbench](docs/studio.md) · [Changelog](CHANGELOG.md) |
+| Install & browser usage | [Installation](docs/install.md) · [Testing & CI](docs/testing.md) · [Studio & workbench](docs/studio.md) · [Changelog](CHANGELOG.md) |
 | Run the DEVELOP loop | [Projects & tasks](docs/develop-tasks.md) · [Attempts](docs/designs/develop-work-attempts.md) · [Protected attempts](docs/designs/protected-attempt-execution.md) · [Receipts](docs/designs/develop-verification-receipts.md) · [Plans & ledger](docs/designs/develop-verification-plans.md) · [Behavioural checks](docs/designs/develop-behavioural-checks.md) · [Provenance](docs/designs/develop-candidate-provenance.md) · [Attempt evidence](docs/designs/develop-attempt-evidence.md) · [Evidence bridge](docs/designs/develop-evidence-bridge.md) |
 | Work with a live agent | [Live workbench](docs/develop-workbench.md) · [Adapter contract](docs/designs/develop-adapter-contract.md) · [Codex live](docs/designs/develop-codex-live.md) · [Codex in Studio](docs/designs/develop-codex-studio.md) · [Sending an attempt](docs/designs/develop-attempt-workbench.md) · [Private activity](docs/private-activity.md) · [Reasoning & privacy](docs/develop-reasoning.md) · [Git review](docs/develop-project-review.md) · [Process containment](docs/live-process-containment.md) · [Course](docs/develop-course.md) · [Field](docs/develop-field.md) · [Atmospheres](docs/develop-atmospheres.md) |
 | Coordinator (read-only & design) | [Coordinator status](docs/designs/coordinator-status.md) · [Mission Board](docs/designs/coordinator-board.md) · [Coordinator runtime & brief](docs/designs/coordinator-runtime.md) · [Coordinator model pool (M1)](docs/designs/coordinator-model-pool-m1-implementation.md) · [Automation architecture (S0)](docs/designs/coordinator-automation.md) · [Deterministic scheduler & observations (S1)](docs/designs/coordinator-automation-s1-implementation.md) · [Assignment architecture](docs/designs/coordinator-assignment.md) · [Coordination metadata (E1)](docs/designs/coordinator-assignment-implementation.md) · [Governed assignment integration (E2)](docs/designs/coordinator-assignment-e2-implementation.md) |
@@ -621,12 +621,14 @@ Neighbouring projects keep separate authorities: [Magpie](https://github.com/noc
 npm ci
 npm run typecheck
 npm run lint
-npm test
+npm run test:inventory
+npm run test:fast        # sub-minute unit feedback loop
+npm test                 # full suite (fast + browser + process)
 npm run build
 npm run test:package
 ```
 
-The deterministic suite requires only Node and Git (no API keys or model calls). Browser tests use Chromium (`CHROME_BIN` to select it; `ENDO_REQUIRE_BROWSER=1` to fail instead of skip). CI runs three parallel test shards plus installed-package acceptance against pinned Pi 1.0.0 and a fake model endpoint. See [docs/install.md](docs/install.md#running-the-tests).
+The deterministic suite requires only Node and Git (no API keys or model calls). Browser tests use Chromium (`CHROME_BIN` to select it; `ENDO_REQUIRE_BROWSER=1` to fail instead of skip). CI partitions general tests into `fast`, `browser`, and four duration-balanced `process` shards alongside specialist verification jobs (real Bubblewrap sandbox, systemd live scopes, coreutils `mv --exchange`, Node 22.19.0 floor, and installed-package acceptance against pinned Pi 1.0.0 and a fake model endpoint). See [docs/testing.md](docs/testing.md) and [docs/install.md](docs/install.md#running-the-tests).
 
 ## License
 

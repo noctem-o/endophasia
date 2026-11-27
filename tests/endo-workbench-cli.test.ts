@@ -57,11 +57,9 @@ class Pty {
 }
 
 beforeAll(async () => {
-	// The checkout serves the frontend built into studio-ui/dist (ignored by git), as `npm run cockpit` does.
-	const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(fileURLToPath(new URL("../studio-ui/dist", import.meta.url)));
+	// The checkout serves the frontend built once for this test run into studio-ui/dist by tests/global-setup.ts.
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	for (const pty of ptys.splice(0)) pty.kill();

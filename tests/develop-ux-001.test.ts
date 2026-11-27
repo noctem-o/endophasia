@@ -58,10 +58,8 @@ const temp = (prefix: string) => {
 };
 
 beforeAll(async () => {
-	const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(fileURLToPath(new URL("../studio-ui/dist", import.meta.url)));
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	for (const child of children.splice(0)) if (child.exitCode === null) child.kill("SIGKILL");

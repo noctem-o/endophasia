@@ -23,7 +23,6 @@ import { GitProjectInspectorV0 } from "../adapters/git/project-inspector.ts";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
 import { Browser, findBrowser, type Page } from "./cockpit-browser.ts";
 
-const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex-app-server.mjs", import.meta.url));
 const uiScratch = mkdtempSync(join(tmpdir(), "endo-codex-browser-ui-"));
 let UI_DIR = "";
@@ -131,11 +130,8 @@ async function maybeShot(page: Page, name: string): Promise<void> {
 
 beforeAll(async () => {
 	if (browserBin === null) return;
-	UI_DIR = join(uiScratch, "ui");
-	const { buildStudioUi } = (await import(join(REPO_ROOT, "scripts/build-studio-ui.mjs"))) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(UI_DIR);
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	UI_DIR = await ensureSharedStudioUiDir();
 	browser = await Browser.launch(browserBin);
 }, 90_000);
 

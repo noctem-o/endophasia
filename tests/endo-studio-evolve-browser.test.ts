@@ -5,7 +5,6 @@
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { ProtectedExperimentObserverV0 } from "../adapters/protected-experiment/observer.ts";
 import { reportProtectedExperimentV0 } from "../adapters/sandbox/protected-report.ts";
@@ -22,7 +21,6 @@ import {
 	SECRET_HOST_EVALUATOR_FILE,
 } from "./evolve-protected-fixtures.ts";
 
-const repo = fileURLToPath(new URL("../", import.meta.url));
 const executable = findBrowser();
 const required = process.env.ENDO_REQUIRE_BROWSER === "1";
 const shotsDir = process.env.ENDO_SHOTS_DIR ?? "";
@@ -35,12 +33,8 @@ const tabs: Page[] = [];
 beforeAll(async () => {
 	if (executable === null && required)
 		throw new Error("ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
-	const dist = join(scratch, "ui");
-	const { buildStudioUi } = (await import(join(repo, "scripts/build-studio-ui.mjs"))) as {
-		buildStudioUi(outDir: string): Promise<{ outDir: string }>;
-	};
-	await buildStudioUi(dist);
-	ui = loadEndoStudioUiFilesV0(dist);
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	ui = loadEndoStudioUiFilesV0(await ensureSharedStudioUiDir());
 	if (executable !== null) browser = await Browser.launch(executable);
 	if (shotsDir !== "") mkdirSync(shotsDir, { recursive: true });
 }, 90_000);

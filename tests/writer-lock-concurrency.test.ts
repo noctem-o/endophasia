@@ -5,24 +5,59 @@
  * proving that the 5-step rename/restore TOCTOU race and mid-recovery unlink races are structurally impossible.
  */
 
-import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { type ChildProcess, spawn } from "node:child_process";
+import {
+	closeSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	openSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+	writeSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { acquireEndoEventStoreWriterLockV0, EndoStoreLockedErrorV0 } from "../storage/writer-lock.ts";
+import { waitForBarrierFile, waitForJsonBarrier, writeFileAtomicallySync } from "./helpers/atomic-barrier.ts";
 
 const WRITER_LOCK_MODULE = fileURLToPath(new URL("../storage/writer-lock.ts", import.meta.url));
+const ATOMIC_BARRIER_MODULE = fileURLToPath(new URL("./helpers/atomic-barrier.ts", import.meta.url));
 
 const tempDirs: string[] = [];
+const spawnedChildren: ChildProcess[] = [];
+
 function makeTempDir(prefix = "endo-wlock-mp-"): string {
 	const dir = mkdtempSync(join(tmpdir(), prefix));
 	tempDirs.push(dir);
 	return dir;
 }
 
-afterEach(() => {
+afterEach(async () => {
+	// Ensure all child workers are terminated and reaped before removing fixture directories.
+	const children = spawnedChildren.splice(0);
+	await Promise.all(
+		children.map(
+			(child) =>
+				new Promise<void>((resolve) => {
+					if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) {
+						resolve();
+						return;
+					}
+					const done = () => resolve();
+					child.once("close", done);
+					child.once("error", done);
+					try {
+						child.kill("SIGKILL");
+					} catch {
+						resolve();
+					}
+				}),
+		),
+	);
 	while (tempDirs.length > 0) {
 		rmSync(tempDirs.pop()!, { recursive: true, force: true });
 	}
@@ -35,24 +70,6 @@ interface WorkerResult {
 	readonly holder?: string;
 	readonly recoveryHint?: string | null;
 	readonly message?: string;
-}
-
-function waitForFile(path: string, timeoutMs = 10_000): Promise<string> {
-	const deadline = Date.now() + timeoutMs;
-	return new Promise((resolve, reject) => {
-		const tick = () => {
-			if (existsSync(path)) {
-				resolve(readFileSync(path, "utf8"));
-				return;
-			}
-			if (Date.now() > deadline) {
-				reject(new Error(`Timed out waiting for barrier file ${path}`));
-				return;
-			}
-			setTimeout(tick, 10);
-		};
-		tick();
-	});
 }
 
 function spawnLockWorker(config: {
@@ -69,9 +86,10 @@ function spawnLockWorker(config: {
 	readonly afterUnlinkWait?: string;
 }): { child: ReturnType<typeof spawn>; done: Promise<WorkerResult> } {
 	const script = `
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { acquireEndoEventStoreWriterLockV0, EndoStoreLockedErrorV0 } from ${JSON.stringify(WRITER_LOCK_MODULE)};
+import { writeFileAtomicallySync, writeJsonAtomicallySync } from ${JSON.stringify(ATOMIC_BARRIER_MODULE)};
 
 const cfg = JSON.parse(process.env.ENDO_LOCK_WORKER_CFG);
 const sleepSync = (ms) => {
@@ -87,7 +105,7 @@ const waitFileSync = (file) => {
 	}
 };
 
-if (cfg.readyFile) writeFileSync(cfg.readyFile, String(process.pid));
+if (cfg.readyFile) writeFileAtomicallySync(cfg.readyFile, String(process.pid));
 if (cfg.startBarrier) waitFileSync(cfg.startBarrier);
 
 let out;
@@ -96,13 +114,13 @@ try {
 		testHooks: {
 			onBeforeRecoveryBarrier: cfg.beforeRecoverSignal
 				? () => {
-						writeFileSync(cfg.beforeRecoverSignal, String(process.pid));
+						writeFileAtomicallySync(cfg.beforeRecoverSignal, String(process.pid));
 						if (cfg.beforeRecoverWait) waitFileSync(cfg.beforeRecoverWait);
 					}
 				: undefined,
 			onAfterStaleUnlink: cfg.afterUnlinkSignal
 				? () => {
-						writeFileSync(cfg.afterUnlinkSignal, String(process.pid));
+						writeFileAtomicallySync(cfg.afterUnlinkSignal, String(process.pid));
 						if (cfg.afterUnlinkWait) waitFileSync(cfg.afterUnlinkWait);
 					}
 				: undefined,
@@ -110,7 +128,7 @@ try {
 	});
 	const lockRaw = JSON.parse(readFileSync(join(cfg.root, "events", "session-attachment.lock"), "utf8"));
 	out = { status: "acquired", pid: process.pid, token: lockRaw.token };
-	if (cfg.acquiredBarrier) writeFileSync(cfg.acquiredBarrier, JSON.stringify(out));
+	if (cfg.acquiredBarrier) writeJsonAtomicallySync(cfg.acquiredBarrier, out);
 	if (cfg.holdUntilFile) waitFileSync(cfg.holdUntilFile);
 	release();
 } catch (error) {
@@ -126,7 +144,7 @@ try {
 		out = { status: "error", pid: process.pid, message: String(error?.stack ?? error) };
 	}
 }
-writeFileSync(cfg.resultFile, JSON.stringify(out));
+writeJsonAtomicallySync(cfg.resultFile, out);
 `;
 	const child = spawn(process.execPath, ["--input-type=module", "-e", script], {
 		env: {
@@ -135,20 +153,27 @@ writeFileSync(cfg.resultFile, JSON.stringify(out));
 		},
 		stdio: ["ignore", "pipe", "pipe"],
 	});
+	spawnedChildren.push(child);
 	let stderr = "";
 	child.stderr.on("data", (chunk) => {
 		stderr += String(chunk);
 	});
 	const done = new Promise<WorkerResult>((resolve, reject) => {
-		child.on("exit", (code) => {
+		child.on("close", (code) => {
 			if (!existsSync(config.resultFile)) {
 				reject(new Error(`Lock worker exited (${String(code)}) without writing result. stderr=${stderr}`));
 				return;
 			}
-			resolve(JSON.parse(readFileSync(config.resultFile, "utf8")) as WorkerResult);
+			try {
+				resolve(JSON.parse(readFileSync(config.resultFile, "utf8")) as WorkerResult);
+			} catch (error) {
+				reject(new Error(`Lock worker wrote unreadable result (${String(error)}). stderr=${stderr}`));
+			}
 		});
 		child.on("error", reject);
 	});
+	// Avoid unhandled rejection noise if afterEach SIGKILLs a live worker after an earlier assertion failed.
+	done.catch(() => {});
 	return { child, done };
 }
 
@@ -175,7 +200,7 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 			beforeRecoverSignal: aPaused,
 			beforeRecoverWait: aResume,
 		});
-		await waitForFile(aPaused);
+		await waitForBarrierFile(aPaused);
 
 		// Step 2: Process B recovers the stale lock, acquires live lock B, and holds it.
 		const bAcquired = join(barriers, "b-acquired");
@@ -187,12 +212,12 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 			acquiredBarrier: bAcquired,
 			holdUntilFile: bRelease,
 		});
-		const bInfo = JSON.parse(await waitForFile(bAcquired)) as WorkerResult;
+		const bInfo = await waitForJsonBarrier<WorkerResult>(bAcquired);
 		expect(bInfo.status).toBe("acquired");
 		const bLockRawBeforeA = readFileSync(lockPath, "utf8");
 
 		// Step 3: Resume Process A — under the old rename/restore implementation, A would rename B's live lock away!
-		writeFileSync(aResume, "go");
+		writeFileAtomicallySync(aResume, "go");
 		const resA = await workerA.done;
 		expect(resA.status).toBe("locked");
 		// Process B's lock file MUST remain byte-for-byte intact and `.recover` MUST be cleaned up!
@@ -210,7 +235,7 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 		expect(readFileSync(lockPath, "utf8")).toBe(bLockRawBeforeA);
 
 		// Step 5: Release Process B — lock cleanly removed.
-		writeFileSync(bRelease, "done");
+		writeFileAtomicallySync(bRelease, "done");
 		const resB = await workerB.done;
 		expect(resB.status).toBe("acquired");
 		expect(existsSync(lockPath)).toBe(false);
@@ -238,7 +263,7 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 			afterUnlinkSignal: aUnlinked,
 			afterUnlinkWait: aResumeClaim,
 		});
-		await waitForFile(aUnlinked);
+		await waitForBarrierFile(aUnlinked);
 		expect(existsSync(recoverPath)).toBe(true);
 
 		// Process C arrives while lockPath is vacant and wins atomic `wx` cleanly.
@@ -251,18 +276,18 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 			acquiredBarrier: cAcquired,
 			holdUntilFile: cRelease,
 		});
-		const cInfo = JSON.parse(await waitForFile(cAcquired)) as WorkerResult;
+		const cInfo = await waitForJsonBarrier<WorkerResult>(cAcquired);
 		expect(cInfo.status).toBe("acquired");
 		const cLockRaw = readFileSync(lockPath, "utf8");
 
 		// Resume Process A: its `wx` gets EEXIST, it releases `.recover`, and it NEVER touches C's lock!
-		writeFileSync(aResumeClaim, "go");
+		writeFileAtomicallySync(aResumeClaim, "go");
 		const resA = await workerA.done;
 		expect(resA.status).toBe("locked");
 		expect(readFileSync(lockPath, "utf8")).toBe(cLockRaw);
 		expect(existsSync(recoverPath)).toBe(false);
 
-		writeFileSync(cRelease, "done");
+		writeFileAtomicallySync(cRelease, "done");
 		const resC = await workerC.done;
 		expect(resC.status).toBe("acquired");
 		expect(existsSync(lockPath)).toBe(false);
@@ -293,26 +318,33 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 		);
 
 		// Wait until ALL 6 OS processes have loaded the module and reached the start barrier before firing `go`.
-		await Promise.all(workers.map((_, i) => waitForFile(join(barriers, `ready-${i}`), 10_000)));
-		writeFileSync(startBarrier, "go");
+		await Promise.all(workers.map((_, i) => waitForBarrierFile(join(barriers, `ready-${i}`), 10_000)));
+		writeFileAtomicallySync(startBarrier, "go");
 
 		// Wait until 1 winner announces acquisition AND all 5 other processes have written their refusal results
-		// while the winner is STILL holding the lock!
-		const firstWinner = await Promise.any(
-			workers.map((_, i) => waitForFile(join(barriers, `acq-${i}.json`), 10_000)),
-		);
-		const winnerInfo = JSON.parse(firstWinner) as WorkerResult;
+		// while the winner is STILL holding the lock! Abort losing waiters immediately once a winner emerges.
+		const acqController = new AbortController();
+		let winnerInfo: WorkerResult;
+		try {
+			winnerInfo = await Promise.any(
+				workers.map((_, i) =>
+					waitForJsonBarrier<WorkerResult>(join(barriers, `acq-${i}.json`), 10_000, 10, acqController.signal),
+				),
+			);
+		} finally {
+			acqController.abort();
+		}
 		const winnerIndex = workers.findIndex((_, i) => existsSync(join(barriers, `acq-${i}.json`)));
 		await Promise.all(
 			workers.map((_, i) =>
-				i === winnerIndex ? Promise.resolve("") : waitForFile(join(barriers, `res-${i}.json`), 10_000),
+				i === winnerIndex ? Promise.resolve("") : waitForBarrierFile(join(barriers, `res-${i}.json`), 10_000),
 			),
 		);
 		const onDisk = JSON.parse(readFileSync(lockPath, "utf8")) as { pid: number; token: string };
 		expect(onDisk.pid).toBe(winnerInfo.pid);
 		expect(onDisk.token).toBe(winnerInfo.token);
 
-		writeFileSync(holdUntilFile, "done");
+		writeFileAtomicallySync(holdUntilFile, "done");
 		const results = await Promise.all(workers.map((w) => w.done));
 		const winners = results.filter((r) => r.status === "acquired");
 		const locked = results.filter((r) => r.status === "locked");
@@ -322,6 +354,30 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 		expect(locked).toHaveLength(5);
 		expect(existsSync(lockPath)).toBe(false);
 		expect(existsSync(`${lockPath}.recover`)).toBe(false);
+	});
+
+	it("deterministic barrier regression: non-atomic creation exposes empty/partial JSON while atomic rename never does", async () => {
+		const dir = makeTempDir("endo-wlock-barrier-repro-");
+		// 1. Reproduce the former non-atomic open-then-write race deterministically:
+		// a file created via open(O_CREAT) before its bytes are written is visible to `existsSync` as empty JSON.
+		const nonAtomic = join(dir, "non-atomic.json");
+		const fd = openSync(nonAtomic, "w");
+		try {
+			expect(existsSync(nonAtomic)).toBe(true);
+			expect(() => JSON.parse(readFileSync(nonAtomic, "utf8"))).toThrow(SyntaxError);
+			writeSync(fd, '{"status":"acq');
+			expect(() => JSON.parse(readFileSync(nonAtomic, "utf8"))).toThrow(SyntaxError);
+		} finally {
+			closeSync(fd);
+		}
+
+		// 2. Prove atomic same-directory temp + rename never exposes an empty or partial payload to concurrent readers.
+		const atomicPath = join(dir, "atomic.json");
+		const payload = { status: "acquired" as const, pid: process.pid, token: "t".repeat(128) };
+		const waiting = waitForJsonBarrier<WorkerResult>(atomicPath, 5_000, 1);
+		// Delay publication slightly so the reader actively polls across ENOENT before rename lands.
+		setTimeout(() => writeFileAtomicallySync(atomicPath, JSON.stringify(payload)), 20);
+		await expect(waiting).resolves.toEqual(payload);
 	});
 
 	it("fails closed with explicit recovery instructions on stuck .recover barriers, malformed locks, and E4 non-PID sentinels", () => {

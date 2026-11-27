@@ -1,6 +1,7 @@
 import hashlib
 import os
 import io
+import select
 import tarfile
 import subprocess
 import sys
@@ -26,18 +27,33 @@ class TransportTests(unittest.TestCase):
         return subprocess.run(["bash", Path(__file__).with_name("host.sh"), "audit"],
                               env=self.env, capture_output=True, text=True, timeout=5)
 
-    def test_audit_uses_only_identified_pid(self):
+    def _start_fake_guest(self, script, recorded_pidfile):
         binary = self.work / "qemu-system-x86_64"
-        binary.symlink_to(sys.executable)
+        if not binary.exists():
+            binary.symlink_to(sys.executable)
         self.env["PATH"] = f"{self.work}:{os.environ['PATH']}"
-        pidfile = self.vm / "qemu.pid"
         ss = self.work / "ss"
-        ss.write_text("#!/bin/sh\nprintf 'mock socket pid=%s,fd=3\\n' \"$(cat \"$ENDO13_WORK/vm/qemu.pid\")\"\n")
-        ss.chmod(0o700)
+        if not ss.exists():
+            ss.write_text("#!/bin/sh\nprintf 'mock socket pid=%s,fd=3\\n' \"$(cat \"$ENDO13_WORK/vm/qemu.pid\")\"\n")
+            ss.chmod(0o700)
+        proc = subprocess.Popen(
+            [binary, "-I", "-c", script,
+             "-name", "endo13-guest", "-serial", f"pipe:{self.vm}/con",
+             "-pidfile", recorded_pidfile, "-nic", "none"],
+            stdout=subprocess.PIPE, text=True,
+        )
+        ready, _, _ = select.select([proc.stdout], [], [], 5)
+        if not ready or proc.stdout.readline().strip() != "ready":
+            proc.terminate()
+            proc.wait(timeout=5)
+            proc.stdout.close()
+            self.fail("fake guest did not signal readiness before audit")
+        return proc
+
+    def test_audit_uses_only_identified_pid(self):
+        pidfile = self.vm / "qemu.pid"
         for expected, recorded in [(False, self.work / "other.pid"), (True, pidfile)]:
-            proc = subprocess.Popen([binary, "-c", "import time; time.sleep(30)",
-                                     "-name", "endo13-guest", "-serial", f"pipe:{self.vm}/con",
-                                     "-pidfile", recorded, "-nic", "none"])
+            proc = self._start_fake_guest("import time; print('ready', flush=True); time.sleep(30)", recorded)
             try:
                 pidfile.write_text(str(proc.pid))
                 result = self.audit()
@@ -52,6 +68,41 @@ class TransportTests(unittest.TestCase):
             finally:
                 proc.terminate()
                 proc.wait(timeout=5)
+                if proc.stdout is not None:
+                    proc.stdout.close()
+
+    def test_audit_tolerates_transient_fd_churn_and_fails_on_dead_guest(self):
+        pidfile = self.vm / "qemu.pid"
+        # Mirror GNU coreutils 9.4 (Ubuntu 24.04) `ls -l /proc/$pid/fd` failing on a transient vanished fd:
+        # host.sh audit must inspect /proc/$pid/fd directly rather than letting `ls` abort under set -e.
+        failing_ls = self.work / "ls"
+        failing_ls.write_text("#!/bin/sh\necho \"ls: cannot access '/proc/0/fd/3': No such file or directory\" >&2\nexit 1\n")
+        failing_ls.chmod(0o700)
+        churn_script = (
+            "import os, time\n"
+            "print('ready', flush=True)\n"
+            "end = time.monotonic() + 30\n"
+            "while time.monotonic() < end:\n"
+            "    fds = [os.open('/dev/null', os.O_RDONLY) for _ in range(32)]\n"
+            "    for fd in fds:\n"
+            "        os.close(fd)\n"
+        )
+        proc = self._start_fake_guest(churn_script, pidfile)
+        try:
+            pidfile.write_text(str(proc.pid))
+            for _ in range(10):
+                result = self.audit()
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"# pid {proc.pid} uid {os.getuid()}", result.stdout)
+                self.assertIn("fd 1 -> pipe:[", result.stdout)
+                self.assertIn(f"mock socket pid={proc.pid},fd=3", result.stdout)
+        finally:
+            proc.terminate()
+            proc.wait(timeout=5)
+            if proc.stdout is not None:
+                proc.stdout.close()
+        dead = self.audit()
+        self.assertNotEqual(dead.returncode, 0)
 
     def test_put_checks_final_transport_and_guest_status(self):
         src = self.work / "fixture"

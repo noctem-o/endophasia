@@ -1,7 +1,5 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { endoStartOnDevelopV0 } from "../cockpit-http/host.ts";
 import { loadEndoStudioUiFilesV0 } from "../cockpit-http/studio-ui.ts";
@@ -18,20 +16,13 @@ const requireBrowser = process.env.ENDO_REQUIRE_BROWSER === "1";
 const board = "[data-testid=coordinator-workspace]";
 const task = "[data-testid=coordinator-task]";
 let browser: Browser | undefined;
-let dist: string | undefined;
 let ui: ReturnType<typeof endoStartOnDevelopV0>;
 
 describe.skipIf(!haveGit || (executable === null && !requireBrowser))("Studio Coordinator Mission Board", () => {
 	beforeAll(async () => {
 		if (executable === null) throw new Error("ENDO_REQUIRE_BROWSER=1 but no Chromium was found");
-		dist = mkdtempSync(join(tmpdir(), "endo-board-dist-"));
-		const { buildStudioUi } = (await import(
-			fileURLToPath(new URL("../scripts/build-studio-ui.mjs", import.meta.url))
-		)) as {
-			buildStudioUi(dir: string): Promise<void>;
-		};
-		await buildStudioUi(dist);
-		ui = endoStartOnDevelopV0(loadEndoStudioUiFilesV0(dist));
+		const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+		ui = endoStartOnDevelopV0(loadEndoStudioUiFilesV0(await ensureSharedStudioUiDir()));
 		browser = await Browser.launch(executable);
 	}, 90_000);
 
@@ -39,7 +30,6 @@ describe.skipIf(!haveGit || (executable === null && !requireBrowser))("Studio Co
 		await browser?.close();
 		await stopServers();
 		cleanCoordinatorFixturesV0();
-		if (dist !== undefined) rmSync(dist, { recursive: true, force: true });
 	});
 
 	it("renders projected evidence in both appearances, filters, and withdraws refused or malformed reads", async () => {

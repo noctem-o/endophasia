@@ -335,7 +335,13 @@ export async function inspectLinuxHostV0(
 	const matching: string[] = [];
 	for (const name of names) {
 		check();
-		if (readlinkSync(`${proc}/fd/${name}`) === `socket:[${socketInode}]`) matching.push(name);
+		try {
+			if (readlinkSync(`${proc}/fd/${name}`) === `socket:[${socketInode}]`) matching.push(name);
+		} catch (error) {
+			// A transient non-listener descriptor may close between opendir and readlink; re-check below still validates
+			// the matched listener descriptor and process start ticks.
+			if ((error as NodeJS.ErrnoException | null)?.code !== "ENOENT") throw error;
+		}
 	}
 	if (matching.length !== 1) fail("listenerFd", "UNAVAILABLE", "listener owner unavailable or ambiguous");
 	const executableSha256 = await digestFile(executablePath, executable, deadlineSignal, check);

@@ -25,8 +25,17 @@ audit)
   p=$(cat "$vm/qemu.pid")
   [[ $p =~ ^[1-9][0-9]*$ ]] || { echo "invalid guest pidfile" >&2; exit 66; }
   proc=/proc/$p
+  proc_start() {
+    local s rest
+    s=$(<"$1/stat") || return 1
+    rest=${s##*) }
+    set -- $rest
+    [[ -n ${20:-} ]] || return 1
+    printf '%s' "$20"
+  }
   exe=$(type -P qemu-system-x86_64)
   uid=$(stat -c %u "$proc")
+  start_ticks=$(proc_start "$proc") || { echo "guest process disappeared" >&2; exit 66; }
   [[ $proc/exe -ef $exe && $uid == "$EUID" ]] || { echo "not the guest executable or uid" >&2; exit 66; }
   mapfile -d '' -t argv < "$proc/cmdline"
   has_pair() {
@@ -40,7 +49,17 @@ audit)
     echo "pidfile does not identify this guest" >&2; exit 66
   fi
   echo "# pid $p uid $uid"; printf '%q ' "${argv[@]}"; echo
-  ls -l "$proc/fd"
+  python3 -I - "$proc/fd" <<'PY' || { echo "cannot inspect guest file descriptors" >&2; exit 66; }
+import os, sys
+fd_dir = sys.argv[1]
+for name in sorted(os.listdir(fd_dir), key=lambda s: (0, int(s)) if s.isdigit() else (1, s)):
+    try:
+        target = os.readlink(os.path.join(fd_dir, name))
+    except FileNotFoundError:
+        continue
+    print(f"fd {name} -> {target}")
+PY
+  [[ -d $proc && $proc/exe -ef $exe && $(proc_start "$proc" 2>/dev/null) == "$start_ticks" ]] || { echo "guest process changed during audit" >&2; exit 66; }
   echo "# sockets of pid $p"; sockets=$(ss -anp)
   grep -F "pid=$p," <<< "$sockets" || echo none
   echo "# qemu processes: 1 (identified guest)" ;;

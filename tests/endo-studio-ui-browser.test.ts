@@ -8,7 +8,6 @@ import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
 import { startEndoCockpitServerV0 } from "../cockpit-http/server.ts";
@@ -27,12 +26,8 @@ let built = "";
 beforeAll(async () => {
 	if (executable === null && required)
 		throw new Error("ENDO_REQUIRE_BROWSER=1 but no Chromium was found (set CHROME_BIN)");
-	const { buildStudioUi } = (await import(
-		fileURLToPath(new URL("../scripts/build-studio-ui.mjs", import.meta.url))
-	)) as {
-		buildStudioUi(outDir: string): Promise<{ outDir: string }>;
-	};
-	built = (await buildStudioUi(join(scratch, "ui"))).outDir;
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	built = await ensureSharedStudioUiDir();
 	if (executable !== null) browser = await Browser.launch(executable);
 }, 90_000);
 afterAll(async () => {

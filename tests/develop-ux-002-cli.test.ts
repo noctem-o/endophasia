@@ -107,27 +107,10 @@ function client(address: string) {
 	return { post, getJson, until };
 }
 
-/** The newest modification time under a directory. */
-function newest(dir: string): number {
-	let latest = 0;
-	for (const name of readdirSync(dir)) {
-		const path = join(dir, name);
-		const stat = statSync(path);
-		latest = Math.max(latest, stat.isDirectory() ? newest(path) : stat.mtimeMs);
-	}
-	return latest;
-}
 beforeAll(async () => {
-	// The CLI serves the one built frontend next to it, which the other terminal suites rebuild too. Rebuilding it while another
-	// suite's workbench is starting can leave that start without its files, so this suite builds only when the build is missing or
-	// older than the page's sources.
-	const dist = fileURLToPath(new URL("../studio-ui/dist", import.meta.url));
-	const src = fileURLToPath(new URL("../studio-ui/src", import.meta.url));
-	if (existsSync(join(dist, "index.html")) && statSync(join(dist, "index.html")).mtimeMs >= newest(src)) return;
-	const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(dist);
+	// The frontend is built once per Vitest run into studio-ui/dist by tests/global-setup.ts.
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	for (const child of children.splice(0)) if (child.exitCode === null) child.kill("SIGKILL");

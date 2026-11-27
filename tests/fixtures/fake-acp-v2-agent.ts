@@ -361,9 +361,15 @@ lines.on("line", (line) => {
 		...(method === "session/resume" ? { replayFrom: params.replayFrom ?? null } : {}),
 	});
 	switch (method) {
-		case "initialize":
-			reply(id, initializeResult());
+		case "initialize": {
+			const initDelay = Number(flagValue("init-delay") ?? "0");
+			if (Number.isFinite(initDelay) && initDelay > 0) {
+				setTimeout(() => reply(id, initializeResult()), initDelay);
+			} else {
+				reply(id, initializeResult());
+			}
 			return;
+		}
 		case "session/new":
 			if (flags.has("new-refuse")) return fail(id, -32000, "refused");
 			store = { sessionId: SESSION, cwd: String(params.cwd), messages: [], toolCalls: [] };

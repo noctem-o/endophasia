@@ -661,9 +661,9 @@ export class AcpClientV2 {
 	}
 
 	/** A request whose JSON-RPC refusal is recorded (by code) before it propagates. */
-	async #requestOptional<T>(what: string, work: Promise<T>): Promise<T> {
+	async #requestOptional<T>(what: string, work: Promise<T>, timeoutMs?: number): Promise<T> {
 		try {
-			return await this.#request(what, work);
+			return await this.#request(what, work, timeoutMs);
 		} catch (error) {
 			if (error instanceof AcpRefusedErrorV0)
 				this.#recorder.record("control.refused", { capability: what.replace("/", "."), code: error.code });
@@ -738,8 +738,9 @@ export class AcpClientV2 {
 	 * `session/close`: the agent must cancel the session's work and free its resources. A response is the agent's
 	 * acceptance, not proof that anything was freed. The process is not ended; close() does that.
 	 */
-	async closeSession(): Promise<void> {
+	async closeSession(options?: { readonly timeoutMs?: number }): Promise<void> {
 		this.#assertUsable("session/close");
+		if (options?.timeoutMs !== undefined) checkTimeout("timeoutMs", options.timeoutMs);
 		const own = { failed: false } as { failed: boolean; error?: unknown };
 		this.#sessionClosing = true;
 		const run = this.#run;
@@ -773,6 +774,7 @@ export class AcpClientV2 {
 			await this.#requestOptional(
 				"session/close",
 				this.#connection.agent.request(acp2.methods.agent.session.close, { sessionId: this.sessionId }),
+				options?.timeoutMs,
 			);
 			response = this.#takeRaw("session/close");
 		} catch (error) {
@@ -802,10 +804,10 @@ export class AcpClientV2 {
 		this.#reportObserverFailure(own);
 	}
 
-	async #request<T>(what: string, work: Promise<T>): Promise<T> {
+	async #request<T>(what: string, work: Promise<T>, timeoutMs?: number): Promise<T> {
 		work.catch(() => {});
 		try {
-			return await bounded(Promise.race([work, this.#exitedEarly(what)]), this.#requestTimeoutMs, what);
+			return await bounded(Promise.race([work, this.#exitedEarly(what)]), timeoutMs ?? this.#requestTimeoutMs, what);
 		} catch (error) {
 			if (this.#closed && !(error instanceof acp2.RequestError)) throw new AcpClosedErrorV0(what);
 			throw await this.#classify(what, error);

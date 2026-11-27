@@ -748,16 +748,29 @@ describe("ACP v2 review round 2", () => {
 		);
 
 	it("releases an open run's waiter when session/close times out or comes back malformed", async () => {
-		for (const [flags, options] of [
-			["hold,close-hang", { requestTimeoutMs: 300 }],
-			["hold,close-malformed", {}],
-		] as const) {
-			const { client } = await attach(flags, options);
+		// Decouple startup/initialize readiness from the tight per-request session/close timeout under test:
+		// connect() uses the full default requestTimeoutMs while closeSession() uses a tight timeoutMs on the hung request.
+		const cases = [
+			{ flags: "hold,close-hang", closeOptions: { timeoutMs: 300 }, errorClass: AcpTimeoutErrorV0 },
+			{ flags: "hold,close-malformed", closeOptions: undefined, errorClass: AcpProtocolErrorV0 },
+		] as const;
+		for (const { flags, closeOptions, errorClass } of cases) {
+			const { client } = await attach(flags);
 			const accepted = await client.prompt("hi");
 			const outcome = settle(accepted.completed);
-			await expect(client.closeSession(), flags).rejects.toBeDefined();
+			await expect(client.closeSession(closeOptions), flags).rejects.toBeInstanceOf(errorClass);
 			expect(await Promise.race([outcome, sleep(2000).then(() => "still waiting")]), flags).toBe("closed");
 		}
+	});
+
+	it("decouples slow initialize from a tight per-request session/close timeout", async () => {
+		// Even when initialize takes longer than the session/close deadline (350 ms > 150 ms), startup completes cleanly
+		// and the tight deadline applies only to the hung session/close request.
+		const { client } = await attach("init-delay=350,hold,close-hang");
+		const accepted = await client.prompt("hi");
+		const outcome = settle(accepted.completed);
+		await expect(client.closeSession({ timeoutMs: 150 })).rejects.toBeInstanceOf(AcpTimeoutErrorV0);
+		expect(await Promise.race([outcome, sleep(2000).then(() => "still waiting")])).toBe("closed");
 	});
 
 	it("leaves a pending permission pending until the close is accepted", async () => {

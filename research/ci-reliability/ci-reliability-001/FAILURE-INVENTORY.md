@@ -49,17 +49,17 @@ Every failed job (28 total) across the 40-run baseline window (`2026-11-25` to `
 - **Evidence:** Run `45878980507` att 1/2 (PR #189, shard 1/3, passed on rerun): received `"No run is open..."` instead of `"after the current turn's tool calls..."`.
 - **Root cause:** Line 143 waited for `!document.querySelector('[data-testid=composer]').disabled` after clicking `#workbench-refresh`. Because the composer textarea is intentionally always editable even when no run is open (verified at lines 135 and 159), that predicate was *already true* before the async refresh completed, causing line 149 to read stale DOM text. Waiting for `!document.querySelector('[data-testid=send]').disabled` (which transitions from `true` at line 140 to `false` only after the refreshed `runActive: true` snapshot renders) synchronizes deterministically on the state transition.
 
-## 3. Exact Remediation Recommendations for Open PRs (Do Not Modify Their Branches)
+## 3. Historical Research Preservation & Production PR Integration Notes (Do Not Modify Open Branches)
 
-### PR #193 (`feat/coordinator-grounding-002`) and PR #194 (`research/coordinator-reasoning-001`, stacked on #193)
-- **Failure (5 consecutive runs):** `tests/coordinator-grounding-002.test.ts:2110-2115` hardcodes:
-  ```ts
-  openclaw: process.env.ENDO_COORDINATOR_OPENCLAW ?? "/home/noctem/.local/bin/openclaw",
-  ```
-  and expects `{ ok: false, reason: "malformed-selector" }`. On GitHub Actions runners where `/home/noctem/.local/bin/openclaw` does not exist (and `/usr/bin/bwrap` is absent), `preflightOpenClawCoordinatorV0` checks runtime availability before checking `briefingMode`/`visibilityMode` compatibility and returns `"runtime-unavailable"`.
-- **Exact remediation for PR #193 (inherited by PR #194 upon rebase):**
-  1. In `adapters/coordinator/openclaw.ts`, validate pure request/mode invariants (`briefingMode === "legacy-v0" && visibilityMode === "status-and-coordination-v1"` -> `"malformed-selector"`) **immediately after** the `projectId` pattern check and **before** host environment checks (`XDG_RUNTIME_DIR`, `/usr/bin/bwrap`, OpenClaw binary resolution). Pure selector/mode contract validation should never depend on host runtime presence.
-  2. In `tests/coordinator-grounding-002.test.ts:2106-2115`, remove the hardcoded workstation path `"/home/noctem/.local/bin/openclaw"`. Pass either no `openclaw` option (once mode validation runs first) or a scratch temporary fake OpenClaw fixture inside `scratch()`.
+### Pinned Historical Research PRs — `#192`, `#193`, and `#194` (DO NOT REBASE OR MODIFY)
+- **PR `#192`** (`research/s2-live-001`, pinned head `6d8d164215b4e80ae2ba6ed3cc60b80da548c639`): Run `45964716039` failed solely on pre-existing `main` defect `F4` (`tests/writer-lock-concurrency.test.ts:254`).
+- **PR `#193`** (`feat/coordinator-grounding-002`, pinned head `efd8599cd2fdba7ede46cb12f53b3a91ea689feb`) and **PR `#194`** (`research/coordinator-reasoning-001`, pinned head `3c22f1a91da2e64f0c0488fae767ceb70c653995`):
+  - **Failure (5 consecutive runs):** `tests/coordinator-grounding-002.test.ts:2110-2115` hardcodes:
+    ```ts
+    openclaw: process.env.ENDO_COORDINATOR_OPENCLAW ?? "/home/noctem/.local/bin/openclaw",
+    ```
+    and expects `{ ok: false, reason: "malformed-selector" }`. On GitHub Actions runners where `/home/noctem/.local/bin/openclaw` does not exist (and `/usr/bin/bwrap` is absent), `preflightOpenClawCoordinatorV0` checks runtime availability before checking `briefingMode`/`visibilityMode` compatibility and returns `"runtime-unavailable"`.
+- **Preservation policy:** Do **not** rebase, amend, force-push, or modify `#192`, `#193`, or `#194`. Preserve their exact experimental commits, environmental limitations, and negative CI results. Any future successor branch carrying `#193`/`#194` forward should validate pure mode/selector invariants before host runtime probing in `adapters/coordinator/openclaw.ts` and remove the hardcoded `/home/noctem/.local/bin/openclaw` path in favor of a temp fixture or `resolveOptionalExecutableV0` from `tests/helpers/host-capabilities.ts`.
 
 ### PR #195 (`feat/coordinator-consolidation-001`)
 - **Failure (Run `46015555565`, shard 2/3):** `tests/coordinator-consolidation-001.test.ts:62-97` calls `preflightOpenClawCoordinatorV0` with a scratch `openclaw.mjs` + `package.json` (`2026.11.10`) and asserts `{ ok: true, harness: "OpenClaw 2026.11.10" }`. On `ubuntu-24.04` general test shards, `/usr/bin/bwrap` is not installed, so lines 666–673 of `adapters/coordinator/openclaw.ts` return `{ ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap unavailable or not executable" }`.

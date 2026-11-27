@@ -49,15 +49,20 @@ Newly added test files do **not** require manual manifest registration: non-brow
 
 To keep first-attempt CI reliability high:
 
-1. **Atomic multi-process synchronization:** Never synchronize OS processes by polling `existsSync(file)` on a file written with `writeFileSync` (file creation becomes visible before writes flush). Use `writeJsonAtomicallySync` and `waitForJsonBarrier` from `tests/helpers/atomic-barrier.ts`.
+1. **Atomic multi-process synchronization:** Never synchronize OS processes by polling `existsSync(file)` on a file written with `writeFileSync` (file creation becomes visible before writes flush). Use `writeJsonAtomicallySync` and `waitForJsonBarrier` from `tests/helpers/atomic-barrier.ts` (with `AbortSignal` cleanup on `Promise.any` races).
 2. **Decouple startup from per-request timeouts:** Never shrink initialization/handshake timeouts just to test a tight post-startup deadline. Use per-request timeout overrides (e.g., `closeSession({ timeoutMs })`) after explicit readiness.
-3. **Process lifecycle & loopback ports:** Use `isProcessRunningV0` (treats Linux `Z`/`X` zombies as terminated), `allocateIsolatedLoopbackPortV0`, and `absentFdForPidV0` from `tests/helpers/process-lifecycle.ts`. Always terminate and reap child processes in `afterEach`/`finally` before removing temp directories.
-4. **Shared Studio UI builds:** Never call `buildStudioUi("studio-ui/dist")` directly from individual test files. Call `ensureSharedStudioUiDir()` from `tests/helpers/studio-ui-build.ts` (pre-populated once per run by `tests/global-setup.ts`).
+3. **Process lifecycle & loopback ports:** Use `isProcessRunningV0` (treats Linux `Z`/`X` zombies as terminated; fails closed on `EPERM`), `allocateIsolatedLoopbackPortV0` (reduces ephemeral-range collisions; prefer `listen(0)` or inherited listeners where supported), and `absentFdForPidV0` from `tests/helpers/process-lifecycle.ts`. Always terminate and reap child processes in `afterEach`/`finally` before removing temp directories.
+4. **Execution-owned Studio UI builds:** Never call `buildStudioUi("studio-ui/dist")` directly from individual test files.
+   - In-process browser/host suites call `ensureSharedStudioUiDir()` from `tests/helpers/studio-ui-build.ts`, which returns the **unique, immutable, execution-owned temporary build directory** prepared by `tests/global-setup.ts` and verifies its manifest + SHA-256 against the current run's hash (failing closed in CI; never falling back to a stale `studio-ui/dist`).
+   - Checkout CLI subprocess suites (spawning `node cli/index.ts`, where `cli/studio.ts` intentionally refuses env-var overrides) call `ensureCheckoutStudioUiDir()`, which validates `studio-ui/dist` against the current execution's manifest SHA-256.
+   - `scripts/build-studio-ui.mjs` uses writer-serialized staged publication with byte-identical no-op skip and deterministic rollback (and does not claim atomic replacement of an existing differing directory).
 5. **No workstation-specific paths or ambient state:** Never fall back to `/home/<user>/...` executable paths or rely on ambient `HOME`/`XDG_*` state. Use `resolveOptionalExecutableV0`, `probeBwrapSandboxV0`, `requireOrSkipCapabilityV0`, and `isolatedHomeEnvV0` from `tests/helpers/host-capabilities.ts`.
 6. **Wait on actionable UI state in browser tests:** Avoid asserting readiness on elements that are already enabled prior to an async refresh; wait for the exact interactive state change (e.g., `!send.disabled` or updated DOM text).
 
-## CI Diagnostics Artifacts
+## CI Execution Accounting, Merge Gate, and Confidential Diagnostics
 
-Each general CI partition job (`Test (fast)`, `Test (browser)`, `Test (process 1/4..4/4)`) publishes:
-- A concise Markdown summary in `$GITHUB_STEP_SUMMARY` listing wall time, worker settings, failures, and slowest files.
-- A sanitized `ci-diagnostics-*.json` artifact (`retention-days: 7`, schema `endo.ci-diagnostics.v1`) containing runner specs, per-file durations, and redacted failure summaries without secrets or full environment dumps.
+Each general CI partition job (`Test (fast)`, `Test (browser)`, `Test (process 1/4..4/4)`) runs with `--strict-accounting`:
+- Rejects passthrough arguments that weaken completeness or isolation (`-t`, `--no-isolate`, `--passWithNoTests`, etc.); targeted local runs (`npm run test:fast -- -t ...`) remain supported in `partial-local` mode.
+- Reconciles the exact expected file set against a fresh, per-invocation Vitest JSON report (`scripts/reconcile-test-execution.mjs`), failing closed on missing/unexpected/duplicate files, corrupt/stale reports, zero-test files, inconsistent aggregate totals, or all-skipped mandatory suites (only the explicit 15-file optional allowlist `PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS` may report all tests skipped on standard runners).
+- Publishes a Markdown summary in `$GITHUB_STEP_SUMMARY` and a sanitized `ci-diagnostics-*.json` artifact (`retention-days: 7`, schema `endo.ci-diagnostics.v1`) containing host-generated failure categories, error class names, normalized paths, sanitized bounded labels, locations, and reconciliation results — **omitting raw assertion diffs, tokens, capability URLs, environment dumps, and transcripts** (full logs remain in standard GitHub Actions job logs).
+- The aggregate **`CI verification`** job (`if: always()`) requires explicit `success` from all 11 upstream jobs (8 specialist jobs + `test-fast` + `test-browser` + `test-process` matrix), providing a single durable status check for branch protection without false-green skips.

@@ -59,9 +59,19 @@ Measured directly on Draft PR `#197` (`feat/ci-reliability-001`, head `7a8a989cf
 - **Process shard imbalance (`max - min`):** **93 s job wall (79.9 s Vitest)** vs baseline **148.0 s median / 270.0 s max**; remaining gap is bounded by the single-file duration of `tests/intervention.test.ts` (247.7 s on `process 1/4`).
 - **Single-attempt runner-minutes:** **30.3 runner-minutes** across all 14 jobs (vs ~26.2 runner-minutes median for a single passing baseline attempt + 9.0% wasted rerun compute).
 
+**Subsequent Initial-Implementation Hosted Run (`46045745413`, head `e791bb0bd`, Attempt 1 — 14 / 14 passed):**
+- **Workflow elapsed time:** **308 s (5m 08s)** (**-30.5%** vs Attempt-1 baseline median 443.0 s; **-26.7%** vs all-passing median 420.0 s).
+- **Fast feedback (`Typecheck and lint` + `Test (fast)`):** **51 s** (33 s check, 51 s fast).
+- **Partition walls:** `Test (browser)` 272 s, `Test (process 1/4)` 308 s, `Test (process 2/4)` 272 s, `Test (process 3/4)` 233 s, `Test (process 4/4)` 247 s.
+- **Total runner-minutes:** **30.9 runner-minutes** across 14 jobs (+4.7 m raw per single passing attempt compared to ~26.2 m baseline single passing attempt; parallelization reduces wall-clock latency at modest additional raw compute per attempt).
+
+### 2.3 Follow-Up Hardening Hosted Validation (`F1`–`F7`)
+
+*Pending final hosted GitHub Actions run after pushing follow-up hardening commits (`F1`–`F7`) to PR `#197`.*
+
 ## 3. Honest Assessment
 
-- **Coverage equivalence:** **Established** — proven both locally and on hosted GitHub Actions (`339 / 339` unique files, `8,037` tests, `0` duplicates, `0` drops, `.github/workflows/ci.yml` cross-checked automatically by `npm run test:inventory`, all 8 specialist jobs preserved and passing).
-- **Reliability improvement:** **Supported for confirmed defects (long-term `>= 99%` fleet rate pending `n >= 20–30` post-merge hosted runs)** — all 5 active `main` failure modes (F3, F4, F5, F6, F7) and the Studio UI race (B5) have root-cause fixes with deterministic regressions, passed **72 / 72** local repetition and 6-core contention runs, and passed **14 / 14** jobs on Attempt 1 of hosted Run `46044910606`. Sample size `n = 1` on hosted CI is explicitly insufficient to statistically prove a 99% fleet rate without post-merge observation.
-- **Performance improvement:** **Supported (initial hosted `n = 1`: -28.9% vs Attempt-1 median / -25.0% vs all-passing median; 51 s fast unit feedback)** — further reduction below ~260 s on hosted CI would require splitting `tests/intervention.test.ts` (247.7 s single file) into two test files as a future follow-up.
-- **Production promotion:** **Ready for operator review** (Draft PR `#197` open targeting `main`; not merged; branch protection untouched).
+- **Coverage equivalence:** **Established** — proven both locally and on hosted GitHub Actions (`339 / 339` unique files on Run `46044910606`, expanded to `341 / 341` files with F1/F2 & F3/F6 regression suites), now enforced fail-closed on every CI partition via `--strict-accounting` reconciliation (`scripts/reconcile-test-execution.mjs`) and `.github/workflows/ci.yml` cross-checks, with all 8 specialist jobs preserved.
+- **Reliability improvement:** **Supported for confirmed defects; statistical proof of `>= 99%` fleet reliability requires natural post-merge observation** — under an idealized i.i.d. Bernoulli model (`p_lower = 0.05 ** (1 / n)`), `n = 2` candidate runs yield only a 22.4% 95% lower bound (`n = 20` -> 86.1%, `n = 30` -> 90.5%, `n = 100` -> 97.0%, `n = 299` -> 99.0%), and real CI runs are non-i.i.d. All 5 active `main` failure modes (`F3`–`F7`), Studio UI publication/stale-build races (`F1`–`F2`), and accounting gaps (`F3` follow-up) now have deterministic root-cause fixes and regressions.
+- **Performance improvement:** **Supported (hosted `n = 2`: 315 s and 308 s vs 443.0 s Attempt-1 median; 51 s fast feedback)** — explicitly noting the ~+4–5 raw runner-minute per-attempt trade-off for 14–15 parallel jobs vs 11 baseline jobs.
+- **Production promotion:** **Conditional** on final hosted CI pass of the follow-up head on Draft PR `#197` and operator review.

@@ -37,25 +37,21 @@ For multi-shard partitions (`process` across 4 shards in CI):
 2. Longest-Processing-Time-first (LPT) assigns each file to the shard with minimum `(totalWeightMs, fileCount, shardIndex)`.
 3. Within each shard, files are passed to Vitest in descending duration order so the longest files (`intervention.test.ts`, `task-owned-provenance-aa.test.ts`, `endo-workbench-interventions-live.test.ts`, `initial-continuation-aa-reader.test.ts`) start immediately at `t = 0`, minimizing worker tail stragglers.
 
-On the 339-file suite:
+On the 341-file suite:
 - `fast` (1 shard): 148 files, **64.7 s** cumulative weight.
 - `browser` (1 shard): 27 files, **538.3 s** cumulative weight.
-- `process` (4 shards): 164 files, **2,767.4 s** cumulative weight, allocated as `[691.8 s, 691.8 s, 691.8 s, 691.8 s]` (**0.0 s imbalance**, down from 148.0 s median / 270.0 s max).
+- `process` (4 shards): 166 files, **2,770.4 s** cumulative weight, allocated as `[692.6 s, 692.6 s, 692.6 s, 692.6 s]` (**0.0 s imbalance**, down from 148.0 s median / 270.0 s max).
 
-### 2.3 Shared Immutable Studio UI Prebuild (`scripts/build-studio-ui.mjs`, `tests/global-setup.ts`, `tests/helpers/studio-ui-build.ts`)
+### 2.3 Execution-Owned Immutable Studio UI Artifacts & Writer-Locked Checkout Sync
 
-- `scripts/build-studio-ui.mjs` builds completely inside a private scratch directory, verifies whether the target `outDir` already matches every file's sha256 byte-for-byte (skipping destructive rewrites when unchanged), and otherwise swaps a sibling staging directory into place atomically.
-- `tests/global-setup.ts` builds `studio-ui/dist` once before workers spawn (unless `ENDO_SKIP_STUDIO_UI_PREBUILD=1`, used solely by `fast`) and exposes the directory via Vitest's `provide("studioUiDistDir", ...)`.
-- All 38 CLI/browser/host test files consume the shared build via `ensureSharedStudioUiDir()`, while `tests/endo-studio-ui.test.ts` continues invoking `buildStudioUi()` directly into scratch directories to preserve clean/repeatable build verification.
+- `tests/global-setup.ts` builds the Studio UI once per Vitest execution context into a **unique, immutable, execution-owned temporary directory** (`endo-vitest-studio-ui-*`), validates it whole with `loadEndoStudioUiFilesV0()`, provides `(studioUiDistDir, studioUiManifestSha256)` via Vitest context, and removes it on teardown only after all workers exit.
+- `ensureSharedStudioUiDir()` (`tests/helpers/studio-ui-build.ts`) verifies full manifest + SHA-256 + `manifestSha256` match, fails closed in CI if unprovided, and never falls back to a stale `studio-ui/dist`.
+- `scripts/build-studio-ui.mjs` uses an exclusive writer lock (`openSync(..., "wx")`), skips mutations when byte-for-byte identical, and rolls back `stale -> target` deterministically on swap failure (accurately documenting the brief non-atomic directory-swap interval when replacing an existing differing directory). The 9 checkout CLI suites call `ensureCheckoutStudioUiDir()`, which validates `studio-ui/dist` against the current execution's `studioUiManifestSha256`, while `tests/endo-studio-ui.test.ts` continues invoking `buildStudioUi()` directly into isolated scratch directories.
 
-### 2.4 Deterministic Coverage Accounting (`scripts/check-test-coverage-accounting.mjs`)
+### 2.4 Deterministic Coverage Accounting & Fail-Closed Execution Reconciliation
 
-Executed on every commit in the `check` CI job (`npm run test:inventory`) and unit-tested in `tests/ci-test-inventory.test.ts`. Verifies:
-- Exact partition completeness: `fast ∪ browser ∪ process === all tests/**/*.test.ts on disk`.
-- Pairwise disjointness across classes and across all LPT shards.
-- Zero browser tests misplaced outside `browser`; zero Studio UI consumers inside `fast`.
-- All specialist CI job test files (`trust-reader`, `trust004-freeze`, `live-scopes`, `exchange`) exist on disk.
-- Zero hardcoded `/home/noctem/` workstation paths outside the documented raw-data fixture (`tests/steering-raw-data.test.ts`).
+- **Planned coverage accounting (`npm run test:inventory`):** Executed on every commit in `check`; proves complete, disjoint partitioning across all `tests/**/*.test.ts` files, cross-checks `.github/workflows/ci.yml` (`--strict-accounting`, `ENDO_REQUIRE_BROWSER: "1"`, `matrix.shard`, specialist jobs, and `ci-verification` with `if: always()`), and blocks `/home/noctem/` workstation paths outside the documented raw-data exception.
+- **Actual execution reconciliation (`scripts/reconcile-test-execution.mjs`):** Executed via `--strict-accounting` on every CI partition job; verifies a fresh per-invocation Vitest JSON report matches the exact expected file set with zero missing/unexpected/duplicate/zero-test files, rejects weakening passthrough flags, fails closed on any all-skipped mandatory suite (only the closed 15-file `PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS` allowlist may report all tests skipped), and never masks nonzero exit codes.
 
 ### 2.5 Specialist Jobs and Docs-Only Changes Policy
 

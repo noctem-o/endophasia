@@ -116,7 +116,15 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: node scripts/run-test-partition.mjs --class=fast
+      - run: node scripts/run-test-partition.mjs --class=fast --json-out="$RUNNER_TEMP/vitest-fast.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-fast.json" --step-summary
+      - name: Upload sanitized CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics-fast
+          path: ${{ runner.temp }}/ci-diagnostics-fast.json
+          retention-days: 7
+          if-no-files-found: ignore
 
   test-browser:
     name: Test (browser)
@@ -130,9 +138,17 @@ jobs:
           cache: npm
       - run: npm ci
       # ENDO_REQUIRE_BROWSER makes the Studio frontend's browser suite fail, not skip, on a runner without Chromium.
-      - run: node scripts/run-test-partition.mjs --class=browser
+      - run: node scripts/run-test-partition.mjs --class=browser --json-out="$RUNNER_TEMP/vitest-browser.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-browser.json" --step-summary
         env:
           ENDO_REQUIRE_BROWSER: "1"
+      - name: Upload sanitized CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics-browser
+          path: ${{ runner.temp }}/ci-diagnostics-browser.json
+          retention-days: 7
+          if-no-files-found: ignore
 
   test-process:
     name: Test (process ${{ matrix.shard }}/4)
@@ -157,7 +173,15 @@ jobs:
           fi
       # Ubuntu 24.04 ships GNU coreutils 9.4, whose mv has no --exchange: here the reference-replacement tests check the
       # up-front refusal, and the exchange job below checks the exchange itself.
-      - run: node scripts/run-test-partition.mjs --class=process --shard=${{ matrix.shard }}/4
+      - run: node scripts/run-test-partition.mjs --class=process --shard=${{ matrix.shard }}/4 --json-out="$RUNNER_TEMP/vitest-process-${{ matrix.shard }}.json" --diagnostics-out="$RUNNER_TEMP/ci-diagnostics-process-${{ matrix.shard }}.json" --step-summary
+      - name: Upload sanitized CI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-diagnostics-process-${{ matrix.shard }}
+          path: ${{ runner.temp }}/ci-diagnostics-process-${{ matrix.shard }}.json
+          retention-days: 7
+          if-no-files-found: ignore
 
   live-scopes:
     name: Live process containment (real user scopes)

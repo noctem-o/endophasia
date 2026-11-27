@@ -246,7 +246,12 @@ export function allocateLptShard(
 	for (const entry of weighted) {
 		let target = 0;
 		for (let i = 1; i < shardCount; i++) {
-			if (totals[i] < totals[target]) target = i;
+			if (
+				totals[i] < totals[target] ||
+				(totals[i] === totals[target] && bins[i].length < bins[target].length)
+			) {
+				target = i;
+			}
 		}
 		bins[target].push(entry);
 		totals[target] += entry.weightMs;

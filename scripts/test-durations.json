@@ -25,6 +25,7 @@
     "tests/cassette-replay.test.ts": 153415,
     "tests/checkpoint-materialization-failure.test.ts": 838,
     "tests/checkpoint-materialization.test.ts": 2887,
+    "tests/ci-observability.test.ts": 1500,
     "tests/ci-test-inventory.test.ts": 50,
     "tests/cli-help.test.ts": 26677,
     "tests/cockpit-browser-launch.test.ts": 2528,

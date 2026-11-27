@@ -1,0 +1,107 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, describe, expect, it } from "vitest";
+
+const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
+const cleanup: string[] = [];
+afterEach(() => {
+	for (const dir of cleanup.splice(0).reverse()) rmSync(dir, { recursive: true, force: true });
+});
+
+describe("CI observability and history analysis", () => {
+	it("computes baseline reliability and runner-minute metrics from the captured 40-run snapshot", () => {
+		const res = spawnSync(
+			process.execPath,
+			[
+				join(REPO_ROOT, "scripts", "analyze-ci-history.mjs"),
+				`--input=${join(REPO_ROOT, "research", "ci-reliability", "ci-reliability-001", "historical-runs-40.json")}`,
+				"--json",
+			],
+			{ encoding: "utf8" },
+		);
+		expect(res.status, res.stderr).toBe(0);
+		const metrics = JSON.parse(res.stdout) as {
+			totalRuns: number;
+			decisiveAttempt1: number;
+			firstAttemptSuccess: number;
+			failedThenPassed: number;
+			firstAttemptFailure: number;
+			runnerMinutes: { total: number; rerun: number };
+		};
+		expect(metrics.totalRuns).toBe(40);
+		expect(metrics.decisiveAttempt1).toBe(39);
+		expect(metrics.firstAttemptSuccess).toBe(19);
+		expect(metrics.failedThenPassed).toBe(9);
+		expect(metrics.firstAttemptFailure).toBe(20);
+		expect(metrics.runnerMinutes.total).toBeGreaterThan(1400);
+		expect(metrics.runnerMinutes.rerun).toBeGreaterThan(350);
+	});
+
+	it("emits sanitized diagnostics JSON and step summary without masking a failing exit code", () => {
+		const scratch = mkdtempSync(join(tmpdir(), "endo-ci-obs-"));
+		cleanup.push(scratch);
+		const jsonOut = join(scratch, "vitest.json");
+		const diagOut = join(scratch, "diag.json");
+		const summaryFile = join(scratch, "step-summary.md");
+
+		// Passing 1-file slice of the fast partition (runs in <2s instead of transforming all 160 files).
+		const passRun = spawnSync(
+			process.execPath,
+			[
+				join(REPO_ROOT, "scripts", "run-test-partition.mjs"),
+				"--class=fast",
+				"--shard=150/160",
+				"--max-workers=1",
+				`--json-out=${jsonOut}`,
+				`--diagnostics-out=${diagOut}`,
+				"--step-summary",
+			],
+			{
+				cwd: REPO_ROOT,
+				env: { ...process.env, GITHUB_STEP_SUMMARY: summaryFile },
+				encoding: "utf8",
+			},
+		);
+		expect(passRun.status, passRun.stderr).toBe(0);
+		const diag = JSON.parse(readFileSync(diagOut, "utf8")) as {
+			schemaVersion: string;
+			exitCode: number;
+			partition: { class: string; maxWorkers: number; allocatedFileCount: number };
+			environment: { nodeVersion: string; vitestVersion: string };
+			totals: { filesReported: number; testsPassed: number; testsFailed: number };
+		};
+		expect(diag.schemaVersion).toBe("endo.ci-diagnostics.v1");
+		expect(diag.exitCode).toBe(0);
+		expect(diag.partition.class).toBe("fast");
+		expect(diag.partition.maxWorkers).toBe(1);
+		expect(diag.partition.allocatedFileCount).toBe(1);
+		expect(diag.environment.nodeVersion).toBe(process.version);
+		expect(diag.totals.filesReported).toBe(1);
+		expect(diag.totals.testsFailed).toBe(0);
+		const summaryMd = readFileSync(summaryFile, "utf8");
+		expect(summaryMd).toContain("Test Partition: `fast`");
+		expect(summaryMd).toContain("PASS");
+
+		// Verify a failing Vitest invocation propagates its non-zero exit code intact.
+		const failDiag = join(scratch, "fail-diag.json");
+		const failRun = spawnSync(
+			process.execPath,
+			[
+				join(REPO_ROOT, "scripts", "run-test-partition.mjs"),
+				"--class=fast",
+				"--shard=150/160",
+				"--max-workers=1",
+				`--diagnostics-out=${failDiag}`,
+				"--",
+				"--unknown-flag-that-must-fail-vitest",
+			],
+			{ cwd: REPO_ROOT, encoding: "utf8" },
+		);
+		expect(failRun.status).not.toBe(0);
+		const failParsed = JSON.parse(readFileSync(failDiag, "utf8")) as { exitCode: number };
+		expect(failParsed.exitCode).not.toBe(0);
+	}, 60_000);
+});

@@ -26,6 +26,7 @@
 		"test:process": "node scripts/run-test-partition.mjs --class=process",
 		"test:browser": "node scripts/run-test-partition.mjs --class=browser",
 		"test:inventory": "node scripts/check-test-coverage-accounting.mjs",
+		"ci:analyze": "node scripts/analyze-ci-history.mjs",
 		"typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p studio-ui/tsconfig.json",
 		"lint": "biome check .",
 		"endo": "node cli/index.ts",

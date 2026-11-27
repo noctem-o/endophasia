@@ -335,6 +335,7 @@
     "tests/steering-study.test.ts": 21083,
     "tests/storage-recovery.test.ts": 82,
     "tests/storage-short-write.test.ts": 19,
+    "tests/studio-ui-publication.test.ts": 500,
     "tests/task-owned-provenance-aa.test.ts": 193163,
     "tests/trajectory.test.ts": 1110,
     "tests/variance-cassettes.test.ts": 618,

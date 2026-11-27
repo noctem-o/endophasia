@@ -18,8 +18,8 @@ const scratch = mkdtempSync(join(tmpdir(), "endo-workspace-cli-"));
 const children: ChildProcess[] = [];
 
 beforeAll(async () => {
-	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
-	await ensureSharedStudioUiDir();
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 }, 90_000);
 afterEach(() => {
 	for (const child of children.splice(0))

@@ -58,8 +58,8 @@ class Pty {
 
 beforeAll(async () => {
 	// The checkout serves the frontend built once for this test run into studio-ui/dist by tests/global-setup.ts.
-	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
-	await ensureSharedStudioUiDir();
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	for (const pty of ptys.splice(0)) pty.kill();

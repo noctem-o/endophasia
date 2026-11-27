@@ -109,8 +109,8 @@ function client(address: string) {
 
 beforeAll(async () => {
 	// The frontend is built once per Vitest run into studio-ui/dist by tests/global-setup.ts.
-	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
-	await ensureSharedStudioUiDir();
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	for (const child of children.splice(0)) if (child.exitCode === null) child.kill("SIGKILL");

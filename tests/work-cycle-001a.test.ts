@@ -99,8 +99,8 @@ class Pty {
 }
 
 beforeAll(async () => {
-	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
-	await ensureSharedStudioUiDir();
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	for (const done of cleanup.splice(0).reverse()) await done();

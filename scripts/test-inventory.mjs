@@ -94,6 +94,7 @@ const PROCESS_SIGNALS = [
 	"startEndoControlServer",
 	"aa-operator-rig",
 	"ensureSharedStudioUiDir",
+	"ensureCheckoutStudioUiDir",
 	"buildStudioUi",
 	"createServer(",
 	"http.createServer",
@@ -377,7 +378,10 @@ export function validateCoverageAccounting(rootDir = REPO_ROOT, shardPlan = { fa
 				errors.push(`browser-requiring test file is not in "browser" class: ${file} (in "${seenClass.get(file)}")`);
 			}
 		}
-		if (seenClass.get(file) === "fast" && src.includes("ensureSharedStudioUiDir")) {
+		if (
+			seenClass.get(file) === "fast" &&
+			(src.includes("ensureSharedStudioUiDir") || src.includes("ensureCheckoutStudioUiDir"))
+		) {
 			errors.push(`Studio UI test file must not be in "fast" class: ${file}`);
 		}
 	}

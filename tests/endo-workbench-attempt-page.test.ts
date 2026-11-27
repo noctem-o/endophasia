@@ -70,8 +70,8 @@ class Pty {
 const runs = hasScript && process.platform === "linux" && executable !== null;
 beforeAll(async () => {
 	if (!runs) return;
-	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
-	await ensureSharedStudioUiDir();
+	const { ensureCheckoutStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureCheckoutStudioUiDir();
 	browser = await Browser.launch(executable as string);
 }, 90_000);
 afterEach(async () => {

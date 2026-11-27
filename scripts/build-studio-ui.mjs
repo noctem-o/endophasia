@@ -8,9 +8,35 @@
 // or CSS-injection helper, no absolute base, and a metafile that names every output. Nothing here runs at install time: the
 // published package carries only the output.
 //
+// Publication contract (CI-RELIABILITY-001 F1):
+// - Writers targeting the same `outDir` serialize via an exclusive sibling lock file (`openSync(..., "wx")`).
+// - If `outDir` already exists as a real directory whose regular files and manifest match byte-for-byte, publication is a
+//   zero-mutation no-op (existing readers observe no disruption).
+// - If `outDir` does not yet exist, staging followed by a single `renameSync(stage, target)` publishes it in one directory entry.
+// - If `outDir` exists with different contents, replacement uses two POSIX renames (`target -> stale`, `stage -> target`) with
+//   deterministic rollback (`stale -> target`) on failure and NO destructive `rmSync(target)` fallback. Because POSIX `rename(2)`
+//   cannot atomically replace a non-empty directory with another directory without Linux-specific `renameat2(RENAME_EXCHANGE)`,
+//   there is a brief non-atomic swap interval when replacing an existing directory whose contents changed; production builds
+//   (`npm run build` -> `dist/studio-ui`) run offline without concurrent readers, and concurrent Vitest runs isolate their
+//   in-process browser/host consumers into per-execution immutable directories (see `tests/global-setup.ts`).
+//
 //   node scripts/build-studio-ui.mjs [outDir]       (default studio-ui/dist)
 import { createHash, randomBytes } from "node:crypto";
-import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+	closeSync,
+	copyFileSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	rmSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,12 +47,199 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 export const STUDIO_UI_MANIFEST_NAME = "studio-ui.manifest.json";
 export const STUDIO_UI_MANIFEST_FORMAT = "endo.studio-ui-manifest/v0";
 
+const DEFAULT_LOCK_TIMEOUT_MS = 30_000;
+const STALE_LOCK_MAX_AGE_MS = 120_000;
+
+function lstatExists(path) {
+	try {
+		lstatSync(path);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+function isPidAlive(pid) {
+	if (!Number.isInteger(pid) || pid <= 0) return false;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return error?.code === "EPERM";
+	}
+}
+
+function sleepSyncOrAsync(ms) {
+	return new Promise((r) => setTimeout(r, ms));
+}
+
 /**
- * Build into `outDir` (replacing it). Returns the directory, the manifest and the packages whose code or font is in the output,
- * for the licence notices. The output is a function of the sources and of the pinned dependencies only: no timestamp, no absolute
- * path, no source map.
+ * Acquire an exclusive writer lock file beside `target` so concurrent builders never interleave
+ * directory swaps or corrupt each other's staging directories.
+ * @param {string} lockPath
+ * @param {number} [timeoutMs]
  */
-export async function buildStudioUi(outDir = join(root, "studio-ui", "dist")) {
+async function acquirePublicationLock(lockPath, timeoutMs = DEFAULT_LOCK_TIMEOUT_MS) {
+	mkdirSync(dirname(lockPath), { recursive: true });
+	const deadline = Date.now() + timeoutMs;
+	const token = `${process.pid}-${randomBytes(6).toString("hex")}`;
+	for (;;) {
+		try {
+			const fd = openSync(lockPath, "wx", 0o600);
+			try {
+				writeFileSync(fd, JSON.stringify({ pid: process.pid, token, startedAt: Date.now() }));
+			} finally {
+				closeSync(fd);
+			}
+			return () => {
+				try {
+					const raw = readFileSync(lockPath, "utf8");
+					const parsed = JSON.parse(raw);
+					if (parsed?.token === token) unlinkSync(lockPath);
+				} catch {
+					// Lock already gone or replaced.
+				}
+			};
+		} catch (error) {
+			if (error?.code !== "EEXIST") throw error;
+			// Inspect whether an existing lock belongs to a dead process or has expired.
+			try {
+				const stat = lstatSync(lockPath);
+				const ageMs = Date.now() - stat.mtimeMs;
+				let stale = ageMs > STALE_LOCK_MAX_AGE_MS;
+				try {
+					const holder = JSON.parse(readFileSync(lockPath, "utf8"));
+					if (typeof holder?.pid === "number" && !isPidAlive(holder.pid)) {
+						stale = true;
+					}
+				} catch {
+					// Lock file may still be initializing; wait briefly before treating as stale.
+					if (ageMs > 5_000) stale = true;
+				}
+				if (stale) {
+					try {
+						unlinkSync(lockPath);
+					} catch {
+						// Another waiter already cleared it.
+					}
+					continue;
+				}
+			} catch {
+				// Lock disappeared between openSync and lstatSync; retry immediately.
+				continue;
+			}
+			if (Date.now() > deadline) {
+				throw new Error(`Timed out after ${timeoutMs}ms waiting for Studio UI publication lock ${lockPath}`);
+			}
+			await sleepSyncOrAsync(20);
+		}
+	}
+}
+
+/**
+ * Checks whether `target` is already a real directory holding regular files byte-for-byte identical
+ * to `manifestText` and `files` (no missing files, no extra files, no symlinks).
+ * @param {string} target
+ * @param {string} manifestText
+ * @param {Array<{ name: string, bytes: number, sha256: string }>} files
+ */
+function isDirectoryIdentical(target, manifestText, files) {
+	try {
+		if (!lstatSync(target).isDirectory()) return false;
+		const manifestPath = join(target, STUDIO_UI_MANIFEST_NAME);
+		if (!lstatSync(manifestPath).isFile()) return false;
+		if (readFileSync(manifestPath, "utf8") !== manifestText) return false;
+		const expectedNames = [...files.map((f) => f.name), STUDIO_UI_MANIFEST_NAME].sort();
+		if (readdirSync(target).sort().join("\0") !== expectedNames.join("\0")) return false;
+		return files.every((f) => {
+			const filePath = join(target, f.name);
+			if (!lstatSync(filePath).isFile()) return false;
+			const bytes = readFileSync(filePath);
+			return bytes.length === f.bytes && createHash("sha256").update(bytes).digest("hex") === f.sha256;
+		});
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Publishes an already-built Studio UI directory `sourceDir` into `outDir` under an exclusive writer lock.
+ * - Zero-mutation no-op if `outDir` is already byte-for-byte identical.
+ * - Single `renameSync(stage, target)` if `outDir` does not yet exist.
+ * - Writer-serialized staged swap with deterministic rollback if `outDir` exists with different contents
+ *   (never falls back to destructive `rmSync(target)`).
+ *
+ * @param {string} sourceDir
+ * @param {string} outDir
+ * @param {{
+ *   manifestText: string,
+ *   files: Array<{ name: string, bytes: number, sha256: string }>,
+ *   lockTimeoutMs?: number,
+ *   hooks?: {
+ *     onLockAcquired?: () => void | Promise<void>,
+ *     beforeSwap?: (ctx: { stage: string, target: string, stale: string }) => void | Promise<void>,
+ *     afterMoveOld?: (ctx: { stage: string, target: string, stale: string }) => void | Promise<void>,
+ *   }
+ * }} options
+ */
+export async function publishStudioUiDirectory(sourceDir, outDir, options) {
+	const target = resolve(outDir);
+	const parent = dirname(target);
+	mkdirSync(parent, { recursive: true });
+	const lockPath = join(parent, `.${basename(target)}.build.lock`);
+	const releaseLock = await acquirePublicationLock(lockPath, options.lockTimeoutMs);
+	try {
+		if (options.hooks?.onLockAcquired) await options.hooks.onLockAcquired();
+		if (isDirectoryIdentical(target, options.manifestText, options.files)) {
+			return { outDir, replaced: false };
+		}
+		const tag = `${process.pid}-${randomBytes(6).toString("hex")}`;
+		const stage = join(parent, `.${basename(target)}.stage-${tag}`);
+		const stale = join(parent, `.${basename(target)}.old-${tag}`);
+		mkdirSync(stage, { recursive: true });
+		let movedOld = false;
+		try {
+			for (const name of readdirSync(sourceDir)) {
+				copyFileSync(join(sourceDir, name), join(stage, name));
+			}
+			if (options.hooks?.beforeSwap) await options.hooks.beforeSwap({ stage, target, stale });
+			if (lstatExists(target)) {
+				// Never fall back to destructive `rmSync(target)`: if moving `target` aside fails,
+				// abort cleanly with `target` untouched.
+				renameSync(target, stale);
+				movedOld = true;
+				if (options.hooks?.afterMoveOld) await options.hooks.afterMoveOld({ stage, target, stale });
+			}
+			renameSync(stage, target);
+			return { outDir, replaced: true };
+		} catch (error) {
+			rmSync(stage, { recursive: true, force: true });
+			if (movedOld && !lstatExists(target) && lstatExists(stale)) {
+				try {
+					renameSync(stale, target);
+					movedOld = false;
+				} catch {
+					// Preserve original error; stale remains on disk for recovery inspection.
+				}
+			}
+			throw error;
+		} finally {
+			if (movedOld && existsSync(stale) && lstatExists(target)) {
+				rmSync(stale, { recursive: true, force: true });
+			}
+		}
+	} finally {
+		releaseLock();
+	}
+}
+
+/**
+ * Build into `outDir` using writer-serialized staged publication. Returns the directory, the manifest,
+ * the manifest SHA-256 hex digest, and the packages whose code or font is in the output for licence notices.
+ * The output is a function of the sources and pinned dependencies only: no timestamp, no absolute path,
+ * no source map.
+ */
+export async function buildStudioUi(outDir = join(root, "studio-ui", "dist"), options = {}) {
 	const scratch = mkdtempSync(join(tmpdir(), "endo-studio-ui-"));
 	try {
 		const result = await build({
@@ -56,7 +269,8 @@ export async function buildStudioUi(outDir = join(root, "studio-ui", "dist")) {
 		const outputs = Object.entries(result.metafile.outputs);
 		const entry = outputs.find(([, meta]) => meta.entryPoint === "studio-ui/src/main.tsx");
 		const style = entry?.[1].cssBundle;
-		if (entry === undefined || style === undefined) throw new Error("the Studio frontend produced no entry script or style sheet");
+		if (entry === undefined || style === undefined)
+			throw new Error("the Studio frontend produced no entry script or style sheet");
 		const page = readFileSync(join(root, "studio-ui", "index.html"), "utf8")
 			.replace("{{SCRIPT}}", basename(entry[0]))
 			.replace("{{STYLE}}", basename(style));
@@ -70,62 +284,28 @@ export async function buildStudioUi(outDir = join(root, "studio-ui", "dist")) {
 			});
 		const manifest = { format: STUDIO_UI_MANIFEST_FORMAT, entry: "index.html", files };
 		const manifestText = `${JSON.stringify(manifest, null, "\t")}\n`;
+		const manifestSha256 = createHash("sha256").update(manifestText, "utf8").digest("hex");
 		writeFileSync(join(scratch, STUDIO_UI_MANIFEST_NAME), manifestText);
-		const target = resolve(outDir);
-		const alreadyIdentical = (() => {
-			try {
-				if (!lstatSync(target).isDirectory()) return false;
-				const manifestPath = join(target, STUDIO_UI_MANIFEST_NAME);
-				if (!lstatSync(manifestPath).isFile()) return false;
-				if (readFileSync(manifestPath, "utf8") !== manifestText) return false;
-				const expectedNames = [...files.map((f) => f.name), STUDIO_UI_MANIFEST_NAME].sort();
-				if (readdirSync(target).sort().join("\0") !== expectedNames.join("\0")) return false;
-				return files.every((f) => {
-					const filePath = join(target, f.name);
-					if (!lstatSync(filePath).isFile()) return false;
-					const bytes = readFileSync(filePath);
-					return bytes.length === f.bytes && createHash("sha256").update(bytes).digest("hex") === f.sha256;
-				});
-			} catch {
-				return false;
-			}
-		})();
-		if (!alreadyIdentical) {
-			const parent = dirname(target);
-			mkdirSync(parent, { recursive: true });
-			const tag = `${process.pid}-${randomBytes(6).toString("hex")}`;
-			const stage = join(parent, `.${basename(target)}.stage-${tag}`);
-			const stale = join(parent, `.${basename(target)}.old-${tag}`);
-			mkdirSync(stage, { recursive: true });
-			try {
-				for (const name of readdirSync(scratch)) copyFileSync(join(scratch, name), join(stage, name));
-				if (existsSync(target)) {
-					try {
-						renameSync(target, stale);
-					} catch {
-						rmSync(target, { recursive: true, force: true });
-					}
-				}
-				renameSync(stage, target);
-			} catch (error) {
-				rmSync(stage, { recursive: true, force: true });
-				if (!existsSync(target) && existsSync(stale)) {
-					try {
-						renameSync(stale, target);
-					} catch {}
-				}
-				throw error;
-			} finally {
-				rmSync(stale, { recursive: true, force: true });
-			}
-		}
+		const publication = await publishStudioUiDirectory(scratch, outDir, {
+			manifestText,
+			files,
+			lockTimeoutMs: options.lockTimeoutMs,
+			hooks: options.hooks,
+		});
 		const packages = new Set();
 		for (const [, meta] of outputs)
 			for (const input of Object.keys(meta.inputs)) {
 				const match = /^node_modules\/((?:@[^/]+\/)?[^/]+)\//.exec(input);
 				if (match) packages.add(match[1]);
 			}
-		return { outDir, manifest, packages: [...packages].sort() };
+		return {
+			outDir,
+			manifest,
+			manifestText,
+			manifestSha256,
+			replaced: publication.replaced,
+			packages: [...packages].sort(),
+		};
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });
 	}

@@ -109,14 +109,16 @@ async function acquirePublicationLock(lockPath, timeoutMs = DEFAULT_LOCK_TIMEOUT
 			if (error?.code !== "EEXIST") throw error;
 			// Inspect whether an existing lock belongs to a dead process or has expired; serialize
 			// stale-lock reaping through a short-lived sibling `.reap` lock so two waiters cannot
-			// unlink a fresh lock acquired by the other.
+			// unlink a fresh lock acquired by the other. Always fall through to the deadline check
+			// and backoff sleep if reaping did not clear the lock, and recover orphaned `.reap` locks.
+			let clearedLock = false;
 			try {
-				const isStale = () => {
-					const stat = lstatSync(lockPath);
+				const isFileStale = (path, maxAgeMs) => {
+					const stat = lstatSync(path);
 					const ageMs = Date.now() - stat.mtimeMs;
-					let stale = ageMs > STALE_LOCK_MAX_AGE_MS;
+					let stale = ageMs > maxAgeMs;
 					try {
-						const holder = JSON.parse(readFileSync(lockPath, "utf8"));
+						const holder = JSON.parse(readFileSync(path, "utf8"));
 						if (typeof holder?.pid === "number" && !isPidAlive(holder.pid)) {
 							stale = true;
 						}
@@ -125,27 +127,49 @@ async function acquirePublicationLock(lockPath, timeoutMs = DEFAULT_LOCK_TIMEOUT
 					}
 					return stale;
 				};
-				if (isStale()) {
+				if (isFileStale(lockPath, STALE_LOCK_MAX_AGE_MS)) {
 					const reapLock = `${lockPath}.reap`;
+					const reapToken = `${process.pid}-${randomBytes(6).toString("hex")}`;
+					// Recover an orphaned `.reap` lock whose owner crashed or exceeded the brief reap window.
+					if (lstatExists(reapLock)) {
+						try {
+							if (isFileStale(reapLock, 10_000)) unlinkSync(reapLock);
+						} catch {}
+					}
 					try {
 						const rfd = openSync(reapLock, "wx", 0o600);
-						closeSync(rfd);
 						try {
-							if (lstatExists(lockPath) && isStale()) unlinkSync(lockPath);
-						} finally {
+							writeFileSync(rfd, JSON.stringify({ pid: process.pid, token: reapToken, startedAt: Date.now() }));
+						} catch (writeErr) {
+							closeSync(rfd);
 							try {
 								unlinkSync(reapLock);
 							} catch {}
+							throw writeErr;
+						}
+						closeSync(rfd);
+						try {
+							if (lstatExists(lockPath) && isFileStale(lockPath, STALE_LOCK_MAX_AGE_MS)) {
+								unlinkSync(lockPath);
+								clearedLock = true;
+							}
+						} finally {
+							try {
+								const cur = JSON.parse(readFileSync(reapLock, "utf8"));
+								if (cur?.token === reapToken) unlinkSync(reapLock);
+							} catch {
+								// Reap lock already cleared or replaced.
+							}
 						}
 					} catch {
-						// Another waiter is currently reaping or lock vanished.
+						// Reap lock is currently held by another live waiter; fall through to deadline & backoff.
 					}
-					continue;
 				}
 			} catch {
-				// Lock disappeared between openSync and lstatSync; retry immediately.
-				continue;
+				// Lock disappeared between openSync and lstatSync; fall through to bounded retry.
+				clearedLock = !lstatExists(lockPath);
 			}
+			if (clearedLock) continue;
 			if (Date.now() > deadline) {
 				throw new Error(`Timed out after ${timeoutMs}ms waiting for Studio UI publication lock ${lockPath}`);
 			}

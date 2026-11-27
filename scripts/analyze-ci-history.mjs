@@ -90,7 +90,9 @@ export function computeCiHistoryMetrics(runs) {
 
 	for (const run of runs) {
 		const attempts = [...(run.attempts ?? [])].sort((a, b) => (a.attempt ?? 1) - (b.attempt ?? 1));
-		const a1 = run.firstAttemptConclusion ?? run.attempt1Conclusion ?? attempts[0]?.conclusion ?? null;
+		// Never silently promote a later attempt (e.g., attempt 2) to first-attempt standing if attempt 1 is absent.
+		const attempt1Record = attempts.find((a) => a.attempt === 1);
+		const a1 = run.firstAttemptConclusion ?? run.attempt1Conclusion ?? attempt1Record?.conclusion ?? null;
 		const fin =
 			run.latestConclusion ??
 			run.finalConclusion ??
@@ -261,17 +263,30 @@ function round4(v) {
 /**
  * Fetches bounded read-only workflow run & original attempt data via `gh api`.
  * Preserves `createdAt`/`startedAt`/`completedAt` so deduplication matches offline analysis.
- * @param {{ repo: string, workflow: string, limit: number }} opts
+ * Fails explicitly if any historical attempt or jobs retrieval fails, so incomplete history can
+ * never silently substitute a later passing rerun as Attempt 1.
+ *
+ * @param {{
+ *   repo: string,
+ *   workflow: string,
+ *   limit: number,
+ *   runGh?: (args: string[]) => { status: number | null, stdout: string, stderr: string },
+ * }} opts
  */
-function fetchLiveRuns({ repo, workflow, limit }) {
+export function fetchLiveRuns({ repo, workflow, limit, runGh }) {
+	const execGh =
+		runGh ??
+		((ghArgs) => {
+			const res = spawnSync("gh", ghArgs, { encoding: "utf8" });
+			return { status: res.status, stdout: res.stdout ?? "", stderr: res.stderr ?? "" };
+		});
 	const safeLimit = Math.max(1, Math.min(50, limit));
-	const listRes = spawnSync(
-		"gh",
-		["api", `repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=${safeLimit}`],
-		{ encoding: "utf8" },
-	);
+	const listRes = execGh([
+		"api",
+		`repos/${repo}/actions/workflows/${workflow}/runs?status=completed&per_page=${safeLimit}`,
+	]);
 	if (listRes.status !== 0) {
-		throw new Error(`gh api failed: ${listRes.stderr || listRes.stdout}`);
+		throw new Error(`gh api failed listing runs: ${listRes.stderr || listRes.stdout}`);
 	}
 	const list = JSON.parse(listRes.stdout).workflow_runs ?? [];
 	const normalized = [];
@@ -279,15 +294,18 @@ function fetchLiveRuns({ repo, workflow, limit }) {
 		const attemptsCount = Number(r.run_attempt ?? 1);
 		const attempts = [];
 		for (let a = 1; a <= attemptsCount; a++) {
-			const attRes = spawnSync("gh", ["api", `repos/${repo}/actions/runs/${r.id}/attempts/${a}`], {
-				encoding: "utf8",
-			});
-			const jobsRes = spawnSync(
-				"gh",
-				["api", `repos/${repo}/actions/runs/${r.id}/attempts/${a}/jobs?per_page=100`],
-				{ encoding: "utf8" },
-			);
-			if (attRes.status !== 0 || jobsRes.status !== 0) continue;
+			const attRes = execGh(["api", `repos/${repo}/actions/runs/${r.id}/attempts/${a}`]);
+			if (attRes.status !== 0) {
+				throw new Error(
+					`Incomplete CI history: failed to fetch attempt ${a}/${attemptsCount} for run ${r.id} (exit ${attRes.status}): ${attRes.stderr || attRes.stdout}`,
+				);
+			}
+			const jobsRes = execGh(["api", `repos/${repo}/actions/runs/${r.id}/attempts/${a}/jobs?per_page=100`]);
+			if (jobsRes.status !== 0) {
+				throw new Error(
+					`Incomplete CI history: failed to fetch jobs for run ${r.id} attempt ${a}/${attemptsCount} (exit ${jobsRes.status}): ${jobsRes.stderr || jobsRes.stdout}`,
+				);
+			}
 			const attObj = JSON.parse(attRes.stdout);
 			const jobsObj = JSON.parse(jobsRes.stdout).jobs ?? [];
 			const jobs = jobsObj.map((j) => {
@@ -310,12 +328,16 @@ function fetchLiveRuns({ repo, workflow, limit }) {
 				jobs,
 			});
 		}
+		const attempt1 = attempts.find((a) => a.attempt === 1);
+		if (!attempt1) {
+			throw new Error(`Incomplete CI history: run ${r.id} is missing attempt 1`);
+		}
 		normalized.push({
 			runId: r.id,
 			event: r.event,
 			branch: r.head_branch,
 			attemptsCount,
-			firstAttemptConclusion: attempts[0]?.conclusion ?? r.conclusion ?? null,
+			firstAttemptConclusion: attempt1.conclusion,
 			latestConclusion: r.conclusion ?? null,
 			attempts,
 		});

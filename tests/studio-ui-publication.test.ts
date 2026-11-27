@@ -341,4 +341,49 @@ describe("Studio UI execution-owned immutable artifacts & publication (F1 & F2)"
 		);
 		expect(referenceFiles.length).toBeGreaterThan(0);
 	});
+
+	it("enforces lockTimeoutMs when a live reap lock blocks recovery and recovers orphaned dead-PID reap locks", async () => {
+		const { publishStudioUiDirectory } = (await import(join(REPO_ROOT, "scripts", "build-studio-ui.mjs"))) as {
+			publishStudioUiDirectory(
+				sourceDir: string,
+				outDir: string,
+				options: {
+					manifestText: string;
+					files: Array<{ name: string; bytes: number; sha256: string }>;
+					lockTimeoutMs?: number;
+				},
+			): Promise<{ outDir: string; replaced: boolean }>;
+		};
+
+		const root = makeTempDir("endo-pub-reap-");
+		const gen = createSyntheticGeneration(join(root, "src"), "reap1234");
+		const target = join(root, "published");
+		const lockPath = join(root, ".published.build.lock");
+		const reapPath = `${lockPath}.reap`;
+
+		// 1. Dead-PID publication lock + live-PID reap lock -> MUST enforce lockTimeoutMs instead of spinning.
+		writeFileSync(lockPath, JSON.stringify({ pid: 999_999_999, token: "dead", startedAt: Date.now() }));
+		writeFileSync(reapPath, JSON.stringify({ pid: process.pid, token: "live-reaper", startedAt: Date.now() }));
+		const t0 = Date.now();
+		await expect(
+			publishStudioUiDirectory(gen.dir, target, {
+				manifestText: gen.manifestText,
+				files: gen.files,
+				lockTimeoutMs: 60,
+			}),
+		).rejects.toThrow(/Timed out after 60ms/);
+		expect(Date.now() - t0).toBeLessThan(2_000);
+
+		// 2. Dead-PID publication lock + orphaned dead-PID reap lock -> recovers cleanly and publishes.
+		writeFileSync(reapPath, JSON.stringify({ pid: 999_999_998, token: "dead-reaper", startedAt: Date.now() }));
+		const recovered = await publishStudioUiDirectory(gen.dir, target, {
+			manifestText: gen.manifestText,
+			files: gen.files,
+			lockTimeoutMs: 1_000,
+		});
+		expect(recovered.replaced).toBe(true);
+		expect(verifyStudioUiArtifactDir(target, gen.manifestSha256).manifestSha256).toBe(gen.manifestSha256);
+		expect(existsSync(lockPath)).toBe(false);
+		expect(existsSync(reapPath)).toBe(false);
+	});
 });

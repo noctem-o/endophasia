@@ -77,10 +77,8 @@ import {
 	endoAdvisoryExcludedMembersV0,
 	endoAdvisoryFireIdempotencyKeyV0,
 	endoAdvisoryGroundProposalV0,
-	endoAdvisoryNewestProposalsV0,
 	endoAdvisoryParseProposalLineV0,
 	endoAdvisoryPolicySha256V0,
-	endoAdvisoryProposalGroundedAtV0,
 	endoAdvisoryProposalIdV0,
 	endoAdvisoryReservationV0,
 	endoAdvisorySemanticObservationV0,
@@ -1366,13 +1364,14 @@ function linkProposal(
 	const proposalId = endoAdvisoryProposalIdV0(grounded.dedupKey, pub.observation.semanticDigest);
 	const listing = s.store.listProposals();
 	if (!listing.ok) return refused("storage-failed");
+	// Re-derived from a published briefing: recorded on the proposal store, so its standing survives turn retention.
 	if (listing.entries.some((e) => e.proposal.proposalId === proposalId))
-		return { outcome: "deduplicated", proposalId, refusal: null };
-	const ledger = s.store.listTurns(nowMs);
-	const newest = endoAdvisoryNewestProposalsV0(
-		listing.entries.map((e) => e.proposal),
-		endoAdvisoryProposalGroundedAtV0(ledger.ok ? ledger.entries : []),
-	);
+		return s.recordProposalGrounding(proposalId, nowMs) === "committed"
+			? { outcome: "deduplicated", proposalId, refusal: null }
+			: refused("storage-failed");
+	const newest = new Map<string, string>();
+	for (const e of listing.entries)
+		if (!newest.has(e.proposal.dedupKey)) newest.set(e.proposal.dedupKey, e.proposal.proposalId);
 	const pending = listing.entries.filter(
 		(e) =>
 			e.proposal.projectId === admission.projectId &&

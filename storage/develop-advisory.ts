@@ -109,7 +109,14 @@ export interface EndoAdvisoryListingFailureV0 {
 export interface EndoAdvisoryProposalEntryV0 {
 	readonly proposal: EndoAdvisoryProposalV0;
 	readonly dispositions: readonly EndoAdvisoryProposalStateV0[];
+	/**
+	 * When this proposal was last derived from a published briefing: its creation, or the latest re-derivation recorded in the
+	 * proposal grounding index. Supersession, the pending projection and retention all order by it.
+	 */
+	readonly groundedAtMs: number;
 }
+
+const PROPOSAL_GROUNDING_SCHEMA = "endo.develop-advisory-proposal-grounding.v0";
 
 /** Synchronous storage handle exposed ONLY inside `withAdvisoryLockSync`. */
 export interface EndoAdvisoryLockedSessionV0 {
@@ -125,6 +132,8 @@ export interface EndoAdvisoryLockedSessionV0 {
 	writeBriefingOnce(briefing: EndoAdvisoryBriefingV0): EndoAdvisoryWriteOnceV0;
 	writeProposalOnce(proposal: EndoAdvisoryProposalV0): EndoAdvisoryWriteOnceV0;
 	writeProposalStateOnce(state: EndoAdvisoryProposalStateV0): EndoAdvisoryWriteOnceV0;
+	/** Record that an existing proposal was re-derived from a published briefing at `groundedAtMs` (proposal records are write-once). */
+	recordProposalGrounding(proposalId: string, groundedAtMs: number): EndoAtomicReplaceOutcomeV0;
 	/** Bounded retention; never removes an unresolved fire claim, an unsettled turn, or a pending proposal. */
 	pruneRetained(nowMs: number): { readonly fires: number; readonly turns: number; readonly proposals: number };
 }
@@ -201,6 +210,56 @@ export class DevelopAdvisoryStoreV0 {
 			this.#syncDirectory(path);
 			if (path === stop || dirname(path) === path) break;
 		}
+	}
+
+	/** The proposal grounding index: proposal id to the time it was last re-derived. Bounded by the retained proposals. */
+	readProposalGrounding(): EndoAutomationFileReadV0<ReadonlyMap<string, number>> {
+		return readBoundedValidatedJsonSync(
+			this.#base(),
+			join(this.#dir, "proposal-grounding.json"),
+			L.maxFileBytes,
+			(raw) => {
+				const bad = { ok: false, kind: "invalid", message: "invalid proposal grounding index" } as const;
+				if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return bad;
+				const v = raw as Record<string, unknown>;
+				if (
+					Object.keys(v).length !== 2 ||
+					v.schemaVersion !== PROPOSAL_GROUNDING_SCHEMA ||
+					!Array.isArray(v.entries)
+				)
+					return bad;
+				const map = new Map<string, number>();
+				for (const x of v.entries) {
+					if (typeof x !== "object" || x === null || Array.isArray(x)) return bad;
+					const r = x as Record<string, unknown>;
+					if (
+						Object.keys(r).length !== 2 ||
+						typeof r.proposalId !== "string" ||
+						!/^[0-9a-f]{64}$/.test(r.proposalId) ||
+						typeof r.groundedAtMs !== "number" ||
+						!Number.isSafeInteger(r.groundedAtMs) ||
+						r.groundedAtMs < 0 ||
+						map.has(r.proposalId)
+					)
+						return bad;
+					map.set(r.proposalId, r.groundedAtMs);
+				}
+				return { ok: true, schemaVersion: PROPOSAL_GROUNDING_SCHEMA, value: map };
+			},
+		);
+	}
+
+	#writeProposalGrounding(map: ReadonlyMap<string, number>): EndoAtomicReplaceOutcomeV0 {
+		const entries = [...map]
+			.sort(([a], [b]) => (a < b ? -1 : 1))
+			.map(([proposalId, groundedAtMs]) => ({ proposalId, groundedAtMs }));
+		return replaceJsonAtomicSync(
+			this.#dir,
+			"proposal-grounding.json",
+			{ schemaVersion: PROPOSAL_GROUNDING_SCHEMA, entries },
+			L.maxFileBytes,
+			{},
+		);
 	}
 
 	#readBudgetFloor(): EndoAutomationFileReadV0<number> {
@@ -430,6 +489,9 @@ export class DevelopAdvisoryStoreV0 {
 			if (m === null) problems.push({ name, reason: "unsafe-path" });
 			else if (m[2] === undefined) ids.add(m[1] as string);
 		}
+		const grounding = this.readProposalGrounding();
+		if (!grounding.ok) problems.push({ name: "proposal-grounding.json", reason: grounding.reason });
+		const groundedAt = grounding.ok && grounding.exists ? grounding.value : new Map<string, number>();
 		const entries: EndoAdvisoryProposalEntryV0[] = [];
 		for (const id of ids) {
 			const read = this.readProposal(id);
@@ -443,10 +505,18 @@ export class DevelopAdvisoryStoreV0 {
 				if (!s.ok) problems.push({ name: `${id}.${d}.json`, reason: s.reason });
 				else if (s.exists && s.value.proposalId === id && s.value.disposition === d) dispositions.push(s.value);
 			}
-			entries.push(Object.freeze({ proposal: read.value, dispositions: Object.freeze(dispositions) }));
+			entries.push(
+				Object.freeze({
+					proposal: read.value,
+					dispositions: Object.freeze(dispositions),
+					groundedAtMs: Math.max(read.value.generatedAtMs, groundedAt.get(id) ?? 0),
+				}),
+			);
 		}
+		// Most recently grounded first: the first entry per dedup key is the current recommendation for every reader.
 		entries.sort(
 			(a, b) =>
+				b.groundedAtMs - a.groundedAtMs ||
 				b.proposal.generatedAtMs - a.proposal.generatedAtMs ||
 				(a.proposal.proposalId < b.proposal.proposalId ? -1 : 1),
 		);
@@ -532,6 +602,17 @@ export class DevelopAdvisoryStoreV0 {
 				writeProposalStateOnce: (state) => {
 					const v = validateEndoAdvisoryProposalStateV0(state);
 					return once(this.#proposalsDir, `${v.proposalId}.${v.disposition}.json`, v);
+				},
+				recordProposalGrounding: (proposalId, groundedAtMs) => {
+					const current = this.readProposalGrounding();
+					if (!current.ok) return "storage-failed";
+					const live = this.listProposals();
+					if (!live.ok) return "storage-failed";
+					const retained = new Set(live.entries.map((e) => e.proposal.proposalId));
+					if (!retained.has(proposalId)) return "storage-failed";
+					const next = new Map([...(current.exists ? current.value : [])].filter(([id]) => retained.has(id)));
+					next.set(proposalId, Math.max(next.get(proposalId) ?? 0, groundedAtMs));
+					return this.#writeProposalGrounding(next);
 				},
 				pruneRetained: (nowMs) => this.#pruneUnderLock(nowMs),
 			};
@@ -661,6 +742,14 @@ export class DevelopAdvisoryStoreV0 {
 				rm(join(this.#proposalsDir, `${e.proposal.proposalId}.json`));
 				removed.proposals += 1;
 				excess -= 1;
+			}
+			const grounding = this.readProposalGrounding();
+			if (removed.proposals > 0 && grounding.ok && grounding.exists) {
+				const after = this.listProposals();
+				if (after.ok) {
+					const retained = new Set(after.entries.map((e) => e.proposal.proposalId));
+					this.#writeProposalGrounding(new Map([...grounding.value].filter(([id]) => retained.has(id))));
+				}
 			}
 		}
 		for (const dir of [this.#dir]) {

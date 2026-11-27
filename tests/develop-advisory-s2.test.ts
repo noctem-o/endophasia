@@ -1887,3 +1887,132 @@ describe("COORDINATOR-AUTOMATION-S2 Codex review regressions (C4-C6)", () => {
 		expect(pending[0]!.proposal.generatedAtMs).toBeLessThan(superseded.proposal.generatedAtMs);
 	});
 });
+
+describe("COORDINATOR-AUTOMATION-S2 Codex review regressions (D1-D2)", () => {
+	const aba = async (root: string, clock: Clock) => {
+		const { projectId, taskId, repo } = project(root);
+		const git = (...args: string[]) => {
+			const r = spawnSync(
+				"/usr/bin/git",
+				["-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false", ...args],
+				{
+					cwd: repo,
+					encoding: "utf8",
+					env: { PATH: process.env.PATH ?? "/usr/bin", HOME: repo, GIT_CONFIG_NOSYSTEM: "1" },
+				},
+			);
+			if (r.status !== 0) throw new Error("git " + args.join(" ") + ": " + r.stderr);
+			return r.stdout.trim();
+		};
+		git("init", "-q");
+		writeFileSync(join(repo, "README"), "a\n");
+		git("add", "README");
+		git("commit", "-q", "-m", "A");
+		const a = git("rev-parse", "HEAD");
+		writeFileSync(join(repo, "README"), "b\n");
+		git("commit", "-q", "-am", "B");
+		const b = git("rev-parse", "HEAD");
+		git("reset", "-q", "--hard", a);
+		setStatus(root, projectId, taskId, "in-progress", "blocked");
+		configure(root, clock, { projectId, action: "emit-operator-proposal" });
+		const answer = { answer: () => "PROPOSAL: resolve-blocked-task " + taskId };
+		for (const [k, head] of [
+			[0, a],
+			[1, b],
+			[2, a],
+		] as const) {
+			git("reset", "-q", "--hard", head);
+			clock.at(windowAt(k));
+			expect(statusOf(await tick(root, clock, fakeRun(answer), observer("ready", clock)))).toEqual([
+				"briefing-published",
+			]);
+		}
+		const turns = [...listTurns(root)].sort((x, y) => x.admission.admittedAtMs - y.admission.admittedAtMs);
+		expect(turns.map((t) => t.briefing!.proposal.outcome)).toEqual(["created", "created", "deduplicated"]);
+		return {
+			proposalA: turns[0]!.briefing!.proposal.proposalId!,
+			proposalB: turns[1]!.briefing!.proposal.proposalId!,
+			turns,
+		};
+	};
+	const queue = (root: string, clock: Clock) =>
+		new Map(
+			readEndoAdvisoryProjectionV0(root, { now: clock.now, limit: 256 }).proposals.map((v) => [
+				v.proposal.proposalId,
+				v,
+			]),
+		);
+
+	it("D1: a re-grounded proposal stays current after retention removes the briefing that re-derived it", async () => {
+		const root = tmp("endo-s2-d1-");
+		const clock = new Clock();
+		const { proposalA, proposalB, turns } = await aba(root, clock);
+		const store = new DevelopAdvisoryStoreV0(root, { now: clock.now });
+		const seed = turns[0]!;
+		const records = ["admitted", "dispatched", "briefing"].map((kind) => [
+			kind,
+			JSON.parse(readFileSync(join(store.turnsDir, seed.admission.turnId + "." + kind + ".json"), "utf8")),
+		]) as [string, Record<string, any>][];
+		const later = 8 * 24 * HOUR;
+		const shift = (value: unknown, delta: number): unknown => {
+			if (Array.isArray(value)) return value.map((v) => shift(v, delta));
+			if (value === null || typeof value !== "object") return value;
+			return Object.fromEntries(
+				Object.entries(value).map(([k, v]) => [
+					k,
+					typeof v === "number" && v >= BASE - 30 * 24 * HOUR && /(?:AtMs|DeadlineMs)$/.test(k)
+						? v + delta
+						: shift(v, delta),
+				]),
+			);
+		};
+		// 512 newer settled turns of another schedule, none of which derived any proposal.
+		for (let i = 1; i <= 512; i++) {
+			const turnId = sha256HexV0("d1-newer-" + i);
+			for (const [kind, record] of records) {
+				const clone: Record<string, any> = { ...(shift(record, later - i * MIN) as Record<string, any>), turnId };
+				if ("scheduleId" in clone) clone.scheduleId = "adv-other";
+				if (kind === "briefing") clone.proposal = { outcome: "not-requested", proposalId: null, refusal: null };
+				writeFileSync(
+					join(store.turnsDir, turnId + "." + kind + ".json"),
+					canonicalEndoJsonV0(clone as never) + "\n",
+				);
+			}
+		}
+		clock.at(windowAt(2) + later);
+		expect(store.withAdvisoryLockSync((s) => s.pruneRetained(clock.t))).toMatchObject({ ok: true });
+		const remaining = store.listTurns(clock.t);
+		if (!remaining.ok) throw new Error("ledger unreadable");
+		expect(remaining.entries.some((t) => t.briefing?.proposal.outcome === "deduplicated")).toBe(false);
+		const q = queue(root, clock);
+		expect(q.size).toBe(2);
+		expect(q.get(proposalA)).toMatchObject({ queueState: "pending", currency: "current" });
+		expect(q.get(proposalB)).toMatchObject({ queueState: "superseded", currency: "stale" });
+	}, 60_000);
+
+	it("D2: retention past the proposal bound never deletes the current undecided proposal while a superseded one survives", async () => {
+		const root = tmp("endo-s2-d2-");
+		const clock = new Clock();
+		const { proposalA, proposalB } = await aba(root, clock);
+		const store = new DevelopAdvisoryStoreV0(root, { now: clock.now });
+		const seed = listProposals(root).find((e) => e.proposal.proposalId === proposalB)!;
+		const hex = (i: number, salt: string) => (salt + i.toString(16)).padStart(64, "0");
+		// 255 other pending recommendations, each the only one for its key: 257 retained proposals in all.
+		expect(
+			store.withAdvisoryLockSync((s) => {
+				for (let i = 1; i <= 255; i++)
+					s.writeProposalOnce({
+						...seed.proposal,
+						proposalId: hex(i, "c"),
+						dedupKey: hex(i, "e"),
+						generatedAtMs: windowAt(3) + i,
+					});
+				return s.pruneRetained(clock.t);
+			}),
+		).toMatchObject({ ok: true, result: { proposals: 1 } });
+		const ids = new Set(listProposals(root).map((e) => e.proposal.proposalId));
+		expect(ids.has(proposalA)).toBe(true);
+		expect(ids.has(proposalB)).toBe(false);
+		expect(queue(root, clock).get(proposalA)).toMatchObject({ queueState: "pending", currency: "current" });
+	}, 60_000);
+});

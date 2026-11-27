@@ -40,9 +40,7 @@ import {
 	endoAdvisoryAuthorizationIdV0,
 	endoAdvisoryAuthorizationStandingV0,
 	endoAdvisoryBudgetStandingV0,
-	endoAdvisoryNewestProposalsV0,
 	endoAdvisoryProposalCurrencyV0,
-	endoAdvisoryProposalGroundedAtV0,
 	endoAdvisoryTurnChargeV0,
 } from "../../runtime/contracts/develop-advisory.ts";
 import { DevelopAdvisoryStoreV0, type EndoAdvisoryLockedSessionV0 } from "../../storage/develop-advisory.ts";
@@ -481,12 +479,11 @@ export function readEndoAdvisoryProjectionV0(
 			p,
 		]),
 	);
-	const newest = endoAdvisoryNewestProposalsV0(
-		(proposals.ok ? proposals.entries : []).map((e) => e.proposal),
-		endoAdvisoryProposalGroundedAtV0(turns.ok ? turns.entries : []),
-	);
+	// Entries come most recently grounded first, so the first per dedup key is the current recommendation (as retention sees it).
+	const newest = new Map<string, string>();
 	const proposalViews: EndoAdvisoryProposalViewV0[] = [];
 	for (const e of proposals.ok ? proposals.entries : []) {
+		if (!newest.has(e.proposal.dedupKey)) newest.set(e.proposal.dedupKey, e.proposal.proposalId);
 		const decision = [...e.dispositions].sort((x, y) => x.decidedAtMs - y.decidedAtMs)[0];
 		const queueState: EndoAdvisoryProposalQueueStateV0 =
 			decision !== undefined

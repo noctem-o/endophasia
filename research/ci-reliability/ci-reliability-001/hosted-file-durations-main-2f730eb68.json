@@ -1,0 +1,2041 @@
+{
+  "sourceRunId": 45956120688,
+  "commit": "2f730eb680e87d04d3a41bbb9d398e6b9a97794c",
+  "runner": "ubuntu-24.04",
+  "totalDiskTestFiles": 336,
+  "parsedEntries": 336,
+  "fullySkippedOrUnlistedFiles": [],
+  "files": [
+    {
+      "file": "tests/intervention.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 21,
+      "durationMs": 249775
+    },
+    {
+      "file": "tests/task-owned-provenance-aa.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 63,
+      "durationMs": 193163
+    },
+    {
+      "file": "tests/endo-workbench-interventions-live.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 12,
+      "durationMs": 161441
+    },
+    {
+      "file": "tests/initial-continuation-aa-reader.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 20,
+      "durationMs": 156795
+    },
+    {
+      "file": "tests/cassette-replay.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 46,
+      "durationMs": 153415
+    },
+    {
+      "file": "tests/aa-operator.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 35,
+      "durationMs": 144407
+    },
+    {
+      "file": "tests/aa-operator-cli.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 30,
+      "durationMs": 127412
+    },
+    {
+      "file": "tests/prime-097-review7.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 201,
+      "durationMs": 94787
+    },
+    {
+      "file": "tests/pi-attachment.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 24,
+      "durationMs": 81720
+    },
+    {
+      "file": "tests/endo-studio-tasks-browser.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 33,
+      "durationMs": 78387
+    },
+    {
+      "file": "tests/pi-lifecycle-surface.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 21,
+      "durationMs": 75775
+    },
+    {
+      "file": "tests/pi-lifecycle-session.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 12,
+      "durationMs": 71072
+    },
+    {
+      "file": "tests/initial-continuation.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 43,
+      "durationMs": 67132
+    },
+    {
+      "file": "tests/endo-studio-observe-browser.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 67,
+      "durationMs": 62812
+    },
+    {
+      "file": "tests/endo-studio-project-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 40,
+      "durationMs": 60093
+    },
+    {
+      "file": "tests/path-sensitivity-study.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 11,
+      "durationMs": 60006
+    },
+    {
+      "file": "tests/experiment.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 43,
+      "durationMs": 51290
+    },
+    {
+      "file": "tests/endo-studio-workbench-browser.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 18,
+      "durationMs": 44206
+    },
+    {
+      "file": "tests/initial-child-execution.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 32,
+      "durationMs": 43115
+    },
+    {
+      "file": "tests/endo-studio-workbench-interventions-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 11,
+      "durationMs": 40896
+    },
+    {
+      "file": "tests/endo-studio-atmosphere-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 9,
+      "durationMs": 40559
+    },
+    {
+      "file": "tests/work-cycle-001a.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 10,
+      "durationMs": 40010
+    },
+    {
+      "file": "tests/develop-receipts.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 54,
+      "durationMs": 37636
+    },
+    {
+      "file": "tests/aa-operator-faults.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "durationMs": 37423
+    },
+    {
+      "file": "tests/prime-runtime-ingress.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 95,
+      "durationMs": 36806
+    },
+    {
+      "file": "tests/endo-studio-field-browser.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 12,
+      "durationMs": 36329
+    },
+    {
+      "file": "tests/endo-workbench-cli.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 6,
+      "durationMs": 33205
+    },
+    {
+      "file": "tests/dsh-cli.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 70,
+      "durationMs": 33147
+    },
+    {
+      "file": "tests/endo-studio-reasoning-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 16,
+      "durationMs": 32775
+    },
+    {
+      "file": "tests/review-pilot-001.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 6,
+      "durationMs": 28579
+    },
+    {
+      "file": "tests/acp-v2-adapter.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 68,
+      "durationMs": 27127
+    },
+    {
+      "file": "tests/cli-help.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 6,
+      "durationMs": 26677
+    },
+    {
+      "file": "tests/develop-advisory-s2.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 50,
+      "durationMs": 26354
+    },
+    {
+      "file": "tests/endo-studio-workspace-browser.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 12,
+      "durationMs": 22977
+    },
+    {
+      "file": "tests/develop-tasks-cli.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 9,
+      "durationMs": 22943
+    },
+    {
+      "file": "tests/acp-semantics.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 37,
+      "durationMs": 22928
+    },
+    {
+      "file": "tests/acp-adapter.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 46,
+      "durationMs": 22637
+    },
+    {
+      "file": "tests/develop-codex-live.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 33,
+      "durationMs": 22515
+    },
+    {
+      "file": "tests/steering-study.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 13,
+      "durationMs": 21083
+    },
+    {
+      "file": "tests/develop-ux-002-cli.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 8,
+      "durationMs": 20828
+    },
+    {
+      "file": "tests/develop-verify-trust-004-reanalyze-repos.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 58,
+      "durationMs": 18662
+    },
+    {
+      "file": "tests/endo-cockpit-twentieth-model.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 14,
+      "durationMs": 18043
+    },
+    {
+      "file": "tests/develop-evidence-bridge.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 13,
+      "durationMs": 17746
+    },
+    {
+      "file": "tests/coordinator-status.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 38,
+      "durationMs": 17430
+    },
+    {
+      "file": "tests/develop-tasks-v1.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 23,
+      "durationMs": 17360
+    },
+    {
+      "file": "tests/pi-audit.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 16,
+      "durationMs": 16366
+    },
+    {
+      "file": "tests/endo-studio-cli.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 21,
+      "durationMs": 16229
+    },
+    {
+      "file": "tests/develop-coordination-cli.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 8,
+      "durationMs": 15539
+    },
+    {
+      "file": "tests/discriminating-tasks.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 62,
+      "durationMs": 14988
+    },
+    {
+      "file": "tests/develop-automation-s1.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 24,
+      "durationMs": 14752
+    },
+    {
+      "file": "tests/endo-cockpit-sixteenth-review.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 46,
+      "durationMs": 14048
+    },
+    {
+      "file": "tests/endo-studio-attention-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 6,
+      "durationMs": 13881
+    },
+    {
+      "file": "tests/steer-cli.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 2,
+      "durationMs": 13328
+    },
+    {
+      "file": "tests/endo-studio-codex-workbench-browser.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 3,
+      "durationMs": 13266
+    },
+    {
+      "file": "tests/develop-verification.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 27,
+      "durationMs": 13184
+    },
+    {
+      "file": "tests/endo-cockpit-twentyseventh-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 49,
+      "durationMs": 13173
+    },
+    {
+      "file": "tests/initial-continuation-aa-feasibility.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 2,
+      "durationMs": 12290
+    },
+    {
+      "file": "tests/endo-studio-develop-browser.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 10,
+      "durationMs": 12262
+    },
+    {
+      "file": "tests/develop-ux-001.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "durationMs": 11653
+    },
+    {
+      "file": "tests/endo-studio-density-browser.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 12,
+      "durationMs": 11423
+    },
+    {
+      "file": "tests/coordinator-model-pool.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 137,
+      "durationMs": 11212
+    },
+    {
+      "file": "tests/develop-behaviour.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 14,
+      "durationMs": 11175
+    },
+    {
+      "file": "tests/develop-attempts.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 29,
+      "durationMs": 11171
+    },
+    {
+      "file": "tests/develop-assignment-e2.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 22,
+      "durationMs": 11081
+    },
+    {
+      "file": "tests/endo-studio-attempt-request-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 3,
+      "durationMs": 10575
+    },
+    {
+      "file": "tests/endo-workbench-attempt-page.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 2,
+      "durationMs": 10403
+    },
+    {
+      "file": "tests/prime-097-review4.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 64,
+      "durationMs": 10127
+    },
+    {
+      "file": "tests/endo-studio-course-browser.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 5,
+      "durationMs": 10040
+    },
+    {
+      "file": "tests/omp-observer-browser.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 8,
+      "durationMs": 9908
+    },
+    {
+      "file": "tests/endo-cockpit-twentyeighth-review.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 22,
+      "durationMs": 9390
+    },
+    {
+      "file": "tests/initial-branch-set.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 21,
+      "durationMs": 9237
+    },
+    {
+      "file": "tests/develop-attention-planned.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 29,
+      "durationMs": 8543
+    },
+    {
+      "file": "tests/develop-verify-trust-004.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 4,
+      "durationMs": 8503
+    },
+    {
+      "file": "tests/endo-studio-compare-browser.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 13,
+      "durationMs": 7970
+    },
+    {
+      "file": "tests/endo-workspace-cli.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 3,
+      "durationMs": 7698
+    },
+    {
+      "file": "tests/prime-097-review2.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 135,
+      "durationMs": 7611
+    },
+    {
+      "file": "tests/capture-proxy.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 37,
+      "durationMs": 7357
+    },
+    {
+      "file": "tests/develop-provenance.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 28,
+      "durationMs": 7182
+    },
+    {
+      "file": "tests/doctor.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 28,
+      "durationMs": 7095
+    },
+    {
+      "file": "tests/endo-cockpit-eighteenth-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 28,
+      "durationMs": 6905
+    },
+    {
+      "file": "tests/git-project-inspector.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 51,
+      "durationMs": 6905
+    },
+    {
+      "file": "tests/develop-ux-002-live.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 1,
+      "durationMs": 6712
+    },
+    {
+      "file": "tests/endo-cockpit-trajectory-comparison.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 86,
+      "durationMs": 6600
+    },
+    {
+      "file": "tests/prime-097-review3.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 34,
+      "durationMs": 6449
+    },
+    {
+      "file": "tests/endo-cockpit-develop.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 23,
+      "durationMs": 6355
+    },
+    {
+      "file": "tests/pi-runtime-content.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 34,
+      "durationMs": 6078
+    },
+    {
+      "file": "tests/intervention-consumption-scan.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 18,
+      "durationMs": 6071
+    },
+    {
+      "file": "tests/endo-workbench-attempts-cli.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 2,
+      "durationMs": 5743
+    },
+    {
+      "file": "tests/endo-studio-ui.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 19,
+      "durationMs": 5724
+    },
+    {
+      "file": "tests/endo-cockpit-reader.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 57,
+      "durationMs": 5627
+    },
+    {
+      "file": "tests/endo-cockpit-twentyninth-review.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 24,
+      "durationMs": 5158
+    },
+    {
+      "file": "tests/endo-workbench-attempts.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 17,
+      "durationMs": 5003
+    },
+    {
+      "file": "tests/workbench-polish.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 4,
+      "durationMs": 4899
+    },
+    {
+      "file": "tests/capture-proxy-transport.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 30,
+      "durationMs": 4834
+    },
+    {
+      "file": "tests/endo-studio-host.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 26,
+      "durationMs": 4679
+    },
+    {
+      "file": "tests/endo-cockpit-nineteenth-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 18,
+      "durationMs": 4598
+    },
+    {
+      "file": "tests/endo-studio-ui-browser.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "durationMs": 4557
+    },
+    {
+      "file": "tests/develop-protected-attempt.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 40,
+      "durationMs": 4393
+    },
+    {
+      "file": "tests/endo-workbench-http.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 13,
+      "durationMs": 4290
+    },
+    {
+      "file": "tests/endo-cockpit-twentyfourth-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 13,
+      "durationMs": 4258
+    },
+    {
+      "file": "tests/endo-cockpit-candidates.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 42,
+      "durationMs": 3908
+    },
+    {
+      "file": "tests/openclaw-endophasia-status.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 21,
+      "durationMs": 3890
+    },
+    {
+      "file": "tests/endo-cockpit-projections.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 117,
+      "durationMs": 3858
+    },
+    {
+      "file": "tests/codex-workbench-broker.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 9,
+      "durationMs": 3834
+    },
+    {
+      "file": "tests/endo-cockpit-adversarial.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 31,
+      "durationMs": 3831
+    },
+    {
+      "file": "tests/endo-cockpit-http-security.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 31,
+      "durationMs": 3740
+    },
+    {
+      "file": "tests/develop-ux-002-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 6,
+      "durationMs": 3690
+    },
+    {
+      "file": "tests/endo-cockpit-twentysixth-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 22,
+      "durationMs": 3589
+    },
+    {
+      "file": "tests/develop-attempt-evidence-integrity.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 20,
+      "durationMs": 3570
+    },
+    {
+      "file": "tests/evidence-eligibility.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 36,
+      "durationMs": 3501
+    },
+    {
+      "file": "tests/cassette-governed.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 7,
+      "durationMs": 3340
+    },
+    {
+      "file": "tests/initial-continuation-aa-plan.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 3,
+      "durationMs": 3285
+    },
+    {
+      "file": "tests/develop-attention.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 26,
+      "durationMs": 3264
+    },
+    {
+      "file": "tests/endo-cockpit-seventeenth-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 27,
+      "durationMs": 3226
+    },
+    {
+      "file": "tests/endo-studio-evolve-browser.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 3,
+      "durationMs": 3220
+    },
+    {
+      "file": "tests/protected-model-records.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 18,
+      "durationMs": 3151
+    },
+    {
+      "file": "tests/endo-cockpit-twentythird-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 53,
+      "durationMs": 2933
+    },
+    {
+      "file": "tests/endo-studio-representation-browser.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 4,
+      "durationMs": 2913
+    },
+    {
+      "file": "tests/checkpoint-materialization.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 8,
+      "durationMs": 2887
+    },
+    {
+      "file": "tests/prime-097-remediation.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 39,
+      "durationMs": 2857
+    },
+    {
+      "file": "tests/endo-workbench-interventions.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 23,
+      "durationMs": 2808
+    },
+    {
+      "file": "tests/develop-tasks-store.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 29,
+      "durationMs": 2801
+    },
+    {
+      "file": "tests/endo-cockpit-coordinator.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 7,
+      "durationMs": 2753
+    },
+    {
+      "file": "tests/codex-workbench-cli.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 2,
+      "durationMs": 2716
+    },
+    {
+      "file": "tests/endo-studio-coordinator-browser.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 1,
+      "durationMs": 2668
+    },
+    {
+      "file": "tests/develop-coordination-store.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 50,
+      "durationMs": 2595
+    },
+    {
+      "file": "tests/prime-rpc-probe.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 91,
+      "durationMs": 2589
+    },
+    {
+      "file": "tests/cockpit-browser-launch.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 14,
+      "durationMs": 2528
+    },
+    {
+      "file": "tests/endo-provider-fake-endpoint.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 11,
+      "durationMs": 2526
+    },
+    {
+      "file": "tests/pi-rpc-transport.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 16,
+      "durationMs": 2422
+    },
+    {
+      "file": "tests/develop-workspace-service.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 9,
+      "durationMs": 2300
+    },
+    {
+      "file": "tests/endo-cockpit-twentyfirst-review.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 26,
+      "durationMs": 2151
+    },
+    {
+      "file": "tests/endo-workspace-host.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 15,
+      "durationMs": 2111
+    },
+    {
+      "file": "tests/live-process-containment.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 13,
+      "durationMs": 2061
+    },
+    {
+      "file": "tests/endo-cockpit-attachment.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 4,
+      "durationMs": 1973
+    },
+    {
+      "file": "tests/endo-cockpit-twentyfirst-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 7,
+      "durationMs": 1954
+    },
+    {
+      "file": "tests/prime-097-review5.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 75,
+      "durationMs": 1870
+    },
+    {
+      "file": "tests/conformance-prime-specimen.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 6,
+      "durationMs": 1830
+    },
+    {
+      "file": "tests/endo-cockpit-http-comparison.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 46,
+      "durationMs": 1823
+    },
+    {
+      "file": "tests/develop-verify-trust-003-reader.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 26,
+      "durationMs": 1817
+    },
+    {
+      "file": "tests/endo-cockpit-twentieth-review.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 35,
+      "durationMs": 1764
+    },
+    {
+      "file": "tests/prime-097-review6.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 106,
+      "durationMs": 1666
+    },
+    {
+      "file": "tests/prime-097-conformance.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 94,
+      "durationMs": 1660
+    },
+    {
+      "file": "tests/conformance-lab.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 82,
+      "durationMs": 1574
+    },
+    {
+      "file": "tests/harness-assessment.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 21,
+      "durationMs": 1433
+    },
+    {
+      "file": "tests/omp-observer.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 35,
+      "durationMs": 1422
+    },
+    {
+      "file": "tests/endo-cockpit-http-ui.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 11,
+      "durationMs": 1305
+    },
+    {
+      "file": "tests/endo-cockpit-http-lifecycle.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 15,
+      "durationMs": 1273
+    },
+    {
+      "file": "tests/prime-acp-probe.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 39,
+      "durationMs": 1257
+    },
+    {
+      "file": "tests/initial-branch-set-failure.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 7,
+      "durationMs": 1236
+    },
+    {
+      "file": "tests/protected-model-relay.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 55,
+      "durationMs": 1143
+    },
+    {
+      "file": "tests/trajectory.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 55,
+      "durationMs": 1110
+    },
+    {
+      "file": "tests/endo-cockpit-tenth-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 78,
+      "durationMs": 1104
+    },
+    {
+      "file": "tests/endo-cockpit-http-routes.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 12,
+      "durationMs": 1025
+    },
+    {
+      "file": "tests/endo-cockpit-fifteenth-review.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 32,
+      "durationMs": 1017
+    },
+    {
+      "file": "tests/aa-readiness.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 34,
+      "durationMs": 1011
+    },
+    {
+      "file": "tests/observe-representation-projection.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 9,
+      "durationMs": 1005
+    },
+    {
+      "file": "tests/develop-attempt-execution.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 16,
+      "durationMs": 998
+    },
+    {
+      "file": "tests/prime-conformance.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 129,
+      "durationMs": 976
+    },
+    {
+      "file": "tests/develop-adapter-contract.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 48,
+      "durationMs": 952
+    },
+    {
+      "file": "tests/endo-cockpit-twentyfifth-review.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 15,
+      "durationMs": 944
+    },
+    {
+      "file": "tests/protected-staged-changeset.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 13,
+      "durationMs": 911
+    },
+    {
+      "file": "tests/endo-develop-session.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 34,
+      "durationMs": 904
+    },
+    {
+      "file": "tests/pinned-environment-study.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 9,
+      "durationMs": 904
+    },
+    {
+      "file": "tests/coordinator-studio-e2.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 3,
+      "durationMs": 901
+    },
+    {
+      "file": "tests/workspace-snapshot.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 10,
+      "durationMs": 844
+    },
+    {
+      "file": "tests/dsh-native-importer.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 39,
+      "durationMs": 841
+    },
+    {
+      "file": "tests/checkpoint-materialization-failure.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 3,
+      "durationMs": 838
+    },
+    {
+      "file": "tests/endo-studio-observe-model.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 42,
+      "durationMs": 817
+    },
+    {
+      "file": "tests/endo-studio-weather-model.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 15,
+      "durationMs": 802
+    },
+    {
+      "file": "tests/pinned-environment-cassettes.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 14,
+      "durationMs": 791
+    },
+    {
+      "file": "tests/endo-develop-tasks-workbench.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 23,
+      "durationMs": 789
+    },
+    {
+      "file": "tests/endo-workbench-project.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 8,
+      "durationMs": 783
+    },
+    {
+      "file": "tests/acp-v2-conversation.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 16,
+      "durationMs": 759
+    },
+    {
+      "file": "tests/writer-lock-concurrency.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 4,
+      "durationMs": 757
+    },
+    {
+      "file": "tests/linux-host-inspection-aa.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 6,
+      "durationMs": 726
+    },
+    {
+      "file": "tests/governed-admission-limits.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 16,
+      "durationMs": 716
+    },
+    {
+      "file": "tests/endo-cockpit-twentysecond-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 19,
+      "durationMs": 695
+    },
+    {
+      "file": "tests/endo-workbench-evidence-check.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 12,
+      "durationMs": 686
+    },
+    {
+      "file": "tests/harness-surface.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 68,
+      "durationMs": 630
+    },
+    {
+      "file": "tests/develop-verify-trust-004-reanalyze.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 35,
+      "durationMs": 625
+    },
+    {
+      "file": "tests/variance-cassettes.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 11,
+      "durationMs": 618
+    },
+    {
+      "file": "tests/dsh-native-repair.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 76,
+      "durationMs": 596
+    },
+    {
+      "file": "tests/develop-verify-trust-004-operator.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 41,
+      "durationMs": 582
+    },
+    {
+      "file": "tests/acp-boundary.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 8,
+      "durationMs": 580
+    },
+    {
+      "file": "tests/endo-cockpit-thirtieth-review.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 9,
+      "durationMs": 548
+    },
+    {
+      "file": "tests/endo-studio-ui-contract.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 28,
+      "durationMs": 548
+    },
+    {
+      "file": "tests/evidence-eligibility-corpus.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 3,
+      "durationMs": 541
+    },
+    {
+      "file": "tests/acp-schema.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 14,
+      "durationMs": 527
+    },
+    {
+      "file": "tests/develop-ux-002-session-control.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 57,
+      "durationMs": 527
+    },
+    {
+      "file": "tests/steering-cassettes.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 34,
+      "durationMs": 525
+    },
+    {
+      "file": "tests/endo-workbench-stop-preemption.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 13,
+      "durationMs": 519
+    },
+    {
+      "file": "tests/acp-v2-schema.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 21,
+      "durationMs": 412
+    },
+    {
+      "file": "tests/endo-workbench-broker.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 25,
+      "durationMs": 399
+    },
+    {
+      "file": "tests/endo-cockpit-fourteenth-review.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 19,
+      "durationMs": 338
+    },
+    {
+      "file": "tests/develop-verify-trust-003-driver.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 22,
+      "durationMs": 335
+    },
+    {
+      "file": "tests/develop-isolate-002-workspace.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 23,
+      "durationMs": 308
+    },
+    {
+      "file": "tests/endo-studio-compare-model.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 18,
+      "durationMs": 288
+    },
+    {
+      "file": "tests/dsh-native-importer-review.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 58,
+      "durationMs": 264
+    },
+    {
+      "file": "tests/dsh-native-recovery.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 23,
+      "durationMs": 253
+    },
+    {
+      "file": "tests/coordinator-coordination.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 22,
+      "durationMs": 246
+    },
+    {
+      "file": "tests/harness-surface-capture.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 1,
+      "durationMs": 240
+    },
+    {
+      "file": "tests/pi-reasoning-leak.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 3,
+      "durationMs": 233
+    },
+    {
+      "file": "tests/path-sensitivity-data.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 3,
+      "durationMs": 224
+    },
+    {
+      "file": "tests/dsh-native-study.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 48,
+      "durationMs": 218
+    },
+    {
+      "file": "tests/endo-workbench-reasoning.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 19,
+      "durationMs": 217
+    },
+    {
+      "file": "tests/endo-storage.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 35,
+      "durationMs": 215
+    },
+    {
+      "file": "tests/evolve-protected-experiment.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 13,
+      "durationMs": 195
+    },
+    {
+      "file": "tests/endo-host-import-boundary.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "durationMs": 189
+    },
+    {
+      "file": "tests/develop-verify-trust-004-controls.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 6,
+      "durationMs": 188
+    },
+    {
+      "file": "tests/endo-studio-develop-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 17,
+      "durationMs": 178
+    },
+    {
+      "file": "tests/endo-studio-representation-model.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 3,
+      "durationMs": 159
+    },
+    {
+      "file": "tests/develop-verify-trust-002.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 26,
+      "durationMs": 154
+    },
+    {
+      "file": "tests/endo-pi-boundary.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 7,
+      "durationMs": 154
+    },
+    {
+      "file": "tests/observe-representation-observer-http.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 5,
+      "durationMs": 146
+    },
+    {
+      "file": "tests/schema-compat.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 225,
+      "durationMs": 145
+    },
+    {
+      "file": "tests/pi-lifecycle-fixtures.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 10,
+      "durationMs": 143
+    },
+    {
+      "file": "tests/prime-research-boundary.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 15,
+      "durationMs": 125
+    },
+    {
+      "file": "tests/staged-changeset.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 15,
+      "durationMs": 119
+    },
+    {
+      "file": "tests/develop-verify-trust.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 6,
+      "durationMs": 112
+    },
+    {
+      "file": "tests/governed-recording-proxy.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 1,
+      "durationMs": 111
+    },
+    {
+      "file": "tests/endo-integration-harness.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 7,
+      "durationMs": 102
+    },
+    {
+      "file": "tests/develop-acceptance.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 9,
+      "durationMs": 95
+    },
+    {
+      "file": "tests/endo-studio-ui-source.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 14,
+      "durationMs": 89
+    },
+    {
+      "file": "tests/endo-cockpit-docs.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 3,
+      "durationMs": 88
+    },
+    {
+      "file": "tests/storage-recovery.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 18,
+      "durationMs": 82
+    },
+    {
+      "file": "tests/endo-cli.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 10,
+      "durationMs": 72
+    },
+    {
+      "file": "tests/endo-workbench-tools.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 14,
+      "durationMs": 69
+    },
+    {
+      "file": "tests/numbered-lock.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 7,
+      "durationMs": 67
+    },
+    {
+      "file": "tests/discriminating-analysis.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 26,
+      "durationMs": 52
+    },
+    {
+      "file": "tests/acp-loss-accounting.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 13,
+      "durationMs": 44
+    },
+    {
+      "file": "tests/counterfactual-probe.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 23,
+      "durationMs": 41
+    },
+    {
+      "file": "tests/pi-lifecycle.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 20,
+      "durationMs": 39
+    },
+    {
+      "file": "tests/endo-provider-openai.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 18,
+      "durationMs": 37
+    },
+    {
+      "file": "tests/protected-records.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 16,
+      "durationMs": 36
+    },
+    {
+      "file": "tests/endo-cockpit-boundary.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 7,
+      "durationMs": 34
+    },
+    {
+      "file": "tests/endo-studio-field-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 22,
+      "durationMs": 29
+    },
+    {
+      "file": "tests/endo-trust-core.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 11,
+      "durationMs": 28
+    },
+    {
+      "file": "tests/capture-transport-compat.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "durationMs": 26
+    },
+    {
+      "file": "tests/completion-cap.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 25,
+      "durationMs": 26
+    },
+    {
+      "file": "tests/endo-evolution-protocol.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 123,
+      "durationMs": 25
+    },
+    {
+      "file": "tests/endo-evaluation-protocol.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 37,
+      "durationMs": 24
+    },
+    {
+      "file": "tests/experiment-checks.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 5,
+      "durationMs": 22
+    },
+    {
+      "file": "tests/acp-v2-loss-accounting.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 11,
+      "durationMs": 21
+    },
+    {
+      "file": "tests/endo-evolution-rrsi-gepa.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 25,
+      "durationMs": 21
+    },
+    {
+      "file": "tests/protected-runtime-prompt.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 6,
+      "durationMs": 21
+    },
+    {
+      "file": "tests/endo-studio-source.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 15,
+      "durationMs": 19
+    },
+    {
+      "file": "tests/endo-studio-workspace-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 17,
+      "durationMs": 19
+    },
+    {
+      "file": "tests/endo-visualization-dream.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 8,
+      "durationMs": 19
+    },
+    {
+      "file": "tests/pi-evidence-rules.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 23,
+      "durationMs": 19
+    },
+    {
+      "file": "tests/storage-short-write.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 5,
+      "durationMs": 19
+    },
+    {
+      "file": "tests/endo-collab-core.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 16,
+      "durationMs": 18
+    },
+    {
+      "file": "tests/endo-visualization-semantic-state.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 18,
+      "durationMs": 18
+    },
+    {
+      "file": "tests/develop-attempt-evidence.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 13,
+      "durationMs": 17
+    },
+    {
+      "file": "tests/develop-isolate-002-attested-pi.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 5,
+      "durationMs": 17
+    },
+    {
+      "file": "tests/endo-evolution-experiment.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 21,
+      "durationMs": 17
+    },
+    {
+      "file": "tests/endo-lab-replay-compare.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 9,
+      "durationMs": 17
+    },
+    {
+      "file": "tests/endo-trust-adapters.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 33,
+      "durationMs": 17
+    },
+    {
+      "file": "tests/linux-proc-aa.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 7,
+      "durationMs": 17
+    },
+    {
+      "file": "tests/endo-evolution-evidence.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 21,
+      "durationMs": 16
+    },
+    {
+      "file": "tests/coordinator-brief.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 41,
+      "durationMs": 15
+    },
+    {
+      "file": "tests/endo-cockpit-close.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 3,
+      "durationMs": 15
+    },
+    {
+      "file": "tests/endo-models-policies.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 27,
+      "durationMs": 15
+    },
+    {
+      "file": "tests/endo-runtime-core.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 12,
+      "durationMs": 15
+    },
+    {
+      "file": "tests/endo-studio-reasoning-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 12,
+      "durationMs": 15
+    },
+    {
+      "file": "tests/endo-visualization-protocol.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 24,
+      "durationMs": 15
+    },
+    {
+      "file": "tests/codex-observe-timeline.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 2,
+      "durationMs": 14
+    },
+    {
+      "file": "tests/endo-evolution-policies.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 21,
+      "durationMs": 14
+    },
+    {
+      "file": "tests/endo-models-protocol.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 45,
+      "durationMs": 14
+    },
+    {
+      "file": "tests/develop-verify-trust-003.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 31,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-collab-ledger.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 8,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-collab-protocol.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 49,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-event-store.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 15,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-identity.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 9,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-reef-adapter.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 23,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-runtime-adapters.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 17,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-studio-workbench-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 25,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-trust-ledger.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 10,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/endo-trust-protocol.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 52,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/protected-isolation.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 48,
+      "durationMs": 13
+    },
+    {
+      "file": "tests/develop-verify-trust-004-freeze.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 5,
+      "durationMs": 12
+    },
+    {
+      "file": "tests/develop-verify-trust-004-passes.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 6,
+      "durationMs": 12
+    },
+    {
+      "file": "tests/endo-evolution-core.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 27,
+      "durationMs": 12
+    },
+    {
+      "file": "tests/endo-models-core.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 16,
+      "durationMs": 12
+    },
+    {
+      "file": "tests/endo-studio-course-model.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 16,
+      "durationMs": 12
+    },
+    {
+      "file": "tests/develop-attempts-reader.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 12,
+      "durationMs": 11
+    },
+    {
+      "file": "tests/endo-immutability.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 7,
+      "durationMs": 11
+    },
+    {
+      "file": "tests/endo-lab-conformance.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 8,
+      "durationMs": 11
+    },
+    {
+      "file": "tests/endo-visualization-engineering.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 8,
+      "durationMs": 11
+    },
+    {
+      "file": "tests/endo-graph-store.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 14,
+      "durationMs": 10
+    },
+    {
+      "file": "tests/endo-graph-traversal.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 16,
+      "durationMs": 10
+    },
+    {
+      "file": "tests/endo-runtime-protocol.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 32,
+      "durationMs": 10
+    },
+    {
+      "file": "tests/endo-strict-json-audit.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 69,
+      "durationMs": 10
+    },
+    {
+      "file": "tests/endo-studio-project-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 18,
+      "durationMs": 10
+    },
+    {
+      "file": "tests/schema-version-dispatch.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 13,
+      "durationMs": 10
+    },
+    {
+      "file": "tests/secret-scan.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 11,
+      "durationMs": 10
+    },
+    {
+      "file": "tests/endo-event-replay.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 13,
+      "durationMs": 9
+    },
+    {
+      "file": "tests/endo-graph-protocol.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 27,
+      "durationMs": 9
+    },
+    {
+      "file": "tests/endo-lab-bundle.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "durationMs": 8
+    },
+    {
+      "file": "tests/endo-runtime-ledger.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 6,
+      "durationMs": 8
+    },
+    {
+      "file": "tests/sampling-control.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 3,
+      "durationMs": 8
+    },
+    {
+      "file": "tests/develop-isolate-001.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 6,
+      "durationMs": 7
+    },
+    {
+      "file": "tests/endo-lab-trials.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 12,
+      "durationMs": 7
+    },
+    {
+      "file": "tests/endo-models-ledger.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 6,
+      "durationMs": 7
+    },
+    {
+      "file": "tests/endo-object.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 5,
+      "durationMs": 7
+    },
+    {
+      "file": "tests/endo-visualization-live.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 7,
+      "durationMs": 7
+    },
+    {
+      "file": "tests/release-readiness.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 11,
+      "durationMs": 7
+    },
+    {
+      "file": "tests/endo-event-record.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 23,
+      "durationMs": 6
+    },
+    {
+      "file": "tests/endo-studio-attempt-request-model.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 11,
+      "durationMs": 6
+    },
+    {
+      "file": "tests/pi-help.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 48,
+      "durationMs": 6
+    },
+    {
+      "file": "tests/root-args.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 7,
+      "durationMs": 6
+    },
+    {
+      "file": "tests/workbench-terminal-command.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 21,
+      "durationMs": 6
+    },
+    {
+      "file": "tests/develop-isolate-003-provider.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 9,
+      "durationMs": 5
+    },
+    {
+      "file": "tests/endo-coordinates.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 10,
+      "durationMs": 5
+    },
+    {
+      "file": "tests/endo-event.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 17,
+      "durationMs": 5
+    },
+    {
+      "file": "tests/endo-graph-projections.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 6,
+      "durationMs": 5
+    },
+    {
+      "file": "tests/develop-isolate-004-pilot.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 2,
+      "durationMs": 4
+    },
+    {
+      "file": "tests/endo-graph-subscriptions.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 5,
+      "durationMs": 4
+    },
+    {
+      "file": "tests/loop-hints.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 5,
+      "durationMs": 4
+    },
+    {
+      "file": "tests/pi-conformance-specimen.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 2,
+      "durationMs": 4
+    },
+    {
+      "file": "tests/sandbox-scope-cleanup.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 2,
+      "durationMs": 4
+    },
+    {
+      "file": "tests/acp-omp-real.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 1,
+      "skipped": 1,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/completion-cap-raw-data.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 2,
+      "skipped": 2,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/coordinator-coordination-sandbox.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "skipped": 4,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/discriminating-tasks-raw-data.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 2,
+      "skipped": 2,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/endo-studio-atmosphere-shots.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 5,
+      "skipped": 5,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/endo-studio-density-shots.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 7,
+      "skipped": 7,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/endo-studio-field-shots.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 12,
+      "skipped": 12,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/experiment-raw-data.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 4,
+      "skipped": 4,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/path-sensitivity-raw-data.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 2,
+      "skipped": 2,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/pi-real-replay.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 9,
+      "skipped": 9,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/pi-real-runtime.test.ts",
+      "shard": "Test (shard 2/3)",
+      "tests": 1,
+      "skipped": 1,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/protected-launch-window.test.ts",
+      "shard": "Test (shard 3/3)",
+      "tests": 1,
+      "skipped": 1,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/protected-model-run.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 20,
+      "skipped": 20,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/protected-staged-run.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 17,
+      "skipped": 17,
+      "durationMs": 0
+    },
+    {
+      "file": "tests/steering-raw-data.test.ts",
+      "shard": "Test (shard 1/3)",
+      "tests": 2,
+      "skipped": 2,
+      "durationMs": 0
+    }
+  ]
+}

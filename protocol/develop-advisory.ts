@@ -107,6 +107,8 @@ export const ENDO_ADVISORY_WITHHELD_REASONS_V0 = [
 	"authorization-expired-in-flight",
 	"schedule-changed-in-flight",
 	"lease-lost-in-flight",
+	"turn-deadline-exceeded",
+	"publication-observation-not-committed",
 ] as const;
 export type EndoAdvisoryWithheldReasonV0 = (typeof ENDO_ADVISORY_WITHHELD_REASONS_V0)[number];
 
@@ -222,6 +224,12 @@ export const ENDO_ADVISORY_LIMITS_V0 = Object.freeze({
 	maxTurnWallClockMs: 240_000,
 	/** The advisory duty lease: S1's maximum TTL, fixed. Every phase of a turn is bounded to finish inside it. */
 	leaseTtlMs: 300_000,
+	/**
+	 * Default on-time grace for advisory windows: two advisory leases. One tick runs at most one turn, which holds the advisory lease
+	 * for up to one lease; a co-due schedule must still be on time at the next tick after it (for any tick cadence up to 5 minutes).
+	 * S1's recurrence caps it at period - 1.
+	 */
+	defaultOnTimeGraceMs: 600_000,
 	/** Reserved at the end of the lease for publication after the inference deadline. */
 	publicationMarginMs: 20_000,
 	/** The smallest inference window the dispatch gate admits (the M1 member timeout floor). */
@@ -251,6 +259,8 @@ export interface EndoAdvisoryScheduleCursorV0 {
 
 export interface EndoAdvisoryScheduleV0 {
 	readonly scheduleId: string;
+	/** A fresh random identity per add: a removed and re-added schedule id is a different incarnation, so nothing carries over. */
+	readonly incarnation: string;
 	readonly label: string | null;
 	readonly revision: number;
 	readonly enabled: boolean;
@@ -306,6 +316,7 @@ export interface EndoAdvisoryBudgetV0 {
 export interface EndoAdvisoryAuthorizationV0 {
 	readonly authorizationId: string;
 	readonly scheduleId: string;
+	readonly scheduleIncarnation: string;
 	readonly scheduleRevision: number;
 	readonly projectId: string;
 	readonly actionKind: EndoAdvisoryActionKindV0;
@@ -344,6 +355,7 @@ export interface EndoAdvisoryFireClaimV0 {
 	readonly schemaVersion: typeof ENDO_ADVISORY_FIRE_CLAIM_SCHEMA_V0;
 	readonly idempotencyKey: string;
 	readonly scheduleId: string;
+	readonly scheduleIncarnation: string;
 	readonly scheduleRevision: number;
 	readonly projectId: string;
 	readonly actionKind: EndoAdvisoryActionKindV0;
@@ -702,6 +714,7 @@ export function validateEndoAdvisoryScheduleV0(value: unknown, at = "advisory sc
 		value,
 		[
 			"scheduleId",
+			"incarnation",
 			"label",
 			"revision",
 			"enabled",
@@ -721,6 +734,7 @@ export function validateEndoAdvisoryScheduleV0(value: unknown, at = "advisory sc
 	if (updatedAtMs < createdAtMs) fail(`${at}.updatedAtMs cannot precede createdAtMs`);
 	return Object.freeze({
 		scheduleId: scheduleIdOf(r.scheduleId, `${at}.scheduleId`),
+		incarnation: sha(r.incarnation, `${at}.incarnation`),
 		label: nPat(r.label, SAFE_TEXT_128, `${at}.label`),
 		revision: revisionOf(r.revision, `${at}.revision`),
 		enabled: bool(r.enabled, `${at}.enabled`),
@@ -867,6 +881,7 @@ export function validateEndoAdvisoryAuthorizationV0(value: unknown, at = "author
 		[
 			"authorizationId",
 			"scheduleId",
+			"scheduleIncarnation",
 			"scheduleRevision",
 			"projectId",
 			"actionKind",
@@ -903,6 +918,7 @@ export function validateEndoAdvisoryAuthorizationV0(value: unknown, at = "author
 	return Object.freeze({
 		authorizationId: sha(r.authorizationId, `${at}.authorizationId`),
 		scheduleId: scheduleIdOf(r.scheduleId, `${at}.scheduleId`),
+		scheduleIncarnation: sha(r.scheduleIncarnation, `${at}.scheduleIncarnation`),
 		scheduleRevision: revisionOf(r.scheduleRevision, `${at}.scheduleRevision`),
 		projectId: projectIdOf(r.projectId, `${at}.projectId`),
 		actionKind: actionOf(r.actionKind, `${at}.actionKind`),
@@ -998,6 +1014,7 @@ export function validateEndoAdvisoryFireClaimV0(value: unknown): EndoAdvisoryFir
 			"windowStartMs",
 			"missedWindowsBefore",
 			"claimedAtMs",
+			"scheduleIncarnation",
 			"leaseEpoch",
 			"holderId",
 		],
@@ -1019,6 +1036,7 @@ export function validateEndoAdvisoryFireClaimV0(value: unknown): EndoAdvisoryFir
 		claimedAtMs: ms(r.claimedAtMs, `${at}.claimedAtMs`),
 		leaseEpoch: epochOf(r.leaseEpoch, `${at}.leaseEpoch`),
 		holderId: holderOf(r.holderId, `${at}.holderId`),
+		scheduleIncarnation: sha(r.scheduleIncarnation, `${at}.scheduleIncarnation`),
 	});
 }
 

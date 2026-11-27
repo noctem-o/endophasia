@@ -16,8 +16,8 @@
 //   file fails closed and is never repaired or overwritten by a reader.
 // - Write-once records are never replaced. Retention never deletes an unresolved claim or an unsettled turn.
 
-import { lstatSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, constants, fsyncSync, lstatSync, opendirSync, openSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import {
 	ENDO_ADVISORY_LIMITS_V0,
 	ENDO_ADVISORY_PROPOSAL_DISPOSITIONS_V0,
@@ -85,9 +85,10 @@ export interface EndoDevelopAdvisoryStoreOptionsV0 {
 	readonly lockHooks?: EndoNumberedLockHooksV0;
 	/** Test hook: runs inside a write-once write before link(2) (a throw there is a failure at that point). */
 	readonly beforeRecordLink?: (fileName: string) => void;
+	readonly beforeDirectorySync?: (directory: string) => void;
 }
 
-export type EndoAdvisoryWriteOnceV0 = "created" | "exists" | "failed";
+export type EndoAdvisoryWriteOnceV0 = "created" | "exists" | "failed" | "commit-uncertain";
 
 export interface EndoAdvisoryFireEntryV0 {
 	readonly idempotencyKey: string;
@@ -181,6 +182,42 @@ export class DevelopAdvisoryStoreV0 {
 
 	#base(): string[] {
 		return [this.#developDir, this.#automationDir, this.#dir];
+	}
+
+	#syncDirectory(dir: string): void {
+		this.#options.beforeDirectorySync?.(dir);
+		const fd = openSync(dir, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+		try {
+			fsyncSync(fd);
+		} finally {
+			closeSync(fd);
+		}
+	}
+
+	/** Fsync `dir` and each ancestor up to the directory holding the develop store, so newly created directories are durable. */
+	#syncParents(dir: string): void {
+		const stop = dirname(resolve(this.#developDir));
+		for (let path = resolve(dir); ; path = dirname(path)) {
+			this.#syncDirectory(path);
+			if (path === stop || dirname(path) === path) break;
+		}
+	}
+
+	#readBudgetFloor(): EndoAutomationFileReadV0<number> {
+		return readBoundedValidatedJsonSync(this.#base(), join(this.#dir, "budget-floor.json"), 1024, (raw) => {
+			if (typeof raw !== "object" || raw === null || Array.isArray(raw))
+				return { ok: false, kind: "invalid", message: "invalid budget floor" };
+			const value = raw as Record<string, unknown>;
+			if (
+				Object.keys(value).length !== 2 ||
+				value.schemaVersion !== "endo.advisory-budget-floor.v0" ||
+				typeof value.nowMs !== "number" ||
+				!Number.isSafeInteger(value.nowMs) ||
+				value.nowMs < 0
+			)
+				return { ok: false, kind: "invalid", message: "invalid budget floor" };
+			return { ok: true, schemaVersion: value.schemaVersion, value: value.nowMs };
+		});
 	}
 
 	#read<T>(dirs: readonly string[], path: string, max: number, t: EndoVersionTableV0<T>): EndoAutomationFileReadV0<T> {
@@ -318,11 +355,14 @@ export class DevelopAdvisoryStoreV0 {
 	}
 
 	/** Every turn in the ledger. Fails closed (`too-many`) rather than undercounting when the directory exceeds its bound. */
-	listTurns(): EndoAdvisoryListingV0<EndoAdvisoryLedgerTurnV0> | EndoAdvisoryListingFailureV0 {
+	listTurns(nowMs = this.#now()): EndoAdvisoryListingV0<EndoAdvisoryLedgerTurnV0> | EndoAdvisoryListingFailureV0 {
 		const names = this.#names(this.#turnsDir);
 		if (!Array.isArray(names)) return names;
 		const ids = new Set<string>();
 		const problems: { name: string; reason: EndoAutomationReadProblemV0 }[] = [];
+		const floor = this.#readBudgetFloor();
+		if (!floor.ok || (floor.exists && (!Number.isSafeInteger(nowMs) || nowMs < floor.value)))
+			problems.push({ name: "budget-floor.json", reason: floor.ok ? "invalid" : floor.reason });
 		for (const name of names) {
 			if (WRITE_ONCE_TEMPORARY_V0.test(name)) continue;
 			const m = TURN_FILE.exec(name);
@@ -338,11 +378,28 @@ export class DevelopAdvisoryStoreV0 {
 				["admitted", admission],
 				["dispatched", dispatch],
 				["briefing", briefing],
-			] as const)
+			] as const) {
 				if (!read.ok) problems.push({ name: `${id}.${kind}.json`, reason: read.reason });
+				else if (read.exists && read.value.turnId !== id)
+					problems.push({ name: `${id}.${kind}.json`, reason: "invalid" });
+			}
 			if (!admission.ok || !admission.exists || admission.value.turnId !== id) {
 				if (admission.ok && !admission.exists) problems.push({ name: `${id}.admitted.json`, reason: "invalid" });
 				continue;
+			}
+			for (const [kind, read] of [
+				["dispatched", dispatch],
+				["briefing", briefing],
+			] as const) {
+				if (
+					read.ok &&
+					read.exists &&
+					(read.value.leaseEpoch !== admission.value.leaseEpoch ||
+						read.value.holderId !== admission.value.holderId ||
+						read.value.authorizationId !== admission.value.authorizationId ||
+						read.value.scheduleRevision !== admission.value.scheduleRevision)
+				)
+					problems.push({ name: `${id}.${kind}.json`, reason: "invalid" });
 			}
 			entries.push(
 				Object.freeze({
@@ -404,6 +461,11 @@ export class DevelopAdvisoryStoreV0 {
 			const state = checkDirectoriesSyncV0(this.#base());
 			return { ok: false, code: state === "unsafe-path" ? "unsafe-path" : "storage-failed" };
 		}
+		try {
+			this.#syncParents(this.#dir);
+		} catch {
+			return { ok: false, code: "storage-failed" };
+		}
 		const release = acquireEndoNumberedLockV0(this.#automationDir, ENDO_DEVELOP_AUTOMATION_LOCK_V0, {
 			waitMs: this.#options.lockWaitMs ?? 2_000,
 			now: this.#now,
@@ -416,10 +478,22 @@ export class DevelopAdvisoryStoreV0 {
 				replaceJsonAtomicSync(this.#dir, name, value, L.maxFileBytes, {});
 			const once = (dir: string, name: string, value: unknown): EndoAdvisoryWriteOnceV0 => {
 				if (!ensureDirectoriesSyncV0([...this.#base(), dir])) return "failed";
+				try {
+					this.#syncParents(dir);
+				} catch {
+					return "failed";
+				}
 				const bytes = Buffer.from(`${canonicalEndoJsonV0(value as never)}\n`, "utf8");
 				if (bytes.length > L.maxRecordBytes) return "failed";
 				const hook = this.#options.beforeRecordLink;
-				return writeOnceSyncV0(dir, name, bytes, hook === undefined ? undefined : () => hook(name));
+				const outcome = writeOnceSyncV0(dir, name, bytes, hook === undefined ? undefined : () => hook(name));
+				if (outcome !== "created") return outcome;
+				try {
+					this.#syncDirectory(dir);
+					return "created";
+				} catch {
+					return "commit-uncertain";
+				}
 			};
 			const session: EndoAdvisoryLockedSessionV0 = {
 				store: this,
@@ -492,14 +566,81 @@ export class DevelopAdvisoryStoreV0 {
 				removed.fires += 1;
 			}
 		}
-		const turns = this.listTurns();
-		if (turns.ok) {
-			const settled = turns.entries.filter((t) => t.briefing !== null);
-			for (const t of settled.slice(L.maxTerminalTurnsRetained)) {
-				if (t.admission.admittedAtMs > nowMs - L.maxBudgetPeriodMs) continue;
-				for (const kind of ["briefing", "dispatched", "admitted"])
-					rm(join(this.#turnsDir, `${t.admission.turnId}.${kind}.json`));
-				removed.turns += 1;
+		const floor = this.#readBudgetFloor();
+		if (
+			floor.ok &&
+			Number.isSafeInteger(nowMs) &&
+			nowMs >= 0 &&
+			(!floor.exists || nowMs >= floor.value) &&
+			checkDirectoriesSyncV0([...this.#base(), this.#turnsDir]) === "ok"
+		) {
+			const scan = (visit: (admission: EndoAdvisoryTurnAdmissionV0) => void) => {
+				const dir = opendirSync(this.#turnsDir);
+				try {
+					for (let entry = dir.readSync(); entry !== null; entry = dir.readSync()) {
+						const match = TURN_FILE.exec(entry.name);
+						if (match === null || match[2] !== "admitted") continue;
+						const id = match[1] as string;
+						const a = this.readAdmission(id);
+						const b = this.readBriefing(id);
+						const d = this.readDispatch(id);
+						if (
+							!a.ok ||
+							!a.exists ||
+							a.value.turnId !== id ||
+							!b.ok ||
+							!b.exists ||
+							b.value.turnId !== id ||
+							!d.ok ||
+							(d.exists && d.value.turnId !== id)
+						)
+							continue;
+						if (
+							[b.value, ...(d.exists ? [d.value] : [])].some(
+								(v) =>
+									v.leaseEpoch !== a.value.leaseEpoch ||
+									v.holderId !== a.value.holderId ||
+									v.authorizationId !== a.value.authorizationId ||
+									v.scheduleRevision !== a.value.scheduleRevision,
+							)
+						)
+							continue;
+						visit(a.value);
+					}
+				} finally {
+					dir.closeSync();
+				}
+			};
+			try {
+				const newest: EndoAdvisoryTurnAdmissionV0[] = [];
+				let count = 0;
+				scan((a) => {
+					count += 1;
+					newest.push(a);
+					newest.sort((a, b) => b.admittedAtMs - a.admittedAtMs || a.turnId.localeCompare(b.turnId));
+					if (newest.length > L.maxTerminalTurnsRetained) newest.pop();
+				});
+				if (
+					count > L.maxTerminalTurnsRetained &&
+					replaceJsonAtomicSync(
+						this.#dir,
+						"budget-floor.json",
+						{ schemaVersion: "endo.advisory-budget-floor.v0", nowMs },
+						1024,
+						{},
+					) === "committed"
+				) {
+					this.#syncParents(this.#dir);
+					const keep = new Set(newest.map((a) => a.turnId));
+					scan((a) => {
+						if (keep.has(a.turnId) || a.admittedAtMs >= nowMs - L.maxBudgetPeriodMs) return;
+						for (const kind of ["briefing", "dispatched", "admitted"])
+							rm(join(this.#turnsDir, `${a.turnId}.${kind}.json`));
+						removed.turns += 1;
+					});
+				}
+			} catch {
+				return removed;
 			}
 		}
 		const proposals = this.listProposals();

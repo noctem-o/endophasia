@@ -71,6 +71,7 @@ import {
 	endoAdvisoryBudgetSha256V0,
 	endoAdvisoryBudgetStandingV0,
 	endoAdvisoryEffectivePoolV0,
+	endoAdvisoryExcludedMembersV0,
 	endoAdvisoryFireIdempotencyKeyV0,
 	endoAdvisoryGroundProposalV0,
 	endoAdvisoryParseProposalLineV0,
@@ -91,6 +92,7 @@ import { readEndoCoordinatorStatusV0 } from "../../storage/coordinator-status.ts
 import {
 	DevelopAdvisoryStoreV0,
 	type EndoAdvisoryLockedSessionV0,
+	type EndoAdvisoryWriteOnceV0,
 	type EndoDevelopAdvisoryStoreOptionsV0,
 } from "../../storage/develop-advisory.ts";
 import { DevelopAutomationStoreV0 } from "../../storage/develop-automation.ts";
@@ -122,6 +124,7 @@ export interface EndoAdvisoryTickHooksV0 {
 export interface RunEndoAdvisoryTickOptionsV0 {
 	readonly root: string;
 	readonly now?: () => number;
+	readonly monotonicNow?: () => number;
 	readonly holderId?: string;
 	readonly onTimeGraceMs?: number;
 	/** Lock-free read of one project's projections. Default: the store readers S1's observer uses, bounded. */
@@ -271,10 +274,13 @@ function dispatchRefusalStatus(r: EndoAdvisoryDispatchRefusalV0): EndoAdvisoryFi
 
 export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV0): Promise<EndoAdvisoryTickResultV0> {
 	const now = options.now ?? Date.now;
+	const monotonicNow = options.monotonicNow ?? (() => performance.now());
+	let leaseStartedMs = 0;
+	let turnStartedMs = 0;
 	const holderId = options.holderId ?? `endo.advisory.${process.pid}.${randomBytes(6).toString("hex")}`;
 	if (!ENDO_HOLDER_ID_PATTERN_V0.test(holderId))
 		throw new TypeError("holderId must be 1-128 printable ASCII characters");
-	const onTimeGraceMs = options.onTimeGraceMs ?? 120_000;
+	const onTimeGraceMs = options.onTimeGraceMs ?? L.defaultOnTimeGraceMs;
 	const hooks = options.hooks ?? {};
 	const store = new DevelopAdvisoryStoreV0(options.root, { ...options.storeOptions, now });
 	const observeProject = options.observeProject ?? defaultObserveAdvisoryProjectV0;
@@ -297,6 +303,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	type Claimed = { readonly claim: EndoAdvisoryFireClaimV0 };
 	const phaseA = store.withAdvisoryLockSync((s) => {
 		const nowMs = now();
+		leaseStartedMs = monotonicNow();
 		const schedulesRead = s.store.readSchedules();
 		const leaseRead = s.store.readLease();
 		if (!schedulesRead.ok)
@@ -375,12 +382,20 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			return { ok: true as const, lease, recovered, claimed: null as Claimed | null, terminal };
 		const file = schedulesRead.value;
 		let claimed: Claimed | null = null;
+		let claimFailed = false;
+		const next = [...file.schedules]
+			.filter(
+				(schedule) =>
+					evaluateEndoScheduleDueV0(asS1Schedule(schedule), nowMs, { onTimeGraceMs }).kind === "due-fire",
+			)
+			.sort((x, y) => (x.cursor.lastEvaluatedAtMs ?? -1) - (y.cursor.lastEvaluatedAtMs ?? -1))[0];
 		const updated = file.schedules.map((schedule) => {
 			const evaluation = evaluateEndoScheduleDueV0(asS1Schedule(schedule), nowMs, { onTimeGraceMs });
 			const triggerCursor = endoScheduleTriggerCursorV0(schedule.trigger);
 			if (evaluation.kind === "missed-skip") {
 				const key = endoAdvisoryFireIdempotencyKeyV0({
 					scheduleId: schedule.scheduleId,
+					scheduleIncarnation: schedule.incarnation,
 					windowStartMs: evaluation.latestMissedWindowStartMs,
 					triggerCursor,
 				});
@@ -418,9 +433,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				});
 			}
 			// One turn per tick: another due schedule keeps its window for the next tick (a lease bounds one turn only).
-			if (evaluation.kind !== "due-fire" || claimed !== null) return schedule;
+			if (evaluation.kind !== "due-fire" || schedule !== next || claimed !== null) return schedule;
 			const key = endoAdvisoryFireIdempotencyKeyV0({
 				scheduleId: schedule.scheduleId,
+				scheduleIncarnation: schedule.incarnation,
 				windowStartMs: evaluation.windowStartMs,
 				triggerCursor,
 			});
@@ -428,6 +444,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				schemaVersion: ENDO_ADVISORY_FIRE_CLAIM_SCHEMA_V0,
 				idempotencyKey: key,
 				scheduleId: schedule.scheduleId,
+				scheduleIncarnation: schedule.incarnation,
 				scheduleRevision: schedule.revision,
 				projectId: schedule.projectId,
 				actionKind: schedule.actionKind,
@@ -440,7 +457,12 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				leaseEpoch: lease.epoch,
 				holderId,
 			};
-			if (s.writeFireClaimOnce(claim) === "created") claimed = { claim };
+			const written = s.writeFireClaimOnce(claim);
+			if (written === "created") claimed = { claim };
+			else if (written !== "exists") {
+				claimFailed = true;
+				return schedule;
+			}
 			return withCursor(schedule, {
 				lastEvaluatedAtMs: nowMs,
 				lastConsumedWindowStartMs: Math.max(
@@ -451,6 +473,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				lastFireIdempotencyKey: key,
 			});
 		});
+		if (claimFailed) {
+			s.writeLease({ ...lease, releasedAtMs: nowMs });
+			return { ok: false as const, refusal: "storage-failed" as const, detail: "fire claim not durably linked" };
+		}
 		if (updated.some((u, i) => u !== file.schedules[i])) {
 			const w = s.writeSchedules({ ...file, revision: file.revision + 1, updatedAtMs: nowMs, schedules: updated });
 			if (w !== "committed") {
@@ -468,7 +494,14 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	const ownsLease = (s: EndoAdvisoryLockedSessionV0, nowMs: number): boolean => {
 		const current = s.store.readLease();
 		const value = current.ok && current.exists ? current.value : null;
-		return value !== null && value.epoch === lease.epoch && value.holderId === holderId && leaseLive(value, nowMs);
+		return (
+			value !== null &&
+			value.epoch === lease.epoch &&
+			value.holderId === holderId &&
+			leaseLive(value, nowMs) &&
+			monotonicNow() - leaseStartedMs >= 0 &&
+			monotonicNow() - leaseStartedMs < L.leaseTtlMs
+		);
 	};
 	const release = (s: EndoAdvisoryLockedSessionV0, nowMs: number) => {
 		const current = s.store.readLease();
@@ -536,7 +569,9 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		const file = ownsLease(s, nowMs) ? s.store.readSchedules() : null;
 		if (file?.ok && file.exists) {
 			const schedules = file.value.schedules.map((x) =>
-				x.scheduleId === claim.scheduleId && x.revision === claim.scheduleRevision
+				x.scheduleId === claim.scheduleId &&
+				x.incarnation === claim.scheduleIncarnation &&
+				x.revision === claim.scheduleRevision
 					? withCursor(x, { lastFireIdempotencyKey: claim.idempotencyKey, lastFireStatus: status, ...cursorPatch })
 					: x,
 			);
@@ -551,7 +586,9 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	const observe = async () => {
 		const observedAtMs = now();
 		try {
-			const read = await observeProject({ root: options.root, projectId: claim.projectId, nowMs: observedAtMs });
+			const read = structuredClone(
+				await observeProject({ root: options.root, projectId: claim.projectId, nowMs: observedAtMs }),
+			);
 			return {
 				read: read as EndoAdvisoryProjectReadV0 | null,
 				observation: endoAdvisorySemanticObservationV0(claim.projectId, read.status, read.coordination),
@@ -569,6 +606,30 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	};
 	const admissionObserved = await observe();
 	const obs = admissionObserved.observation;
+	const persistObservation = (s: EndoAdvisoryLockedSessionV0, nowMs: number, observed: typeof admissionObserved) => {
+		if (!ownsLease(s, nowMs)) return false;
+		const file = s.store.readObservations();
+		if (!file.ok) return false;
+		const projects = file.exists ? file.value.projects : [];
+		return (
+			s.writeObservations({
+				schemaVersion: ENDO_ADVISORY_OBSERVATIONS_SCHEMA_V0,
+				updatedAtMs: nowMs,
+				projects: [
+					...projects.filter((p) => p.projectId !== claim.projectId),
+					{
+						projectId: claim.projectId,
+						semanticDigest: observed.observation.semanticDigest,
+						completeness: observed.observation.completeness,
+						observedAtMs: observed.observedAtMs,
+						leaseEpoch: lease.epoch,
+					},
+				]
+					.sort((x, y) => (x.projectId < y.projectId ? -1 : 1))
+					.slice(0, L.maxObservedProjects),
+			}) === "committed"
+		);
+	};
 
 	// ---- C: admit (lock) ----------------------------------------------------------------------------------------------------------
 	const turnId = endoAdvisoryTurnIdV0(claim.idempotencyKey, lease.epoch);
@@ -596,7 +657,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			leaseValue === null ||
 			leaseValue.epoch !== lease.epoch ||
 			leaseValue.holderId !== holderId ||
-			!leaseLive(leaseValue, nowMs)
+			!ownsLease(s, nowMs)
 		) {
 			finish(
 				s,
@@ -616,6 +677,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				: undefined;
 		if (
 			schedule === undefined ||
+			schedule.incarnation !== claim.scheduleIncarnation ||
 			schedule.revision !== claim.scheduleRevision ||
 			!schedule.enabled ||
 			schedule.projectId !== claim.projectId ||
@@ -632,25 +694,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			);
 			return null;
 		}
-		const obsFile = s.store.readObservations();
-		const prior: EndoAdvisoryObservationsFileV0["projects"] =
-			obsFile.ok && obsFile.exists ? obsFile.value.projects : [];
-		s.writeObservations({
-			schemaVersion: ENDO_ADVISORY_OBSERVATIONS_SCHEMA_V0,
-			updatedAtMs: nowMs,
-			projects: [
-				...prior.filter((p) => p.projectId !== claim.projectId),
-				{
-					projectId: claim.projectId,
-					semanticDigest: obs.semanticDigest,
-					completeness: obs.completeness,
-					observedAtMs: admissionObserved.observedAtMs,
-					leaseEpoch: lease.epoch,
-				},
-			]
-				.sort((x, y) => (x.projectId < y.projectId ? -1 : 1))
-				.slice(0, L.maxObservedProjects),
-		});
+		if (!persistObservation(s, nowMs, admissionObserved)) {
+			finish(s, nowMs, "failed", gateOf(schedule.cursor, null), null, false, "observation not committed");
+			return null;
+		}
 		const authRead = s.store.readAuthorizations();
 		const standing = endoAdvisoryAuthorizationStandingV0({
 			schedule,
@@ -693,8 +740,8 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			);
 			return null;
 		}
-		const turns = s.store.listTurns();
-		if (!turns.ok) {
+		const turns = s.store.listTurns(nowMs);
+		if (!turns.ok || turns.problems.length > 0) {
 			finish(
 				s,
 				nowMs,
@@ -702,7 +749,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				gate,
 				null,
 				false,
-				`turn ledger ${turns.reason}: budget cannot be established`,
+				`turn ledger ${turns.ok ? "indeterminate" : turns.reason}: budget cannot be established`,
 			);
 			return null;
 		}
@@ -719,6 +766,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		const turnDeadlineMs = Math.min(
 			nowMs + authorization.budget.maxTurnWallClockMs,
 			lease.expiresAtMs - L.publicationMarginMs,
+			nowMs + L.leaseTtlMs - (monotonicNow() - leaseStartedMs) - L.publicationMarginMs,
 		);
 		if (turnDeadlineMs - nowMs < L.minInferenceWindowMs) {
 			finish(
@@ -761,23 +809,32 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				uncertainTurns: budget.uncertainTurns,
 			},
 		};
+		turnStartedMs = monotonicNow();
 		if (s.writeAdmissionOnce(admission) !== "created") {
 			finish(s, nowMs, "failed", gate, null, false, "admission record not linked");
 			return null;
 		}
 		// The attempted digest is set at admission, so a crash after this point can never re-wake the same state.
 		const file = s.store.readSchedules();
-		if (file.ok && file.exists)
+		if (
+			!file.ok ||
+			!file.exists ||
 			s.writeSchedules({
 				...file.value,
 				revision: file.value.revision + 1,
 				updatedAtMs: nowMs,
 				schedules: file.value.schedules.map((x) =>
-					x.scheduleId === schedule.scheduleId && x.revision === schedule.revision
+					x.scheduleId === schedule.scheduleId &&
+					x.incarnation === claim.scheduleIncarnation &&
+					x.revision === schedule.revision
 						? withCursor(x, { lastAttemptedSemanticDigest: admission.semanticDigest, lastAttemptedAtMs: nowMs })
 						: x,
 				),
-			});
+			}) !== "committed"
+		) {
+			finish(s, nowMs, "failed", gate, turnId, false, "attempted digest cursor not committed");
+			return null;
+		}
 		return { admission, authorization };
 	});
 	// On a lock failure here the claim stays without an outcome; the next tick's recovery records it (nothing was dispatched).
@@ -895,7 +952,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			standing: "untrusted-model-interpretation",
 			proposal: args.proposal,
 		};
-		let written: "created" | "exists" | "failed";
+		let written: EndoAdvisoryWriteOnceV0;
 		try {
 			written = s.writeBriefingOnce(briefing);
 		} catch {
@@ -968,9 +1025,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		return notDispatched("no-eligible-member", null);
 	}
 	const selectionSummary: Selection = {
-		skipped: selection.skippedMembers
-			.slice(0, L.maxSkippedMembers)
-			.map((m) => ({ memberId: m.memberId, reason: m.reason })),
+		skipped: [
+			...endoAdvisoryExcludedMembersV0(authorization).map((memberId) => ({ memberId, reason: "excluded-by-grant" })),
+			...selection.skippedMembers.map((m) => ({ memberId: m.memberId, reason: m.reason })),
+		].slice(0, L.maxSkippedMembers),
 		fallback: selection.ok && selection.fallbackOccurred,
 	};
 	if (!selection.ok) return notDispatched("no-eligible-member", selectionSummary);
@@ -989,13 +1047,18 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		const leaseValue = currentLease.ok && currentLease.exists ? currentLease.value : null;
 		if (leaseValue === null || leaseValue.epoch !== lease.epoch || leaseValue.holderId !== holderId)
 			return "stale-lease-epoch";
-		if (!leaseLive(leaseValue, nowMs)) return "insufficient-lease";
+		if (!ownsLease(s, nowMs)) return "insufficient-lease";
 		const schedules = s.store.readSchedules();
 		const schedule =
 			schedules.ok && schedules.exists
 				? schedules.value.schedules.find((x) => x.scheduleId === admission.scheduleId)
 				: undefined;
-		if (schedule === undefined || schedule.revision !== admission.scheduleRevision || !schedule.enabled)
+		if (
+			schedule === undefined ||
+			schedule.incarnation !== claim.scheduleIncarnation ||
+			schedule.revision !== admission.scheduleRevision ||
+			!schedule.enabled
+		)
 			return "schedule-changed";
 		const authRead = s.store.readAuthorizations();
 		const standing = endoAdvisoryAuthorizationStandingV0({
@@ -1006,7 +1069,15 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		if (!standing.ok)
 			return standing.refusal === "authorization-expired" ? "authorization-expired" : "authorization-revoked";
 		if (standing.authorization.authorizationId !== admission.authorizationId) return "authorization-revoked";
-		const effectiveTimeoutMs = Math.min(member.timeoutMs, admission.turnDeadlineMs - nowMs, L.maxTurnWallClockMs);
+		const effectiveTimeoutMs = Math.floor(
+			Math.min(
+				member.timeoutMs,
+				admission.turnDeadlineMs - nowMs,
+				admission.turnDeadlineMs - admission.admittedAtMs - (monotonicNow() - turnStartedMs),
+				L.leaseTtlMs - (monotonicNow() - leaseStartedMs) - L.publicationMarginMs,
+				L.maxTurnWallClockMs,
+			),
+		);
 		if (effectiveTimeoutMs < L.minInferenceWindowMs) return "insufficient-lease";
 		const dispatch: EndoAdvisoryTurnDispatchV0 = {
 			schemaVersion: ENDO_ADVISORY_TURN_DISPATCH_SCHEMA_V0,
@@ -1051,6 +1122,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		result = await briefFromCoordinatorSubstrateV0(request, {
 			brief: (r) =>
 				run(options.root, r, {
+					pinnedObservation: admissionObserved.read!,
 					target,
 					provider: "llama.cpp (advisory pool member)",
 					signal: AbortSignal.timeout(Math.max(1, dispatch.inferenceDeadlineMs - now())),
@@ -1086,7 +1158,11 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		pub.observation.semanticDigest === null
 			? "unknown-at-publication"
 			: pub.observation.semanticDigest === admission.semanticDigest
-				? "current-at-publication"
+				? result?.availability === "available" &&
+					admissionObserved.read !== null &&
+					result.evidence.projectionSha256 === digest(admissionObserved.read.status)
+					? "current-at-publication"
+					: "unknown-at-publication"
 				: "stale-at-publication";
 	await hooks.beforePublish?.({ turnId });
 
@@ -1108,15 +1184,26 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 						file: authRead.ok && authRead.exists ? authRead.value : null,
 						nowMs,
 					});
+		const observationCommitted = ownsLease(s, nowMs) && persistObservation(s, nowMs, pub);
 		const withheld = !ownsLease(s, nowMs)
 			? "lease-lost-in-flight"
-			: schedule === undefined || schedule.revision !== admission.scheduleRevision || !schedule.enabled
-				? "schedule-changed-in-flight"
-				: standing === null || !standing.ok || standing.authorization.authorizationId !== admission.authorizationId
-					? standing !== null && !standing.ok && standing.refusal === "authorization-expired"
-						? "authorization-expired-in-flight"
-						: "authorization-revoked-in-flight"
-					: null;
+			: monotonicNow() - turnStartedMs >= admission.turnDeadlineMs - admission.admittedAtMs ||
+					nowMs >= admission.turnDeadlineMs
+				? "turn-deadline-exceeded"
+				: schedule === undefined ||
+						schedule.incarnation !== claim.scheduleIncarnation ||
+						schedule.revision !== admission.scheduleRevision ||
+						!schedule.enabled
+					? "schedule-changed-in-flight"
+					: standing === null ||
+							!standing.ok ||
+							standing.authorization.authorizationId !== admission.authorizationId
+						? standing !== null && !standing.ok && standing.refusal === "authorization-expired"
+							? "authorization-expired-in-flight"
+							: "authorization-revoked-in-flight"
+						: !observationCommitted
+							? "publication-observation-not-committed"
+							: null;
 		const base = {
 			dispatch,
 			selection: selectionSummary,
@@ -1243,13 +1330,13 @@ function linkProposal(
 		standing: "untrusted-advisory-proposal",
 		authority: { grants: "none", executionAuthority: false, requiresOperatorConfirmationPerAttempt: true },
 	};
-	let written: "created" | "exists" | "failed";
+	let written: EndoAdvisoryWriteOnceV0;
 	try {
 		written = s.writeProposalOnce(proposal);
 	} catch {
 		written = "failed";
 	}
 	if (written === "exists") return { outcome: "deduplicated", proposalId, refusal: null };
-	if (written === "failed") return refused("storage-failed");
+	if (written !== "created") return refused("storage-failed");
 	return { outcome: "created", proposalId, refusal: null };
 }

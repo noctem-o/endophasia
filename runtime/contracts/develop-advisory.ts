@@ -9,6 +9,7 @@
 import type { EndoCoordinatorCoordinationV0 } from "../../protocol/coordinator-coordination.ts";
 import {
 	type EndoCoordinatorModelPoolV0,
+	orderedCoordinatorPoolMembersV0,
 	parseEndoCoordinatorModelPoolV0,
 } from "../../protocol/coordinator-model-pool.ts";
 import type { EndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
@@ -50,12 +51,14 @@ const byKey =
 /** S2's fire key: S1's construction under its own schema tag, so an advisory fire and an S1 fire can never share a key. */
 export function endoAdvisoryFireIdempotencyKeyV0(args: {
 	readonly scheduleId: string;
+	readonly scheduleIncarnation: string;
 	readonly windowStartMs: number;
 	readonly triggerCursor: string;
 }): string {
 	return digest({
 		schema: "endo.advisory-fire-key.v0",
 		scheduleId: args.scheduleId,
+		scheduleIncarnation: args.scheduleIncarnation,
 		windowStartMs: args.windowStartMs,
 		triggerCursor: args.triggerCursor,
 	});
@@ -67,6 +70,18 @@ export const ENDO_ADVISORY_SEMANTIC_DIGEST_SCHEMA_V0 = "endo.coordinator-semanti
 
 /** Finding codes driven only by elapsed time (a quiet session ageing past staleAfterMs), excluded from the semantic state. */
 const TIME_DRIVEN_FINDINGS = new Set(["session-recorded-open-but-stale"]);
+/** Findings that mean some evidence was not read: they make an observation partial. */
+const UNREAD_EVIDENCE_FINDINGS = new Set([
+	"tasks-unavailable",
+	"attempts-unavailable",
+	"attempt-records-unusable",
+	"attempt-records-missing",
+	"receipt-records-missing",
+	"event-log-unavailable",
+	"event-log-incomplete",
+	"project-head-unavailable",
+	"sessions-truncated",
+]);
 /** Attention kinds driven only by elapsed time. */
 const TIME_DRIVEN_ATTENTION = new Set(["evidence-stale"]);
 
@@ -98,10 +113,16 @@ export function endoAdvisorySemanticStateV0(
 	const project = status.projects.find((p) => p.id === projectId);
 	if (project === undefined || status.scope.unknown.includes(projectId)) gaps.add("project-unknown");
 	for (const [name, source] of Object.entries(status.sources)) {
-		if (source.state === "partial" || source.state === "unavailable") gaps.add(`status-${name}-${source.state}`);
+		if (source.state === "partial" || source.state === "unavailable" || source.state === "missing")
+			gaps.add(`status-${name}-${source.state}`);
 	}
 	if (status.sources.tasks.state === "missing") gaps.add("status-tasks-missing");
 	if (coordination.source.state === "unreadable") gaps.add("coordination-unreadable");
+	// Evidence that was not read (missing or unusable records, truncated or unavailable sources) is a gap even when the source itself
+	// reads "ready": an absent attempt record is not an empty attempt history.
+	for (const f of status.findings)
+		if (UNREAD_EVIDENCE_FINDINGS.has(f.code) || f.severity === "unavailable" || f.severity === "incomplete")
+			gaps.add(`finding-${f.code}`);
 	for (const g of coordination.gaps) gaps.add(`coordination-${g}`);
 	const coordProject = coordination.projects.find((p) => p.id === projectId) ?? null;
 	const unavailable =
@@ -327,6 +348,7 @@ export const endoAdvisoryBudgetSha256V0 = (budget: EndoAdvisoryBudgetV0): string
 /** The identity of a grant: every bound input, so a change to any of them is a different authorization. */
 export function endoAdvisoryAuthorizationIdV0(grant: {
 	readonly scheduleId: string;
+	readonly scheduleIncarnation: string;
 	readonly scheduleRevision: number;
 	readonly projectId: string;
 	readonly actionKind: EndoAdvisoryActionKindV0;
@@ -339,6 +361,7 @@ export function endoAdvisoryAuthorizationIdV0(grant: {
 	return digest({
 		schema: "endo.advisory-authorization-id.v0",
 		scheduleId: grant.scheduleId,
+		scheduleIncarnation: grant.scheduleIncarnation,
 		scheduleRevision: grant.scheduleRevision,
 		projectId: grant.projectId,
 		actionKind: grant.actionKind,
@@ -371,7 +394,10 @@ export type EndoAdvisoryAuthorizationStandingV0 =
  * A grant for an earlier revision is never inherited by a later one, whatever changed.
  */
 export function endoAdvisoryAuthorizationStandingV0(args: {
-	readonly schedule: Pick<EndoAdvisoryScheduleV0, "scheduleId" | "revision" | "projectId" | "actionKind">;
+	readonly schedule: Pick<
+		EndoAdvisoryScheduleV0,
+		"scheduleId" | "incarnation" | "revision" | "projectId" | "actionKind"
+	>;
 	readonly file: EndoAdvisoryAuthorizationsFileV0 | null;
 	readonly nowMs: number;
 }): EndoAdvisoryAuthorizationStandingV0 {
@@ -383,7 +409,8 @@ export function endoAdvisoryAuthorizationStandingV0(args: {
 		return { ok: false, refusal: "authorization-id-mismatch" };
 	if (coordinatorModelPoolSha256V0(live.pool) !== live.poolSha256)
 		return { ok: false, refusal: "pool-digest-mismatch" };
-	if (live.scheduleRevision !== args.schedule.revision) return { ok: false, refusal: "schedule-revision-mismatch" };
+	if (live.scheduleIncarnation !== args.schedule.incarnation || live.scheduleRevision !== args.schedule.revision)
+		return { ok: false, refusal: "schedule-revision-mismatch" };
 	if (live.projectId !== args.schedule.projectId) return { ok: false, refusal: "project-mismatch" };
 	if (live.actionKind !== args.schedule.actionKind) return { ok: false, refusal: "action-mismatch" };
 	if (args.nowMs < live.grantedAtMs) return { ok: false, refusal: "authorization-not-yet-valid" };
@@ -395,12 +422,25 @@ export function endoAdvisoryAuthorizationStandingV0(args: {
  * The pool a scheduled turn may select from: the authorised pool narrowed (never widened) by the grant. Members whose per-completion
  * bound exceeds the grant's ceiling are removed, and `unconfirmedModel` is `permit` only when both the pool and the grant permit it.
  */
+/** Members of the authorised pool, in M1 order, that the grant excluded before selection (reported as skipped, never hidden). */
+export function endoAdvisoryExcludedMembersV0(authorization: EndoAdvisoryAuthorizationV0): readonly string[] {
+	const kept = new Set((endoAdvisoryEffectivePoolV0(authorization)?.members ?? []).map((m) => m.memberId));
+	return orderedCoordinatorPoolMembersV0(authorization.pool)
+		.map((m) => m.memberId)
+		.filter((id) => !kept.has(id));
+}
+
 export function endoAdvisoryEffectivePoolV0(
 	authorization: EndoAdvisoryAuthorizationV0,
 ): EndoCoordinatorModelPoolV0 | null {
-	const members = authorization.pool.members.filter(
-		(m) => m.kind === "local-openai-compat" && m.maxOutputTokens <= authorization.budget.maxOutputTokensPerRequest,
-	);
+	const eligible = (m: EndoCoordinatorModelPoolV0["members"][number]) =>
+		m.kind === "local-openai-compat" && m.maxOutputTokens <= authorization.budget.maxOutputTokensPerRequest;
+	// Narrowing must not turn "only the first member" into an undisclosed fallback: under fallback "none" the pool's first member is
+	// the only candidate, and if the grant excludes it nothing is eligible.
+	const members =
+		authorization.pool.selection.fallback === "none"
+			? orderedCoordinatorPoolMembersV0(authorization.pool).slice(0, 1).filter(eligible)
+			: authorization.pool.members.filter(eligible);
 	if (members.length === 0) return null;
 	return parseEndoCoordinatorModelPoolV0({
 		schemaVersion: authorization.pool.schemaVersion,

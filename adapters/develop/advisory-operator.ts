@@ -6,6 +6,7 @@
 // to an earlier revision stops standing at once. A schedule is created disabled; enabling it and then authorizing that exact
 // revision are two separate operator acts. Disabling or removing a schedule also marks its live grant superseded.
 
+import { randomBytes } from "node:crypto";
 import type { EndoCoordinatorModelPoolV0 } from "../../protocol/coordinator-model-pool.ts";
 import {
 	ENDO_ADVISORY_AUTHORIZATIONS_SCHEMA_V0,
@@ -177,6 +178,7 @@ export function addEndoAdvisoryScheduleV0(
 		const retired = file.retiredCursors.find((r) => r.scheduleId === input.scheduleId);
 		const schedule = validateEndoAdvisoryScheduleV0({
 			...input,
+			incarnation: randomBytes(32).toString("hex"),
 			revision: 1,
 			enabled: false,
 			createdAtMs: nowMs,
@@ -250,7 +252,10 @@ export function removeEndoAdvisoryScheduleV0(
 							retiredAtMs: nowMs,
 						},
 					]),
-		].slice(-L.maxRetiredCursors);
+		];
+		if (retiredCursors.length > L.maxRetiredCursors)
+			throw new Refusal("too-many", "cannot remove schedule without losing a retained window floor");
+		const supersededAuthorizations = supersedeLiveGrants(s, scheduleId, nowMs, "superseded");
 		commit(
 			s.writeSchedules({
 				...file,
@@ -260,7 +265,7 @@ export function removeEndoAdvisoryScheduleV0(
 				retiredCursors,
 			}),
 		);
-		return { removed: schedule, supersededAuthorizations: supersedeLiveGrants(s, scheduleId, nowMs, "superseded") };
+		return { removed: schedule, supersededAuthorizations };
 	});
 }
 
@@ -285,6 +290,7 @@ export function authorizeEndoAdvisoryScheduleV0(
 		if (!schedule.enabled) throw new Refusal("not-enabled", "enable the schedule first; enabling bumps its revision");
 		const grant = {
 			scheduleId: schedule.scheduleId,
+			scheduleIncarnation: schedule.incarnation,
 			scheduleRevision: schedule.revision,
 			projectId: schedule.projectId,
 			actionKind: schedule.actionKind,
@@ -417,7 +423,7 @@ export function readEndoAdvisoryProjectionV0(
 	if (!observationsRead.ok) problems.push(`observations.json ${observationsRead.reason}`);
 	const lease = leaseRead.ok && leaseRead.exists ? leaseRead.value : null;
 	const leaseActive = lease !== null && lease.releasedAtMs === null && nowMs < lease.expiresAtMs;
-	const turns = store.listTurns();
+	const turns = store.listTurns(nowMs);
 	if (!turns.ok) problems.push(`turns ${turns.reason}`);
 	else for (const p of turns.problems) problems.push(`turns/${p.name} ${p.reason}`);
 	const fires = store.listFires();
@@ -435,7 +441,7 @@ export function readEndoAdvisoryProjectionV0(
 			nowMs,
 		});
 		const budget =
-			authorization.ok && turns.ok
+			authorization.ok && turns.ok && turns.problems.length === 0
 				? endoAdvisoryBudgetStandingV0({
 						turns: turns.entries.filter((t) => t.admission.scheduleId === schedule.scheduleId),
 						budget: authorization.authorization.budget,

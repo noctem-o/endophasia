@@ -9,15 +9,21 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { pinnedCoordinatorBriefStatusV0 } from "../adapters/coordinator/openclaw.ts";
 import {
 	addEndoAdvisoryScheduleV0,
 	authorizeEndoAdvisoryScheduleV0,
 	decideEndoAdvisoryProposalV0,
 	readEndoAdvisoryProjectionV0,
+	removeEndoAdvisoryScheduleV0,
 	revokeEndoAdvisoryAuthorizationV0,
 	setEndoAdvisoryScheduleEnabledV0,
 } from "../adapters/develop/advisory-operator.ts";
-import { type RunEndoAdvisoryTickOptionsV0, runEndoAdvisoryTickV0 } from "../adapters/develop/advisory-tick.ts";
+import {
+	defaultObserveAdvisoryProjectV0,
+	type RunEndoAdvisoryTickOptionsV0,
+	runEndoAdvisoryTickV0,
+} from "../adapters/develop/advisory-tick.ts";
 import { runEndoSchedulerTickV0 } from "../adapters/develop/scheduler-tick.ts";
 import {
 	ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V0,
@@ -31,11 +37,14 @@ import type {
 	EndoAdvisoryPolicyV0,
 	EndoAdvisoryWakePolicyV0,
 } from "../protocol/develop-advisory.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import type {
 	EndoCoordinatorMemberObservationV0,
 	EndoCoordinatorMemberReadinessV0,
 } from "../runtime/contracts/coordinator-model-pool.ts";
 import {
+	endoAdvisoryAuthorizationStandingV0,
+	endoAdvisoryEffectivePoolV0,
 	endoAdvisoryParseProposalLineV0,
 	endoAdvisorySemanticObservationV0,
 } from "../runtime/contracts/develop-advisory.ts";
@@ -214,6 +223,12 @@ interface FakeRunOptions {
 	unavailable?: string;
 }
 
+/** The fake reports the projection it was pinned to, as the real runner does; unpinned it reports an unrelated digest. */
+const pinnedSha = (options: Record<string, any>) =>
+	options.pinnedObservation === undefined
+		? "b".repeat(64)
+		: sha256HexV0(canonicalEndoJsonV0(options.pinnedObservation.status));
+
 function fakeRun(opts: FakeRunOptions = {}) {
 	const calls: {
 		projectId: string;
@@ -263,7 +278,7 @@ function fakeRun(opts: FakeRunOptions = {}) {
 			},
 			dispatched: true,
 			toolOutcome: null,
-			evidence: { readAtMs: 1, projectionSha256: "b".repeat(64), modelViewSha256: "c".repeat(64) },
+			evidence: { readAtMs: 1, projectionSha256: pinnedSha(options), modelViewSha256: "c".repeat(64) },
 			latencyMs: 5,
 			inferenceElapsedMs: 5,
 			admittedExchanges: 2,
@@ -285,7 +300,7 @@ function fakeRun(opts: FakeRunOptions = {}) {
 			runtime,
 			availability: "available",
 			answer: opts.answer?.(request.projectId) ?? "- Nothing needs attention.\n- Verification is not established.",
-			evidence: { readAtMs: 1, projectionSha256: "b".repeat(64), modelViewSha256: "c".repeat(64) },
+			evidence: { readAtMs: 1, projectionSha256: pinnedSha(options), modelViewSha256: "c".repeat(64) },
 			toolSurface: ["endophasia_status"],
 		};
 	};
@@ -342,6 +357,100 @@ function snapshotOutsideAdvisory(root: string): Map<string, string> {
 // ---- Tests -----------------------------------------------------------------------------------------------------------------------
 
 describe("COORDINATOR-AUTOMATION-S2 advisory scheduling", () => {
+	it("R01: a replacement incarnation cannot inherit an old live authorization", () => {
+		const root = tmp("endo-s2-r01-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		const { grant } = configure(root, clock, { projectId });
+		const store = new DevelopAdvisoryStoreV0(root);
+		const oldAuth = store.readAuthorizations();
+		if (!oldAuth.ok || !oldAuth.exists) throw new Error("missing authorization");
+		ok(removeEndoAdvisoryScheduleV0(root, "adv-1", 2, clock.now));
+		configure(root, clock, { projectId, authorize: false });
+		const replacement = readEndoAdvisoryProjectionV0(root, { now: clock.now }).schedules[0]!.schedule;
+		expect(replacement.revision).toBe(grant!.scheduleRevision);
+		expect(replacement.incarnation).not.toBe(grant!.scheduleIncarnation);
+		expect(
+			endoAdvisoryAuthorizationStandingV0({ schedule: replacement, file: oldAuth.value, nowMs: clock.t }),
+		).toEqual({ ok: false, refusal: "schedule-revision-mismatch" });
+	});
+
+	it("R03: removing a consumed schedule refuses rather than evicting a replay floor", () => {
+		const root = tmp("endo-s2-r03-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId });
+		const store = new DevelopAdvisoryStoreV0(root);
+		const read = store.readSchedules();
+		if (!read.ok || !read.exists) throw new Error("missing schedules");
+		expect(
+			store.withAdvisoryLockSync((s) =>
+				s.writeSchedules({
+					...read.value,
+					schedules: read.value.schedules.map((schedule) => ({
+						...schedule,
+						cursor: { ...schedule.cursor, lastConsumedWindowStartMs: BASE },
+					})),
+					retiredCursors: Array.from({ length: 256 }, (_, i) => ({
+						scheduleId: `retired-${i}`,
+						lastConsumedWindowStartMs: BASE,
+						retiredAtMs: BASE,
+					})),
+				}),
+			),
+		).toMatchObject({ ok: true });
+		expect(removeEndoAdvisoryScheduleV0(root, "adv-1", 2, clock.now)).toMatchObject({ ok: false, code: "too-many" });
+		const after = store.readSchedules();
+		if (!after.ok || !after.exists) throw new Error("missing schedules after refusal");
+		expect(after.value.retiredCursors).toHaveLength(256);
+		expect(after.value.retiredCursors[0]!.scheduleId).toBe("retired-0");
+		expect(after.value.schedules).toHaveLength(1);
+	});
+
+	it("R06: fallback none cannot skip the first member when its output cap exceeds the grant", () => {
+		const root = tmp("endo-s2-r06-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		const original = pool(["primary", "secondary"]);
+		const configured = parseEndoCoordinatorModelPoolV0({
+			...original,
+			selection: { ...original.selection, fallback: "none" },
+			members: original.members.map((m, i) => ({ ...m, maxOutputTokens: i === 0 ? 1024 : 512 })),
+		});
+		const { grant } = configure(root, clock, { projectId, pool: configured });
+		expect(endoAdvisoryEffectivePoolV0(grant!)).toBeNull();
+	});
+
+	it("R08: the real runner's pinned prompt evidence hashes to exactly the observation the tick gated on", async () => {
+		const root = tmp("endo-s2-r08-");
+		const { projectId } = project(root);
+		const read = await defaultObserveAdvisoryProjectV0({ root, projectId, nowMs: BASE });
+		const pinned = pinnedCoordinatorBriefStatusV0(root, projectId, structuredClone(read));
+		if (!pinned.ok) throw new Error(`pinned status refused: ${pinned.reason}`);
+		expect(pinned.evidence.projectionSha256).toBe(sha256HexV0(canonicalEndoJsonV0(read.status as never)));
+		const other = project(root, "s2-other");
+		const foreign = await defaultObserveAdvisoryProjectV0({ root, projectId: other.projectId, nowMs: BASE });
+		expect(pinnedCoordinatorBriefStatusV0(root, projectId, foreign)).toMatchObject({ ok: false });
+	});
+
+	it("R07: missing attempt evidence makes an observation partial", async () => {
+		const root = tmp("endo-s2-r07-");
+		const { projectId } = project(root);
+		const status = await readEndoCoordinatorStatusV0({ root, projects: [projectId], now: () => BASE });
+		const coordination = await readEndoCoordinatorCoordinationV0({
+			root,
+			projects: [projectId],
+			now: () => BASE,
+			routes: "read",
+		});
+		const observation = endoAdvisorySemanticObservationV0(
+			projectId,
+			{ ...status, sources: { ...status.sources, attempts: { ...status.sources.attempts, state: "missing" } } },
+			coordination,
+		);
+		expect(observation.completeness).toBe("partial");
+		expect(observation.gaps).toContain("status-attempts-missing");
+	});
 	it("S2-2: a new advisory schedule is disabled and unauthorized; neither makes an inference request", async () => {
 		const root = tmp("endo-s2-2-");
 		const clock = new Clock();
@@ -1274,4 +1383,152 @@ describe("COORDINATOR-AUTOMATION-S2 storage, retention and CLI", () => {
 		});
 		expect(JSON.parse(cli("proposals", "--root", root, "--quiet").stdout).proposals).toEqual([]);
 	}, 60_000);
+});
+
+describe("COORDINATOR-AUTOMATION-S2 independent-review regressions (R02, R04, R05, R09-R12)", () => {
+	it("R09: a proposal's queue currency follows the publication observation, not only the admission one", async () => {
+		const root = tmp("endo-s2-r09-");
+		const clock = new Clock();
+		const { projectId, taskId } = project(root);
+		setStatus(root, projectId, taskId, "in-progress", "blocked");
+		configure(root, clock, { projectId, action: "emit-operator-proposal", wake: "digest-window" });
+		clock.at(windowAt(0));
+		await tick(
+			root,
+			clock,
+			fakeRun({ answer: () => `PROPOSAL: resolve-blocked-task ${taskId}` }),
+			observer("ready", clock),
+		);
+		expect(readEndoAdvisoryProjectionV0(root, { now: clock.now }).proposals[0]!.currency).toBe("current");
+		clock.at(windowAt(1));
+		await tick(
+			root,
+			clock,
+			fakeRun({ during: () => setStatus(root, projectId, taskId, "in-progress") }),
+			observer("ready", clock),
+		);
+		const view = readEndoAdvisoryProjectionV0(root, { now: clock.now });
+		expect(view.briefings[0]!.source.currency).toBe("stale-at-publication");
+		expect(view.proposals[0]!.currency).toBe("stale");
+	});
+
+	it("R11: a claim that fails to link consumes no window and reports failure", async () => {
+		const root = tmp("endo-s2-r11-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId });
+		clock.at(windowAt(0));
+		const run = fakeRun();
+		const r = await tick(root, clock, run, observer("ready", clock), {
+			storeOptions: {
+				beforeRecordLink: (name) => {
+					if (name.endsWith(".claimed.json")) throw new Error("simulated I/O failure");
+				},
+			},
+		});
+		expect(r).toMatchObject({ ok: false, refusal: "storage-failed" });
+		const view = readEndoAdvisoryProjectionV0(root, { now: clock.now });
+		expect(view.fires).toHaveLength(0);
+		expect(view.schedules[0]!.schedule.cursor.lastConsumedWindowStartMs).toBeNull();
+		expect(run.calls).toHaveLength(0);
+	});
+
+	it("R12: an unauthorized co-due schedule cannot starve an authorized one", async () => {
+		const root = tmp("endo-s2-r12-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId, scheduleId: "first", authorize: false });
+		configure(root, clock, { projectId, scheduleId: "second" });
+		const run = fakeRun();
+		for (let k = 0; k < 4; k++) {
+			clock.at(windowAt(k));
+			await tick(root, clock, run, observer("ready", clock));
+		}
+		expect(run.calls.length).toBeGreaterThan(0);
+	});
+
+	it("R02: an unreadable record in the turn ledger refuses admission instead of undercounting", async () => {
+		const root = tmp("endo-s2-r02-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId, wake: "digest-window" });
+		clock.at(windowAt(0));
+		expect(statusOf(await tick(root, clock, fakeRun(), observer("ready", clock)))).toEqual(["briefing-published"]);
+		const [turn] = listTurns(root);
+		const dispatched = join(new DevelopAdvisoryStoreV0(root).turnsDir, `${turn!.admission.turnId}.dispatched.json`);
+		rmSync(dispatched);
+		writeFileSync(dispatched, "{not json");
+		clock.at(windowAt(1));
+		const run = fakeRun();
+		await tick(root, clock, run, observer("ready", clock));
+		expect(run.calls).toHaveLength(0);
+		expect(readEndoAdvisoryProjectionV0(root, { now: clock.now }).schedules[0]!.budget).toBeNull();
+	});
+
+	it("R04: monotonic lease age fences dispatch even when the wall clock says the lease is live", async () => {
+		const root = tmp("endo-s2-r04-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId });
+		clock.at(windowAt(0));
+		let mono = 0;
+		const obs = observer("ready", clock);
+		const run = fakeRun();
+		await tick(
+			root,
+			clock,
+			run,
+			{
+				...obs,
+				observe: (async (...args: Parameters<typeof obs.observe>) => {
+					mono = 301_000;
+					return obs.observe(...args);
+				}) as typeof obs.observe,
+			},
+			{ monotonicNow: () => mono },
+		);
+		expect(run.calls).toHaveLength(0);
+		expect(listTurns(root).every((t) => t.dispatch === null)).toBe(true);
+	});
+
+	it("R05: a dispatch record whose directory fsync fails is not treated as durable, so nothing is sent", async () => {
+		const root = tmp("endo-s2-r05-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId });
+		clock.at(windowAt(0));
+		const turnsDir = new DevelopAdvisoryStoreV0(root).turnsDir;
+		let linked = false;
+		const run = fakeRun();
+		await tick(root, clock, run, observer("ready", clock), {
+			storeOptions: {
+				beforeRecordLink: (name) => {
+					if (name.endsWith(".dispatched.json")) linked = true;
+				},
+				beforeDirectorySync: (dir) => {
+					if (linked && dir === turnsDir) throw new Error("simulated fsync failure");
+				},
+			},
+		});
+		expect(linked).toBe(true);
+		expect(run.calls).toHaveLength(0);
+	});
+
+	it("R10: a budget compaction floor ahead of the clock makes the ledger indeterminate, so nothing is admitted", async () => {
+		const root = tmp("endo-s2-r10-");
+		const clock = new Clock();
+		const { projectId } = project(root);
+		configure(root, clock, { projectId });
+		const store = new DevelopAdvisoryStoreV0(root);
+		writeFileSync(
+			join(store.dir, "budget-floor.json"),
+			`${JSON.stringify({ schemaVersion: "endo.advisory-budget-floor.v0", nowMs: BASE + 48 * HOUR })}\n`,
+		);
+		clock.at(windowAt(0));
+		const run = fakeRun();
+		await tick(root, clock, run, observer("ready", clock));
+		expect(run.calls).toHaveLength(0);
+		const t = store.listTurns(clock.t);
+		expect(t.ok && t.problems.some((p) => p.name === "budget-floor.json")).toBe(true);
+	});
 });

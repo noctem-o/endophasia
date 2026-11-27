@@ -117,13 +117,17 @@ export class EndoWorkspaceHostV0 implements EndoCockpitWorkbenchV0 {
 		const isCoordinatorStatus = a === "workspace" && b === "coordinator" && request.route.length === 2;
 		const isCoordinatorCoordination =
 			a === "workspace" && b === "coordinator" && c === "coordination" && request.route.length === 3;
-		if ((isCoordinatorStatus || isCoordinatorCoordination) && coordinator !== undefined) {
+		const isCoordinatorOperations =
+			a === "workspace" && b === "coordinator" && c === "operations" && request.route.length === 3;
+		if ((isCoordinatorStatus || isCoordinatorCoordination || isCoordinatorOperations) && coordinator !== undefined) {
 			if (request.method !== "GET" || request.query !== "") return refuse(400, "bad-request");
 			const project = this.#routes.view().project;
 			if (project?.launch !== "same") return refuse(403, "forbidden");
 			answer = isCoordinatorStatus
 				? await this.#coordinator.read(coordinator.root, project, coordinator.observe)
-				: await this.#coordinator.readCoordination(coordinator.root, project, coordinator.observe);
+				: isCoordinatorCoordination
+					? await this.#coordinator.readCoordination(coordinator.root, project, coordinator.observe)
+					: await this.#coordinator.readOperations(coordinator.root, project);
 			if (!this.#pairing.granted(request.grant)) return refuse(401, "grant-required");
 			const current = this.#routes.view().project;
 			if (

@@ -170,7 +170,7 @@ Arguments, the key, the address, exit statuses and limits: [studio.md](studio.md
 
 ## Running the tests
 
-From a source checkout, `npm ci`, `npm test` and `node cli/index.ts ...` develop and run the deterministic suite.
+From a source checkout, `npm ci`, `npm test` and `node cli/index.ts ...` develop and run the deterministic suite. For faster local iteration, use `npm run test:fast`, `npm run test:browser`, `npm run test:process`, and `npm run test:inventory` (see [testing.md](testing.md) for execution classes, isolation rules, and CI sharding).
 `ENDO_PI_EXECUTABLE=$(command -v pi) npm run test:pi-real` is an opt-in test against your installed Pi.
 
 `npm test` needs only Node and git; it reads no network, no API key and no git history. Two kinds of checks depend on

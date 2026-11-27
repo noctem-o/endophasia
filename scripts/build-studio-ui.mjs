@@ -10,7 +10,7 @@
 //
 //   node scripts/build-studio-ui.mjs [outDir]       (default studio-ui/dist)
 import { createHash, randomBytes } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -74,12 +74,16 @@ export async function buildStudioUi(outDir = join(root, "studio-ui", "dist")) {
 		const target = resolve(outDir);
 		const alreadyIdentical = (() => {
 			try {
-				if (!existsSync(join(target, STUDIO_UI_MANIFEST_NAME))) return false;
-				if (readFileSync(join(target, STUDIO_UI_MANIFEST_NAME), "utf8") !== manifestText) return false;
+				if (!lstatSync(target).isDirectory()) return false;
+				const manifestPath = join(target, STUDIO_UI_MANIFEST_NAME);
+				if (!lstatSync(manifestPath).isFile()) return false;
+				if (readFileSync(manifestPath, "utf8") !== manifestText) return false;
 				const expectedNames = [...files.map((f) => f.name), STUDIO_UI_MANIFEST_NAME].sort();
 				if (readdirSync(target).sort().join("\0") !== expectedNames.join("\0")) return false;
 				return files.every((f) => {
-					const bytes = readFileSync(join(target, f.name));
+					const filePath = join(target, f.name);
+					if (!lstatSync(filePath).isFile()) return false;
+					const bytes = readFileSync(filePath);
 					return bytes.length === f.bytes && createHash("sha256").update(bytes).digest("hex") === f.sha256;
 				});
 			} catch {

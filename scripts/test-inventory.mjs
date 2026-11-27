@@ -87,18 +87,21 @@ const PROCESS_SIGNALS = [
 	"execFileSync(",
 	"fork(",
 	"installFakePi",
+	"fake-pi/install",
 	"fake-acp",
 	"PiAttachmentV0",
 	"AcpClient",
 	"startEndoControlServer",
 	"aa-operator-rig",
-	"startTaskOwnedServer",
 	"ensureSharedStudioUiDir",
 	"buildStudioUi",
 	"createServer(",
 	"http.createServer",
 	"net.createServer",
 	"cockpit-http/server",
+	"cockpit-http-fixtures",
+	"startFakeOpenAiServer",
+	"verifiedInitialCheckpointFixture",
 	"startStudioServer",
 	"startEndoStudio",
 ];
@@ -130,12 +133,12 @@ export function discoverTestFiles(rootDir = REPO_ROOT) {
 }
 
 /**
- * Loads hosted duration hints from `scripts/test-durations.json`.
+ * Loads hosted duration hints from `tests/test-durations.json`.
  * @param {string} [rootDir]
  * @returns {{ sourceRunId: number | null, sourceCommit: string | null, runner: string | null, defaultWeightMs: number, durationsMs: Record<string, number> }}
  */
 export function loadDurationHints(rootDir = REPO_ROOT) {
-	const path = join(rootDir, "scripts", "test-durations.json");
+	const path = join(rootDir, "tests", "test-durations.json");
 	const parsed = JSON.parse(readFileSync(path, "utf8"));
 	return {
 		sourceRunId: typeof parsed.sourceRunId === "number" ? parsed.sourceRunId : null,
@@ -388,6 +391,51 @@ export function validateCoverageAccounting(rootDir = REPO_ROOT, shardPlan = { fa
 		}
 	}
 
+	// Cross-check `.github/workflows/ci.yml` against the shard plan and specialist invariants so workflow drift fails loudly.
+	const ciPath = join(rootDir, ".github", "workflows", "ci.yml");
+	try {
+		const ciText = readFileSync(ciPath, "utf8");
+		const extractJob = (name) => {
+			const start = ciText.indexOf(`\n  ${name}:\n`);
+			if (start === -1) return null;
+			const next = ciText.slice(start + 1).search(/\n {2}[a-z0-9-]+:\n/);
+			return next === -1 ? ciText.slice(start) : ciText.slice(start, start + 1 + next);
+		};
+		const fastJob = extractJob("test-fast");
+		if (!fastJob || !fastJob.includes("--class=fast")) {
+			errors.push('ci.yml job "test-fast" is missing or does not run --class=fast');
+		}
+		const browserJob = extractJob("test-browser");
+		if (!browserJob || !browserJob.includes("--class=browser")) {
+			errors.push('ci.yml job "test-browser" is missing or does not run --class=browser');
+		} else if (!/ENDO_REQUIRE_BROWSER:\s*"1"/.test(browserJob)) {
+			errors.push('ci.yml job "test-browser" must set ENDO_REQUIRE_BROWSER: "1"');
+		}
+		const processJob = extractJob("test-process");
+		const expectedShards = Array.from({ length: shardPlan.process }, (_, idx) => idx + 1).join(", ");
+		if (!processJob || !processJob.includes(`--class=process --shard=\${{ matrix.shard }}/${shardPlan.process}`)) {
+			errors.push(
+				`ci.yml job "test-process" is missing or does not run --class=process --shard=\${{ matrix.shard }}/${shardPlan.process}`,
+			);
+		} else if (!processJob.includes(`shard: [${expectedShards}]`)) {
+			errors.push(`ci.yml job "test-process" matrix.shard must be [${expectedShards}]`);
+		}
+		for (const [jobName, spec] of Object.entries(SPECIALIST_SUITES)) {
+			const block = extractJob(jobName);
+			if (!block) {
+				errors.push(`ci.yml is missing required specialist job "${jobName}"`);
+				continue;
+			}
+			for (const file of spec.files) {
+				if (!block.includes(file)) {
+					errors.push(`ci.yml specialist job "${jobName}" does not reference required test file: ${file}`);
+				}
+			}
+		}
+	} catch (error) {
+		errors.push(`unable to read .github/workflows/ci.yml for coverage cross-check: ${String(error)}`);
+	}
+
 	// Verify no hardcoded workstation user-home executable paths sneak into tests (B4 guard).
 	const workstationPathPattern = /\/home\/noctem\//;
 	for (const file of allFiles) {
@@ -406,7 +454,7 @@ export function validateCoverageAccounting(rootDir = REPO_ROOT, shardPlan = { fa
 	}
 	const stale = Object.keys(hints.durationsMs).filter((f) => !diskSet.has(f));
 	if (stale.length > 0) {
-		warnings.push(`${stale.length} stale entry/entries in scripts/test-durations.json: ${stale.slice(0, 5).join(", ")}`);
+		warnings.push(`${stale.length} stale entry/entries in tests/test-durations.json: ${stale.slice(0, 5).join(", ")}`);
 	}
 
 	return {

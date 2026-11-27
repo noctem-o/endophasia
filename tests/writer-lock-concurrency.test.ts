@@ -43,7 +43,7 @@ afterEach(async () => {
 		children.map(
 			(child) =>
 				new Promise<void>((resolve) => {
-					if (child.exitCode !== null || child.signalCode !== null) {
+					if (child.exitCode !== null || child.signalCode !== null || child.pid === undefined) {
 						resolve();
 						return;
 					}
@@ -172,6 +172,8 @@ writeJsonAtomicallySync(cfg.resultFile, out);
 		});
 		child.on("error", reject);
 	});
+	// Avoid unhandled rejection noise if afterEach SIGKILLs a live worker after an earlier assertion failed.
+	done.catch(() => {});
 	return { child, done };
 }
 
@@ -320,10 +322,18 @@ describe("storage/writer-lock.ts deterministic multi-process TOCTOU & exclusivit
 		writeFileAtomicallySync(startBarrier, "go");
 
 		// Wait until 1 winner announces acquisition AND all 5 other processes have written their refusal results
-		// while the winner is STILL holding the lock!
-		const winnerInfo = await Promise.any(
-			workers.map((_, i) => waitForJsonBarrier<WorkerResult>(join(barriers, `acq-${i}.json`), 10_000)),
-		);
+		// while the winner is STILL holding the lock! Abort losing waiters immediately once a winner emerges.
+		const acqController = new AbortController();
+		let winnerInfo: WorkerResult;
+		try {
+			winnerInfo = await Promise.any(
+				workers.map((_, i) =>
+					waitForJsonBarrier<WorkerResult>(join(barriers, `acq-${i}.json`), 10_000, 10, acqController.signal),
+				),
+			);
+		} finally {
+			acqController.abort();
+		}
 		const winnerIndex = workers.findIndex((_, i) => existsSync(join(barriers, `acq-${i}.json`)));
 		await Promise.all(
 			workers.map((_, i) =>

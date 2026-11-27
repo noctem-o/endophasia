@@ -68,9 +68,19 @@ for (let i = 0; i < ownArgs.length; i++) {
 		}
 		maxWorkersOverride = v;
 	} else if (flag === "--json-out") {
-		jsonOut = nextVal() ?? null;
+		const v = nextVal();
+		if (!v || (inline === undefined && v.startsWith("--"))) {
+			console.error("--json-out requires a file path");
+			process.exit(2);
+		}
+		jsonOut = v;
 	} else if (flag === "--diagnostics-out") {
-		diagnosticsOut = nextVal() ?? null;
+		const v = nextVal();
+		if (!v || (inline === undefined && v.startsWith("--"))) {
+			console.error("--diagnostics-out requires a file path");
+			process.exit(2);
+		}
+		diagnosticsOut = v;
 	} else if (flag === "--step-summary") {
 		writeStepSummary = true;
 	} else if (flag === "--dry-run") {
@@ -137,7 +147,7 @@ const result = spawnSync(process.execPath, vitestArgs, {
 	stdio: "inherit",
 });
 const elapsedMs = Date.now() - t0;
-const exitCode = result.status ?? (result.signal ? 1 : 1);
+const exitCode = result.status ?? 1;
 
 if (diagnosticsOut || writeStepSummary) {
 	const summary = buildSanitizedSummary({
@@ -189,7 +199,9 @@ function buildSanitizedSummary(opts) {
 			const prefix = `${REPO_ROOT.replace(/\\/g, "/")}`;
 			for (const suite of parsed.testResults ?? []) {
 				const rawName = String(suite.name ?? "").replace(/\\/g, "/");
-				const relFile = rawName.startsWith(prefix) ? rawName.slice(prefix.length) : rawName;
+				const relFile = rawName.startsWith(prefix)
+					? rawName.slice(prefix.length)
+					: rawName.replace(/\/(?:home|Users)\/[^/\s:)]+/g, "<home>");
 				const durationMs =
 					typeof suite.endTime === "number" && typeof suite.startTime === "number"
 						? Math.max(0, Math.round(suite.endTime - suite.startTime))

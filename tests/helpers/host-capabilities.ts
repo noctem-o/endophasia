@@ -6,7 +6,7 @@
 // skipped cleanly (opt-in) or failed loudly when the matching CI requirement variable is set to "1".
 
 import { spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
 
 export interface CapabilityCheckV0 {
@@ -23,12 +23,13 @@ export interface CapabilityGateV0 {
 }
 
 /**
- * Returns true if `filePath` is an existing executable file on this host.
- * Rejects empty strings and non-executable paths without throwing.
+ * Returns true if `filePath` is an existing regular executable file on this host.
+ * Rejects empty strings, directories, and non-executable paths without throwing.
  */
 export function hasExecutableV0(filePath: string | null | undefined): boolean {
 	if (!filePath || filePath.trim() === "") return false;
 	try {
+		if (!statSync(filePath).isFile()) return false;
 		accessSync(filePath, constants.X_OK);
 		return true;
 	} catch {
@@ -155,9 +156,9 @@ export function isolatedHomeEnvV0(
 }
 
 /**
- * Returns true if the given path resides inside an existing directory under a user's personal home directory
- * (helpful for guards that reject workstation-specific executable paths in CI-targeted tests).
+ * Returns true if `candidate` begins with a user home directory prefix (`/home/<user>/` or `/Users/<user>/`),
+ * independent of the host environment (helpful for guards that reject workstation-specific paths in CI tests).
  */
 export function isWorkstationHomePathV0(candidate: string): boolean {
-	return /^\/(?:home|Users)\/[^/]+\//.test(candidate) && !existsSync("/.dockerenv");
+	return /^\/(?:home|Users)\/[^/]+\//.test(candidate);
 }

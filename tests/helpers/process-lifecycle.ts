@@ -62,7 +62,8 @@ export async function allocateIsolatedLoopbackPortV0(): Promise<number> {
 	const rangeEnd = Math.min(ephemeralMin - 1024, 31000);
 	const span = rangeEnd - rangeStart;
 	if (span >= 1024) {
-		const workerId = Math.max(0, Number(process.env.VITEST_POOL_ID ?? 1) - 1);
+		const parsedWorker = Number(process.env.VITEST_POOL_ID ?? 1);
+		const workerId = Number.isInteger(parsedWorker) && parsedWorker > 0 ? parsedWorker - 1 : 0;
 		const stride = 256;
 		const buckets = Math.max(1, Math.floor(span / stride));
 		const bucket = (workerId + (process.pid % buckets)) % buckets;

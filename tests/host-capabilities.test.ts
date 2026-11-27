@@ -34,6 +34,7 @@ describe("host-capability test helpers", () => {
 
 		expect(hasExecutableV0(execFile)).toBe(true);
 		expect(hasExecutableV0(nonExec)).toBe(false);
+		expect(hasExecutableV0(dir)).toBe(false);
 		expect(hasExecutableV0(join(dir, "missing"))).toBe(false);
 		expect(hasExecutableV0("")).toBe(false);
 		expect(hasExecutableV0(null)).toBe(false);

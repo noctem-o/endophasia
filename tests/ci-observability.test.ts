@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import { partitionTestFiles } from "../scripts/test-inventory.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const cleanup: string[] = [];
@@ -12,7 +13,7 @@ afterEach(() => {
 });
 
 describe("CI observability and history analysis", () => {
-	it("computes baseline reliability and runner-minute metrics from the captured 40-run snapshot", () => {
+	it("computes deduplicated baseline reliability, elapsed time, and runner-minute metrics from the 40-run snapshot", () => {
 		const res = spawnSync(
 			process.execPath,
 			[
@@ -29,6 +30,10 @@ describe("CI observability and history analysis", () => {
 			firstAttemptSuccess: number;
 			failedThenPassed: number;
 			firstAttemptFailure: number;
+			uniqueJobExecutions: number;
+			clonedJobRecordsSkipped: number;
+			passingWorkflowElapsedSec: { n: number; medianSec: number; p95Sec: number };
+			attempt1PassingElapsedSec: { n: number; medianSec: number; p95Sec: number };
 			runnerMinutes: { total: number; rerun: number };
 		};
 		expect(metrics.totalRuns).toBe(40);
@@ -36,8 +41,15 @@ describe("CI observability and history analysis", () => {
 		expect(metrics.firstAttemptSuccess).toBe(19);
 		expect(metrics.failedThenPassed).toBe(9);
 		expect(metrics.firstAttemptFailure).toBe(20);
-		expect(metrics.runnerMinutes.total).toBeGreaterThan(1400);
-		expect(metrics.runnerMinutes.rerun).toBeGreaterThan(350);
+		// Partial-rerun cloned jobs must be deduplicated so elapsed p95 and runner-minutes are not inflated.
+		expect(metrics.uniqueJobExecutions).toBe(465);
+		expect(metrics.clonedJobRecordsSkipped).toBe(129);
+		expect(metrics.passingWorkflowElapsedSec.p95Sec).toBeLessThan(600);
+		expect(metrics.attempt1PassingElapsedSec.n).toBe(19);
+		expect(metrics.attempt1PassingElapsedSec.medianSec).toBeGreaterThan(400);
+		expect(metrics.attempt1PassingElapsedSec.p95Sec).toBeLessThan(600);
+		expect(metrics.runnerMinutes.total).toBeCloseTo(1196.0, 0);
+		expect(metrics.runnerMinutes.rerun).toBeCloseTo(108.2, 0);
 	});
 
 	it("emits sanitized diagnostics JSON and step summary without masking a failing exit code", () => {
@@ -46,14 +58,16 @@ describe("CI observability and history analysis", () => {
 		const jsonOut = join(scratch, "vitest.json");
 		const diagOut = join(scratch, "diag.json");
 		const summaryFile = join(scratch, "step-summary.md");
+		const fastCount = partitionTestFiles(REPO_ROOT).classes.fast.length;
+		const singleFastShard = `${fastCount}/${fastCount}`;
 
-		// Passing 1-file slice of the fast partition (runs in <2s instead of transforming all 160 files).
+		// Passing 1-file slice of the fast partition (runs in <2s instead of transforming all fast files).
 		const passRun = spawnSync(
 			process.execPath,
 			[
 				join(REPO_ROOT, "scripts", "run-test-partition.mjs"),
 				"--class=fast",
-				"--shard=150/160",
+				`--shard=${singleFastShard}`,
 				"--max-workers=1",
 				`--json-out=${jsonOut}`,
 				`--diagnostics-out=${diagOut}`,
@@ -92,7 +106,7 @@ describe("CI observability and history analysis", () => {
 			[
 				join(REPO_ROOT, "scripts", "run-test-partition.mjs"),
 				"--class=fast",
-				"--shard=150/160",
+				`--shard=${singleFastShard}`,
 				"--max-workers=1",
 				`--diagnostics-out=${failDiag}`,
 				"--",

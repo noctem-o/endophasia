@@ -6,10 +6,13 @@
 //   node scripts/analyze-ci-history.mjs --live [--repo=noctem-o/endophasia] [--workflow=ci.yml] [--limit=30] [--json]
 //
 // Works offline on captured/sanitized JSON snapshots or online via bounded read-only `gh api` calls.
-// Preserves raw denominators and never silently discards failed attempts.
+// Preserves raw denominators, never silently discards failed attempts, and deduplicates GitHub Actions
+// partial-rerun cloned jobs (which carry earlier attempts' timestamps under new job IDs).
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * @param {number[]} values
@@ -29,14 +32,20 @@ export function percentile(values, p) {
  * Computes reliability, elapsed time, per-job duration, and runner-minute metrics from a normalized
  * array of workflow run records (matching `historical-runs-40.json` schema).
  *
+ * Deduplicates GitHub Actions partial-rerun cloned jobs per run using `(name, startedAt, completedAt)`
+ * so already-passed jobs carried forward from Attempt 1 do not double-count runner-minutes or span
+ * multi-hour elapsed windows when computing workflow duration.
+ *
  * @param {Array<{
  *   runId: number,
  *   event?: string,
  *   branch?: string,
  *   prNumbers?: number[],
  *   attemptsCount?: number,
- *   attempt1Conclusion: string | null,
- *   finalConclusion: string | null,
+ *   firstAttemptConclusion?: string | null,
+ *   attempt1Conclusion?: string | null,
+ *   latestConclusion?: string | null,
+ *   finalConclusion?: string | null,
  *   attempts: Array<{
  *     attempt: number,
  *     conclusion: string | null,
@@ -44,6 +53,9 @@ export function percentile(values, p) {
  *     jobs: Array<{
  *       name: string,
  *       conclusion: string | null,
+ *       startedAt?: string | null,
+ *       completedAt?: string | null,
+ *       createdAt?: string | null,
  *       durationSec?: number | null,
  *       queueSec?: number | null,
  *     }>
@@ -63,21 +75,26 @@ export function computeCiHistoryMetrics(runs) {
 
 	/** @type {number[]} */
 	const passingWorkflowElapsedSec = [];
+	/** @type {number[]} */
+	const attempt1PassingElapsedSec = [];
 	/** @type {Map<string, number[]>} */
 	const passingJobDurations = new Map();
 	/** @type {Map<string, { passed: number, failed: number, other: number }>} */
 	const jobOutcomes = new Map();
+	let uniqueJobExecutions = 0;
+	let clonedJobRecordsSkipped = 0;
 	let totalRunnerSec = 0;
 	let rerunRunnerSec = 0;
 	/** @type {number[]} */
 	const shardImbalancesSec = [];
 
 	for (const run of runs) {
-		const a1 = run.firstAttemptConclusion ?? run.attempt1Conclusion ?? run.attempts?.[0]?.conclusion ?? null;
+		const attempts = [...(run.attempts ?? [])].sort((a, b) => (a.attempt ?? 1) - (b.attempt ?? 1));
+		const a1 = run.firstAttemptConclusion ?? run.attempt1Conclusion ?? attempts[0]?.conclusion ?? null;
 		const fin =
 			run.latestConclusion ??
 			run.finalConclusion ??
-			run.attempts?.[Math.max(0, (run.attempts?.length ?? 1) - 1)]?.conclusion ??
+			attempts[Math.max(0, attempts.length - 1)]?.conclusion ??
 			null;
 		if (a1 === "cancelled") {
 			cancelledAttempt1++;
@@ -92,30 +109,22 @@ export function computeCiHistoryMetrics(runs) {
 		}
 		if (a1 === "failure" || a1 === "timed_out") {
 			if (fin === "success") failedThenPassed++;
-			if ((run.attempts?.length ?? 1) > 1 && (fin === "success" || fin === "failure" || fin === "timed_out")) {
+			if (attempts.length > 1 && (fin === "success" || fin === "failure" || fin === "timed_out")) {
 				rerunToCompletion++;
 			}
 		}
 
-		for (const att of run.attempts ?? []) {
+		// Track unique executed jobs per run by (name, startedAt, completedAt) so partial-rerun clones are excluded.
+		/** @type {Set<string>} */
+		const seenExecutedJobs = new Set();
+
+		for (const att of attempts) {
 			const jobList = att.jobs ?? [];
-			const jobStarts = jobList
-				.map((j) => (j.startedAt ? Date.parse(j.startedAt) : Number.NaN))
-				.filter(Number.isFinite);
-			const jobEnds = jobList
-				.map((j) => (j.completedAt ? Date.parse(j.completedAt) : Number.NaN))
-				.filter(Number.isFinite);
-			const elapsedSec =
-				typeof att.workflowElapsedSec === "number"
-					? att.workflowElapsedSec
-					: jobStarts.length > 0 && jobEnds.length > 0
-						? Math.max(0, (Math.max(...jobEnds) - Math.min(...jobStarts)) / 1000)
-						: null;
-			if (att.conclusion === "success" && typeof elapsedSec === "number") {
-				passingWorkflowElapsedSec.push(elapsedSec);
-			}
+			/** @type {typeof jobList} */
+			const executedInAttempt = [];
 			/** @type {number[]} */
 			const generalShardDurs = [];
+
 			for (const job of jobList) {
 				const st = job.startedAt ? Date.parse(job.startedAt) : Number.NaN;
 				const cp = job.completedAt ? Date.parse(job.completedAt) : Number.NaN;
@@ -125,6 +134,23 @@ export function computeCiHistoryMetrics(runs) {
 						: Number.isFinite(st) && Number.isFinite(cp)
 							? Math.max(0, (cp - st) / 1000)
 							: null;
+
+				if (job.conclusion === "success" && typeof rawDur === "number") {
+					if (/^Test \(shard \d+\/\d+\)$/.test(job.name) || /^Test \(process \d+\/\d+\)$/.test(job.name)) {
+						generalShardDurs.push(rawDur);
+					}
+				}
+
+				const dedupKey =
+					job.startedAt && job.completedAt ? `${job.name}|${job.startedAt}|${job.completedAt}` : null;
+				if (dedupKey && seenExecutedJobs.has(dedupKey)) {
+					clonedJobRecordsSkipped++;
+					continue;
+				}
+				if (dedupKey) seenExecutedJobs.add(dedupKey);
+				executedInAttempt.push(job);
+				uniqueJobExecutions++;
+
 				const dur = typeof rawDur === "number" && rawDur >= 0 ? rawDur : 0;
 				totalRunnerSec += dur;
 				if (att.attempt >= 2) rerunRunnerSec += dur;
@@ -136,9 +162,6 @@ export function computeCiHistoryMetrics(runs) {
 						const arr = passingJobDurations.get(job.name) ?? [];
 						arr.push(rawDur);
 						passingJobDurations.set(job.name, arr);
-						if (/^Test \(shard \d+\/\d+\)$/.test(job.name) || /^Test \(process \d+\/\d+\)$/.test(job.name)) {
-							generalShardDurs.push(rawDur);
-						}
 					}
 				} else if (job.conclusion === "failure" || job.conclusion === "timed_out") {
 					stat.failed++;
@@ -146,6 +169,27 @@ export function computeCiHistoryMetrics(runs) {
 					stat.other++;
 				}
 				jobOutcomes.set(job.name, stat);
+			}
+
+			// Compute attempt elapsed time solely over jobs that actually executed in this attempt (excluding Attempt 1 clones).
+			const execStarts = executedInAttempt
+				.map((j) => (j.startedAt ? Date.parse(j.startedAt) : Number.NaN))
+				.filter(Number.isFinite);
+			const execEnds = executedInAttempt
+				.map((j) => (j.completedAt ? Date.parse(j.completedAt) : Number.NaN))
+				.filter(Number.isFinite);
+			const attemptElapsedSec =
+				typeof att.workflowElapsedSec === "number"
+					? att.workflowElapsedSec
+					: execStarts.length > 0 && execEnds.length > 0
+						? Math.max(0, (Math.max(...execEnds) - Math.min(...execStarts)) / 1000)
+						: null;
+
+			if (att.conclusion === "success" && typeof attemptElapsedSec === "number") {
+				passingWorkflowElapsedSec.push(attemptElapsedSec);
+				if (att.attempt === 1) {
+					attempt1PassingElapsedSec.push(attemptElapsedSec);
+				}
 			}
 			if (att.conclusion === "success" && generalShardDurs.length >= 2) {
 				shardImbalancesSec.push(Math.max(...generalShardDurs) - Math.min(...generalShardDurs));
@@ -179,10 +223,17 @@ export function computeCiHistoryMetrics(runs) {
 		failedThenPassed,
 		sameRevisionFailureToPassRate: firstAttemptFailure > 0 ? round4(failedThenPassed / firstAttemptFailure) : null,
 		rerunToCompletion,
+		uniqueJobExecutions,
+		clonedJobRecordsSkipped,
 		passingWorkflowElapsedSec: {
 			n: passingWorkflowElapsedSec.length,
 			medianSec: round1(percentile(passingWorkflowElapsedSec, 0.5)),
 			p95Sec: round1(percentile(passingWorkflowElapsedSec, 0.95)),
+		},
+		attempt1PassingElapsedSec: {
+			n: attempt1PassingElapsedSec.length,
+			medianSec: round1(percentile(attempt1PassingElapsedSec, 0.5)),
+			p95Sec: round1(percentile(attempt1PassingElapsedSec, 0.95)),
 		},
 		shardImbalanceSec: {
 			n: shardImbalancesSec.length,
@@ -209,6 +260,7 @@ function round4(v) {
 
 /**
  * Fetches bounded read-only workflow run & original attempt data via `gh api`.
+ * Preserves `createdAt`/`startedAt`/`completedAt` so deduplication matches offline analysis.
  * @param {{ repo: string, workflow: string, limit: number }} opts
  */
 function fetchLiveRuns({ repo, workflow, limit }) {
@@ -245,18 +297,16 @@ function fetchLiveRuns({ repo, workflow, limit }) {
 				return {
 					name: String(j.name),
 					conclusion: j.conclusion ?? null,
+					createdAt: j.created_at ?? null,
+					startedAt: j.started_at ?? null,
+					completedAt: j.completed_at ?? null,
 					durationSec: Number.isFinite(st) && Number.isFinite(cp) ? Math.max(0, (cp - st) / 1000) : null,
 					queueSec: Number.isFinite(cr) && Number.isFinite(st) ? Math.max(0, (st - cr) / 1000) : null,
 				};
 			});
-			const starts = jobsObj.map((j) => Date.parse(j.started_at)).filter(Number.isFinite);
-			const ends = jobsObj.map((j) => Date.parse(j.completed_at)).filter(Number.isFinite);
-			const elapsedSec =
-				starts.length > 0 && ends.length > 0 ? Math.max(0, (Math.max(...ends) - Math.min(...starts)) / 1000) : null;
 			attempts.push({
 				attempt: a,
 				conclusion: attObj.conclusion ?? null,
-				workflowElapsedSec: elapsedSec,
 				jobs,
 			});
 		}
@@ -265,15 +315,18 @@ function fetchLiveRuns({ repo, workflow, limit }) {
 			event: r.event,
 			branch: r.head_branch,
 			attemptsCount,
-			attempt1Conclusion: attempts[0]?.conclusion ?? r.conclusion ?? null,
-			finalConclusion: r.conclusion ?? null,
+			firstAttemptConclusion: attempts[0]?.conclusion ?? r.conclusion ?? null,
+			latestConclusion: r.conclusion ?? null,
 			attempts,
 		});
 	}
 	return normalized;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isCliEntry =
+	Boolean(process.argv[1]) && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url));
+
+if (isCliEntry) {
 	const args = process.argv.slice(2);
 	let inputPath = null;
 	let live = false;
@@ -284,13 +337,27 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
 	for (let i = 0; i < args.length; i++) {
 		const [flag, inline] = args[i].split(/=(.*)/s, 2);
-		const val = () => (inline !== undefined ? inline : args[++i]);
-		if (flag === "--input") inputPath = val();
+		const requireVal = () => {
+			const v = inline !== undefined ? inline : args[++i];
+			if (v === undefined || v === "" || (inline === undefined && v.startsWith("--"))) {
+				console.error(`${flag} requires a value`);
+				process.exit(2);
+			}
+			return v;
+		};
+		if (flag === "--input") inputPath = requireVal();
 		else if (flag === "--live") live = true;
-		else if (flag === "--repo") repo = val();
-		else if (flag === "--workflow") workflow = val();
-		else if (flag === "--limit") limit = Number(val());
-		else if (flag === "--json") jsonMode = true;
+		else if (flag === "--repo") repo = requireVal();
+		else if (flag === "--workflow") workflow = requireVal();
+		else if (flag === "--limit") {
+			const raw = requireVal();
+			const n = Number(raw);
+			if (!Number.isInteger(n) || n < 1 || n > 50) {
+				console.error(`Invalid --limit=${raw}; expected integer 1..50`);
+				process.exit(2);
+			}
+			limit = n;
+		} else if (flag === "--json") jsonMode = true;
 		else {
 			console.error(`Unknown argument: ${args[i]}`);
 			process.exit(2);
@@ -301,6 +368,16 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 		console.error("Specify either --input=<runs.json> or --live");
 		process.exit(2);
 	}
+	if (live) {
+		if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+			console.error(`Invalid --repo=${repo}; expected <owner>/<repo>`);
+			process.exit(2);
+		}
+		if (!/^[A-Za-z0-9_.-]+$/.test(workflow)) {
+			console.error(`Invalid --workflow=${workflow}; expected a workflow filename or numeric id`);
+			process.exit(2);
+		}
+	}
 
 	const runs = live ? fetchLiveRuns({ repo, workflow, limit }) : JSON.parse(readFileSync(inputPath, "utf8"));
 	const metrics = computeCiHistoryMetrics(Array.isArray(runs) ? runs : runs.runs ?? []);
@@ -309,24 +386,29 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 		console.log(JSON.stringify(metrics, null, 2));
 	} else {
 		const pct = (v) => (v === null ? "n/a" : `${(v * 100).toFixed(1)}%`);
-		console.log(`CI History Summary (${metrics.totalRuns} completed runs)`);
 		console.log(
-			`  First-attempt success : ${metrics.firstAttemptSuccess}/${metrics.decisiveAttempt1} (${pct(metrics.firstAttemptSuccessRate)}) [cancelled attempt 1: ${metrics.cancelledAttempt1}]`,
+			`CI History Summary (${metrics.totalRuns} completed runs, ${metrics.uniqueJobExecutions} unique job executions, ${metrics.clonedJobRecordsSkipped} partial-rerun clones skipped)`,
 		);
 		console.log(
-			`  Eventual success      : ${metrics.eventualSuccess}/${metrics.decisiveFinal} (${pct(metrics.eventualSuccessRate)})`,
+			`  First-attempt success  : ${metrics.firstAttemptSuccess}/${metrics.decisiveAttempt1} (${pct(metrics.firstAttemptSuccessRate)}) [cancelled attempt 1: ${metrics.cancelledAttempt1}]`,
 		);
 		console.log(
-			`  Failure -> Pass rerun : ${metrics.failedThenPassed}/${metrics.firstAttemptFailure} (${pct(metrics.sameRevisionFailureToPassRate)})`,
+			`  Eventual success       : ${metrics.eventualSuccess}/${metrics.decisiveFinal} (${pct(metrics.eventualSuccessRate)})`,
 		);
 		console.log(
-			`  Passing elapsed       : median=${metrics.passingWorkflowElapsedSec.medianSec ?? "n/a"}s p95=${metrics.passingWorkflowElapsedSec.p95Sec ?? "n/a"}s (n=${metrics.passingWorkflowElapsedSec.n})`,
+			`  Failure -> Pass rerun  : ${metrics.failedThenPassed}/${metrics.firstAttemptFailure} (${pct(metrics.sameRevisionFailureToPassRate)})`,
 		);
 		console.log(
-			`  Shard imbalance       : median=${metrics.shardImbalanceSec.medianSec ?? "n/a"}s max=${metrics.shardImbalanceSec.maxSec ?? "n/a"}s`,
+			`  Attempt-1 pass elapsed : median=${metrics.attempt1PassingElapsedSec.medianSec ?? "n/a"}s p95=${metrics.attempt1PassingElapsedSec.p95Sec ?? "n/a"}s (n=${metrics.attempt1PassingElapsedSec.n})`,
 		);
 		console.log(
-			`  Runner-minutes        : total=${metrics.runnerMinutes.total}m rerun=${metrics.runnerMinutes.rerun}m (${pct(metrics.runnerMinutes.rerunShare)})`,
+			`  All passing attempts   : median=${metrics.passingWorkflowElapsedSec.medianSec ?? "n/a"}s p95=${metrics.passingWorkflowElapsedSec.p95Sec ?? "n/a"}s (n=${metrics.passingWorkflowElapsedSec.n})`,
+		);
+		console.log(
+			`  Shard imbalance        : median=${metrics.shardImbalanceSec.medianSec ?? "n/a"}s max=${metrics.shardImbalanceSec.maxSec ?? "n/a"}s`,
+		);
+		console.log(
+			`  Runner-minutes (unique): total=${metrics.runnerMinutes.total}m rerun=${metrics.runnerMinutes.rerun}m (${pct(metrics.runnerMinutes.rerunShare)})`,
 		);
 	}
 }

@@ -51,33 +51,34 @@ Data source: `repos/noctem-o/endophasia/actions/workflows/ci.yml/runs` (40 most 
 | **Known-good decisive revisions (excl. 1 regression + 6 branch-only env runs)** | **19 / 32** | **59.4%** | 13 first-attempt failures caused exclusively by test/infra races on known-good code |
 | **Known-good post-PR #190 (`ed2b9b5c6` onward)** | **8 / 11** | **72.7%** | 3 first-attempt failures on known-good code (`45878980507`, `45964716039`, `46016351646`); still far below 99% |
 
-Every single one of the **28 failed jobs** across all 40 runs and all attempts occurred in the **3 general test shards** (`Test (shard 1/3)`, `Test (shard 2/3)`, `Test (shard 3/3)`). All 8 specialist jobs (`check`, `trust-reader`, `trust004-freeze`, `live-scopes`, `package`, `package-floor`, `acceptance`, `exchange`) had **100% pass rate (54/54 passing attempts each)** in this window.
+Every single one of the **28 failed jobs** across all 40 runs and all attempts occurred in the **3 general test shards** (`Test (shard 1/3)`, `Test (shard 2/3)`, `Test (shard 3/3)`). All 8 specialist jobs (`check`, `trust-reader`, `trust004-freeze`, `live-scopes`, `package`, `package-floor`, `acceptance`, `exchange`) had **100% pass rate (41/41 unique executed jobs each; 129 partial-rerun cloned records deduplicated)** in this window.
 
 ### 3.2 Elapsed Time, Critical Path, and Resource Cost
 
-Measured across all 594 job executions in the 40-run sample (runner images: `ubuntu-24.04@20261116.133.1`, `ubuntu-24.04@20261116.376.1`, `ubuntu-24.04@20261122.23.1`):
+Measured across **465 unique job executions** in the 40-run sample (after deduplicating **129** cloned non-executed job records carried forward by GitHub Actions partial reruns; runner images: `ubuntu-24.04@20261116.133.1`, `ubuntu-24.04@20261116.376.1`, `ubuntu-24.04@20261122.23.1`):
 
 | Metric | Sample `n` | Median | p95 | Min | Max |
 |---|---:|---:|---:|---:|---:|
-| **Workflow elapsed time (passing attempts)** | 28 | **421.5 s (7m 02s)** | **532.0 s (8m 52s)** | 263.0 s | 547.0 s |
-| Job queue time (all jobs) | 594 | 2.0 s | 3.0 s | 0.0 s | 5.0 s |
-| Shard setup overhead (checkout + setup-node + `npm ci`) | 162 | 10.0 s | 15.0 s | 4.0 s | 17.0 s |
-| Shard test execution (`npm test -- --shard=k/3`, passing) | 132 | 371.0 s | 509.0 s | 251.0 s | 533.0 s |
-| **Test (shard 1/3)** (passing) | 49 | **379.0 s** | 531.0 s | 348.0 s | 545.0 s |
-| **Test (shard 2/3)** (passing — **critical path**) | 45 | **426.0 s** | 512.0 s | 402.0 s | 516.0 s |
-| **Test (shard 3/3)** (passing) | 38 | **290.0 s** | 407.0 s | 261.0 s | 419.0 s |
-| Live process containment (`live-scopes`) | 54 | 161.0 s | 184.0 s | 145.0 s | 202.0 s |
-| TRUST reader (`trust-reader`) | 54 | 71.0 s | 90.0 s | 50.0 s | 100.0 s |
-| Clean-install acceptance (`acceptance`) | 54 | 50.5 s | 63.0 s | 35.0 s | 65.0 s |
-| Packaged CLI (`package`) | 54 | 48.5 s | 56.0 s | 29.0 s | 59.0 s |
-| Packaged CLI floor 22.19.0 (`package-floor`) | 54 | 46.5 s | 56.0 s | 34.0 s | 59.0 s |
-| Reference exchange (`exchange`) | 54 | 35.0 s | 47.0 s | 28.0 s | 48.0 s |
-| Typecheck and lint (`check`) | 54 | 30.0 s | 41.0 s | 21.0 s | 43.0 s |
-| TRUST-004 freeze (`trust004-freeze`) | 54 | 19.0 s | 30.0 s | 13.0 s | 31.0 s |
+| **Workflow elapsed time (Attempt 1 passing runs)** | 19 | **443.0 s (7m 23s)** | **531.5 s (8m 52s)** | 405.0 s | 547.0 s |
+| **Workflow elapsed time (all passing attempts, executed jobs)** | 28 | **420.0 s (7m 00s)** | **525.4 s (8m 45s)** | 263.0 s | 547.0 s |
+| Job queue time (all unique executions) | 465 | 2.0 s | 3.0 s | 0.0 s | 5.0 s |
+| Shard setup overhead (checkout + setup-node + `npm ci`) | 135 | 10.0 s | 15.0 s | 4.0 s | 17.0 s |
+| Shard test execution (`npm test -- --shard=k/3`, passing) | 108 | 371.0 s | 509.0 s | 251.0 s | 533.0 s |
+| **Test (shard 1/3)** (passing unique) | 39 | **379.0 s** | **529.2 s** | 348.0 s | 545.0 s |
+| **Test (shard 2/3)** (passing unique — **critical path**) | 33 | **425.0 s** | **509.6 s** | 402.0 s | 516.0 s |
+| **Test (shard 3/3)** (passing unique) | 36 | **292.0 s** | **404.8 s** | 261.0 s | 419.0 s |
+| Live process containment (`live-scopes`) | 41 | 162.0 s | 184.0 s | 145.0 s | 202.0 s |
+| TRUST reader (`trust-reader`) | 41 | 72.0 s | 90.0 s | 50.0 s | 100.0 s |
+| Clean-install acceptance (`acceptance`) | 41 | 52.0 s | 63.0 s | 35.0 s | 65.0 s |
+| Packaged CLI (`package`) | 41 | 48.0 s | 56.0 s | 29.0 s | 59.0 s |
+| Packaged CLI floor 22.19.0 (`package-floor`) | 41 | 47.0 s | 56.0 s | 34.0 s | 59.0 s |
+| Reference exchange (`exchange`) | 41 | 35.0 s | 44.0 s | 28.0 s | 48.0 s |
+| Typecheck and lint (`check`) | 41 | 30.0 s | 41.0 s | 21.0 s | 43.0 s |
+| TRUST-004 freeze (`trust004-freeze`) | 41 | 19.0 s | 29.0 s | 13.0 s | 31.0 s |
 | **Shard imbalance (`max - min` across 3 shards)** | 28 | **148.0 s** | — | — | **270.0 s** |
 
-- **Total runner-minutes consumed (40 runs, all attempts):** **1,477.6 runner-minutes**
-- **Rerun runner-minutes wasted (attempts `>= 2`):** **389.7 runner-minutes (26.4% of total CI compute)**
+- **Total runner-minutes consumed (40 runs, 465 unique executed jobs):** **1,196.0 runner-minutes**
+- **Rerun runner-minutes wasted (unique jobs executed on attempts `>= 2`):** **108.2 runner-minutes (9.0% of total CI compute)** *(excluding 129 partial-rerun cloned job records that did not re-execute)*
 
 ### 3.3 Slowest Individual Test Files (Hosted Runner `main` Run `45956120688`)
 

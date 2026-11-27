@@ -1,0 +1,78 @@
+{
+  "recordedAtUtc": "2026-11-27T09:08:18.749Z",
+  "liveInferenceExecuted": false,
+  "results": [
+    {
+      "scenario": "B-1-partial-store",
+      "fixtureKind": "manually-transformed-equivalent-claims",
+      "legacyObservedOutcome": "briefing-refused (event-absence-unestablished)",
+      "groundedV1UnsupportedClaim": {
+        "ok": false,
+        "reason": "event-absence-unestablished",
+        "detail": "claim session-activity=none-linked on sources:endo.project.e2225a56cdf4c6551c08ac17837f17ef failed validation"
+      },
+      "groundedV1CalibratedClaim": {
+        "ok": true,
+        "reason": null,
+        "verifiedClaimCount": 3
+      }
+    },
+    {
+      "scenario": "W0-initial-unassigned",
+      "fixtureKind": "exact-replay-plus-visibility-comparison",
+      "legacyExactReplayRefusal": null,
+      "legacyProposalOutcome": {
+        "outcome": "refused",
+        "proposalId": null,
+        "refusal": "proposal-ungrounded"
+      },
+      "conditionCModelVisibleCoordinationSource": "absent",
+      "conditionCProposalEligibilityForT1": []
+    },
+    {
+      "scenario": "W6-verify-fail",
+      "fixtureKind": "exact-replay-and-equivalent-claims",
+      "legacyExactReplayRefusal": null,
+      "groundedV1Outcome": {
+        "ok": true,
+        "reason": null,
+        "proposal": {
+          "kind": "review-failing-verification",
+          "taskId": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf",
+          "evidenceRef": "ev:task:endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf"
+        }
+      }
+    },
+    {
+      "scenario": "W8-coord-and-head",
+      "fixtureKind": "manually-transformed-equivalent-claims",
+      "originalLiveOutcome": "briefing-refused (receipt-absence-unestablished)",
+      "legacyRegexOnAccurateProse": "receipt-absence-unestablished",
+      "conditionBOutcome": {
+        "ok": true,
+        "reason": null,
+        "claims": 4
+      },
+      "conditionCOutcome": {
+        "ok": true,
+        "reason": null,
+        "claims": 6
+      },
+      "conditionCClaimUnderConditionBRefused": {
+        "ok": false,
+        "reason": "grounding-subject-unknown"
+      }
+    },
+    {
+      "scenario": "W9-W10-unplanned-pass-and-no-checks",
+      "fixtureKind": "manually-transformed-equivalent-claims",
+      "originalLiveOutcome": "briefing-refused (receipt-absence-unestablished) on both W9 and W10",
+      "legacyRegexOnAccurateProse": "receipt-absence-unestablished",
+      "conditionCOutcome": {
+        "ok": true,
+        "reason": null,
+        "claims": 5
+      }
+    }
+  ]
+}

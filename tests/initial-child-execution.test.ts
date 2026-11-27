@@ -25,6 +25,7 @@ import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { archiveEndoWorkspaceV0 } from "../storage/workspace-snapshot.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { verifiedInitialCheckpointFixtureV0 } from "./fixtures/verified-initial-checkpoint.ts";
+import { isProcessRunningV0 } from "./helpers/process-lifecycle.ts";
 
 let fixture: Awaited<ReturnType<typeof verifiedInitialCheckpointFixtureV0>>;
 let upstream: FakeOpenAiServer;
@@ -147,7 +148,7 @@ describe("governed initial child execution", () => {
 			expect(result).toMatchObject({ status: "failed", reason: "timeout" });
 			expect(Date.now() - spawnedAt).toBeLessThan(4000);
 			const pid = Number(readFileSync(pidFile, "utf8"));
-			expect(() => process.kill(pid, 0)).toThrow();
+			expect(isProcessRunningV0(pid)).toBe(false);
 			expect(upstream.requests.length).toBe(count);
 			if ("area" in result)
 				expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
@@ -178,7 +179,7 @@ describe("governed initial child execution", () => {
 				expect(Date.now() - cancelledAt).toBeLessThan(2000);
 				expect(result.status).toBe("cancelled");
 				const pid = Number(readFileSync(join(dirname(fixture.pi.packageJson), "rpc-pid"), "utf8"));
-				expect(() => process.kill(pid, 0)).toThrow();
+				expect(isProcessRunningV0(pid)).toBe(false);
 				if ("area" in result)
 					expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
 				expect(upstream.requests.length).toBe(count);
@@ -233,7 +234,7 @@ describe("governed initial child execution", () => {
 				expect(result.status).toBe(mode === "cancel" ? "cancelled" : "outcome-unknown");
 				expect(Date.now() - startedAt).toBeLessThan(4000);
 				const pid = Number(readFileSync(join(dirname(fixture.pi.packageJson), "rpc-pid"), "utf8"));
-				expect(() => process.kill(pid, 0)).toThrow();
+				expect(isProcessRunningV0(pid)).toBe(false);
 				if ("area" in result) {
 					expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
 					expect(
@@ -460,7 +461,7 @@ describe("governed initial child execution", () => {
 				const result = await executeInitialChildV0(plan, approval, options.prompt, fixture.key);
 				expect(result.status).toBe("failed");
 				pid = Number(readFileSync(join(dirname(fixture.pi.packageJson), "rpc-pid"), "utf8"));
-				expect(() => process.kill(pid!, 0)).toThrow();
+				expect(isProcessRunningV0(pid)).toBe(false);
 				if ("area" in result)
 					expect(existsSync(join(result.area, "evidence", "events", "session-attachment.lock"))).toBe(false);
 				expect(upstream.requests.length).toBe(count);

@@ -99,10 +99,8 @@ class Pty {
 }
 
 beforeAll(async () => {
-	const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(new URL("../studio-ui/dist", import.meta.url).pathname);
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureSharedStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	for (const done of cleanup.splice(0).reverse()) await done();

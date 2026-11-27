@@ -30,10 +30,10 @@ const CLI = join(repo, "cli/index.ts");
 const scratch = mkdtempSync(join(tmpdir(), "endo-studio-test-"));
 const started: StudioChild[] = [];
 
-beforeAll(() => {
-	// A checkout serves the frontend built into studio-ui/dist (ignored by git), as `npm run cockpit` does.
-	const built = spawnSync(process.execPath, [join(repo, "scripts/build-studio-ui.mjs")], { encoding: "utf8" });
-	if (built.status !== 0) throw new Error(`the UI did not build: ${built.stderr}`);
+beforeAll(async () => {
+	// A checkout serves the frontend built once for this test run into studio-ui/dist by tests/global-setup.ts.
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureSharedStudioUiDir();
 }, 90_000);
 afterEach(() => {
 	for (const child of started.splice(0)) child.kill();

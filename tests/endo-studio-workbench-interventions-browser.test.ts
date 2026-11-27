@@ -25,11 +25,8 @@ beforeAll(async () => {
 		if (process.env.ENDO_REQUIRE_BROWSER === "1") throw new Error("Chromium required");
 		return;
 	}
-	const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(join(scratch, "ui"));
-	ui = loadEndoStudioUiFilesV0(join(scratch, "ui"));
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	ui = loadEndoStudioUiFilesV0(await ensureSharedStudioUiDir());
 	browser = await Browser.launch(executable);
 }, 90_000);
 afterEach(async () => {
@@ -140,7 +137,9 @@ suite("steer, queue and stop in the DEVELOP workbench", () => {
 		expect(await page.eval<boolean>("document.querySelector('[data-testid=send]').disabled")).toBe(true);
 		session.runActive = true;
 		await refresh(page);
-		await page.waitFor("!document.querySelector('[data-testid=composer]').disabled");
+		// Wait for the send button to transition from disabled (line 140) to enabled once the refreshed `runActive: true`
+		// snapshot has rendered; the composer textarea stays editable in both states so `!composer.disabled` is always true.
+		await page.waitFor("!document.querySelector('[data-testid=send]').disabled");
 		// The mode is the operator's choice: a run opening does not switch it, and the draft followed it across.
 		expect(await page.eval<boolean>("document.querySelector('[data-testid=mode-steer]').checked")).toBe(true);
 		expect(await page.eval<string>("document.querySelector('[data-testid=composer]').value")).toBe(

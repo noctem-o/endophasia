@@ -3,7 +3,17 @@
 // This module is a building block for the interactive operator (aa/operator.ts), its only caller. It deliberately exports no CLI entry
 // point and accepts no pre-supplied approval: every launch needs the exact phrase from `approve`, a trusted caller
 // callback exactly like CoordinatorHooks. It sends no HTTP request and performs no inference.
-import { closeSync, constants, createReadStream, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
+import {
+	closeSync,
+	constants,
+	createReadStream,
+	fstatSync,
+	lstatSync,
+	openSync,
+	readdirSync,
+	readFileSync,
+	readlinkSync,
+} from "node:fs";
 import { createServer } from "node:net";
 import { isAbsolute } from "node:path";
 import { type ProcessExitV0, ProcessGroupV0 } from "../../../adapters/rpc-jsonl/process-group.ts";
@@ -131,11 +141,38 @@ export function portIsFree(port: number): Promise<boolean> {
 const pidAlive = (pid: number) => {
 	try {
 		process.kill(pid, 0);
-		return true;
 	} catch (error) {
 		return (error as NodeJS.ErrnoException).code === "EPERM";
 	}
+	try {
+		const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+		const state = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0];
+		if (state === "Z" || state === "X") return false;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+	}
+	return true;
 };
+
+/** True only when `pid` itself holds an open socket descriptor matching a listener on `port`. */
+function pidOwnsListenerPort(pid: number, port: number): boolean {
+	const tcp = readFileSync(`/proc/${pid}/net/tcp`, "utf8");
+	const inodes = new Set(
+		parseTcpListenersV0(tcp)
+			.filter((entry) => entry.port === port)
+			.map((entry) => entry.inode),
+	);
+	if (inodes.size === 0) return false;
+	for (const name of readdirSync(`/proc/${pid}/fd`)) {
+		try {
+			const target = readlinkSync(`/proc/${pid}/fd/${name}`);
+			if (target.startsWith("socket:[") && target.endsWith("]") && inodes.has(target.slice(8, -1))) return true;
+		} catch {
+			// Descriptor closed during scan.
+		}
+	}
+	return false;
+}
 function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T | null> {
 	return Promise.race([
 		promise,
@@ -234,8 +271,7 @@ export async function launchTaskOwnedServerV0(
 			pid = group.pid;
 			if (pid !== undefined) {
 				try {
-					const tcp = readFileSync(`/proc/${pid}/net/tcp`, "utf8");
-					if (parseTcpListenersV0(tcp).some((entry) => entry.port === request.port)) break;
+					if (pidOwnsListenerPort(pid, request.port)) break;
 				} catch {}
 			}
 			await sleep(25);

@@ -1,9 +1,6 @@
 // The browser page as the HTTP transport serves it: explicit routes only, every PR B guard in front of them, a narrow policy of
 // their own, nothing read from disk per request, and the JSON API untouched beside them.
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { rmSync } from "node:fs";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { canonicalEndoJsonV0, readEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
 import { startEndoCockpitServerV0 } from "../cockpit-http/server.ts";
@@ -15,8 +12,6 @@ import { OTHER_KEY } from "./cockpit-keyed.ts";
 afterEach(stopServers);
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
 
-const repo = fileURLToPath(new URL("../", import.meta.url));
-let dist = "";
 /** The built Studio frontend as the server is given it (bytes), and as text for comparison (a font is binary and is left out of it). */
 let ui: Record<string, Uint8Array> = {};
 let text: Record<string, string> = {};
@@ -24,11 +19,8 @@ let MAIN = "";
 let CSS = "";
 let root = "";
 beforeAll(async () => {
-	dist = mkdtempSync(join(tmpdir(), "endo-studio-ui-dist-"));
-	const { buildStudioUi } = (await import(join(repo, "scripts/build-studio-ui.mjs"))) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(dist);
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	const dist = await ensureSharedStudioUiDir();
 	ui = loadEndoStudioUiFilesV0(dist);
 	text = Object.fromEntries(
 		Object.entries(ui)
@@ -41,7 +33,6 @@ beforeAll(async () => {
 	ingestAll(root, [event("agent.prompt-accepted"), event("tool.started")]);
 	seedRegistry(root);
 }, 90_000);
-afterAll(() => rmSync(dist, { recursive: true, force: true }));
 
 const PAGE_CSP =
 	"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; require-trusted-types-for 'script'; trusted-types 'none'";

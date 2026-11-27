@@ -64,10 +64,8 @@ const temp = (prefix: string) => {
 };
 
 beforeAll(async () => {
-	const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(fileURLToPath(new URL("../studio-ui/dist", import.meta.url)));
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureSharedStudioUiDir();
 }, 90_000);
 
 afterEach(async () => {

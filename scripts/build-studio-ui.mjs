@@ -9,10 +9,10 @@
 // published package carries only the output.
 //
 //   node scripts/build-studio-ui.mjs [outDir]       (default studio-ui/dist)
-import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, copyFileSync, existsSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
@@ -57,22 +57,64 @@ export async function buildStudioUi(outDir = join(root, "studio-ui", "dist")) {
 		const entry = outputs.find(([, meta]) => meta.entryPoint === "studio-ui/src/main.tsx");
 		const style = entry?.[1].cssBundle;
 		if (entry === undefined || style === undefined) throw new Error("the Studio frontend produced no entry script or style sheet");
-		rmSync(outDir, { recursive: true, force: true });
-		mkdirSync(outDir, { recursive: true });
-		for (const name of readdirSync(scratch)) copyFileSync(join(scratch, name), join(outDir, name));
 		const page = readFileSync(join(root, "studio-ui", "index.html"), "utf8")
 			.replace("{{SCRIPT}}", basename(entry[0]))
 			.replace("{{STYLE}}", basename(style));
-		writeFileSync(join(outDir, "index.html"), page);
-		copyFileSync(join(root, "studio-ui", "icon.svg"), join(outDir, "icon.svg"));
-		const files = readdirSync(outDir)
+		writeFileSync(join(scratch, "index.html"), page);
+		copyFileSync(join(root, "studio-ui", "icon.svg"), join(scratch, "icon.svg"));
+		const files = readdirSync(scratch)
 			.sort()
 			.map((name) => {
-				const bytes = readFileSync(join(outDir, name));
+				const bytes = readFileSync(join(scratch, name));
 				return { name, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") };
 			});
 		const manifest = { format: STUDIO_UI_MANIFEST_FORMAT, entry: "index.html", files };
-		writeFileSync(join(outDir, STUDIO_UI_MANIFEST_NAME), `${JSON.stringify(manifest, null, "\t")}\n`);
+		const manifestText = `${JSON.stringify(manifest, null, "\t")}\n`;
+		writeFileSync(join(scratch, STUDIO_UI_MANIFEST_NAME), manifestText);
+		const target = resolve(outDir);
+		const alreadyIdentical = (() => {
+			try {
+				if (!existsSync(join(target, STUDIO_UI_MANIFEST_NAME))) return false;
+				if (readFileSync(join(target, STUDIO_UI_MANIFEST_NAME), "utf8") !== manifestText) return false;
+				const expectedNames = [...files.map((f) => f.name), STUDIO_UI_MANIFEST_NAME].sort();
+				if (readdirSync(target).sort().join("\0") !== expectedNames.join("\0")) return false;
+				return files.every((f) => {
+					const bytes = readFileSync(join(target, f.name));
+					return bytes.length === f.bytes && createHash("sha256").update(bytes).digest("hex") === f.sha256;
+				});
+			} catch {
+				return false;
+			}
+		})();
+		if (!alreadyIdentical) {
+			const parent = dirname(target);
+			mkdirSync(parent, { recursive: true });
+			const tag = `${process.pid}-${randomBytes(6).toString("hex")}`;
+			const stage = join(parent, `.${basename(target)}.stage-${tag}`);
+			const stale = join(parent, `.${basename(target)}.old-${tag}`);
+			mkdirSync(stage, { recursive: true });
+			try {
+				for (const name of readdirSync(scratch)) copyFileSync(join(scratch, name), join(stage, name));
+				if (existsSync(target)) {
+					try {
+						renameSync(target, stale);
+					} catch {
+						rmSync(target, { recursive: true, force: true });
+					}
+				}
+				renameSync(stage, target);
+			} catch (error) {
+				rmSync(stage, { recursive: true, force: true });
+				if (!existsSync(target) && existsSync(stale)) {
+					try {
+						renameSync(stale, target);
+					} catch {}
+				}
+				throw error;
+			} finally {
+				rmSync(stale, { recursive: true, force: true });
+			}
+		}
 		const packages = new Set();
 		for (const [, meta] of outputs)
 			for (const input of Object.keys(meta.inputs)) {

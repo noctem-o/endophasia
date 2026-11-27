@@ -39,26 +39,17 @@ import {
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { type FakeOpenAiServer, startFakeOpenAiServer } from "./fixtures/fake-openai-server.ts";
 import { verifiedInitialCheckpointFixtureV0 } from "./fixtures/verified-initial-checkpoint.ts";
+import {
+	absentFdForPidV0,
+	allocateIsolatedLoopbackPortV0,
+	isProcessRunningV0,
+	loopbackPortIsFreeV0,
+} from "./helpers/process-lifecycle.ts";
 
 const sha = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-async function freePort(): Promise<number> {
-	const reservation = createServer();
-	await new Promise<void>((resolve, reject) => {
-		reservation.once("error", reject);
-		reservation.listen(0, "127.0.0.1", resolve);
-	});
-	const address = reservation.address();
-	if (!address || typeof address === "string") throw new Error("reservation failed");
-	await new Promise<void>((resolve, reject) => reservation.close((error) => (error ? reject(error) : resolve())));
-	return address.port;
-}
-const portIsFree = (port: number) =>
-	new Promise<boolean>((resolve) => {
-		const probe = createServer();
-		probe.once("error", () => resolve(false));
-		probe.listen(port, "127.0.0.1", () => probe.close(() => resolve(true)));
-	});
+const freePort = allocateIsolatedLoopbackPortV0;
+const portIsFree = loopbackPortIsFreeV0;
 /** Processes whose executable is exactly this file: how a test proves that a task-owned server is really gone. */
 function runningFrom(executable: string): string[] {
 	return readdirSync("/proc")
@@ -563,7 +554,7 @@ describe.runIf(process.platform === "linux")("task-owned study admission", () =>
 		expect(await server.stop()).toBe(end);
 		expect(end).toMatchObject({ processGone: true, listenerGone: true });
 		expect(runningFrom(relay)).toEqual([]);
-		expect(() => process.kill(pid, 0)).toThrow();
+		expect(isProcessRunningV0(pid)).toBe(false);
 		expect(await portIsFree(server.provenance.listener.port)).toBe(true);
 		expect(sentinel.exitCode).toBeNull();
 		expect(() => process.kill(sentinel.pid!, 0)).not.toThrow();
@@ -844,7 +835,7 @@ describe.runIf(process.platform === "linux")("live admission refusals", () => {
 		[
 			"wrong listener descriptor",
 			(b) => {
-				b.listener.socketFd = String(Number(b.listener.socketFd) + 40);
+				b.listener.socketFd = absentFdForPidV0(b.process.pid);
 			},
 		],
 		[

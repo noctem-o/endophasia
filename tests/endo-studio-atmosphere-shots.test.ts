@@ -29,11 +29,8 @@ const tabs: Page[] = [];
 beforeAll(async () => {
 	if (out === "" || executable === null) return;
 	mkdirSync(out, { recursive: true });
-	const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(join(scratch, "ui"));
-	ui = loadEndoStudioUiFilesV0(join(scratch, "ui"));
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	ui = loadEndoStudioUiFilesV0(await ensureSharedStudioUiDir());
 	browser = await Browser.launch(executable);
 }, 90_000);
 afterEach(async () => {

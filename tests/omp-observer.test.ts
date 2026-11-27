@@ -571,11 +571,8 @@ describe("over HTTP", () => {
 	});
 
 	it("refuses an OMP directory that overlaps the store or would receive Studio's key, before anything is created", async () => {
-		const { buildStudioUi } = (await import(new URL("../scripts/build-studio-ui.mjs", import.meta.url).pathname)) as {
-			buildStudioUi(outDir: string): Promise<unknown>;
-		};
-		const ui = join(fresh("ui"), "built");
-		await buildStudioUi(ui);
+		const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+		const ui = await ensureSharedStudioUiDir();
 		const omp = fresh("overlap");
 		const opener = { root: omp, open: () => observer(omp) };
 		const keyFile = join(fresh("k"), "key");

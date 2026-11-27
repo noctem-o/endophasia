@@ -17,9 +17,9 @@ const CLI = join(repo, "cli/index.ts");
 const scratch = mkdtempSync(join(tmpdir(), "endo-workspace-cli-"));
 const children: ChildProcess[] = [];
 
-beforeAll(() => {
-	const built = spawnSync(process.execPath, [join(repo, "scripts/build-studio-ui.mjs")], { encoding: "utf8" });
-	if (built.status !== 0) throw new Error(`the UI did not build: ${built.stderr}`);
+beforeAll(async () => {
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	await ensureSharedStudioUiDir();
 }, 90_000);
 afterEach(() => {
 	for (const child of children.splice(0))

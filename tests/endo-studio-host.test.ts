@@ -29,11 +29,8 @@ let ui = "";
 const launched: EndoCockpitLaunchedV0[] = [];
 
 beforeAll(async () => {
-	ui = join(scratch, "ui");
-	const { buildStudioUi } = (await import(join(repo, "scripts/build-studio-ui.mjs"))) as {
-		buildStudioUi(outDir: string): Promise<unknown>;
-	};
-	await buildStudioUi(ui);
+	const { ensureSharedStudioUiDir } = await import("./helpers/studio-ui-build.ts");
+	ui = await ensureSharedStudioUiDir();
 }, 90_000);
 afterEach(async () => {
 	vi.unstubAllEnvs();

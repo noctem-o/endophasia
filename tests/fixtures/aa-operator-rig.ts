@@ -4,28 +4,18 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
-import { createServer } from "node:net";
 import { join } from "node:path";
 import { prepareVerifiedInitialBranchPairV0 } from "../../cli/initial-branch-set.ts";
 import type { EndoExperimentConditionV0 } from "../../protocol/experiment-spec.ts";
 import type { AaOperatorConfigV0, AaTerminalV0 } from "../../research/governed-initial-continuation/aa/operator.ts";
 import { portIsFree } from "../../research/governed-initial-continuation/aa/task-owned-server.ts";
+import { allocateIsolatedLoopbackPortV0 } from "../helpers/process-lifecycle.ts";
 import { type FakeOpenAiOptions, type FakeOpenAiServer, startFakeOpenAiServer } from "./fake-openai-server.ts";
 import { verifiedInitialCheckpointFixtureV0 } from "./verified-initial-checkpoint.ts";
 
 export const sha256File = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-export async function freePort(): Promise<number> {
-	const reservation = createServer();
-	await new Promise<void>((resolve, reject) => {
-		reservation.once("error", reject);
-		reservation.listen(0, "127.0.0.1", resolve);
-	});
-	const address = reservation.address();
-	if (!address || typeof address === "string") throw new Error("reservation failed");
-	await new Promise<void>((resolve, reject) => reservation.close((error) => (error ? reject(error) : resolve())));
-	return address.port;
-}
+export const freePort = allocateIsolatedLoopbackPortV0;
 export { portIsFree };
 /** Processes whose executable is exactly this file: how a test proves that a task-owned server is really gone. */
 export function runningFrom(executable: string): string[] {

@@ -1,7 +1,8 @@
 {
   "schemaVersion": "endo.coordinator-reasoning-001.pin.v1",
   "mission": "COORDINATOR-REASONING-001",
-  "status": "phase-a-prepared-awaiting-live-authorization",
+  "status": "phases-a-b-c-complete-phase-d-r4-skipped-per-stop-rule",
+  "liveExecutionCommitSha": "b742f810354535957372d9210b6c711f97691988",
   "repository": "noctem-o/endophasia",
   "branchStack": {
     "pr192": {

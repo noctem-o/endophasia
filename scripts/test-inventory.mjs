@@ -410,12 +410,17 @@ export function validateCoverageAccounting(rootDir = REPO_ROOT, shardPlan = { fa
 		}
 	}
 
-	// Verify every specialist suite file still exists on disk.
+	// Verify every specialist suite file and permitted optional-skip allowlist entry exists on disk.
 	for (const [job, spec] of Object.entries(SPECIALIST_SUITES)) {
 		for (const file of spec.files) {
 			if (!diskSet.has(file)) {
 				errors.push(`specialist job "${job}" references missing test file: ${file}`);
 			}
+		}
+	}
+	for (const file of Object.keys(PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS)) {
+		if (!diskSet.has(file)) {
+			errors.push(`PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS references missing test file: ${file}`);
 		}
 	}
 
@@ -483,6 +488,9 @@ export function validateCoverageAccounting(rootDir = REPO_ROOT, shardPlan = { fa
 			for (const dep of requiredAggregateDeps) {
 				if (!aggregateJob.includes(`- ${dep}`)) {
 					errors.push(`ci.yml job "ci-verification" must depend on "${dep}"`);
+				}
+				if (!aggregateJob.includes(`"${dep}"`)) {
+					errors.push(`ci.yml job "ci-verification" required-check script must verify "${dep}"`);
 				}
 			}
 		}

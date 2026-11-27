@@ -88,9 +88,14 @@ async function acquirePublicationLock(lockPath, timeoutMs = DEFAULT_LOCK_TIMEOUT
 			const fd = openSync(lockPath, "wx", 0o600);
 			try {
 				writeFileSync(fd, JSON.stringify({ pid: process.pid, token, startedAt: Date.now() }));
-			} finally {
+			} catch (writeErr) {
 				closeSync(fd);
+				try {
+					unlinkSync(lockPath);
+				} catch {}
+				throw writeErr;
 			}
+			closeSync(fd);
 			return () => {
 				try {
 					const raw = readFileSync(lockPath, "utf8");
@@ -102,25 +107,38 @@ async function acquirePublicationLock(lockPath, timeoutMs = DEFAULT_LOCK_TIMEOUT
 			};
 		} catch (error) {
 			if (error?.code !== "EEXIST") throw error;
-			// Inspect whether an existing lock belongs to a dead process or has expired.
+			// Inspect whether an existing lock belongs to a dead process or has expired; serialize
+			// stale-lock reaping through a short-lived sibling `.reap` lock so two waiters cannot
+			// unlink a fresh lock acquired by the other.
 			try {
-				const stat = lstatSync(lockPath);
-				const ageMs = Date.now() - stat.mtimeMs;
-				let stale = ageMs > STALE_LOCK_MAX_AGE_MS;
-				try {
-					const holder = JSON.parse(readFileSync(lockPath, "utf8"));
-					if (typeof holder?.pid === "number" && !isPidAlive(holder.pid)) {
-						stale = true;
-					}
-				} catch {
-					// Lock file may still be initializing; wait briefly before treating as stale.
-					if (ageMs > 5_000) stale = true;
-				}
-				if (stale) {
+				const isStale = () => {
+					const stat = lstatSync(lockPath);
+					const ageMs = Date.now() - stat.mtimeMs;
+					let stale = ageMs > STALE_LOCK_MAX_AGE_MS;
 					try {
-						unlinkSync(lockPath);
+						const holder = JSON.parse(readFileSync(lockPath, "utf8"));
+						if (typeof holder?.pid === "number" && !isPidAlive(holder.pid)) {
+							stale = true;
+						}
 					} catch {
-						// Another waiter already cleared it.
+						if (ageMs > 5_000) stale = true;
+					}
+					return stale;
+				};
+				if (isStale()) {
+					const reapLock = `${lockPath}.reap`;
+					try {
+						const rfd = openSync(reapLock, "wx", 0o600);
+						closeSync(rfd);
+						try {
+							if (lstatExists(lockPath) && isStale()) unlinkSync(lockPath);
+						} finally {
+							try {
+								unlinkSync(reapLock);
+							} catch {}
+						}
+					} catch {
+						// Another waiter is currently reaping or lock vanished.
 					}
 					continue;
 				}
@@ -224,7 +242,7 @@ export async function publishStudioUiDirectory(sourceDir, outDir, options) {
 			}
 			throw error;
 		} finally {
-			if (movedOld && existsSync(stale) && lstatExists(target)) {
+			if (movedOld && lstatExists(stale) && lstatExists(target)) {
 				rmSync(stale, { recursive: true, force: true });
 			}
 		}

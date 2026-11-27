@@ -2,11 +2,11 @@
 
 ## 1. Design Principles
 
-Endophasia's verification suite mixes three fundamentally different workloads under one root discovery pattern (`tests/**/*.test.ts`, 339 files on `feat/ci-reliability-001`):
+Endophasia's verification suite mixes three fundamentally different workloads under one root discovery pattern (`tests/**/*.test.ts`, 341 files on `feat/ci-reliability-001`):
 
 1. **Pure and lightweight in-process tests (`fast`, 148 files, ~64.7 s cumulative hosted time):** protocol parsers, schema/projection contracts, model logic, digest/replay checks, and lightweight filesystem assertions.
 2. **Real headless Chromium browser and screenshot suites (`browser`, 27 files, ~538.3 s cumulative hosted time):** full Studio UI flows served over loopback HTTP and driven over Chrome DevTools Protocol (`ENDO_REQUIRE_BROWSER=1`).
-3. **Real child-process, RPC, containment, and concurrency suites (`process`, 164 files, ~2,767.4 s cumulative hosted time):** fake Pi RPC attachments, ACP v2 JSON-RPC agents, governed initial-continuation AA servers, multi-process lock/barrier concurrency tests, CLI end-to-end invocations, and HTTP/Unix control-socket suites.
+3. **Real child-process, RPC, containment, and concurrency suites (`process`, 166 files, ~2,770.4 s cumulative hosted time):** fake Pi RPC attachments, ACP v2 JSON-RPC agents, governed initial-continuation AA servers, multi-process lock/barrier concurrency tests, CLI end-to-end invocations, and HTTP/Unix control-socket suites.
 
 Previously, CI ran all 336 files through Vitest's alphabetical `--shard=k/3` with default automatic worker parallelism (`forks` = 4 workers on 4-vCPU `ubuntu-24.04` runners). That architecture caused four compounding problems:
 
@@ -24,8 +24,8 @@ Classification is deterministic from file path, static source signals, and hoste
 | Class | Selection Rule | Default `maxWorkers` (4-vCPU CI) | Isolation & Environment |
 |---|---|---|---|
 | `fast` | No browser signals, no child-process/server/Studio-UI signals, and hosted duration `< 5000 ms` | `4` (up to `8` locally) | Vitest `forks` with `isolate: true`; `ENDO_SKIP_STUDIO_UI_PREBUILD=1`; scratch `ENDO_DIGEST_KEY_FILE`; `XDG_RUNTIME_DIR=""` |
-| `browser` | `*-browser.test.ts`, `*-shots.test.ts`, `endo-workbench-attempt-page.test.ts`, or `Browser.launch(` / `ENDO_REQUIRE_BROWSER` (excl. static `ci.yml` check in `release-readiness.test.ts`) | `2` (strictly capped) | Vitest `forks` with `isolate: true`; shared prebuilt `studio-ui/dist` from `tests/global-setup.ts`; `ENDO_REQUIRE_BROWSER=1` |
-| `process` | **Safe conservative default** for all real child-process, RPC, server, AA, CLI, slow (`>= 5000 ms`), and newly added unmeasured non-browser tests | `3` (leaving `>= 1` vCPU headroom for child processes; up to `6` locally) | Vitest `forks` with `isolate: true`; shared prebuilt `studio-ui/dist` from `tests/global-setup.ts`; scratch `ENDO_DIGEST_KEY_FILE`; `XDG_RUNTIME_DIR=""` |
+| `browser` | `*-browser.test.ts`, `*-shots.test.ts`, `endo-workbench-attempt-page.test.ts`, or `Browser.launch(` / `ENDO_REQUIRE_BROWSER` (excl. static `ci.yml` check in `release-readiness.test.ts`) | `2` (strictly capped) | Vitest `forks` with `isolate: true`; execution-owned immutable Studio UI dir (`endo-vitest-studio-ui-*`) from `tests/global-setup.ts`; `ENDO_REQUIRE_BROWSER=1` |
+| `process` | **Safe conservative default** for all real child-process, RPC, server, AA, CLI, slow (`>= 5000 ms`), and newly added unmeasured non-browser tests | `3` (leaving `>= 1` vCPU headroom for child processes; up to `6` locally) | Vitest `forks` with `isolate: true`; execution-owned immutable Studio UI dir + writer-locked `studio-ui/dist` checkout sync from `tests/global-setup.ts`; scratch `ENDO_DIGEST_KEY_FILE`; `XDG_RUNTIME_DIR=""` |
 
 **Fail-safe property for new test files:** Any newly added `tests/**/*.test.ts` file without an entry in `tests/test-durations.json` automatically lands in `browser` (if browser-based) or `process` (conservative executed default with `5000 ms` LPT weight). No new test can ever be silently dropped, and feature branches (such as PRs `#192`–`#196`) never hit merge conflicts on a hardcoded test list.
 

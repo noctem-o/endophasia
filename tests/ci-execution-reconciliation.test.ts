@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	classifyFailureSignature,
 	escapeMarkdownCell,
+	formatMarkdownCodeSpan,
 	reconcileVitestExecution,
 	sanitizeBoundedLabel,
 	validateStrictPassthroughArgs,
@@ -243,7 +244,7 @@ describe("F3 fail-closed execution accounting (unit matrix)", () => {
 		expect(zeroRes.ok).toBe(false);
 		expect(zeroRes.errors.some((e) => e.code === "ZERO_TEST_FILE")).toBe(true);
 
-		// Inconsistent aggregate totals
+		// Inconsistent aggregate totals (both numTotalTests mismatch and inflated numPendingTests mismatch)
 		const badTotalsReport = writeSyntheticReport(scratch, fakeRepo, {
 			startTime: t0,
 			numTotalTests: 99,
@@ -259,6 +260,40 @@ describe("F3 fail-closed execution accounting (unit matrix)", () => {
 		});
 		expect(badTotalsRes.ok).toBe(false);
 		expect(badTotalsRes.errors.some((e) => e.code === "AGGREGATE_MISMATCH")).toBe(true);
+
+		const inflatedPendingReport = writeSyntheticReport(scratch, fakeRepo, {
+			startTime: t0,
+			numTotalTests: 2,
+			numPassedTests: 2,
+			numPendingTests: 99,
+		});
+		const inflatedPendingRes = reconcileVitestExecution({
+			repoRoot: fakeRepo,
+			expectedFiles: ["tests/alpha.test.ts", "tests/beta.test.ts"],
+			reportPath: inflatedPendingReport,
+			startedAtMs: t0 - 50,
+			endedAtMs: t0 + 100,
+			vitestExitCode: 0,
+		});
+		expect(inflatedPendingRes.ok).toBe(false);
+		expect(inflatedPendingRes.errors.some((e) => e.code === "AGGREGATE_MISMATCH")).toBe(true);
+
+		// Empty expected set must fail closed
+		const emptyExpectedRes = reconcileVitestExecution({
+			repoRoot: fakeRepo,
+			expectedFiles: [],
+			reportPath: writeSyntheticReport(scratch, fakeRepo, {
+				startTime: t0,
+				numTotalTests: 0,
+				numPassedTests: 0,
+				testResults: [],
+			}),
+			startedAtMs: t0 - 50,
+			endedAtMs: t0 + 100,
+			vitestExitCode: 0,
+		});
+		expect(emptyExpectedRes.ok).toBe(false);
+		expect(emptyExpectedRes.errors.some((e) => e.code === "EMPTY_EXPECTED_SET")).toBe(true);
 	});
 
 	it("fails on missing, corrupt, and stale reports, and never overrides a nonzero Vitest exit code", () => {
@@ -279,9 +314,9 @@ describe("F3 fail-closed execution accounting (unit matrix)", () => {
 		expect(missing.ok).toBe(false);
 		expect(missing.errors.some((e) => e.code === "MISSING_REPORT")).toBe(true);
 
-		// Corrupt JSON report
+		// Corrupt JSON report containing a secret token: fails closed and NEVER echoes raw JSON excerpt (F6 HIGH #1).
 		const corruptPath = join(scratch, "corrupt.json");
-		writeFileSync(corruptPath, '{"success": true, "testResults": [', "utf8");
+		writeFileSync(corruptPath, '{"success": true, "failureMessages": ["Bearer sk-corrupt-secret-12345"', "utf8");
 		const corrupt = reconcileVitestExecution({
 			repoRoot: fakeRepo,
 			expectedFiles: ["tests/alpha.test.ts"],
@@ -292,6 +327,7 @@ describe("F3 fail-closed execution accounting (unit matrix)", () => {
 		});
 		expect(corrupt.ok).toBe(false);
 		expect(corrupt.errors.some((e) => e.code === "CORRUPT_REPORT")).toBe(true);
+		expect(JSON.stringify(corrupt.errors)).not.toContain("sk-corrupt-secret-12345");
 
 		// Stale report (mtime older than invocation start)
 		const stalePath = writeSyntheticReport(scratch, fakeRepo, { startTime: t0 - 60_000 });
@@ -383,10 +419,14 @@ describe("F3 fail-closed execution accounting (unit matrix)", () => {
 		]);
 	});
 
-	it("rejects weakening passthrough flags in strict accounting mode and separates local partial runs", () => {
+	it("rejects all passthrough flags unconditionally in strict accounting mode and separates local partial runs", () => {
 		expect(validateStrictPassthroughArgs(["-t", "subset"]).length).toBeGreaterThan(0);
 		expect(validateStrictPassthroughArgs(["--no-isolate"]).length).toBeGreaterThan(0);
 		expect(validateStrictPassthroughArgs(["--passWithNoTests"]).length).toBeGreaterThan(0);
+		expect(validateStrictPassthroughArgs(["--retry=3"]).length).toBeGreaterThan(0);
+		expect(validateStrictPassthroughArgs(["--config", "other.ts"]).length).toBeGreaterThan(0);
+		expect(validateStrictPassthroughArgs(["--allowOnly"]).length).toBeGreaterThan(0);
+		expect(validateStrictPassthroughArgs(["--no-file-parallelism"]).length).toBeGreaterThan(0);
 		expect(validateStrictPassthroughArgs(["tests/only-one.test.ts"]).length).toBeGreaterThan(0);
 
 		const fastCount = partitionTestFiles(REPO_ROOT).classes.fast.length;
@@ -404,7 +444,7 @@ describe("F3 fail-closed execution accounting (unit matrix)", () => {
 			{ cwd: REPO_ROOT, encoding: "utf8" },
 		);
 		expect(rejected.status).toBe(2);
-		expect(rejected.stderr).toMatch(/forbidden passthrough argument/i);
+		expect(rejected.stderr).toMatch(/passthrough argument not allowed/i);
 
 		// Without --strict-accounting, targeted local runs remain usable and clearly announce partial-local mode.
 		const dryLocal = spawnSync(
@@ -549,5 +589,11 @@ describe("F3 real installed Vitest integration & F6 confidentiality", () => {
 		expect(escaped).toContain("\\|");
 		expect(escaped).toContain("\\`code\\`");
 		expect(escaped).toContain("\\<script\\>");
+
+		// Inline code spans must NOT backslash-escape dots/hyphens/underscores and must fence embedded backticks safely.
+		expect(formatMarkdownCodeSpan("tests/ci-observability.test.ts")).toBe("`tests/ci-observability.test.ts`");
+		expect(formatMarkdownCodeSpan("MISSING_EXPECTED_FILES")).toBe("`MISSING_EXPECTED_FILES`");
+		expect(formatMarkdownCodeSpan("foo`bar|baz")).toBe("``foo`bar/baz``");
+		expect(formatMarkdownCodeSpan("`leading`")).toBe("`` `leading` ``");
 	});
 });

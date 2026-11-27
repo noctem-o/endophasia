@@ -105,6 +105,9 @@ describe("CI observability and history analysis", () => {
 		const summaryMd = readFileSync(summaryFile, "utf8");
 		expect(summaryMd).toContain("Test Partition: `fast`");
 		expect(summaryMd).toContain("PASS [RECONCILED]");
+		// Code spans in the slowest-files table must not contain literal backslash escapes on dots/hyphens.
+		expect(summaryMd).toMatch(/\| `tests\/[A-Za-z0-9._-]+\.test\.ts` \|/);
+		expect(summaryMd).not.toContain("\\.test\\.ts");
 
 		// Verify a failing Vitest invocation propagates its non-zero exit code intact.
 		const failDiag = join(scratch, "fail-diag.json");

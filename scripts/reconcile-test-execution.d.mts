@@ -58,6 +58,7 @@ export function normalizeReportedFilePath(
 ): { readonly ok: true; readonly relPath: string } | { readonly ok: false; readonly reason: string };
 export function sanitizeBoundedLabel(value: unknown, maxLen?: number): string;
 export function escapeMarkdownCell(value: unknown, maxLen?: number): string;
+export function formatMarkdownCodeSpan(value: unknown, maxLen?: number): string;
 export function classifyFailureSignature(
 	failureMessages: readonly string[],
 	suiteMessage?: string,

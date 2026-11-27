@@ -25,6 +25,7 @@ import { availableParallelism, cpus, freemem, platform, release, tmpdir, totalme
 import { dirname, join } from "node:path";
 import {
 	escapeMarkdownCell,
+	formatMarkdownCodeSpan,
 	reconcileVitestExecution,
 	validateStrictPassthroughArgs,
 } from "./reconcile-test-execution.mjs";
@@ -204,70 +205,79 @@ const elapsedMs = endedAtMs - startedAtMs;
 const vitestExitCode = result.status ?? 1;
 const vitestSignal = result.signal ?? null;
 
+let finalExitCode = vitestExitCode;
 let reconciliation = null;
-if (effectiveJsonOut) {
-	reconciliation = reconcileVitestExecution({
-		repoRoot: REPO_ROOT,
-		expectedFiles: allocation.files,
-		reportPath: effectiveJsonOut,
-		startedAtMs,
-		endedAtMs,
-		vitestExitCode,
-		vitestSignal,
-		permittedOptionalWholeFileSkips: PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS,
-	});
-}
+try {
+	if (effectiveJsonOut) {
+		reconciliation = reconcileVitestExecution({
+			repoRoot: REPO_ROOT,
+			expectedFiles: allocation.files,
+			reportPath: effectiveJsonOut,
+			startedAtMs,
+			endedAtMs,
+			vitestExitCode,
+			vitestSignal,
+			permittedOptionalWholeFileSkips: PERMITTED_OPTIONAL_WHOLE_FILE_SKIPS,
+		});
+	}
 
-// Fail-closed exit code calculation:
-// - Never mask a non-zero Vitest exit code.
-// - In strict accounting mode, Vitest exit 0 NEVER overrides a failed reconciliation.
-const finalExitCode =
-	vitestExitCode !== 0 ? vitestExitCode : strictAccounting && (!reconciliation || !reconciliation.ok) ? 1 : 0;
+	// Fail-closed exit code calculation:
+	// - Never mask a non-zero Vitest exit code.
+	// - In strict accounting mode, Vitest exit 0 NEVER overrides a failed reconciliation.
+	finalExitCode =
+		vitestExitCode !== 0 ? vitestExitCode : strictAccounting && (!reconciliation || !reconciliation.ok) ? 1 : 0;
 
-if (strictAccounting && reconciliation) {
-	if (reconciliation.ok) {
-		console.log(
-			`[ci-accounting] PASS reconciled ${reconciliation.summary.observedFileCount}/${reconciliation.summary.expectedFileCount} exact files ` +
-				`(${reconciliation.summary.passedTests} passed, ${reconciliation.summary.skippedTests} skipped, ` +
-				`${reconciliation.summary.permittedWholeFileSkips.length} permitted optional whole-file skip(s))`,
-		);
-	} else {
-		console.error(
-			`[ci-accounting] FAIL execution reconciliation failed (${reconciliation.errors.length} issue(s)):`,
-		);
-		for (const err of reconciliation.errors) {
-			console.error(`  - [${err.code}] ${err.detail}`);
+	if (strictAccounting && reconciliation) {
+		if (reconciliation.ok) {
+			console.log(
+				`[ci-accounting] PASS reconciled ${reconciliation.summary.observedFileCount}/${reconciliation.summary.expectedFileCount} exact files ` +
+					`(${reconciliation.summary.passedTests} passed, ${reconciliation.summary.skippedTests} skipped, ` +
+					`${reconciliation.summary.permittedWholeFileSkips.length} permitted optional whole-file skip(s))`,
+			);
+		} else {
+			console.error(
+				`[ci-accounting] FAIL execution reconciliation failed (${reconciliation.errors.length} issue(s)):`,
+			);
+			for (const err of reconciliation.errors) {
+				console.error(`  - [${err.code}] ${err.detail}`);
+			}
 		}
 	}
-}
 
-if (diagnosticsOut || writeStepSummary) {
-	const summary = buildConfidentialSummary({
-		executionMode,
-		cls,
-		shardIndex,
-		shardCount,
-		maxWorkers,
-		allocation,
-		startedAt: startedAt.toISOString(),
-		elapsedMs,
-		vitestExitCode,
-		finalExitCode,
-		signal: vitestSignal,
-		reconciliation,
-	});
-	if (diagnosticsOut) {
-		mkdirSync(dirname(diagnosticsOut), { recursive: true });
-		writeFileSync(diagnosticsOut, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+	if (diagnosticsOut || writeStepSummary) {
+		const summary = buildConfidentialSummary({
+			executionMode,
+			cls,
+			shardIndex,
+			shardCount,
+			maxWorkers,
+			allocation,
+			startedAt: startedAt.toISOString(),
+			elapsedMs,
+			vitestExitCode,
+			finalExitCode,
+			signal: vitestSignal,
+			reconciliation,
+		});
+		if (diagnosticsOut) {
+			mkdirSync(dirname(diagnosticsOut), { recursive: true });
+			writeFileSync(diagnosticsOut, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+		}
+		if (writeStepSummary && process.env.GITHUB_STEP_SUMMARY) {
+			const md = formatStepSummaryMarkdown(summary);
+			writeFileSync(process.env.GITHUB_STEP_SUMMARY, md, { flag: "a", encoding: "utf8" });
+		}
 	}
-	if (writeStepSummary && process.env.GITHUB_STEP_SUMMARY) {
-		const md = formatStepSummaryMarkdown(summary);
-		writeFileSync(process.env.GITHUB_STEP_SUMMARY, md, { flag: "a", encoding: "utf8" });
+} catch (error) {
+	console.error(
+		`[ci-accounting] ERROR during post-run reconciliation/diagnostics (${error instanceof Error ? error.name : "Error"})`,
+	);
+	// Preserve Vitest's specific non-zero exit code if it failed; otherwise fail closed with exit 1.
+	if (finalExitCode === 0) finalExitCode = 1;
+} finally {
+	if (ownedReportTempDir) {
+		rmSync(ownedReportTempDir, { recursive: true, force: true });
 	}
-}
-
-if (ownedReportTempDir) {
-	rmSync(ownedReportTempDir, { recursive: true, force: true });
 }
 
 process.exit(finalExitCode);
@@ -396,7 +406,7 @@ function formatStepSummaryMarkdown(summary) {
 	);
 	if (summary.reconciliation.permittedWholeFileSkips.length > 0) {
 		lines.push(
-			`- **Permitted optional whole-file skips:** ${summary.reconciliation.permittedWholeFileSkips.length} (${summary.reconciliation.permittedWholeFileSkips.map((s) => `\`${escapeMarkdownCell(s.file, 80)}\``).join(", ")})`,
+			`- **Permitted optional whole-file skips:** ${summary.reconciliation.permittedWholeFileSkips.length} (${summary.reconciliation.permittedWholeFileSkips.map((s) => formatMarkdownCodeSpan(s.file, 80)).join(", ")})`,
 		);
 	}
 	lines.push("");
@@ -405,7 +415,7 @@ function formatStepSummaryMarkdown(summary) {
 		lines.push("#### Execution Accounting Issues");
 		lines.push("");
 		for (const e of summary.reconciliation.errors.slice(0, 10)) {
-			lines.push(`- \`${escapeMarkdownCell(e.code, 48)}\`: ${escapeMarkdownCell(e.detail, 180)}`);
+			lines.push(`- ${formatMarkdownCodeSpan(e.code, 48)}: ${escapeMarkdownCell(e.detail, 180)}`);
 		}
 		lines.push("");
 	}
@@ -418,7 +428,7 @@ function formatStepSummaryMarkdown(summary) {
 		for (const f of summary.failures.slice(0, 15)) {
 			const loc = f.location ? `L${f.location.line}:C${f.location.column}` : "—";
 			lines.push(
-				`| \`${escapeMarkdownCell(f.file, 90)}\` | ${escapeMarkdownCell(f.fullName, 120)} | \`${escapeMarkdownCell(f.category, 32)}\` | \`${escapeMarkdownCell(f.errorName, 48)}\` | ${loc} |`,
+				`| ${formatMarkdownCodeSpan(f.file, 90)} | ${escapeMarkdownCell(f.fullName, 120)} | ${formatMarkdownCodeSpan(f.category, 32)} | ${formatMarkdownCodeSpan(f.errorName, 48)} | ${loc} |`,
 			);
 		}
 		lines.push("");
@@ -431,7 +441,7 @@ function formatStepSummaryMarkdown(summary) {
 		lines.push("|---|---:|---|---:|");
 		for (const f of summary.slowestFiles.slice(0, 10)) {
 			lines.push(
-				`| \`${escapeMarkdownCell(f.file, 90)}\` | ${(f.durationMs / 1000).toFixed(2)}s | ${escapeMarkdownCell(f.status, 16)} | ${f.passed}/${f.passed + f.failed + f.skipped} |`,
+				`| ${formatMarkdownCodeSpan(f.file, 90)} | ${(f.durationMs / 1000).toFixed(2)}s | ${escapeMarkdownCell(f.status, 16)} | ${f.passed}/${f.passed + f.failed + f.skipped} |`,
 			);
 		}
 		lines.push("");

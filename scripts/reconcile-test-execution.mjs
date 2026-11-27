@@ -6,70 +6,35 @@
 //   Complete CI partition runs must reconcile the exact expected file set against a fresh, valid JSON
 //   report written by that exact Vitest invocation — failing closed on missing files, unexpected files,
 //   duplicate entries, missing/corrupt/stale reports, zero-test files, unexpected whole-file skips of
-//   mandatory suites, inconsistent totals, or nonzero exit status.
+//   mandatory suites, inconsistent totals, empty expected sets, or nonzero exit status.
 //
 // Confidentiality invariant (F6):
 //   Sanitized diagnostic artifacts and `$GITHUB_STEP_SUMMARY` tables emit only host-generated failure
 //   categories, bounded error class names, normalized relative paths, sanitized test labels, and source
-//   locations — never raw assertion bodies, expected/received diffs, environment variables, tokens, or
-//   private fixture payloads. Full output remains scoped to the standard GitHub Actions job log.
+//   locations — never raw assertion bodies, raw JSON.parse error snippets, expected/received diffs,
+//   environment variables, tokens, or private fixture payloads. Full output remains scoped to the
+//   standard GitHub Actions job log.
 
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, posix, relative, resolve } from "node:path";
 
 /**
- * Flags/patterns forbidden in `--strict-accounting` mode because they can narrow discovery, skip tests,
- * allow empty runs, or weaken isolation.
- */
-const FORBIDDEN_STRICT_FLAGS = [
-	"-t",
-	"--testNamePattern",
-	"--test-name-pattern",
-	"--include",
-	"--exclude",
-	"--passWithNoTests",
-	"--pass-with-no-tests",
-	"--no-isolate",
-	"--isolate=false",
-	"--changed",
-	"--related",
-	"--bail",
-	"--shard",
-	"--grep",
-	"--file-parallelism=false",
-	"--only",
-];
-
-/**
- * Validates that passthrough arguments cannot weaken strict complete-partition CI execution.
- * Returns an array of violation messages (empty when safe).
+ * In `--strict-accounting` mode, NO passthrough Vitest arguments are permitted (all extra flags such as
+ * `-t`, `--config`, `--retry`, `--allowOnly`, `--no-isolate`, `--no-file-parallelism`, `--reporter`,
+ * `--outputFile`, etc. are rejected unconditionally so strict CI verification cannot be weakened).
  * @param {readonly string[]} passthroughArgs
  * @returns {string[]}
  */
 export function validateStrictPassthroughArgs(passthroughArgs) {
-	/** @type {string[]} */
-	const violations = [];
-	for (const raw of passthroughArgs) {
-		const arg = String(raw);
-		const flagName = arg.split("=", 1)[0];
-		if (
-			FORBIDDEN_STRICT_FLAGS.includes(arg) ||
-			FORBIDDEN_STRICT_FLAGS.includes(flagName) ||
-			arg === "--isolate=false"
-		) {
-			violations.push(`forbidden passthrough argument in strict accounting mode: ${arg}`);
-			continue;
-		}
-		if (!arg.startsWith("-")) {
-			violations.push(`positional filter not allowed in strict accounting mode: ${arg}`);
-		}
-	}
-	return violations;
+	if (!Array.isArray(passthroughArgs) || passthroughArgs.length === 0) return [];
+	return passthroughArgs.map(
+		(raw) => `passthrough argument not allowed in strict accounting mode: ${sanitizeBoundedLabel(raw, 80)}`,
+	);
 }
 
 /**
  * Normalizes a reported file path from Vitest's JSON reporter into a POSIX repo-relative path.
- * Rejects empty, non-string, escaping (`..`), or outside-repo paths.
+ * Rejects empty, non-string, escaping (`..`), or outside-repo paths without echoing raw error strings.
  * @param {unknown} rawPath
  * @param {string} canonicalRepoRoot
  * @returns {{ ok: true, relPath: string } | { ok: false, reason: string }}
@@ -83,7 +48,11 @@ export function normalizeReportedFilePath(rawPath, canonicalRepoRoot) {
 		const candidate = isAbsolute(rawPath) ? rawPath : resolve(canonicalRepoRoot, rawPath);
 		resolved = lstatExistsSafe(candidate) ? realpathSync(candidate) : resolve(candidate);
 	} catch (error) {
-		return { ok: false, reason: `unresolvable path (${String(error)})` };
+		const code =
+			typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+				? error.code
+				: "unresolvable";
+		return { ok: false, reason: `unresolvable reported file path (${sanitizeBoundedLabel(code, 32)})` };
 	}
 	const rel = relative(canonicalRepoRoot, resolved).split("\\").join(posix.sep);
 	if (!rel || rel === "." || rel.startsWith("../") || rel === ".." || isAbsolute(rel)) {
@@ -120,13 +89,30 @@ export function sanitizeBoundedLabel(value, maxLen = 180) {
 }
 
 /**
- * Escapes characters that could inject Markdown headings, code spans, HTML, or table cell breaks into
- * `$GITHUB_STEP_SUMMARY`.
+ * Escapes plain-text (non-code-span) Markdown cells so headings, links, HTML, emphasis, and table pipes
+ * cannot inject formatting into `$GITHUB_STEP_SUMMARY`.
  * @param {unknown} value
  * @param {number} [maxLen]
  */
 export function escapeMarkdownCell(value, maxLen = 180) {
 	return sanitizeBoundedLabel(value, maxLen).replace(/[\\`*_{}[\]()#+\-.!|<>]/g, "\\$&");
+}
+
+/**
+ * Formats a value safely as a CommonMark/GFM inline code span inside a Markdown table cell.
+ * Does NOT backslash-escape `.`, `-`, `_` (which would render literally inside backticks); instead replaces
+ * table-breaking pipes and fences with a backtick run strictly longer than any backtick run in the content
+ * so embedded backticks can never break out of the code span.
+ * @param {unknown} value
+ * @param {number} [maxLen]
+ */
+export function formatMarkdownCodeSpan(value, maxLen = 120) {
+	const clean = sanitizeBoundedLabel(value, maxLen).replace(/\|/g, "/");
+	const runs = clean.match(/`+/g);
+	const maxRun = runs ? Math.max(...runs.map((r) => r.length)) : 0;
+	const fence = "`".repeat(maxRun + 1);
+	const needsPad = clean.startsWith("`") || clean.endsWith("`");
+	return needsPad ? `${fence} ${clean} ${fence}` : `${fence}${clean}${fence}`;
 }
 
 /**
@@ -163,8 +149,8 @@ export function classifyFailureSignature(failureMessages, suiteMessage = "") {
 
 /**
  * Reconciles the expected test file allocation against the actual JSON report written by Vitest.
- * Fails closed on any missing/unexpected/duplicate file, missing/corrupt/stale report, zero-test file,
- * unpermitted whole-file skip, inconsistent aggregate totals, or nonzero exit status.
+ * Fails closed on empty expected sets, missing/unexpected/duplicate files, missing/corrupt/stale reports,
+ * zero-test files, unpermitted whole-file skips, inconsistent aggregate totals, or nonzero exit status.
  *
  * @param {{
  *   repoRoot: string,
@@ -194,6 +180,9 @@ export function reconcileVitestExecution(opts) {
 	/** @type {Array<{ code: string, detail: string }>} */
 	const errors = [];
 
+	if (!Array.isArray(expectedFiles) || expectedFiles.length === 0) {
+		errors.push({ code: "EMPTY_EXPECTED_SET", detail: "Expected test file set is empty" });
+	}
 	if (vitestSignal) {
 		errors.push({ code: "VITEST_SIGNALLED", detail: `Vitest terminated by signal ${vitestSignal}` });
 	}
@@ -246,9 +235,12 @@ export function reconcileVitestExecution(opts) {
 						parsed = obj;
 					}
 				} catch (error) {
+					// Never interpolate V8's SyntaxError.message, which includes raw JSON excerpts that may
+					// contain unredacted failureMessages from the Vitest report buffer (F6 confidentiality).
+					const errName = error instanceof Error ? sanitizeBoundedLabel(error.name, 48) : "SyntaxError";
 					errors.push({
 						code: "CORRUPT_REPORT",
-						detail: `Failed to parse Vitest JSON report: ${sanitizeBoundedLabel(error instanceof Error ? error.message : error, 120)}`,
+						detail: `Failed to parse Vitest JSON report (${errName})`,
 					});
 				}
 			}
@@ -259,6 +251,7 @@ export function reconcileVitestExecution(opts) {
 	let sumPassed = 0;
 	let sumFailed = 0;
 	let sumSkipped = 0;
+	let sumPendingRunning = 0;
 	let sumTodo = 0;
 	let sumTotal = 0;
 
@@ -384,7 +377,9 @@ export function reconcileVitestExecution(opts) {
 				if (assertions.length === 0) {
 					zeroTestFiles.push(relFile);
 				} else if (passed === 0 && failed === 0) {
-					const permittedReason = permittedOptionalWholeFileSkips[relFile];
+					const permittedReason = Object.hasOwn(permittedOptionalWholeFileSkips, relFile)
+						? permittedOptionalWholeFileSkips[relFile]
+						: undefined;
 					if (permittedReason && skipped > 0) {
 						permittedWholeFileSkipsObserved.push({ file: relFile, skipped, reason: permittedReason });
 					} else {
@@ -395,6 +390,7 @@ export function reconcileVitestExecution(opts) {
 				sumPassed += passed;
 				sumFailed += failed;
 				sumSkipped += skipped;
+				sumPendingRunning += pendingRunning;
 				sumTodo += todo;
 				sumTotal += assertions.length;
 
@@ -409,17 +405,19 @@ export function reconcileVitestExecution(opts) {
 				});
 			}
 
-			// Reconcile aggregate counts against summed per-file assertion results.
+			// Reconcile aggregate counts strictly against summed per-file assertion results (matching Vitest 4.1.9 JsonReporter).
+			const summedCategorized = sumPassed + sumFailed + sumSkipped + sumPendingRunning + sumTodo;
 			if (
+				summedCategorized !== sumTotal ||
 				sumTotal !== parsed.numTotalTests ||
 				sumPassed !== parsed.numPassedTests ||
 				sumFailed !== parsed.numFailedTests ||
 				sumTodo !== parsed.numTodoTests ||
-				sumSkipped > parsed.numPendingTests
+				sumSkipped + sumPendingRunning !== parsed.numPendingTests
 			) {
 				errors.push({
 					code: "AGGREGATE_MISMATCH",
-					detail: `Aggregate mismatch: summed(total=${sumTotal}, passed=${sumPassed}, failed=${sumFailed}, skipped=${sumSkipped}, todo=${sumTodo}) vs report(total=${parsed.numTotalTests}, passed=${parsed.numPassedTests}, failed=${parsed.numFailedTests}, pending=${parsed.numPendingTests}, todo=${parsed.numTodoTests})`,
+					detail: `Aggregate mismatch: summed(total=${sumTotal}, passed=${sumPassed}, failed=${sumFailed}, skipped+pending=${sumSkipped + sumPendingRunning}, todo=${sumTodo}) vs report(total=${parsed.numTotalTests}, passed=${parsed.numPassedTests}, failed=${parsed.numFailedTests}, pending=${parsed.numPendingTests}, todo=${parsed.numTodoTests})`,
 				});
 			}
 			if (parsed.numFailedTests !== 0 || sumFailed !== 0) {

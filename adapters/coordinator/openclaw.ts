@@ -1,6 +1,8 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
+	accessSync,
+	constants,
 	existsSync,
 	lstatSync,
 	mkdirSync,
@@ -8,6 +10,7 @@ import {
 	readFileSync,
 	realpathSync,
 	rmSync,
+	statSync,
 	writeFileSync,
 } from "node:fs";
 import { get, type IncomingMessage } from "node:http";
@@ -25,10 +28,14 @@ import {
 	ENDO_COORDINATOR_INSTRUCTIONS_V0,
 	ENDO_COORDINATOR_TOOL_DEFINITION_V0,
 	ENDO_COORDINATOR_TOOL_V0,
+	type EndoCoordinatorBriefDiagnosticsV1,
 	type EndoCoordinatorBriefRefusalV0,
 	type EndoCoordinatorBriefRequestV0,
 	type EndoCoordinatorBriefResultV0,
 	type EndoCoordinatorBriefSubstrateV0,
+	type EndoCoordinatorDiagnosticStageV1,
+	type EndoCoordinatorExchangeDiagnosticV1,
+	type EndoCoordinatorTerminationClassV1,
 } from "../../runtime/contracts/coordinator-brief.ts";
 import { endoDigestKeyV0 } from "../../runtime/contracts/keyed-digest.ts";
 import { EndoCaptureLogV0 } from "../openai-proxy/capture-log.ts";
@@ -48,6 +55,7 @@ import {
 } from "./status.ts";
 import type { coordinatorWireV0 } from "./wire.ts";
 
+export const ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0 = Object.freeze(["2026.11.7", "2026.11.10"] as const);
 export const ENDO_COORDINATOR_HARNESS_V0 = "OpenClaw 2026.11.7";
 const HARNESS = ENDO_COORDINATOR_HARNESS_V0;
 const PROVIDER = "endo-local";
@@ -86,7 +94,19 @@ export default { id: ${JSON.stringify(PLUGIN)}, name: "Endophasia Coordinator", 
       return (model, context, options) => streamFn(model, context, { ...options,
         onPayload: async (payload, m) => {
           const next = await options?.onPayload?.(payload, m) ?? payload;
-          delete next.max_completion_tokens;
+          for (const k of [
+            "max_completion_tokens",
+            "n_predict",
+            "reasoning_effort",
+            "reasoning_budget_tokens",
+            "thinking_budget_tokens",
+            "reasoning_budget",
+            "reasoning_format",
+            "reasoning",
+            "thinking",
+            "chat_template_kwargs",
+            "enable_thinking",
+          ]) delete next[k];
           Object.assign(next, settings);
           return next;
         }
@@ -164,20 +184,49 @@ function configure(
 	});
 }
 
+const MAX_CAPTURED_STDERR_BYTES_V1 = 8192;
+
 const execute = (args: string[], signal: AbortSignal, timeoutMs: number) =>
 	new Promise<{ ok: boolean; stderr: string }>((resolve) => {
-		execFile(
-			"/usr/bin/bwrap",
-			args,
-			{
-				env: COORDINATOR_ENV_V0,
-				timeout: timeoutMs + 20_000,
-				killSignal: "SIGKILL",
-				maxBuffer: 512 * 1024,
-				signal,
-			},
-			(error, _stdout, stderr) => resolve({ ok: error === null, stderr }),
-		);
+		if (signal.aborted) {
+			resolve({ ok: false, stderr: "" });
+			return;
+		}
+		// Discard stdout (`ignore`) so large OpenClaw `--json` payloads can never trip maxBuffer (F8).
+		const child = spawn("/usr/bin/bwrap", args, {
+			env: COORDINATOR_ENV_V0,
+			stdio: ["ignore", "ignore", "pipe"],
+			signal,
+			killSignal: "SIGKILL",
+		});
+		const stderrChunks: Buffer[] = [];
+		let stderrBytes = 0;
+		child.stderr?.on("data", (chunk: Buffer) => {
+			if (stderrBytes >= MAX_CAPTURED_STDERR_BYTES_V1) return;
+			const remaining = MAX_CAPTURED_STDERR_BYTES_V1 - stderrBytes;
+			const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+			stderrChunks.push(slice);
+			stderrBytes += slice.length;
+		});
+		let settled = false;
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			try {
+				child.kill("SIGKILL");
+			} catch {
+				// already exited
+			}
+		}, timeoutMs + 20_000);
+		timer.unref?.();
+		const done = (ok: boolean) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve({ ok, stderr: Buffer.concat(stderrChunks).toString("utf8") });
+		};
+		child.once("error", () => done(false));
+		child.once("close", (code, sig) => done(!timedOut && !signal.aborted && code === 0 && sig === null));
 	});
 
 async function providerBuild(origin: string) {
@@ -264,6 +313,68 @@ export function pinnedCoordinatorBriefStatusV0(
 	}
 }
 
+const nonNegInt = (value: unknown): number | null =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+
+function terminationClassFromRefusalV1(
+	reason: EndoCoordinatorBriefRefusalV0 | null,
+): EndoCoordinatorTerminationClassV1 {
+	if (reason === null) return "completed-published";
+	switch (reason) {
+		case "reasoning-budget-exhausted":
+		case "generation-limit":
+		case "inference-timeout":
+		case "model-unavailable":
+		case "runtime-unavailable":
+			return reason;
+		case "receipt-absence-unestablished":
+		case "event-absence-unestablished":
+		case "tool-expansion-suggested":
+		case "verification-positive-contradiction":
+		case "ungrounded":
+			return "grounding-refused";
+		default:
+			return "other-refusal";
+	}
+}
+
+function buildDiagnosticsV1(args: {
+	readonly target: EndoCoordinatorModelTargetV0;
+	readonly stages: readonly EndoCoordinatorDiagnosticStageV1[];
+	readonly openclawExitOk: boolean | null;
+	readonly wire?: ReturnType<typeof coordinatorWireV0>["trace"];
+	readonly refusal: EndoCoordinatorBriefRefusalV0 | null;
+}): EndoCoordinatorBriefDiagnosticsV1 {
+	const exchanges: EndoCoordinatorExchangeDiagnosticV1[] = (args.wire?.responses ?? []).map((resp, idx) => {
+		const u =
+			resp.usage !== null && typeof resp.usage === "object" && !Array.isArray(resp.usage)
+				? (resp.usage as Record<string, unknown>)
+				: null;
+		return Object.freeze({
+			exchange: idx + 1,
+			finishReason: resp.finish,
+			toolCalled: resp.toolCalled,
+			sawReasoning: resp.sawReasoning ?? false,
+			reasoningChars: resp.reasoningChars ?? 0,
+			sawVisibleContent: resp.sawVisibleContent ?? resp.text.length > 0,
+			visibleChars: resp.visibleChars ?? resp.text.length,
+			promptTokens: nonNegInt(u?.prompt_tokens),
+			completionTokens: nonNegInt(u?.completion_tokens),
+			reasoningTokens: resp.reasoningTokens ?? null,
+		});
+	});
+	return Object.freeze({
+		schemaVersion: "endo.coordinator-brief-diagnostics.v1",
+		terminationClass: terminationClassFromRefusalV1(args.refusal),
+		stagesReached: Object.freeze([...args.stages]),
+		openclawExitOk: args.openclawExitOk,
+		exchanges: Object.freeze(exchanges),
+		effectiveMaxOutputTokens: args.target.maxOutputTokens,
+		reasoningControlMode: "unchanged",
+		rawReasoningStored: false,
+	});
+}
+
 export async function runOpenClawCoordinatorV0(
 	root: string,
 	request: EndoCoordinatorBriefRequestV0,
@@ -291,8 +402,19 @@ export async function runOpenClawCoordinatorV0(
 	});
 	const runtime = { harness: HARNESS, provider: "llama.cpp (unidentified)", model: target.model };
 	const base = { schemaVersion: "endo.coordinator-brief.v0" as const, projectId, runtime };
-	const unavailable = (reason: EndoCoordinatorBriefRefusalV0) => ({
+	const stages: EndoCoordinatorDiagnosticStageV1[] = [];
+	const unavailable = (
+		reason: EndoCoordinatorBriefRefusalV0,
+		diag?: { openclawExitOk: boolean | null; wire?: ReturnType<typeof coordinatorWireV0>["trace"] },
+	): EndoCoordinatorBriefResultV0 => ({
 		...base,
+		diagnostics: buildDiagnosticsV1({
+			target,
+			stages,
+			openclawExitOk: diag?.openclawExitOk ?? null,
+			wire: diag?.wire,
+			refusal: reason,
+		}),
 		availability: "unavailable" as const,
 		reason,
 	});
@@ -316,6 +438,7 @@ export async function runOpenClawCoordinatorV0(
 			return unavailable("model-unavailable");
 		}
 	if (options.signal?.aborted) return unavailable("runtime-unavailable");
+	stages.push("preflight");
 	const started = performance.now();
 	const status =
 		options.pinnedObservation === undefined
@@ -329,6 +452,7 @@ export async function runOpenClawCoordinatorV0(
 			return unavailable(status.reason);
 		return unavailable("status-unavailable");
 	}
+	stages.push("status-read");
 	const toolOutcome = { availability: "available", status: status.view };
 	const toolText = JSON.stringify(toolOutcome);
 	const prompt = `${ENDO_COORDINATOR_INSTRUCTIONS_V0}\n\nProject in scope: ${projectId}.${request.question === undefined ? "" : `\nOperator asks: ${request.question}`}`;
@@ -343,11 +467,14 @@ export async function runOpenClawCoordinatorV0(
 		if (installed === undefined) return unavailable("runtime-unavailable");
 		const entry = realpathSync(installed);
 		const packageDir = dirname(entry);
+		const installedVersion = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version;
 		if (
 			!entry.endsWith("/openclaw.mjs") ||
-			JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version !== "2026.11.7"
+			typeof installedVersion !== "string" ||
+			!(ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0 as readonly string[]).includes(installedVersion)
 		)
 			return unavailable("runtime-unavailable");
+		runtime.harness = `OpenClaw ${installedVersion}`;
 		directory = mkdtempSync(join(scratch, "brief-"));
 		const agent = join(directory, "agent");
 		mkdirSync(agent, { mode: 0o700 });
@@ -366,6 +493,7 @@ export async function runOpenClawCoordinatorV0(
 			onRefused: () => abort.abort(),
 		});
 		relay = started_.relay;
+		stages.push("relay-started");
 		const wire: ReturnType<typeof coordinatorWireV0> = started_.wire;
 		const mounts = modelRelayMountsV0(relay, directory);
 		const args = coordinatorBwrapV0(
@@ -424,6 +552,9 @@ export async function runOpenClawCoordinatorV0(
 		const recorderClean = relay.recordingFailures() === 0 && !existsSync(relay.socketPath);
 		const dispatch = join(agent, "dispatch");
 		const dispatched = existsSync(dispatch) && readFileSync(dispatch, "utf8") === "called\n";
+		if (wire.trace.responses.length >= 1) stages.push("exchange-1");
+		if (dispatched) stages.push("tool-dispatched");
+		if (wire.trace.responses.length >= 2) stages.push("exchange-2");
 		options.trial?.({
 			promptSha256: sha256HexV0(prompt),
 			inference: coordinatorInferenceForV0(target),
@@ -437,24 +568,42 @@ export async function runOpenClawCoordinatorV0(
 			recorderClean,
 			stderr: ran.stderr.replaceAll(bearer, "[redacted]").slice(0, 4000),
 		});
-		if (options.signal?.aborted) return unavailable("runtime-unavailable");
-		if (deadline !== undefined && (deadline.aborted || inferenceElapsedMs >= target.timeoutMs))
-			return unavailable("inference-timeout");
-		if (wire.trace.refusal !== null) return unavailable(wire.trace.refusal);
-		if (!recorderClean) return unavailable("runtime-unavailable");
-		if (wire.trace.responses.length === 0)
-			return unavailable(wire.trace.inference.length > 0 ? "model-unavailable" : "runtime-unavailable");
-		if (!ran.ok) return unavailable("runtime-unavailable");
+		const diag = { openclawExitOk: ran.ok, wire: wire.trace };
 		const final = wire.trace.responses.at(-1);
-		if (!dispatched || !wire.trace.statusDelivered) return unavailable("ungrounded");
-		if (final?.finish === "length") return unavailable("generation-limit");
-		if (final?.finish !== "stop" || !final.text.trim()) return unavailable("ungrounded");
-		const unsupported = coordinatorAnswerRefusalV0(final.text, status.view);
-		if (unsupported !== null) return unavailable(unsupported);
+		let refusal: EndoCoordinatorBriefRefusalV0 | null = null;
+		if (options.signal?.aborted) refusal = "runtime-unavailable";
+		else if (deadline !== undefined && (deadline.aborted || inferenceElapsedMs >= target.timeoutMs))
+			refusal = "inference-timeout";
+		else if (wire.trace.refusal !== null) refusal = wire.trace.refusal;
+		else if (!recorderClean) refusal = "runtime-unavailable";
+		else if (wire.trace.responses.length === 0)
+			refusal = wire.trace.inference.length > 0 ? "model-unavailable" : "runtime-unavailable";
+		else if (wire.trace.responses.length < wire.trace.inference.length) refusal = "model-unavailable";
+		else if (final?.finish === "length") {
+			// Distinguish completion-budget exhaustion inside reasoning from generic truncation (F6/S2-LIVE-002).
+			// Strictly gated on finish_reason === "length" so finish_reason === "stop" preserves exact M0/M1 semantics.
+			refusal = final.sawReasoning && !final.sawVisibleContent ? "reasoning-budget-exhausted" : "generation-limit";
+		} else if (!ran.ok) refusal = "runtime-unavailable";
+		else if (!dispatched || !wire.trace.statusDelivered) refusal = "ungrounded";
+		else if (final?.finish !== "stop" || !final.text.trim()) refusal = "ungrounded";
+		else if (Buffer.byteLength(final.text.trim(), "utf8") > 4096) refusal = "generation-limit";
+		else {
+			const unsupported = coordinatorAnswerRefusalV0(final.text, status.view);
+			if (unsupported !== null) refusal = unsupported;
+		}
+		if (refusal !== null) return unavailable(refusal, diag);
+		stages.push("validated");
 		return {
 			...base,
+			diagnostics: buildDiagnosticsV1({
+				target,
+				stages,
+				openclawExitOk: ran.ok,
+				wire: wire.trace,
+				refusal: null,
+			}),
 			availability: "available",
-			answer: final.text.trim(),
+			answer: final!.text.trim(),
 			evidence: status.evidence,
 			toolSurface: [ENDO_COORDINATOR_TOOL_V0],
 		};
@@ -468,6 +617,94 @@ export async function runOpenClawCoordinatorV0(
 			if (directory !== undefined) rmSync(directory, { recursive: true, force: true });
 		}
 	}
+}
+
+export type OpenClawCoordinatorPreflightResultV0 =
+	| { readonly ok: true; readonly harness: string }
+	| { readonly ok: false; readonly reason: EndoCoordinatorBriefRefusalV0; readonly detail: string };
+
+/**
+ * Deterministic local non-inference preflight for the sandboxed OpenClaw runner (COORDINATOR-GROUNDING-002 §6).
+ * Performs zero network I/O, spawns zero subprocesses, and contacts no model endpoint.
+ * Intended to run BEFORE S2 Phase E links `turns/<id>.dispatched.json` so a local runtime mismatch
+ * (unsupported OpenClaw version, unsafe XDG_RUNTIME_DIR, missing bwrap, oversized prompt/status)
+ * refuses as `not-dispatched` with 0 token charge. `runOpenClawCoordinatorV0` still re-checks every
+ * condition at execution time to remain safe against TOCTOU changes.
+ */
+export function preflightOpenClawCoordinatorV0(
+	root: string,
+	request: EndoCoordinatorBriefRequestV0,
+	options: {
+		readonly openclaw?: string;
+		readonly target?: EndoCoordinatorModelTargetV0;
+		readonly origin?: string;
+		readonly pinnedObservation?: {
+			readonly status: EndoCoordinatorStatusV0;
+			readonly coordination: EndoCoordinatorCoordinationV0;
+		};
+	} = {},
+): OpenClawCoordinatorPreflightResultV0 {
+	const { projectId } = request;
+	if (!ENDO_PROJECT_ID_PATTERN_V0.test(projectId))
+		return { ok: false, reason: "malformed-selector", detail: "malformed project selector" };
+	const target: EndoCoordinatorModelTargetV0 = Object.freeze({
+		...(options.target ?? ENDO_COORDINATOR_M0_TARGET_V0),
+		...(options.origin === undefined ? {} : { origin: options.origin }),
+	});
+	if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(target.origin))
+		return { ok: false, reason: "model-unavailable", detail: "non-loopback target origin" };
+	const scratch = process.env.XDG_RUNTIME_DIR;
+	if (!scratch?.startsWith("/"))
+		return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR unset or relative" };
+	try {
+		const stat = lstatSync(scratch);
+		if (!stat.isDirectory() || stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0)
+			return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR ownership or mode unsafe" };
+	} catch {
+		return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR unreadable" };
+	}
+	try {
+		const bwrapStat = statSync("/usr/bin/bwrap");
+		if (!bwrapStat.isFile())
+			return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap not a regular file" };
+		accessSync("/usr/bin/bwrap", constants.X_OK);
+	} catch {
+		return { ok: false, reason: "runtime-unavailable", detail: "/usr/bin/bwrap unavailable or not executable" };
+	}
+	let harness: string;
+	try {
+		const home = userInfo().homedir;
+		const installed = options.openclaw ?? [join(home, ".local/bin/openclaw"), "/usr/bin/openclaw"].find(existsSync);
+		if (installed === undefined)
+			return { ok: false, reason: "runtime-unavailable", detail: "OpenClaw executable not found" };
+		const entry = realpathSync(installed);
+		const packageDir = dirname(entry);
+		const installedVersion = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8")).version;
+		if (
+			!entry.endsWith("/openclaw.mjs") ||
+			typeof installedVersion !== "string" ||
+			!(ENDO_COORDINATOR_SUPPORTED_OPENCLAW_VERSIONS_V0 as readonly string[]).includes(installedVersion)
+		)
+			return {
+				ok: false,
+				reason: "runtime-unavailable",
+				detail: `unsupported OpenClaw version: ${String(installedVersion ?? "unknown")}`,
+			};
+		harness = `OpenClaw ${installedVersion}`;
+	} catch {
+		return { ok: false, reason: "runtime-unavailable", detail: "OpenClaw installation unreadable" };
+	}
+	const prompt = `${ENDO_COORDINATOR_INSTRUCTIONS_V0}\n\nProject in scope: ${projectId}.${request.question === undefined ? "" : `\nOperator asks: ${request.question}`}`;
+	if (Buffer.byteLength(prompt) > target.maxPromptBytes)
+		return { ok: false, reason: "request-too-large", detail: "briefing prompt exceeds maxPromptBytes" };
+	if (options.pinnedObservation !== undefined) {
+		const pinned = pinnedCoordinatorBriefStatusV0(root, projectId, options.pinnedObservation);
+		if (!pinned.ok) return { ok: false, reason: "status-unavailable", detail: pinned.reason };
+		const toolText = JSON.stringify({ availability: "available", status: pinned.view });
+		if (Buffer.byteLength(toolText) > 256 * 1024)
+			return { ok: false, reason: "status-output-too-large", detail: "status view exceeds 256 KiB ceiling" };
+	}
+	return { ok: true, harness };
 }
 
 export function openClawCoordinatorV0(root: string): EndoCoordinatorBriefSubstrateV0 {

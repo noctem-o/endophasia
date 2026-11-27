@@ -102,7 +102,11 @@ import { DevelopAutomationStoreV0 } from "../../storage/develop-automation.ts";
 import { DevelopTasksStoreV0 } from "../../storage/develop-tasks.ts";
 import { probeLocalEndpointV0 } from "../coordinator/model-pool-probe.ts";
 import { coordinatorTargetFromMemberV0 } from "../coordinator/model-relay.ts";
-import type { OpenClawCoordinatorTrialV0, runOpenClawCoordinatorV0 } from "../coordinator/openclaw.ts";
+import type {
+	OpenClawCoordinatorPreflightResultV0,
+	OpenClawCoordinatorTrialV0,
+	runOpenClawCoordinatorV0,
+} from "../coordinator/openclaw.ts";
 import { GitRevisionObserverV0 } from "../git/revision-observer.ts";
 
 const L = ENDO_ADVISORY_LIMITS_V0;
@@ -142,6 +146,14 @@ export interface RunEndoAdvisoryTickOptionsV0 {
 	readonly observeMember?: EndoCoordinatorMemberObserverV0;
 	/** The M0 runner (injected by tests; the production default is the sandboxed OpenClaw briefing). */
 	readonly run?: typeof runOpenClawCoordinatorV0;
+	/** Optional local non-inference runtime preflight run in Phase D.5 before Phase E links dispatch. */
+	readonly preflight?: (args: {
+		readonly root: string;
+		readonly projectId: string;
+		readonly target: ReturnType<typeof coordinatorTargetFromMemberV0>;
+		readonly question?: string;
+		readonly pinnedObservation: EndoAdvisoryProjectReadV0;
+	}) => OpenClawCoordinatorPreflightResultV0;
 	readonly storeOptions?: Omit<EndoDevelopAdvisoryStoreOptionsV0, "now">;
 	readonly hooks?: EndoAdvisoryTickHooksV0;
 }
@@ -428,8 +440,11 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				}
 			}
 
-		if (!schedulesRead.exists)
+		if (!schedulesRead.exists) {
+			s.pruneRetained(nowMs);
+			s.writeLease({ ...lease, releasedAtMs: nowMs });
 			return { ok: true as const, lease, recovered, claimed: null as Claimed | null, terminal };
+		}
 		const file = schedulesRead.value;
 		let claimed: Claimed | null = null;
 		let claimFailed = false;
@@ -534,6 +549,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				return { ok: false as const, refusal: "storage-failed" as const, detail: `schedules.json ${w}` };
 			}
 		}
+		if (claimed === null) {
+			s.pruneRetained(nowMs);
+			s.writeLease({ ...lease, releasedAtMs: nowMs });
+		}
 		return { ok: true as const, lease, recovered, claimed: claimed as Claimed | null, terminal };
 	});
 	if (!phaseA.ok) return refuse(lockRefusal(phaseA.code), "advisory lock unavailable at claim");
@@ -575,11 +594,6 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		inferenceDispatched: dispatched,
 	});
 	if (a.claimed === null) {
-		store.withAdvisoryLockSync((s) => {
-			const nowMs = now();
-			s.pruneRetained(nowMs);
-			release(s, nowMs);
-		});
 		return done(null, false);
 	}
 	const { claim } = a.claimed;
@@ -628,7 +642,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			if (schedules.some((x, i) => x !== file.value.schedules[i]))
 				s.writeSchedules({ ...file.value, revision: file.value.revision + 1, updatedAtMs: nowMs, schedules });
 		}
-		s.pruneRetained(nowMs);
+		if (ownsLease(s, nowMs)) s.pruneRetained(nowMs);
 		release(s, nowMs);
 	};
 
@@ -1109,6 +1123,34 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	const readiness = selection.observation.readiness;
 	const fallbackOccurred = selection.fallbackOccurred;
 
+	// ---- D.5: deterministic local non-inference preflight (no lock, zero network/model I/O) ---------------------------------------
+	// Runs BEFORE Phase E links `turns/<id>.dispatched.json` so local runtime mismatches refuse as `not-dispatched` with 0 charge.
+	const preflightQuestion = wantsProposal ? ENDO_ADVISORY_PROPOSAL_QUESTION_V0 : undefined;
+	if (options.preflight !== undefined || options.run === undefined) {
+		const preflightTarget = coordinatorTargetFromMemberV0(member);
+		const preflightResult =
+			options.preflight !== undefined
+				? options.preflight({
+						root: options.root,
+						projectId: admission.projectId,
+						target: preflightTarget,
+						...(preflightQuestion === undefined ? {} : { question: preflightQuestion }),
+						pinnedObservation: admissionObserved.read!,
+					})
+				: (await import("../coordinator/openclaw.ts")).preflightOpenClawCoordinatorV0(
+						options.root,
+						{
+							projectId: admission.projectId,
+							...(preflightQuestion === undefined ? {} : { question: preflightQuestion }),
+						},
+						{
+							target: preflightTarget,
+							pinnedObservation: admissionObserved.read!,
+						},
+					);
+		if (!preflightResult.ok) return notDispatched("runtime-preflight-failed", selectionSummary);
+	}
+
 	// ---- E: dispatch linearization point (lock) -----------------------------------------------------------------------------------
 	await hooks.beforeDispatchRecord?.({ turnId });
 	const phaseE = store.withAdvisoryLockSync((s): EndoAdvisoryTurnDispatchV0 | EndoAdvisoryDispatchRefusalV0 => {
@@ -1177,9 +1219,13 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	await hooks.afterDispatchRecord?.({ turnId });
 
 	// ---- F: inference (no lock; the selected member only; never failed over or replayed) ------------------------------------------
+	const remainingInferenceMs = Math.max(
+		1,
+		Math.min(dispatch.effectiveTimeoutMs, dispatch.inferenceDeadlineMs - now()),
+	);
 	const target = Object.freeze({
 		...coordinatorTargetFromMemberV0(member),
-		timeoutMs: dispatch.effectiveTimeoutMs,
+		timeoutMs: remainingInferenceMs,
 		hostDeadline: true,
 	});
 	const run = options.run ?? (await import("../coordinator/openclaw.ts")).runOpenClawCoordinatorV0;
@@ -1195,7 +1241,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 					pinnedObservation: admissionObserved.read!,
 					target,
 					provider: "llama.cpp (advisory pool member)",
-					signal: AbortSignal.timeout(Math.max(1, dispatch.inferenceDeadlineMs - now())),
+					// Let target.hostDeadline enforce the inference deadline so timeouts classify as `inference-timeout` (F2).
 					trial: (t) => {
 						trial = t;
 					},
@@ -1204,11 +1250,16 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	} catch {
 		result = null;
 	}
+	const inferenceCompletedAtMs = now();
+	const inferenceCompletedMonotonicMs = monotonicNow();
+	const inferenceWithinTurnDeadline =
+		inferenceCompletedMonotonicMs - turnStartedMs < admission.turnDeadlineMs - admission.admittedAtMs &&
+		inferenceCompletedAtMs <= admission.turnDeadlineMs;
 	if (result !== null && result.availability === "available") {
 		const reason =
 			result.runtime.model !== member.modelId
 				? "model-identity-mismatch"
-				: now() > dispatch.inferenceDeadlineMs
+				: inferenceCompletedAtMs > dispatch.inferenceDeadlineMs
 					? "inference-timeout"
 					: null;
 		if (reason !== null)
@@ -1255,10 +1306,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 						nowMs,
 					});
 		const observationCommitted = ownsLease(s, nowMs) && persistObservation(s, nowMs, pub);
+		// Inference must finish within `turnDeadlineMs`, while Phase G + H may use `publicationMarginMs` inside `ownsLease` (F4).
 		const withheld = !ownsLease(s, nowMs)
 			? "lease-lost-in-flight"
-			: monotonicNow() - turnStartedMs >= admission.turnDeadlineMs - admission.admittedAtMs ||
-					nowMs >= admission.turnDeadlineMs
+			: !inferenceWithinTurnDeadline
 				? "turn-deadline-exceeded"
 				: schedule === undefined ||
 						schedule.incarnation !== claim.scheduleIncarnation ||

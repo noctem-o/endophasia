@@ -13,8 +13,14 @@ import {
 import { get, type IncomingMessage } from "node:http";
 import { userInfo } from "node:os";
 import { dirname, join } from "node:path";
+import { externalEndophasiaStatusV0 } from "../../integrations/openclaw-endophasia-status/src/status-reader.ts";
+import {
+	type EndoCoordinatorCoordinationV0,
+	validateEndoCoordinatorCoordinationV0,
+} from "../../protocol/coordinator-coordination.ts";
+import { type EndoCoordinatorStatusV0, validateEndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../../protocol/develop-tasks.ts";
-import { sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
+import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
 import {
 	ENDO_COORDINATOR_INSTRUCTIONS_V0,
 	ENDO_COORDINATOR_TOOL_DEFINITION_V0,
@@ -217,6 +223,47 @@ export interface OpenClawCoordinatorTrialV0 {
 	readonly stderr: string;
 }
 
+export function pinnedCoordinatorBriefStatusV0(
+	root: string,
+	projectId: string,
+	pinned: {
+		readonly status: EndoCoordinatorStatusV0;
+		readonly coordination: EndoCoordinatorCoordinationV0;
+	},
+) {
+	try {
+		const status = validateEndoCoordinatorStatusV0(pinned.status);
+		const coordination = validateEndoCoordinatorCoordinationV0(pinned.coordination);
+		if (
+			status.scope.requested?.length !== 1 ||
+			status.scope.requested[0] !== projectId ||
+			status.projects.length !== 1 ||
+			status.projects[0]?.id !== projectId ||
+			coordination.scope.requested?.length !== 1 ||
+			coordination.scope.requested[0] !== projectId ||
+			coordination.projects.some((p) => p.id !== projectId)
+		)
+			return { ok: false, reason: "invalid-status-scope" } as const;
+		const view = externalEndophasiaStatusV0(status, {
+			endo: { node: process.execPath, entry: "" },
+			storeRoot: root,
+			projects: [{ id: projectId, root }],
+		});
+		return {
+			ok: true,
+			view,
+			coordination,
+			evidence: {
+				readAtMs: status.readAtMs,
+				projectionSha256: sha256HexV0(canonicalEndoJsonV0(status)),
+				modelViewSha256: sha256HexV0(canonicalEndoJsonV0(view)),
+			},
+		} as const;
+	} catch {
+		return { ok: false, reason: "invalid-status" } as const;
+	}
+}
+
 export async function runOpenClawCoordinatorV0(
 	root: string,
 	request: EndoCoordinatorBriefRequestV0,
@@ -231,6 +278,10 @@ export async function runOpenClawCoordinatorV0(
 		provider?: string;
 		/** Cancels the briefing: a cancelled briefing is unavailable, whatever arrived. */
 		signal?: AbortSignal;
+		pinnedObservation?: {
+			readonly status: EndoCoordinatorStatusV0;
+			readonly coordination: EndoCoordinatorCoordinationV0;
+		};
 	} = {},
 ): Promise<EndoCoordinatorBriefResultV0> {
 	const { projectId } = request;
@@ -266,7 +317,10 @@ export async function runOpenClawCoordinatorV0(
 		}
 	if (options.signal?.aborted) return unavailable("runtime-unavailable");
 	const started = performance.now();
-	const status = await readCoordinatorBriefStatusV0(root, projectId);
+	const status =
+		options.pinnedObservation === undefined
+			? await readCoordinatorBriefStatusV0(root, projectId)
+			: pinnedCoordinatorBriefStatusV0(root, projectId, options.pinnedObservation);
 	if (!status.ok) {
 		if (status.reason === "project-not-registered") return unavailable("project-out-of-scope");
 		if (status.reason === "output-too-large") return unavailable("status-output-too-large");

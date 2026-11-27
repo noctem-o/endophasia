@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt|assign|dep|candidate|worktree|review|coordinator|schedule|scheduler|resource> ...";
+	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt|assign|dep|candidate|worktree|review|coordinator|schedule|scheduler|resource|advisory> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -165,6 +165,9 @@ Commands that write to a store:
   resource <declare-window|list> [<root> | --root dir] ...
                                      declare an operator-estimated provider allowance reset window or inspect recorded
                                      resource observations with live freshness; never touches provider credential stores
+  advisory <add|enable|disable|remove|authorize|revoke|tick|list|fires|briefings|proposals|ack|dismiss> [<root> | --root dir] ...
+                                     S2 scheduled advisory briefings: disabled by default, one explicit grant per schedule revision
+                                     with turn, token and wall-clock ceilings; proposals are untrusted and grant nothing
   steer <propose|authorize|apply|status|close> <root> ...
 
 Commands that run a prompted agent session or an experiment:

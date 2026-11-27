@@ -771,3 +771,23 @@ The synthetic corrupted-post and partial-ACL regressions failed on Amendment 17 
 Additional fixtures cover verified differences; missing, unlisted, duplicate and unsafe entries; partial
 producer output and a failed manifest write; and sealing a complete capture. The live measurements,
 the offered-only rules, and §9 are unchanged. No later amendment upgrades attempt 5 from INCOMPLETE.
+
+## Amendment 19 — tolerate transient guest file descriptors during host audit
+
+`qemu/host.sh audit` previously listed open file descriptors with `ls -l "$proc/fd"` under
+`set -euo pipefail`. On GNU coreutils 9.4 (Ubuntu 24.04), when a transient descriptor closes
+between directory enumeration and `lstat`, `ls` writes `cannot access '/proc/<pid>/fd/<n>': No such
+file or directory` and exits 1, aborting the audit. `qemu/test_transport.py` also invoked
+`host.sh audit` immediately after `Popen` without waiting for the fake guest Python process to
+finish interpreter startup, exposing that race under CI CPU contention.
+
+`qemu/host.sh audit` now inspects `"$proc/fd"` directly via `python3 -I` (`os.listdir` and
+`os.readlink`), skipping only descriptors that return `ENOENT` (`FileNotFoundError`) after closing
+between enumeration and `readlink` while still failing closed (status 66) if `/proc/$p/fd` is
+unreadable, any descriptor raises a non-`ENOENT` error, or the guest exits or its PID is reused
+(verified via `$proc/exe` and `/proc/$p/stat` start time). `qemu/test_transport.py` now starts the
+fake guest with `-I` and waits for an explicit readiness line before auditing.
+
+The new transient-fd churn and `ls` failure regression failed on Amendment 18 and passes on this
+freeze, along with dead-guest refusal. The guest harness, capture, comparison, live measurements,
+offered-only rules, and §9 are unchanged. No later amendment upgrades attempt 5 from INCOMPLETE.

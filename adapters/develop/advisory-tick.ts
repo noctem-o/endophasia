@@ -298,8 +298,13 @@ function usageOf(trial: OpenClawCoordinatorTrialV0 | null) {
 		const record = u !== null && typeof u === "object" ? (u as Record<string, unknown>) : null;
 		const c = count(record?.completion_tokens);
 		const p = count(record?.prompt_tokens);
+		const r = count(response.reasoningTokens);
+		const rChars = count(response.reasoningChars) ?? 0;
 		if (c === null) complete = false;
-		else completion = (completion ?? 0) + c;
+		else if (c === 0 && rChars > 0 && r === null) {
+			// Guard against non-standard servers reporting visible-only completion_tokens = 0 despite reasoning output (F10).
+			complete = false;
+		} else completion = (completion ?? 0) + Math.max(c, r ?? 0);
 		if (p !== null) prompt = (prompt ?? 0) + p;
 	}
 	return { prompt, completion, complete };
@@ -469,8 +474,11 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				}
 			}
 
-		if (!schedulesRead.exists)
+		if (!schedulesRead.exists) {
+			s.pruneRetained(nowMs);
+			s.writeLease({ ...lease, releasedAtMs: nowMs });
 			return { ok: true as const, lease, recovered, claimed: null as Claimed | null, terminal };
+		}
 		const file = schedulesRead.value;
 		let claimed: Claimed | null = null;
 		let claimFailed = false;
@@ -575,6 +583,11 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				return { ok: false as const, refusal: "storage-failed" as const, detail: `schedules.json ${w}` };
 			}
 		}
+		if (claimed === null) {
+			// Release immediately inside the same Phase A lock so an unclaimed tick can never abandon a long lease (F1).
+			s.pruneRetained(nowMs);
+			s.writeLease({ ...lease, releasedAtMs: nowMs });
+		}
 		return { ok: true as const, lease, recovered, claimed: claimed as Claimed | null, terminal };
 	});
 	if (!phaseA.ok) return refuse(lockRefusal(phaseA.code), "advisory lock unavailable at claim");
@@ -617,11 +630,6 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		inferenceDispatched: dispatched,
 	});
 	if (a.claimed === null) {
-		store.withAdvisoryLockSync((s) => {
-			const nowMs = now();
-			s.pruneRetained(nowMs);
-			release(s, nowMs);
-		});
 		return done(null, false);
 	}
 	const { claim } = a.claimed;
@@ -670,7 +678,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			if (schedules.some((x, i) => x !== file.value.schedules[i]))
 				s.writeSchedules({ ...file.value, revision: file.value.revision + 1, updatedAtMs: nowMs, schedules });
 		}
-		s.pruneRetained(nowMs);
+		if (ownsLease(s, nowMs)) s.pruneRetained(nowMs);
 		release(s, nowMs);
 	};
 
@@ -873,6 +881,20 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		});
 		if (!budget.admissible) {
 			finish(s, nowMs, "refused-budget", gate, null, false, budget.refusal);
+			return null;
+		}
+		const authorizedLeaseTtlMs = authorization.resourceProfile?.advisoryLeaseTtlMs ?? L.leaseTtlMs;
+		// Fence Phase A lease TTL against Phase C standing authorization (prevents V1->V0 lease escalation and V0->V1 silent truncation, F1).
+		if (activeLeaseTtlMs !== authorizedLeaseTtlMs) {
+			finish(
+				s,
+				nowMs,
+				"refused-insufficient-lease",
+				gate,
+				null,
+				false,
+				"advisory lease TTL does not match the standing authorization's governed resource profile",
+			);
 			return null;
 		}
 		const activePublicationMarginMs = authorization.resourceProfile?.publicationReserveMs ?? L.publicationMarginMs;
@@ -1230,6 +1252,8 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		if (!standing.ok)
 			return standing.refusal === "authorization-expired" ? "authorization-expired" : "authorization-revoked";
 		if (standing.authorization.authorizationId !== admission.authorizationId) return "authorization-revoked";
+		const authorizedLeaseTtlMs = authorization.resourceProfile?.advisoryLeaseTtlMs ?? L.leaseTtlMs;
+		if (activeLeaseTtlMs !== authorizedLeaseTtlMs) return "insufficient-lease";
 		const activePublicationMarginMs = authorization.resourceProfile?.publicationReserveMs ?? L.publicationMarginMs;
 		const activeMaxTurnWallClockMs = authorization.resourceProfile?.advisoryTurnDeadlineMs ?? L.maxTurnWallClockMs;
 		const effectiveTimeoutMs = Math.floor(
@@ -1273,9 +1297,13 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	await hooks.afterDispatchRecord?.({ turnId });
 
 	// ---- F: inference (no lock; the selected member only; never failed over or replayed) ------------------------------------------
+	const remainingInferenceMs = Math.max(
+		1,
+		Math.min(dispatch.effectiveTimeoutMs, dispatch.inferenceDeadlineMs - now()),
+	);
 	const target = Object.freeze({
 		...coordinatorTargetFromMemberV0(member, authorization.resourceProfile),
-		timeoutMs: dispatch.effectiveTimeoutMs,
+		timeoutMs: remainingInferenceMs,
 		hostDeadline: true,
 	});
 	const run = options.run ?? (await import("../coordinator/openclaw.ts")).runOpenClawCoordinatorV0;
@@ -1288,7 +1316,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 					pinnedObservation: admissionObserved.read!,
 					target,
 					provider: "llama.cpp (advisory pool member)",
-					signal: AbortSignal.timeout(Math.max(1, dispatch.inferenceDeadlineMs - now())),
+					// Let target.hostDeadline enforce the inference deadline so timeouts classify as `inference-timeout` (F2).
 					...(briefingMode === "legacy-v0" ? {} : { briefingMode }),
 					...(visibilityMode === "status-v0" ? {} : { visibilityMode }),
 					...(briefingMode === "grounded-v1" && wantsProposal ? { includeProposalLine: true } : {}),
@@ -1300,11 +1328,16 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	} catch {
 		result = null;
 	}
+	const inferenceCompletedAtMs = now();
+	const inferenceCompletedMonotonicMs = monotonicNow();
+	const inferenceWithinTurnDeadline =
+		inferenceCompletedMonotonicMs - turnStartedMs < admission.turnDeadlineMs - admission.admittedAtMs &&
+		inferenceCompletedAtMs <= admission.turnDeadlineMs;
 	if (result !== null && result.availability === "available") {
 		const reason =
 			result.runtime.model !== member.modelId
 				? "model-identity-mismatch"
-				: now() > dispatch.inferenceDeadlineMs
+				: inferenceCompletedAtMs > dispatch.inferenceDeadlineMs
 					? "inference-timeout"
 					: null;
 		if (reason !== null)
@@ -1376,10 +1409,10 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 						nowMs,
 					});
 		const observationCommitted = ownsLease(s, nowMs) && persistObservation(s, nowMs, pub);
+		// Inference must finish within `turnDeadlineMs`, while Phase G + H may use `publicationReserveMs` inside `ownsLease` (F4).
 		const withheld = !ownsLease(s, nowMs)
 			? "lease-lost-in-flight"
-			: monotonicNow() - turnStartedMs >= admission.turnDeadlineMs - admission.admittedAtMs ||
-					nowMs >= admission.turnDeadlineMs
+			: !inferenceWithinTurnDeadline
 				? "turn-deadline-exceeded"
 				: schedule === undefined ||
 						schedule.incarnation !== claim.scheduleIncarnation ||

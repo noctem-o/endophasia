@@ -148,20 +148,59 @@ export interface EndoCoordinatorBriefSubstrateV0 {
 	brief(request: EndoCoordinatorBriefRequestV0): Promise<EndoCoordinatorBriefResultV0>;
 }
 
+function terminationClassForRefusalV1(reason: EndoCoordinatorBriefRefusalV0): EndoCoordinatorTerminationClassV1 {
+	switch (reason) {
+		case "reasoning-budget-exhausted":
+		case "generation-limit":
+		case "inference-timeout":
+		case "unsupported-reasoning-control":
+		case "model-unavailable":
+		case "runtime-unavailable":
+			return reason;
+		case "grounding-malformed":
+		case "grounding-claim-unsupported":
+		case "grounding-subject-unknown":
+		case "grounding-evidence-ref-invalid":
+		case "receipt-absence-unestablished":
+		case "event-absence-unestablished":
+		case "tool-expansion-suggested":
+		case "verification-positive-contradiction":
+		case "ungrounded":
+			return "grounding-refused";
+		default:
+			return "other-refusal";
+	}
+}
+
+export function overrideCoordinatorDiagnosticsOnRefusalV1(
+	diagnostics: EndoCoordinatorBriefDiagnosticsV1 | undefined,
+	reason: EndoCoordinatorBriefRefusalV0,
+): EndoCoordinatorBriefDiagnosticsV1 | undefined {
+	if (diagnostics === undefined) return undefined;
+	return Object.freeze({
+		...diagnostics,
+		terminationClass: terminationClassForRefusalV1(reason),
+		stagesReached: Object.freeze(diagnostics.stagesReached.filter((s) => s !== "validated")),
+	});
+}
+
 export async function briefFromCoordinatorSubstrateV0(
 	request: EndoCoordinatorBriefRequestV0,
 	substrate: EndoCoordinatorBriefSubstrateV0,
 ): Promise<EndoCoordinatorBriefResultV0> {
 	const result = await substrate.brief(request);
-	const refuse = (reason: EndoCoordinatorBriefRefusalV0): EndoCoordinatorBriefResultV0 => ({
-		schemaVersion: "endo.coordinator-brief.v0",
-		projectId: request.projectId,
-		runtime: result.runtime,
-		...(result.modelPool === undefined ? {} : { modelPool: result.modelPool }),
-		...(result.diagnostics === undefined ? {} : { diagnostics: result.diagnostics }),
-		availability: "unavailable",
-		reason,
-	});
+	const refuse = (reason: EndoCoordinatorBriefRefusalV0): EndoCoordinatorBriefResultV0 => {
+		const diagnostics = overrideCoordinatorDiagnosticsOnRefusalV1(result.diagnostics, reason);
+		return {
+			schemaVersion: "endo.coordinator-brief.v0",
+			projectId: request.projectId,
+			runtime: result.runtime,
+			...(result.modelPool === undefined ? {} : { modelPool: result.modelPool }),
+			...(diagnostics === undefined ? {} : { diagnostics }),
+			availability: "unavailable",
+			reason,
+		};
+	};
 	if (result.projectId !== request.projectId || result.schemaVersion !== "endo.coordinator-brief.v0")
 		return refuse("ungrounded");
 	if (result.availability === "unavailable") return result;

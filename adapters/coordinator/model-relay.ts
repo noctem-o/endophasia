@@ -6,6 +6,7 @@
 // bounds, no redirect following (the response gate admits only a 200 event stream), and no credential of any provider.
 
 import {
+	ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0,
 	type EndoCoordinatorModelPoolMemberV0,
 	endoCoordinatorLoopbackOriginV0,
 } from "../../protocol/coordinator-model-pool.ts";
@@ -72,6 +73,13 @@ export function coordinatorTargetFromMemberV0(
 			throw new TypeError('cannot create an inference target under non-inference tier "reflex"');
 		if (member.maxOutputTokens > validated.maxOutputTokensPerRequest)
 			throw new TypeError("member maxOutputTokens exceeds governed resourceProfile ceiling");
+		if (
+			validated.reasoningControl.mode === "reasoning-budget-tokens" &&
+			member.maxOutputTokens <
+				validated.reasoningControl.tokens + ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1.minVisibleHeadroomTokens
+		) {
+			throw new TypeError("member maxOutputTokens leaves insufficient visible headroom for reasoningControl");
+		}
 		if (member.timeoutMs > validated.modelExecutionTimeoutMs)
 			throw new TypeError("member timeoutMs exceeds governed resourceProfile ceiling");
 		return Object.freeze({
@@ -87,6 +95,10 @@ export function coordinatorTargetFromMemberV0(
 			reasoningControl: validated.reasoningControl,
 		});
 	}
+	if (member.maxOutputTokens > ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.maxOutputTokens.max)
+		throw new TypeError("member maxOutputTokens exceeds V0 ceiling without an explicit governed resourceProfile");
+	if (member.timeoutMs > ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.timeoutMs.max)
+		throw new TypeError("member timeoutMs exceeds V0 ceiling without an explicit governed resourceProfile");
 	return Object.freeze({
 		origin: member.endpoint,
 		model: member.modelId,

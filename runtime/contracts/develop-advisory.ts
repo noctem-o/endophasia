@@ -14,7 +14,10 @@ import {
 	parseEndoCoordinatorModelPoolV0,
 	parseEndoCoordinatorModelPoolV1,
 } from "../../protocol/coordinator-model-pool.ts";
-import type { EndoCoordinatorResourceProfileV1 } from "../../protocol/coordinator-resource-policy.ts";
+import {
+	ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1,
+	type EndoCoordinatorResourceProfileV1,
+} from "../../protocol/coordinator-resource-policy.ts";
 import type { EndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import {
 	ENDO_ADVISORY_LIMITS_V0,
@@ -448,9 +451,15 @@ export function endoAdvisoryEffectivePoolV0(
 	authorization: EndoAdvisoryAuthorizationV0,
 ): EndoCoordinatorModelPoolAnyV1 | null {
 	const maxTimeoutMs = authorization.resourceProfile?.modelExecutionTimeoutMs;
+	const minOutputTokens =
+		authorization.resourceProfile?.reasoningControl.mode === "reasoning-budget-tokens"
+			? authorization.resourceProfile.reasoningControl.tokens +
+				ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1.minVisibleHeadroomTokens
+			: 0;
 	const eligible = (m: EndoCoordinatorModelPoolAnyV1["members"][number]) =>
 		m.kind === "local-openai-compat" &&
 		m.maxOutputTokens <= authorization.budget.maxOutputTokensPerRequest &&
+		m.maxOutputTokens >= minOutputTokens &&
 		(maxTimeoutMs === undefined || m.timeoutMs <= maxTimeoutMs);
 	// Narrowing must not turn "only the first member" into an undisclosed fallback: under fallback "none" the pool's first member is
 	// the only candidate, and if the grant excludes it nothing is eligible.

@@ -896,10 +896,14 @@ export function validateEndoAdvisoryBudgetV0(
 		],
 		at,
 	);
+	const minOutputTokensFloor =
+		resourceProfile?.reasoningControl.mode === "reasoning-budget-tokens"
+			? Math.max(L.minOutputTokensPerRequest, resourceProfile.reasoningControl.tokens + G.minVisibleHeadroomTokens)
+			: L.minOutputTokensPerRequest;
 	const maxTurnsPerPeriod = int(r.maxTurnsPerPeriod, 1, L.maxTurnsPerPeriod, `${at}.maxTurnsPerPeriod`);
 	const maxOutputTokensPerRequest = int(
 		r.maxOutputTokensPerRequest,
-		L.minOutputTokensPerRequest,
+		minOutputTokensFloor,
 		maxOutputTokensCap,
 		`${at}.maxOutputTokensPerRequest`,
 	);
@@ -977,9 +981,17 @@ export function validateEndoAdvisoryAuthorizationV0(value: unknown, at = "author
 		) {
 			fail(`${at}.pool.resourceProfile must exactly match ${at}.resourceProfile`);
 		}
+		const minMemberOutputTokens =
+			resourceProfile.reasoningControl.mode === "reasoning-budget-tokens"
+				? resourceProfile.reasoningControl.tokens + G.minVisibleHeadroomTokens
+				: L.minOutputTokensPerRequest;
 		for (const m of pool.members) {
 			if (m.maxOutputTokens > resourceProfile.maxOutputTokensPerRequest)
 				fail(`${at}.pool member ${JSON.stringify(m.memberId)} maxOutputTokens exceeds resourceProfile ceiling`);
+			if (m.maxOutputTokens < minMemberOutputTokens)
+				fail(
+					`${at}.pool member ${JSON.stringify(m.memberId)} maxOutputTokens leaves insufficient visible headroom for reasoningControl`,
+				);
 			if (m.timeoutMs > resourceProfile.modelExecutionTimeoutMs)
 				fail(`${at}.pool member ${JSON.stringify(m.memberId)} timeoutMs exceeds resourceProfile ceiling`);
 		}

@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import {
 	accessSync,
@@ -105,7 +105,19 @@ export default { id: ${JSON.stringify(PLUGIN)}, name: "Endophasia Coordinator", 
       return (model, context, options) => streamFn(model, context, { ...options,
         onPayload: async (payload, m) => {
           const next = await options?.onPayload?.(payload, m) ?? payload;
-          delete next.max_completion_tokens;
+          for (const k of [
+            "max_completion_tokens",
+            "n_predict",
+            "reasoning_effort",
+            "reasoning_budget_tokens",
+            "thinking_budget_tokens",
+            "reasoning_budget",
+            "reasoning_format",
+            "reasoning",
+            "thinking",
+            "chat_template_kwargs",
+            "enable_thinking",
+          ]) delete next[k];
           Object.assign(next, settings);
           return next;
         }
@@ -183,20 +195,49 @@ function configure(
 	});
 }
 
+const MAX_CAPTURED_STDERR_BYTES_V1 = 8192;
+
 const execute = (args: string[], signal: AbortSignal, timeoutMs: number) =>
 	new Promise<{ ok: boolean; stderr: string }>((resolve) => {
-		execFile(
-			"/usr/bin/bwrap",
-			args,
-			{
-				env: COORDINATOR_ENV_V0,
-				timeout: timeoutMs + 20_000,
-				killSignal: "SIGKILL",
-				maxBuffer: 512 * 1024,
-				signal,
-			},
-			(error, _stdout, stderr) => resolve({ ok: error === null, stderr }),
-		);
+		if (signal.aborted) {
+			resolve({ ok: false, stderr: "" });
+			return;
+		}
+		// Discard stdout (`ignore`) so large OpenClaw `--json` payloads at 16k-24k token budgets can never trip maxBuffer (F8).
+		const child = spawn("/usr/bin/bwrap", args, {
+			env: COORDINATOR_ENV_V0,
+			stdio: ["ignore", "ignore", "pipe"],
+			signal,
+			killSignal: "SIGKILL",
+		});
+		const stderrChunks: Buffer[] = [];
+		let stderrBytes = 0;
+		child.stderr?.on("data", (chunk: Buffer) => {
+			if (stderrBytes >= MAX_CAPTURED_STDERR_BYTES_V1) return;
+			const remaining = MAX_CAPTURED_STDERR_BYTES_V1 - stderrBytes;
+			const slice = chunk.length > remaining ? chunk.subarray(0, remaining) : chunk;
+			stderrChunks.push(slice);
+			stderrBytes += slice.length;
+		});
+		let settled = false;
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			try {
+				child.kill("SIGKILL");
+			} catch {
+				// already exited
+			}
+		}, timeoutMs + 20_000);
+		timer.unref?.();
+		const done = (ok: boolean) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve({ ok, stderr: Buffer.concat(stderrChunks).toString("utf8") });
+		};
+		child.once("error", () => done(false));
+		child.once("close", (code, sig) => done(!timedOut && !signal.aborted && code === 0 && sig === null));
 	});
 
 async function providerBuild(origin: string) {
@@ -567,6 +608,7 @@ export async function runOpenClawCoordinatorV0(
 		else if (!recorderClean) refusal = "runtime-unavailable";
 		else if (wire.trace.responses.length === 0)
 			refusal = wire.trace.inference.length > 0 ? "model-unavailable" : "runtime-unavailable";
+		else if (wire.trace.responses.length < wire.trace.inference.length) refusal = "model-unavailable";
 		else if (final?.finish === "length") {
 			// Distinguish completion-budget exhaustion inside reasoning from generic OpenClaw non-zero exit (S2-LIVE-002 fix).
 			// Strictly gated on finish_reason === "length" so finish_reason === "stop" preserves M1's exact semantics.
@@ -586,8 +628,11 @@ export async function runOpenClawCoordinatorV0(
 			});
 			if (!validatedGrounded.ok) refusal = validatedGrounded.reason;
 		} else {
-			const unsupported = coordinatorAnswerRefusalV0(final.text, status.view);
-			if (unsupported !== null) refusal = unsupported;
+			if (Buffer.byteLength(final.text.trim(), "utf8") > 4096) refusal = "generation-limit";
+			else {
+				const unsupported = coordinatorAnswerRefusalV0(final.text, status.view);
+				if (unsupported !== null) refusal = unsupported;
+			}
 		}
 		const diagnostics = buildDiagnosticsV1({
 			target,

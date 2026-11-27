@@ -25,10 +25,11 @@ import {
 	type EndoCoordinatorResourceProfileV1,
 	validateEndoCoordinatorResourceProfileV1,
 } from "../../protocol/coordinator-resource-policy.ts";
-import type {
-	EndoCoordinatorBriefRequestV0,
-	EndoCoordinatorBriefResultV0,
-	EndoCoordinatorBriefSubstrateV0,
+import {
+	type EndoCoordinatorBriefRequestV0,
+	type EndoCoordinatorBriefResultV0,
+	type EndoCoordinatorBriefSubstrateV0,
+	overrideCoordinatorDiagnosticsOnRefusalV1,
 } from "../../runtime/contracts/coordinator-brief.ts";
 import {
 	coordinatorModelPoolSha256V0,
@@ -325,7 +326,11 @@ export function pooledCoordinatorV0(
 				exchanges: observedTrial === null ? null : observedTrial.admittedExchanges,
 				failureCategory: result.availability === "unavailable" ? result.reason : null,
 			});
-			if (result.runtime.model !== selection.member.modelId)
+			if (result.runtime.model !== selection.member.modelId) {
+				const diagnostics = overrideCoordinatorDiagnosticsOnRefusalV1(
+					result.diagnostics,
+					"model-identity-mismatch",
+				);
 				return {
 					schemaVersion: "endo.coordinator-brief.v0",
 					projectId: request.projectId,
@@ -334,9 +339,11 @@ export function pooledCoordinatorV0(
 						...modelPool,
 						measurements: { ...modelPool.measurements, failureCategory: "model-identity-mismatch" },
 					},
+					...(diagnostics === undefined ? {} : { diagnostics }),
 					availability: "unavailable",
 					reason: "model-identity-mismatch",
 				};
+			}
 			return { ...result, modelPool };
 		},
 	};

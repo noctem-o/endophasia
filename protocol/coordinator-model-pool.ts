@@ -8,6 +8,7 @@
 // credentials. A `hosted-relay` member is parsed so M2 can add hosted providers without a new format, but M1 never contacts it.
 
 import {
+	ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1,
 	type EndoCoordinatorResourceProfileV1,
 	validateEndoCoordinatorResourceProfileV1,
 } from "./coordinator-resource-policy.ts";
@@ -268,9 +269,17 @@ export function parseEndoCoordinatorModelPoolV1(value: unknown): EndoCoordinator
 	if (!Array.isArray(pool.members)) return fail("pool.members must be an array");
 	const { min, max } = ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.members;
 	if (pool.members.length < min || pool.members.length > max) fail(`pool.members must hold ${min} to ${max} members`);
+	const minOutputTokens =
+		resourceProfile.reasoningControl.mode === "reasoning-budget-tokens"
+			? Math.max(
+					ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.maxOutputTokens.min,
+					resourceProfile.reasoningControl.tokens +
+						ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1.minVisibleHeadroomTokens,
+				)
+			: ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.maxOutputTokens.min;
 	const bounds = {
 		maxOutputTokens: {
-			min: ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.maxOutputTokens.min,
+			min: minOutputTokens,
 			max: resourceProfile.maxOutputTokensPerRequest,
 		},
 		timeoutMs: {

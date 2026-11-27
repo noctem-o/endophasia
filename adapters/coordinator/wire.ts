@@ -24,13 +24,37 @@ export type EndoCoordinatorWireInferenceV0 = Readonly<
 	}
 >;
 
-/** Reasoning/template control keys that must never appear on the wire unless explicitly authorized by `inference`. */
-const FORBIDDEN_SMUGGLED_REASONING_KEYS_V1 = [
-	"thinking_budget_tokens",
-	"reasoning_budget",
-	"chat_template_kwargs",
-	"enable_thinking",
-] as const;
+/**
+ * Closed top-level request fields allowed on `/v1/chat/completions` beyond the exact keys in `inference` (F3).
+ * Any undeclared key (such as `reasoning_format`, `reasoning`, `thinking`, `chat_template_kwargs`, `enable_thinking`,
+ * `ignore_eos`, `min_tokens`, `samplers`, `mirostat`, `logit_bias`, `grammar`, `response_format`, `stop`, `logprobs`,
+ * `n_predict`, `max_completion_tokens`, etc.) is refused fail-closed.
+ */
+const ALLOWED_WIRE_REQUEST_KEYS_V1 = new Set([
+	"model",
+	"messages",
+	"tools",
+	"stream",
+	"stream_options",
+	"store",
+	"tool_choice",
+]);
+
+const SAFE_FINISH_REASON_V1 = /^[a-zA-Z0-9_-]{1,32}$/;
+
+function sanitizeFinishReasonV1(raw: string): string {
+	return SAFE_FINISH_REASON_V1.test(raw) ? raw : "other";
+}
+
+function validStreamOptionsV1(value: unknown): boolean {
+	if (value === undefined) return true;
+	const obj = record(value);
+	if (obj === null) return false;
+	for (const key of Object.keys(obj)) {
+		if (key !== "include_usage") return false;
+	}
+	return obj.include_usage === undefined || typeof obj.include_usage === "boolean";
+}
 
 const TOOL_SET_V0 = canonicalEndoJsonV0([{ type: "function", function: ENDO_COORDINATOR_TOOL_DEFINITION_V0 }]);
 
@@ -93,14 +117,16 @@ export function coordinatorWireV0(
 			);
 			if (canonicalEndoJsonV0(tools) !== TOOL_SET_V0 || "functions" in sent || "function_call" in sent)
 				return refuse("tool-surface-mismatch");
+			const unknownKey = Object.keys(sent).find(
+				(key) => !ALLOWED_WIRE_REQUEST_KEYS_V1.has(key) && !Object.hasOwn(inference, key),
+			);
 			if (
+				unknownKey !== undefined ||
 				Object.entries(inference).some(([key, expected]) => sent[key] !== expected) ||
 				sent.stream !== true ||
-				"n_predict" in sent ||
-				"max_completion_tokens" in sent ||
-				("reasoning_effort" in sent && !Object.hasOwn(inference, "reasoning_effort")) ||
-				("reasoning_budget_tokens" in sent && !Object.hasOwn(inference, "reasoning_budget_tokens")) ||
-				FORBIDDEN_SMUGGLED_REASONING_KEYS_V1.some((k) => k in sent)
+				!validStreamOptionsV1(sent.stream_options) ||
+				("store" in sent && sent.store !== false) ||
+				("tool_choice" in sent && sent.tool_choice !== "auto")
 			)
 				return refuse("model-unavailable");
 			if (!Array.isArray(sent.messages)) return refuse("model-unavailable");
@@ -130,14 +156,18 @@ export function coordinatorWireV0(
 				const sentReasoningControl =
 					Object.hasOwn(inference, "reasoning_effort") || Object.hasOwn(inference, "reasoning_budget_tokens");
 				if (sentReasoningControl && (status === 400 || status === 422)) {
-					const snippet = Buffer.from(wire).toString("utf8", 0, Math.min(wire.length, 4096)).toLowerCase();
-					if (
-						snippet.includes("reasoning_effort") ||
-						snippet.includes("reasoning_budget_tokens") ||
-						snippet.includes("unsupported") ||
-						snippet.includes("unknown field") ||
-						snippet.includes("invalid parameter")
-					) {
+					const rawText = Buffer.from(wire).toString("utf8", 0, Math.min(wire.length, 8192));
+					const bodySep = rawText.indexOf("\r\n\r\n");
+					const bodyText = (bodySep >= 0 ? rawText.slice(bodySep + 4) : rawText).slice(0, 4096).toLowerCase();
+					const namesControl =
+						bodyText.includes("reasoning_effort") || bodyText.includes("reasoning_budget_tokens");
+					const mentionsReasoningRejection =
+						(bodyText.includes("reasoning") || bodyText.includes("thinking")) &&
+						(bodyText.includes("unsupported") ||
+							bodyText.includes("unknown") ||
+							bodyText.includes("invalid") ||
+							bodyText.includes("unrecognized"));
+					if (namesControl || mentionsReasoningRejection) {
 						return refuse("unsupported-reasoning-control");
 					}
 				}
@@ -200,7 +230,7 @@ export function coordinatorWireV0(
 						const c = record(choice);
 						const d = record(c?.delta);
 						if (c?.index !== 0 || d === null) return refuse("model-unavailable");
-						if (typeof c.finish_reason === "string") finish = c.finish_reason;
+						if (typeof c.finish_reason === "string") finish = sanitizeFinishReasonV1(c.finish_reason);
 						if (typeof d.content === "string") text += d.content;
 						// Count reasoning characters without ever storing raw reasoning content.
 						if (typeof d.reasoning_content === "string") reasoningChars += d.reasoning_content.length;
@@ -233,6 +263,13 @@ export function coordinatorWireV0(
 				});
 				if (!done || finish === null) return refuse("model-unavailable");
 				if (toolCalled) {
+					if (
+						requests === 1 &&
+						id === null &&
+						finish === "length" &&
+						(name === "" || ENDO_COORDINATOR_TOOL_V0.startsWith(name))
+					)
+						return refuse("generation-limit");
 					if (
 						requests !== 1 ||
 						id !== null ||

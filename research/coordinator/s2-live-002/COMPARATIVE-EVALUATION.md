@@ -27,11 +27,19 @@ Executed via `node research/coordinator/s2-live-002/scripts/run-stage1-offline-r
 
 ---
 
-## 2. Stage 2 — Paired Live Comparisons (**NOT YET EXECUTED — AWAITING OPERATOR AUTHORIZATION**)
+## 2. Stage 2 — Zero-Inference Preflight Dry Run (Completed) & Paired Live Comparisons (**NOT YET EXECUTED — AWAITING OPERATOR AUTHORIZATION**)
 
 Harness prepared at [scripts/run-stage2-paired-live.mjs](./scripts/run-stage2-paired-live.mjs), gated behind `--authorize-live-stage2` so it cannot contact `http://127.0.0.1:8091` accidentally.
 
-### Planned Comparative Scorecard (Denominators Frozen Before Execution)
+### Zero-Inference Preflight & 24-Cell Dry Run Results (`observations/stage2-preflight-manifest.json`, `observations/stage2-dry-run.jsonl`)
+- **Preflight (`8/8` scenarios):** Verified all mutations check `.ok`, valid task transitions (`open -> in-progress -> review`, `open -> blocked`), real `DevelopReceiptsServiceV0` host checks, real `defaultObserveAdvisoryProjectV0` observations, S7 zero-inference prior-briefing cursor seed (`lastConsideredSemanticDigest === currentDigest`, `on-change` -> `skipped-unchanged`, `digest-window` -> admitted), full S8 multi-agent evidence (`liveness-unverified` hazard, active builder + reviewer with `targetCandidate`, current `git-commit` candidate, unsatisfied dependency, registered worktree, 2 worktree conflicts, `changes-requested` advisory review), and exact normalized A/B/C structural semantic equivalence.
+- **24-cell end-to-end OpenClaw dry run (`0` live inference; ephemeral local fake provider):**
+  - All `24/24` turns ran real installed OpenClaw `2026.11.10` inside `/usr/bin/bwrap` + model relay with `0` hits to `127.0.0.1:8091` and clean `/tmp` teardown.
+  - Condition A reproduced exact legacy `receipt-absence-unestablished` refusals on `S5-W8-mixed-head`, `S6-W9-unplanned-pass`, and `S7-W10-digest` (`instructionsSha256 = d564ba57...`), while Conditions B & C published cleanly.
+  - On `S8-multi-agent`, Condition C surfaced and proposed `investigate-liveness-hazard`, whereas Conditions A & B could only see status-level `review-awaiting-review`.
+  - On `S1-B1-partial`, Conditions B & C unconditionally appended `Snapshot disclosures (host-reported): - Non-ready sources: attempts=missing, events=missing (ev:sources)`.
+
+### Planned Live Comparative Scorecard (Denominators Frozen Before Execution)
 
 | Metric | Denominator | Condition A (`legacy-v0`, `status-v0`) | Condition B (`grounded-v1`, `status-v0`) | Condition C (`grounded-v1`, `status-and-coordination-v1`) |
 | :--- | :--- | :---: | :---: | :---: |

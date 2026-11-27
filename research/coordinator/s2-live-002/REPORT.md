@@ -84,11 +84,12 @@ Before committing this research package, all files under `research/coordinator/s
 
 ---
 
-## 8. Stage 2 Live Comparison Authorization Request
+## 8. Stage 2 Zero-Inference Preflight & Live Comparison Authorization Request
 
-Stage 2 (`scripts/run-stage2-paired-live.mjs`) is prepared and **blocked behind `--authorize-live-stage2`** pending explicit operator approval:
+Stage 2 (`scripts/run-stage2-paired-live.mjs`) has completed a full **zero-inference preflight and 24-cell OpenClaw `2026.11.10` dry run** against an ephemeral local fake provider (`observations/stage2-preflight-manifest.json`, `observations/stage2-dry-run.jsonl`; `24/24` cells passed, `8/8` scenarios verified semantically equivalent across A/B/C, `0` requests to `127.0.0.1:8091`), and remains **hard-gated behind `--authorize-live-stage2`** pending explicit operator approval:
 
 - **Target Model & Endpoint:** `Inkling-2-Mini-Uncensored-AD-Q4_K` at `http://127.0.0.1:8091` (`llama.cpp` router `b12622-19bc41dbb`; existing server untouched).
 - **Harness:** Installed OpenClaw `2026.11.10` inside `/usr/bin/bwrap` (read-only single tool `endophasia_status`).
-- **Turn & Token Ceilings:** Exactly **24 bounded live advisory turns** (8 scenarios × 3 conditions A/B/C in rotated paired blocks), max 2 completion requests/turn, max `2,048` generated tokens/request (`4,096` reserved/turn; `98,304` max combined reservation), `180 s` wall-clock cap/turn, 1 concurrent turn/store, zero retries.
-- **Side Effects:** Ephemeral temp Git repos & stores under `/tmp/endo-s2-live-002-*` (cleaned up automatically) plus raw observations written to `research/coordinator/s2-live-002/observations/stage2-paired-live.jsonl`. Zero changes to operator repos, `openclaw-gateway.service`, `llama-server`, systemd units, or PR #192.
+- **Turn & Token Ceilings:** Exactly **24 bounded live advisory turns aggregate across restarts** (8 scenarios × 3 conditions A/B/C in rotated paired blocks; crash-proof append-only `turn-intent` + `turn-result` JSONL ledger), pool member `timeoutMs = 135,000` (schema ceiling), separate S2 advisory turn deadline `maxTurnWallClockMs = 180,000`, max 2 completion requests/turn, max `2,048` generated tokens/request (`4,096` reserved/turn; `98,304` max combined reservation), 1 concurrent turn/store, zero retries.
+- **Evaluation Focus:** Stage 3 will specifically evaluate whether the closed `rationaleCode` vocabulary and deterministic host rendering improve factual integrity **at the cost of useful synthesis**; higher publication rate alone will not be treated as evidence of improved intelligence.
+- **Side Effects:** Ephemeral temp Git repos & stores under `/tmp/endo-s2-live-002-*` (cleaned up automatically) plus append-only raw observations written to `research/coordinator/s2-live-002/observations/stage2-paired-live.jsonl`. Zero changes to operator repos, `openclaw-gateway.service`, `llama-server`, systemd units, or PR #192.

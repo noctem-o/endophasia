@@ -1,6 +1,7 @@
 {
 	"mission": "COORDINATOR-GROUNDING-002 / S2-LIVE-002",
 	"stage1OfflineReplayCompleted": true,
+	"stage2PreflightDryRunCompleted": true,
 	"stage2LiveExecuted": false,
 	"stage2RequiresOperatorApproval": true,
 	"baseline": {
@@ -37,11 +38,12 @@
 	"stage2ProposedCeilings": {
 		"scenarios": 8,
 		"conditions": ["A-legacy-v0", "B-grounded-v1-status-only", "C-grounded-v1-status-and-coordination"],
-		"maxLiveTurns": 24,
+		"maxLiveTurnsAggregate": 24,
 		"maxCompletionRequestsPerTurn": 2,
 		"maxOutputTokensPerRequest": 2048,
 		"maxReservedGeneratedTokensTotal": 98304,
-		"turnTimeoutSeconds": 180,
+		"poolMemberTimeoutMs": 135000,
+		"advisoryTurnWallClockMs": 180000,
 		"concurrencyPerStore": 1,
 		"operationalAuthority": "none"
 	}

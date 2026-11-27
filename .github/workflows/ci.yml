@@ -91,23 +91,57 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm run test:inventory
       - name: Numerical probe offline tests and bounded cleanup regressions
         run: |
           python3 -m unittest discover -s research/numerical-execution-probe/tests -p 'test_*.py' -v
           c++ -std=c++17 -O2 research/numerical-execution-probe/tests/core_test.cpp -o "$RUNNER_TEMP/e4eg-core-test"
           "$RUNNER_TEMP/e4eg-core-test"
 
-  # The suite takes 14-20 min in one job on these runners, at the edge of a 20-min limit that also covers setup (a passing run was
-  # cancelled 0.1 s after vitest's summary). Vitest's --shard splits the test files into three parallel jobs, each well inside its own
-  # limit, so the limit still catches a hang. Together the shards run every test file exactly once.
-  test:
-    name: Test (shard ${{ matrix.shard }}/3)
+  # Deliberately partitioned general test execution (CI-RELIABILITY-001):
+  # - `test-fast`: ~160 pure/lightweight unit test files (< 1 min wall time for fast feedback).
+  # - `test-browser`: all Chromium Studio UI & screenshot suites, isolated from heavy process workers with maxWorkers=2.
+  # - `test-process`: all real child-process, RPC, fake-Pi, ACP, AA, CLI, and concurrency suites (plus any newly added
+  #   unmeasured non-browser tests), LPT-balanced across 4 shards with maxWorkers=3 to leave vCPU headroom for children.
+  # Together with `npm run test:inventory` in `check`, these partitions are proven to execute every `tests/**/*.test.ts`
+  # file on disk exactly once with zero silent omissions.
+  test-fast:
+    name: Test (fast)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: node scripts/run-test-partition.mjs --class=fast
+
+  test-browser:
+    name: Test (browser)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # ENDO_REQUIRE_BROWSER makes the Studio frontend's browser suite fail, not skip, on a runner without Chromium.
+      - run: node scripts/run-test-partition.mjs --class=browser
+        env:
+          ENDO_REQUIRE_BROWSER: "1"
+
+  test-process:
+    name: Test (process ${{ matrix.shard }}/4)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -123,10 +157,7 @@ jobs:
           fi
       # Ubuntu 24.04 ships GNU coreutils 9.4, whose mv has no --exchange: here the reference-replacement tests check the
       # up-front refusal, and the exchange job below checks the exchange itself.
-      # ENDO_REQUIRE_BROWSER makes the Studio frontend's browser suite fail, not skip, on a runner without Chromium.
-      - run: npm test -- --shard=${{ matrix.shard }}/3
-        env:
-          ENDO_REQUIRE_BROWSER: "1"
+      - run: node scripts/run-test-partition.mjs --class=process --shard=${{ matrix.shard }}/4
 
   live-scopes:
     name: Live process containment (real user scopes)

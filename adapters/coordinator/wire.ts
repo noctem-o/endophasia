@@ -55,7 +55,17 @@ export function coordinatorWireV0(
 		statusDelivered: false,
 		statusMessage: null as JsonValueV0,
 		inference: [] as Record<string, JsonValueV0>[],
-		responses: [] as { finish: string | null; usage: JsonValueV0; text: string; toolCalled: boolean }[],
+		responses: [] as {
+			finish: string | null;
+			usage: JsonValueV0;
+			text: string;
+			toolCalled: boolean;
+			sawReasoning?: boolean;
+			reasoningChars?: number;
+			sawVisibleContent?: boolean;
+			visibleChars?: number;
+			reasoningTokens?: number | null;
+		}[],
 		refusal: null as EndoCoordinatorBriefRefusalV0 | null,
 	};
 	let id: string | null = null;
@@ -116,7 +126,23 @@ export function coordinatorWireV0(
 		},
 		response({ status, wire }: { status: number; wire: Uint8Array }) {
 			if (trace.refusal !== null) return false;
-			if (status !== 200) return refuse("model-unavailable");
+			if (status !== 200) {
+				const sentReasoningControl =
+					Object.hasOwn(inference, "reasoning_effort") || Object.hasOwn(inference, "reasoning_budget_tokens");
+				if (sentReasoningControl && (status === 400 || status === 422)) {
+					const snippet = Buffer.from(wire).toString("utf8", 0, Math.min(wire.length, 4096)).toLowerCase();
+					if (
+						snippet.includes("reasoning_effort") ||
+						snippet.includes("reasoning_budget_tokens") ||
+						snippet.includes("unsupported") ||
+						snippet.includes("unknown field") ||
+						snippet.includes("invalid parameter")
+					) {
+						return refuse("unsupported-reasoning-control");
+					}
+				}
+				return refuse("model-unavailable");
+			}
 			try {
 				const parts: Buffer[] = [];
 				let sse = false;
@@ -142,6 +168,8 @@ export function coordinatorWireV0(
 				let text = "";
 				let usage: JsonValueV0 = null;
 				let toolCalled = false;
+				let reasoningChars = 0;
+				let reasoningTokens: number | null = null;
 				for (const line of Buffer.concat(parts).toString("utf8").split(/\r?\n/)) {
 					if (line === "" || line.startsWith(":")) continue;
 					if (!line.startsWith("data:") || done) return refuse("model-unavailable");
@@ -155,13 +183,28 @@ export function coordinatorWireV0(
 						return refuse("model-unavailable");
 					if (options.model !== undefined && item.model !== options.model)
 						return refuse("model-identity-mismatch");
-					if (record(item.usage)) usage = item.usage as JsonValueV0;
+					const usageRecord = record(item.usage);
+					if (usageRecord !== null) {
+						usage = item.usage as JsonValueV0;
+						const details = record(usageRecord.completion_tokens_details);
+						const reportedReasoning = details?.reasoning_tokens;
+						if (
+							typeof reportedReasoning === "number" &&
+							Number.isSafeInteger(reportedReasoning) &&
+							reportedReasoning >= 0
+						) {
+							reasoningTokens = reportedReasoning;
+						}
+					}
 					for (const choice of item.choices) {
 						const c = record(choice);
 						const d = record(c?.delta);
 						if (c?.index !== 0 || d === null) return refuse("model-unavailable");
 						if (typeof c.finish_reason === "string") finish = c.finish_reason;
 						if (typeof d.content === "string") text += d.content;
+						// Count reasoning characters without ever storing raw reasoning content.
+						if (typeof d.reasoning_content === "string") reasoningChars += d.reasoning_content.length;
+						else if (typeof d.reasoning === "string") reasoningChars += d.reasoning.length;
 						if (d.function_call !== undefined && d.function_call !== null) return refuse("tool-not-permitted");
 						if (d.tool_calls === undefined || d.tool_calls === null) continue;
 						if (!Array.isArray(d.tool_calls)) return refuse("tool-not-permitted");
@@ -177,7 +220,17 @@ export function coordinatorWireV0(
 						}
 					}
 				}
-				trace.responses.push({ finish, usage, text, toolCalled });
+				trace.responses.push({
+					finish,
+					usage,
+					text,
+					toolCalled,
+					sawReasoning: reasoningChars > 0 || (reasoningTokens !== null && reasoningTokens > 0),
+					reasoningChars,
+					sawVisibleContent: text.trim().length > 0,
+					visibleChars: text.length,
+					reasoningTokens,
+				});
 				if (!done || finish === null) return refuse("model-unavailable");
 				if (toolCalled) {
 					if (

@@ -25,6 +25,7 @@ import type {
 	EndoCoordinatorBriefingModeV1,
 	EndoCoordinatorVisibilityModeV1,
 } from "../../protocol/coordinator-grounding.ts";
+import { validateEndoCoordinatorReasoningControlV1 } from "../../protocol/coordinator-resource-policy.ts";
 import { type EndoCoordinatorStatusV0, validateEndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import { ENDO_PROJECT_ID_PATTERN_V0 } from "../../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "../../runtime/contracts/canonical-json.ts";
@@ -32,10 +33,14 @@ import {
 	ENDO_COORDINATOR_INSTRUCTIONS_V0,
 	ENDO_COORDINATOR_TOOL_DEFINITION_V0,
 	ENDO_COORDINATOR_TOOL_V0,
+	type EndoCoordinatorBriefDiagnosticsV1,
 	type EndoCoordinatorBriefRefusalV0,
 	type EndoCoordinatorBriefRequestV0,
 	type EndoCoordinatorBriefResultV0,
 	type EndoCoordinatorBriefSubstrateV0,
+	type EndoCoordinatorDiagnosticStageV1,
+	type EndoCoordinatorExchangeDiagnosticV1,
+	type EndoCoordinatorTerminationClassV1,
 } from "../../runtime/contracts/coordinator-brief.ts";
 import {
 	buildEndoCoordinatorModelViewV1,
@@ -235,6 +240,77 @@ export interface OpenClawCoordinatorTrialV0 {
 	readonly admittedExchanges: number;
 	readonly recorderClean: boolean;
 	readonly stderr: string;
+	readonly diagnostics?: EndoCoordinatorBriefDiagnosticsV1;
+}
+
+const nonNegIntOrNull = (value: unknown): number | null =>
+	typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+
+function terminationClassFor(refusal: EndoCoordinatorBriefRefusalV0 | null): EndoCoordinatorTerminationClassV1 {
+	if (refusal === null) return "published";
+	switch (refusal) {
+		case "reasoning-budget-exhausted":
+		case "generation-limit":
+		case "inference-timeout":
+		case "unsupported-reasoning-control":
+		case "model-unavailable":
+		case "runtime-unavailable":
+			return refusal;
+		case "grounding-malformed":
+		case "grounding-claim-unsupported":
+		case "grounding-subject-unknown":
+		case "grounding-evidence-ref-invalid":
+		case "receipt-absence-unestablished":
+		case "event-absence-unestablished":
+		case "tool-expansion-suggested":
+		case "verification-positive-contradiction":
+		case "ungrounded":
+			return "grounding-refused";
+		default:
+			return "other-refusal";
+	}
+}
+
+function buildDiagnosticsV1(args: {
+	readonly target: EndoCoordinatorModelTargetV0;
+	readonly wire: ReturnType<typeof coordinatorWireV0>["trace"];
+	readonly dispatched: boolean;
+	readonly openclawExitOk: boolean | null;
+	readonly refusal: EndoCoordinatorBriefRefusalV0 | null;
+}): EndoCoordinatorBriefDiagnosticsV1 {
+	const stages: EndoCoordinatorDiagnosticStageV1[] = ["preflight", "status-read", "relay-started"];
+	if (args.wire.inference.length >= 1) stages.push("exchange-1");
+	if (args.dispatched || args.wire.statusDelivered) stages.push("tool-dispatched");
+	if (args.wire.inference.length >= 2) stages.push("exchange-2");
+	if (args.refusal === null) stages.push("validated");
+	const exchanges: EndoCoordinatorExchangeDiagnosticV1[] = args.wire.responses.map((resp, idx) => {
+		const u =
+			resp.usage !== null && typeof resp.usage === "object" && !Array.isArray(resp.usage)
+				? (resp.usage as Record<string, unknown>)
+				: null;
+		return Object.freeze({
+			exchange: idx + 1,
+			finishReason: resp.finish,
+			toolCalled: resp.toolCalled,
+			sawReasoning: resp.sawReasoning ?? false,
+			reasoningChars: resp.reasoningChars ?? 0,
+			sawVisibleContent: resp.sawVisibleContent ?? resp.text.trim().length > 0,
+			visibleChars: resp.visibleChars ?? resp.text.length,
+			promptTokens: nonNegIntOrNull(u?.prompt_tokens),
+			completionTokens: nonNegIntOrNull(u?.completion_tokens),
+			reasoningTokens: resp.reasoningTokens ?? null,
+		});
+	});
+	return Object.freeze({
+		schemaVersion: "endo.coordinator-brief-diagnostics.v1",
+		terminationClass: terminationClassFor(args.refusal),
+		stagesReached: Object.freeze(stages),
+		openclawExitOk: args.openclawExitOk,
+		exchanges: Object.freeze(exchanges),
+		effectiveMaxOutputTokens: args.target.maxOutputTokens,
+		reasoningControlMode: args.target.reasoningControl?.mode ?? "unchanged",
+		rawReasoningStored: false,
+	});
 }
 
 export function pinnedCoordinatorBriefStatusV0(
@@ -311,14 +387,22 @@ export async function runOpenClawCoordinatorV0(
 	});
 	const runtime = { harness: HARNESS, provider: "llama.cpp (unidentified)", model: target.model };
 	const base = { schemaVersion: "endo.coordinator-brief.v0" as const, projectId, runtime };
-	const unavailable = (reason: EndoCoordinatorBriefRefusalV0) => ({
+	const unavailable = (reason: EndoCoordinatorBriefRefusalV0, diagnostics?: EndoCoordinatorBriefDiagnosticsV1) => ({
 		...base,
+		...(diagnostics === undefined ? {} : { diagnostics }),
 		availability: "unavailable" as const,
 		reason,
 	});
 	if (!ENDO_PROJECT_ID_PATTERN_V0.test(projectId)) return unavailable("malformed-selector");
 	const origin = target.origin;
 	if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(origin)) return unavailable("model-unavailable");
+	if (target.reasoningControl !== undefined) {
+		try {
+			validateEndoCoordinatorReasoningControlV1(target.reasoningControl, target.maxOutputTokens, true);
+		} catch {
+			return unavailable("unsupported-reasoning-control");
+		}
+	}
 	const scratch = process.env.XDG_RUNTIME_DIR;
 	if (!scratch?.startsWith("/")) return unavailable("runtime-unavailable");
 	try {
@@ -473,6 +557,45 @@ export async function runOpenClawCoordinatorV0(
 		const recorderClean = relay.recordingFailures() === 0 && !existsSync(relay.socketPath);
 		const dispatch = join(agent, "dispatch");
 		const dispatched = existsSync(dispatch) && readFileSync(dispatch, "utf8") === "called\n";
+		const final = wire.trace.responses.at(-1);
+		let refusal: EndoCoordinatorBriefRefusalV0 | null = null;
+		let validatedGrounded: ReturnType<typeof validateAndRenderGroundedBriefV1> | null = null;
+		if (options.signal?.aborted) refusal = "runtime-unavailable";
+		else if (deadline !== undefined && (deadline.aborted || inferenceElapsedMs >= target.timeoutMs))
+			refusal = "inference-timeout";
+		else if (wire.trace.refusal !== null) refusal = wire.trace.refusal;
+		else if (!recorderClean) refusal = "runtime-unavailable";
+		else if (wire.trace.responses.length === 0)
+			refusal = wire.trace.inference.length > 0 ? "model-unavailable" : "runtime-unavailable";
+		else if (final?.finish === "length") {
+			// Distinguish completion-budget exhaustion inside reasoning from generic OpenClaw non-zero exit (S2-LIVE-002 fix).
+			// Strictly gated on finish_reason === "length" so finish_reason === "stop" preserves M1's exact semantics.
+			refusal =
+				final.sawReasoning === true && final.sawVisibleContent !== true && !final.toolCalled
+					? "reasoning-budget-exhausted"
+					: "generation-limit";
+		} else if (!ran.ok) refusal = "runtime-unavailable";
+		else if (!dispatched || !wire.trace.statusDelivered) refusal = "ungrounded";
+		else if (final?.finish !== "stop" || !final.text.trim()) refusal = "ungrounded";
+		else if (briefingMode === "grounded-v1") {
+			validatedGrounded = validateAndRenderGroundedBriefV1({
+				rawText: final.text,
+				modelView: modelViewV1!,
+				modelViewSha256: evidence.modelViewSha256,
+				includeProposalLine: options.includeProposalLine === true,
+			});
+			if (!validatedGrounded.ok) refusal = validatedGrounded.reason;
+		} else {
+			const unsupported = coordinatorAnswerRefusalV0(final.text, status.view);
+			if (unsupported !== null) refusal = unsupported;
+		}
+		const diagnostics = buildDiagnosticsV1({
+			target,
+			wire: wire.trace,
+			dispatched,
+			openclawExitOk: ran.ok,
+			refusal,
+		});
 		options.trial?.({
 			promptSha256: sha256HexV0(prompt),
 			inference: coordinatorInferenceForV0(target),
@@ -485,42 +608,25 @@ export async function runOpenClawCoordinatorV0(
 			admittedExchanges: relay.admitted(),
 			recorderClean,
 			stderr: ran.stderr.replaceAll(bearer, "[redacted]").slice(0, 4000),
+			diagnostics,
 		});
-		if (options.signal?.aborted) return unavailable("runtime-unavailable");
-		if (deadline !== undefined && (deadline.aborted || inferenceElapsedMs >= target.timeoutMs))
-			return unavailable("inference-timeout");
-		if (wire.trace.refusal !== null) return unavailable(wire.trace.refusal);
-		if (!recorderClean) return unavailable("runtime-unavailable");
-		if (wire.trace.responses.length === 0)
-			return unavailable(wire.trace.inference.length > 0 ? "model-unavailable" : "runtime-unavailable");
-		if (!ran.ok) return unavailable("runtime-unavailable");
-		const final = wire.trace.responses.at(-1);
-		if (!dispatched || !wire.trace.statusDelivered) return unavailable("ungrounded");
-		if (final?.finish === "length") return unavailable("generation-limit");
-		if (final?.finish !== "stop" || !final.text.trim()) return unavailable("ungrounded");
-		if (briefingMode === "grounded-v1") {
-			const validated = validateAndRenderGroundedBriefV1({
-				rawText: final.text,
-				modelView: modelViewV1!,
-				modelViewSha256: evidence.modelViewSha256,
-				includeProposalLine: options.includeProposalLine === true,
-			});
-			if (!validated.ok) return unavailable(validated.reason);
+		if (refusal !== null) return unavailable(refusal, diagnostics);
+		if (briefingMode === "grounded-v1" && validatedGrounded !== null && validatedGrounded.ok) {
 			return {
 				...base,
+				diagnostics,
 				availability: "available",
-				answer: validated.renderedAnswer,
+				answer: validatedGrounded.renderedAnswer,
 				evidence,
 				toolSurface: [ENDO_COORDINATOR_TOOL_V0],
-				grounding: validated.summary,
+				grounding: validatedGrounded.summary,
 			};
 		}
-		const unsupported = coordinatorAnswerRefusalV0(final.text, status.view);
-		if (unsupported !== null) return unavailable(unsupported);
 		return {
 			...base,
+			diagnostics,
 			availability: "available",
-			answer: final.text.trim(),
+			answer: final!.text.trim(),
 			evidence,
 			toolSurface: [ENDO_COORDINATOR_TOOL_V0],
 		};
@@ -572,6 +678,17 @@ export function preflightOpenClawCoordinatorV0(
 	});
 	if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(target.origin))
 		return { ok: false, reason: "model-unavailable", detail: "target origin is not IPv4 loopback" };
+	if (target.reasoningControl !== undefined) {
+		try {
+			validateEndoCoordinatorReasoningControlV1(target.reasoningControl, target.maxOutputTokens, true);
+		} catch (error) {
+			return {
+				ok: false,
+				reason: "unsupported-reasoning-control",
+				detail: (error as Error).message,
+			};
+		}
+	}
 	const scratch = process.env.XDG_RUNTIME_DIR;
 	if (!scratch?.startsWith("/"))
 		return { ok: false, reason: "runtime-unavailable", detail: "XDG_RUNTIME_DIR is unset or relative" };

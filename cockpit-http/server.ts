@@ -336,11 +336,15 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		balance = Math.min(burstMs, balance + (now - refilledAt) * duty);
 		refilledAt = now;
 	};
-	/** Admit a read only while the balance is positive, and start charging it the time it takes (see `handle`). */
-	const admit = (): void => {
+	/** Admit a read only while the balance is positive, and return when its charge starts. */
+	const admitted = (): number => {
 		refill();
 		if (balance <= 0) refuse("too-many-requests");
-		chargeFrom = performance.now();
+		return performance.now();
+	};
+	/** Admit a synchronous read and charge it the time it takes when `handle` finishes (see `handle`). */
+	const admit = (): void => {
+		chargeFrom = admitted();
 	};
 
 	const guard = (request: IncomingMessage): { segments: string[]; rawQuery: string; method: "GET" | "POST" } => {
@@ -665,7 +669,7 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 				coordinatorRoute === "workspace/coordinator/coordination" ||
 				coordinatorRoute === "workspace/coordinator/operations";
 			if (coordinator && method !== "GET") return sendRefusal(response, "method-not-allowed");
-			if (coordinatorRoute === "workspace/coordinator/operations") admit();
+			const chargedFrom = coordinatorRoute === "workspace/coordinator/operations" ? admitted() : null;
 			let answer: { status: number; body: unknown };
 			try {
 				answer =
@@ -681,10 +685,7 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 							})
 						: await workbench.handle(workbenchRequest);
 			} finally {
-				if (chargeFrom !== null) {
-					balance -= performance.now() - chargeFrom;
-					chargeFrom = null;
-				}
+				if (chargedFrom !== null) balance -= performance.now() - chargedFrom;
 			}
 			if (!WORKBENCH_STATUSES.includes(answer.status)) throw new TypeError("workbench status");
 			send(response, answer.status, canonicalEndoJsonV0(answer.body as never));

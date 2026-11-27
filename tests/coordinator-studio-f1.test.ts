@@ -33,6 +33,7 @@ import { validateEndoCoordinatorCoordinationV0 } from "../protocol/coordinator-c
 import { parseEndoCoordinatorModelPoolV0 } from "../protocol/coordinator-model-pool.ts";
 import { validateEndoCoordinatorStatusV0 } from "../protocol/coordinator-status.ts";
 import { validateEndoCoordinatorStudioOperationsV0 } from "../protocol/coordinator-studio-operations.ts";
+import { ENDO_ADVISORY_LIMITS_V0 } from "../protocol/develop-advisory.ts";
 import {
 	ENDO_DEVELOP_AUTOMATION_LEASE_SCHEMA_V0,
 	ENDO_DEVELOP_RESOURCE_OBSERVATION_SCHEMA_V0,
@@ -40,7 +41,10 @@ import {
 	ENDO_DEVELOP_SCHEDULE_FIRE_OUTCOME_SCHEMA_V0,
 } from "../protocol/develop-automation.ts";
 import { DevelopAttemptsServiceV0 } from "../runtime/contracts/develop-attempts.ts";
+import { evaluateEndoScheduleDueV0 } from "../runtime/contracts/develop-automation.ts";
 import { DevelopWorkspaceServiceV0 } from "../runtime/contracts/develop-workspace.ts";
+import { readEndoCoordinatorStudioOperationsV0 } from "../storage/coordinator-studio-operations.ts";
+import { DevelopAdvisoryStoreV0 } from "../storage/develop-advisory.ts";
 import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopAutomationStoreV0 } from "../storage/develop-automation.ts";
 import { DevelopCoordinationStoreV0 } from "../storage/develop-coordination.ts";
@@ -850,5 +854,198 @@ describe.skipIf(!haveGit)("COORDINATOR-STUDIO-F1-002: deterministic Studio F1 ho
 		} finally {
 			await new Promise<void>((resolve) => sentinel.close(() => resolve()));
 		}
+	});
+});
+
+describe("COORDINATOR-STUDIO-F1-002: review findings on #196", () => {
+	const T0 = 1_700_000_000_000;
+	const pool = () =>
+		parseEndoCoordinatorModelPoolV0({
+			schemaVersion: "endo.coordinator-model-pool.v0",
+			selection: { fallback: "none", unconfirmedModel: "refuse" },
+			members: [
+				{
+					memberId: "m1",
+					kind: "local-openai-compat",
+					endpoint: "http://127.0.0.1:18099",
+					modelId: "test-model",
+					priority: 1,
+					maxPromptBytes: 8192,
+					maxOutputTokens: 2048,
+					timeoutMs: 60_000,
+					advisoryOnly: true,
+				},
+			],
+		});
+
+	function advisoryProject(trigger: Parameters<typeof addEndoAdvisoryScheduleV0>[1]["trigger"]) {
+		const root = scratch("endo-f1-findings-");
+		const project = new DevelopTasksStoreV0(root).registerProject({
+			name: "Findings",
+			path: root,
+			observedGitRoot: null,
+		});
+		if (!project.ok) throw new Error(project.code);
+		const now = () => T0;
+		addEndoAdvisoryScheduleV0(
+			root,
+			{
+				scheduleId: "adv-findings",
+				label: "Findings",
+				projectId: project.value.id,
+				actionKind: "generate-advisory-brief",
+				wake: "on-change",
+				missedRunPolicy: "skip-and-report",
+				trigger,
+			},
+			now,
+		);
+		setEndoAdvisoryScheduleEnabledV0(root, "adv-findings", true, 1, now);
+		return { root, projectId: project.value.id };
+	}
+
+	it("F1: classifies an advisory schedule with the advisory tick's grace and an S1 schedule with S1's", () => {
+		const atMs = T0 + 60_000;
+		const { root, projectId } = advisoryProject({ kind: "once", atMs });
+		const s1 = new DevelopAutomationStoreV0(root, { now: () => T0 });
+		const added = s1.addSchedule({
+			scheduleId: "obs-once",
+			label: "Observe once",
+			actionKind: "observe-health",
+			missedRunPolicy: "skip-and-report",
+			trigger: { kind: "once", atMs },
+		});
+		if (!added.ok) throw new Error(added.code);
+		const enabled = s1.setScheduleEnabled("obs-once", true, 1);
+		if (!enabled.ok) throw new Error(enabled.code);
+
+		const at = (offsetMs: number) => {
+			const operations = readEndoCoordinatorStudioOperationsV0({ root, projectId, now: () => atMs + offsetMs });
+			return {
+				advisory: operations.schedules.advisory.schedules[0]?.nextDueState,
+				observation: operations.schedules.observation.schedules[0]?.nextDueState,
+			};
+		};
+
+		// Two minutes past its trigger the advisory tick still fires, so Studio must say due, not missed.
+		const read = new DevelopAdvisoryStoreV0(root).readSchedules();
+		if (!read.ok || read.value === null) throw new Error("advisory schedules unreadable");
+		expect(
+			evaluateEndoScheduleDueV0(read.value.schedules[0] as never, atMs + 120_000, {
+				onTimeGraceMs: ENDO_ADVISORY_LIMITS_V0.defaultOnTimeGraceMs,
+			}).kind,
+		).toBe("due-fire");
+		expect(at(120_000)).toEqual({ advisory: "due", observation: "missed" });
+		// S1 keeps its own 60-second grace, and the advisory grace still ends at 600 seconds.
+		expect(at(30_000)).toEqual({ advisory: "due", observation: "due" });
+		expect(at(ENDO_ADVISORY_LIMITS_V0.defaultOnTimeGraceMs + 60_000)).toEqual({
+			advisory: "missed",
+			observation: "missed",
+		});
+	});
+
+	it("F2: redacts foreign project ids and absolute paths from a briefing answer and keeps its formatting", async () => {
+		const { root, projectId } = advisoryProject({ kind: "interval", everyMs: 60_000, anchorMs: T0 });
+		const foreign = `endo.project.${"f".repeat(32)}`;
+		expect(foreign).not.toBe(projectId);
+		authorizeEndoAdvisoryScheduleV0(
+			root,
+			{
+				scheduleId: "adv-findings",
+				scheduleRevision: 2,
+				pool: pool(),
+				policy: {
+					observationSource: "recorded-or-passive-probe",
+					recordedObservationMaxAgeMs: 60_000,
+					permitCapacityUnknown: true,
+					permitModelUnconfirmed: false,
+					permitPartialObservation: true,
+				},
+				budget: {
+					periodMs: 3_600_000,
+					maxTurnsPerPeriod: 4,
+					completionRequestsPerTurn: 2,
+					maxOutputTokensPerRequest: 2048,
+					maxGeneratedTokensPerPeriod: 16_384,
+					maxTurnWallClockMs: 60_000,
+				},
+				lifetimeMs: 3_600_000,
+			},
+			() => T0,
+		);
+		const answer = [
+			"## Findings",
+			"",
+			`- Compare \`/home/private/other-repo/src/a.ts\` with ${foreign}.`,
+			`- This project ${projectId} lives at ${root}.`,
+			"\tIndented **bold**, see src/lib/x.ts, either/or and https://example.com/docs/a.",
+		].join("\n");
+		await runEndoAdvisoryTickV0({
+			root,
+			now: () => T0,
+			observeMember: async (m) => ({
+				memberId: m.memberId,
+				endpoint: m.endpoint,
+				modelId: m.modelId,
+				basis: "controller-observed",
+				observedAtMs: T0,
+				elapsedMs: 1,
+				readiness: "ready",
+				detail: "slot-idle",
+				backend: "llama.cpp-single",
+				build: null,
+				requests: [{ path: "/health", status: 200 }],
+				inferenceTokens: 0,
+			}),
+			run: async (_r, req) => ({
+				schemaVersion: "endo.coordinator-brief.v0",
+				projectId: req.projectId,
+				runtime: { harness: "OpenClaw 2026.11.10", provider: "test", model: "test-model" },
+				availability: "available",
+				answer,
+				evidence: { readAtMs: T0, projectionSha256: "a".repeat(64), modelViewSha256: "b".repeat(64) },
+				toolSurface: ["endophasia_status"],
+			}),
+		});
+		const operations = validateEndoCoordinatorStudioOperationsV0(
+			readEndoCoordinatorStudioOperationsV0({ root, projectId, now: () => T0 }),
+		);
+		const published = operations.advisoryHistory.briefings[0]?.answer;
+		expect(published).toBe(
+			[
+				"## Findings",
+				"",
+				"- Compare `[redacted-path]` with [redacted-project].",
+				`- This project ${projectId} lives at [redacted-path].`,
+				"\tIndented **bold**, see src/lib/x.ts, either/or and https://example.com/docs/a.",
+			].join("\n"),
+		);
+		expect(published).not.toContain("/home/private");
+		expect(published).not.toContain(foreign);
+		expect(published).not.toContain(root);
+	});
+
+	const busyWorkbench = {
+		handle: async () => {
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			const until = performance.now() + 50;
+			while (performance.now() < until) {}
+			return { status: 200, body: { ok: true } };
+		},
+	};
+	const operationsRoute = (server: Parameters<typeof capabilityOf>[0]) =>
+		`${capabilityOf(server)}/api/v0/workbench/workspace/coordinator/operations`;
+
+	it("F3: charges the read budget for the asynchronous operations read, so a sequential burst is throttled", async () => {
+		const server = await serve(scratch(), { workbench: busyWorkbench, readBudget: { duty: 1e-9, burstMs: 5 } });
+		expect((await send(server, operationsRoute(server))).status).toBe(200);
+		expect((await send(server, operationsRoute(server))).status).toBe(429);
+	});
+
+	it("F3: charges an ordinary operations read once, not twice", async () => {
+		const server = await serve(scratch(), { workbench: busyWorkbench, readBudget: { duty: 1e-9, burstMs: 90 } });
+		expect((await send(server, operationsRoute(server))).status).toBe(200);
+		expect((await send(server, operationsRoute(server))).status).toBe(200);
+		expect((await send(server, operationsRoute(server))).status).toBe(429);
 	});
 });

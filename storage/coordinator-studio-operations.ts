@@ -24,7 +24,7 @@ import {
 	type EndoStudioSourceStateV0,
 	validateEndoCoordinatorStudioOperationsV0,
 } from "../protocol/coordinator-studio-operations.ts";
-import type { EndoAdvisoryScheduleV0 } from "../protocol/develop-advisory.ts";
+import { ENDO_ADVISORY_LIMITS_V0, type EndoAdvisoryScheduleV0 } from "../protocol/develop-advisory.ts";
 import {
 	ENDO_DEVELOP_AUTOMATION_LIMITS_V0,
 	type EndoDevelopScheduleV0,
@@ -130,10 +130,28 @@ function sanitizeDetail(detail: string | null | undefined, projectId: string, ma
 	return cleaned.length === 0 ? null : cleaned;
 }
 
-/** Sanitize untrusted model briefing text: strip disallowed C0/C1 control characters and cap at 4096 chars (S2). */
-function sanitizeAnswer(answer: string | null): string | null {
+const ANSWER_REFERENCE =
+	/(https?:\/\/[^\s<>"'`]+)|file:\/\/[^\s<>"'`]*|endo\.project\.[0-9a-f]{32}|~\/[^\s,;<>"'`()[\]{}*]+|\b[A-Za-z]:[\\/][^\s,;<>"'`()[\]{}*]+|(?<![\w.~-])(?:\/[^\s/\\,;<>"'`()[\]{}*]+){2,}/g;
+
+/**
+ * Sanitize untrusted model briefing text (S2): strip disallowed C0/C1 control characters, apply the disclosure boundary
+ * `sanitizeDetail` enforces, and cap at 4096 chars. Line breaks, tabs and Markdown survive. The authorized project's own
+ * `endo.project.*` id is kept, since this endpoint already discloses it; every other project id becomes `[redacted-project]`.
+ * Every absolute filesystem path (POSIX, home-relative, Windows drive, `file://`) becomes `[redacted-path]`, the authorized
+ * project's own checkout included, because the contract carries no raw paths. Relative paths and http(s) URLs are prose and
+ * are kept, with any foreign project id inside a URL still redacted.
+ */
+function sanitizeAnswer(answer: string | null, projectId: string): string | null {
 	if (answer === null) return null;
-	return answer.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, " ").slice(0, 4096);
+	const project = (id: string): string => (id === projectId ? id : "[redacted-project]");
+	return answer
+		.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, " ")
+		.replace(ANSWER_REFERENCE, (match: string, url: string | undefined) => {
+			if (url !== undefined) return url.replace(/endo\.project\.[0-9a-f]{32}/g, project);
+			if (match.startsWith("endo.project.")) return project(match);
+			return `[redacted-path]${/[.,:!?]*$/.exec(match)?.[0] ?? ""}`;
+		})
+		.slice(0, 4096);
 }
 
 const addClamped = (a: number, b: number): number => Math.min(Number.MAX_SAFE_INTEGER, a + b);
@@ -141,14 +159,13 @@ const addClamped = (a: number, b: number): number => Math.min(Number.MAX_SAFE_IN
 function classifyNextDue(
 	schedule: EndoDevelopScheduleV0,
 	nowMs: number,
+	onTimeGraceMs: number,
 ): {
 	readonly nextDueState: EndoStudioNextDueStateV0;
 	readonly nextWindowStartMs: number | null;
 } {
 	if (!schedule.enabled) return { nextDueState: "disabled", nextWindowStartMs: null };
-	const ev = evaluateEndoScheduleDueV0(schedule, nowMs, {
-		onTimeGraceMs: ENDO_DEVELOP_AUTOMATION_LIMITS_V0.defaultOnTimeGraceMs,
-	});
+	const ev = evaluateEndoScheduleDueV0(schedule, nowMs, { onTimeGraceMs });
 	if (ev.kind === "disabled") return { nextDueState: "disabled", nextWindowStartMs: null };
 	if (ev.kind === "completed-once") return { nextDueState: "completed-once", nextWindowStartMs: null };
 	if (ev.kind === "due-fire") return { nextDueState: "due", nextWindowStartMs: ev.windowStartMs };
@@ -322,7 +339,7 @@ export function readEndoCoordinatorStudioOperationsV0(options: {
 	const s1Schedules: EndoStudioObservationScheduleViewV0[] =
 		s1.schedules.state === "ready"
 			? s1.schedules.file.schedules.slice(0, 64).map((s) => {
-					const due = classifyNextDue(s, nowMs);
+					const due = classifyNextDue(s, nowMs, ENDO_DEVELOP_AUTOMATION_LIMITS_V0.defaultOnTimeGraceMs);
 					return {
 						scheduleId: s.scheduleId,
 						label: sanitizeDetail(s.label, projectId, 256),
@@ -459,7 +476,7 @@ export function readEndoCoordinatorStudioOperationsV0(options: {
 				};
 
 	const advScheduleViews: EndoStudioAdvisoryScheduleViewV0[] = projectSchedules.slice(0, 64).map((schedule) => {
-		const due = classifyNextDue(advisoryAsS1Schedule(schedule), nowMs);
+		const due = classifyNextDue(advisoryAsS1Schedule(schedule), nowMs, ENDO_ADVISORY_LIMITS_V0.defaultOnTimeGraceMs);
 		const standing = endoAdvisoryAuthorizationStandingV0({
 			schedule,
 			file: projectAuthorizationsFile,
@@ -587,7 +604,7 @@ export function readEndoCoordinatorStudioOperationsV0(options: {
 			chargedGeneratedTokens: b.accounting.chargedGeneratedTokens,
 			inferenceElapsedMs: b.accounting.inferenceElapsedMs,
 		},
-		answer: sanitizeAnswer(b.answer),
+		answer: sanitizeAnswer(b.answer, projectId),
 		standing: "untrusted-model-interpretation",
 		proposalOutcome: b.proposal.outcome,
 		proposalId: b.proposal.proposalId,

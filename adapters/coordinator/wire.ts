@@ -17,6 +17,21 @@ export const COORDINATOR_INFERENCE_V0 = Object.freeze({
 	max_tokens: 2048,
 });
 
+export type EndoCoordinatorWireInferenceV0 = Readonly<
+	Record<keyof typeof COORDINATOR_INFERENCE_V0, number> & {
+		readonly reasoning_effort?: string;
+		readonly reasoning_budget_tokens?: number;
+	}
+>;
+
+/** Reasoning/template control keys that must never appear on the wire unless explicitly authorized by `inference`. */
+const FORBIDDEN_SMUGGLED_REASONING_KEYS_V1 = [
+	"thinking_budget_tokens",
+	"reasoning_budget",
+	"chat_template_kwargs",
+	"enable_thinking",
+] as const;
+
 const TOOL_SET_V0 = canonicalEndoJsonV0([{ type: "function", function: ENDO_COORDINATOR_TOOL_DEFINITION_V0 }]);
 
 const record = (value: unknown): Record<string, unknown> | null =>
@@ -29,7 +44,7 @@ export function coordinatorWireV0(
 	onRefused?: () => void,
 	options: {
 		/** The exact inference parameters admitted; M0's by default. */
-		readonly inference?: Readonly<Record<keyof typeof COORDINATOR_INFERENCE_V0, number>>;
+		readonly inference?: EndoCoordinatorWireInferenceV0;
 		/** When set, every response chunk must name exactly this model, else `model-identity-mismatch`. */
 		readonly model?: string;
 	} = {},
@@ -72,7 +87,10 @@ export function coordinatorWireV0(
 				Object.entries(inference).some(([key, expected]) => sent[key] !== expected) ||
 				sent.stream !== true ||
 				"n_predict" in sent ||
-				"max_completion_tokens" in sent
+				"max_completion_tokens" in sent ||
+				("reasoning_effort" in sent && !Object.hasOwn(inference, "reasoning_effort")) ||
+				("reasoning_budget_tokens" in sent && !Object.hasOwn(inference, "reasoning_budget_tokens")) ||
+				FORBIDDEN_SMUGGLED_REASONING_KEYS_V1.some((k) => k in sent)
 			)
 				return refuse("model-unavailable");
 			if (!Array.isArray(sent.messages)) return refuse("model-unavailable");

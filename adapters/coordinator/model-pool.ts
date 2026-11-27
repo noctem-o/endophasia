@@ -13,10 +13,18 @@ import type {
 import {
 	ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0,
 	ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V0,
+	ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1,
+	type EndoCoordinatorModelPoolAnyV1,
 	type EndoCoordinatorModelPoolV0,
 	orderedCoordinatorPoolMembersV0,
+	parseEndoCoordinatorModelPoolAnyV1,
 	parseEndoCoordinatorModelPoolV0,
 } from "../../protocol/coordinator-model-pool.ts";
+import {
+	ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1,
+	type EndoCoordinatorResourceProfileV1,
+	validateEndoCoordinatorResourceProfileV1,
+} from "../../protocol/coordinator-resource-policy.ts";
 import type {
 	EndoCoordinatorBriefRequestV0,
 	EndoCoordinatorBriefResultV0,
@@ -80,14 +88,9 @@ function jsonKeysRepeat(text: string): boolean {
 	return false;
 }
 
-/**
- * Read and validate a pool file: a regular file (its final component not a symbolic link), at most 64 KiB of UTF-8 JSON, no repeated
- * keys, and the closed `endo.coordinator-model-pool.v0` schema. Throws a TypeError naming the file and the first problem; never
- * contacts an endpoint.
- */
-export function readCoordinatorModelPoolFileV0(path: string): EndoCoordinatorModelPoolV0 {
+function readBoundedJsonFileV0(path: string, label: string, maxBytes: number): unknown {
 	const refuse = (detail: string): never => {
-		throw new TypeError(`pool file ${JSON.stringify(path)}: ${detail}`);
+		throw new TypeError(`${label} ${JSON.stringify(path)}: ${detail}`);
 	};
 	let fd: number;
 	try {
@@ -99,18 +102,18 @@ export function readCoordinatorModelPoolFileV0(path: string): EndoCoordinatorMod
 	try {
 		const stat = fstatSync(fd);
 		if (!stat.isFile()) refuse("is not a regular file");
-		if (stat.size > ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.fileBytes) refuse("is larger than 64 KiB");
-		const buffer = Buffer.alloc(ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.fileBytes + 1);
+		if (stat.size > maxBytes) refuse(`is larger than ${Math.floor(maxBytes / 1024)} KiB`);
+		const buffer = Buffer.alloc(maxBytes + 1);
 		let length = 0;
 		for (;;) {
 			const n = readSync(fd, buffer, length, buffer.length - length, null);
 			if (n === 0) break;
 			length += n;
-			if (length > ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.fileBytes) refuse("is larger than 64 KiB");
+			if (length > maxBytes) refuse(`is larger than ${Math.floor(maxBytes / 1024)} KiB`);
 		}
 		text = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, length));
 	} catch (error) {
-		if (error instanceof TypeError && error.message.startsWith("pool file")) throw error;
+		if (error instanceof TypeError && error.message.startsWith(label)) throw error;
 		return refuse("is not readable UTF-8");
 	} finally {
 		closeSync(fd);
@@ -122,16 +125,54 @@ export function readCoordinatorModelPoolFileV0(path: string): EndoCoordinatorMod
 		return refuse("is not JSON");
 	}
 	if (jsonKeysRepeat(text)) refuse("repeats a key, which is ambiguous");
+	return value;
+}
+
+/**
+ * Read and validate a pool file: a regular file (its final component not a symbolic link), at most 64 KiB of UTF-8 JSON, no repeated
+ * keys, and the closed `endo.coordinator-model-pool.v0` schema. Throws a TypeError naming the file and the first problem; never
+ * contacts an endpoint.
+ */
+export function readCoordinatorModelPoolFileV0(path: string): EndoCoordinatorModelPoolV0 {
+	const value = readBoundedJsonFileV0(path, "pool file", ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.fileBytes);
 	try {
 		return parseEndoCoordinatorModelPoolV0(value);
 	} catch (error) {
-		return refuse((error as Error).message);
+		throw new TypeError(`pool file ${JSON.stringify(path)}: ${(error as Error).message}`);
+	}
+}
+
+/**
+ * Read and validate either a V0 pool file or an explicit opt-in governed V1 pool file (`endo.coordinator-model-pool.v1`).
+ */
+export function readCoordinatorModelPoolFileAnyV1(path: string): EndoCoordinatorModelPoolAnyV1 {
+	const value = readBoundedJsonFileV0(path, "pool file", ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.fileBytes);
+	try {
+		return parseEndoCoordinatorModelPoolAnyV1(value);
+	} catch (error) {
+		throw new TypeError(`pool file ${JSON.stringify(path)}: ${(error as Error).message}`);
+	}
+}
+
+/**
+ * Read and validate a governed resource profile file (`endo.coordinator-resource-policy.v1`).
+ */
+export function readCoordinatorResourceProfileFileV1(path: string): EndoCoordinatorResourceProfileV1 {
+	const value = readBoundedJsonFileV0(
+		path,
+		"resource profile file",
+		ENDO_COORDINATOR_RESOURCE_GLOBAL_CEILINGS_V1.maxFileBytes,
+	);
+	try {
+		return validateEndoCoordinatorResourceProfileV1(value);
+	} catch (error) {
+		throw new TypeError(`resource profile file ${JSON.stringify(path)}: ${(error as Error).message}`);
 	}
 }
 
 /** `endo coordinator pool check`: observe every local member (zero tokens), and say what a briefing would select now. */
 export async function checkCoordinatorModelPoolV0(
-	pool: EndoCoordinatorModelPoolV0,
+	pool: EndoCoordinatorModelPoolAnyV1,
 	source: "file" | "m0-default",
 	observe: EndoCoordinatorMemberObserverV0 = (member) => probeLocalEndpointV0(member),
 ): Promise<EndoCoordinatorModelPoolCheckV0> {
@@ -204,7 +245,7 @@ const providerLabel = (observation: EndoCoordinatorMemberObservationV0) =>
  */
 export function pooledCoordinatorV0(
 	root: string,
-	pool: EndoCoordinatorModelPoolV0,
+	pool: EndoCoordinatorModelPoolAnyV1,
 	options: {
 		readonly memberId?: string;
 		readonly observe?: EndoCoordinatorMemberObserverV0;
@@ -261,7 +302,10 @@ export function pooledCoordinatorV0(
 					availability: "unavailable",
 					reason: selection.refusal,
 				};
-			const target = coordinatorTargetFromMemberV0(selection.member);
+			const target = coordinatorTargetFromMemberV0(
+				selection.member,
+				pool.schemaVersion === ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1 ? pool.resourceProfile : undefined,
+			);
 			const run = options.run ?? (await import("./openclaw.ts")).runOpenClawCoordinatorV0;
 			let trial: OpenClawCoordinatorTrialV0 | null = null;
 			const result = await run(root, request, {

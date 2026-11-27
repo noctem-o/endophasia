@@ -160,7 +160,7 @@ function configure(
 							name: target.model,
 							input: ["text"],
 							reasoning: false,
-							contextWindow: 32_768,
+							contextWindow: target.contextWindowTokens ?? 32_768,
 							maxTokens: inference.max_tokens,
 						},
 					],

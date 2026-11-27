@@ -387,19 +387,44 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 				detail: `lease.json ${leaseRead.reason}`,
 			};
 		const existing = leaseRead.exists ? leaseRead.value : null;
-		const impossibleFuture = existing !== null && existing.acquiredAtMs - nowMs > L.leaseTtlMs;
+		const existingTtlMs =
+			existing === null ? L.leaseTtlMs : Math.max(L.leaseTtlMs, existing.expiresAtMs - existing.acquiredAtMs);
+		const impossibleFuture = existing !== null && existing.acquiredAtMs - nowMs > existingTtlMs;
 		if (existing !== null && existing.releasedAtMs === null && nowMs < existing.expiresAtMs && !impossibleFuture)
 			return {
 				ok: false as const,
 				refusal: "lease-held" as const,
 				detail: `advisory lease held by ${existing.holderId} (epoch ${existing.epoch}) until ${existing.expiresAtMs}`,
 			};
+		// Determine whether the single due schedule this tick will claim holds a standing governed V1 resource profile.
+		// Without an explicit V1 resource profile, the lease keeps its exact V0 300 s TTL.
+		const nextDue = schedulesRead.exists
+			? [...schedulesRead.value.schedules]
+					.filter(
+						(schedule) =>
+							evaluateEndoScheduleDueV0(asS1Schedule(schedule), nowMs, { onTimeGraceMs }).kind === "due-fire",
+					)
+					.sort((x, y) => (x.cursor.lastEvaluatedAtMs ?? -1) - (y.cursor.lastEvaluatedAtMs ?? -1))[0]
+			: undefined;
+		let leaseTtlMs: number = L.leaseTtlMs;
+		if (nextDue !== undefined) {
+			const authRead = s.store.readAuthorizations();
+			if (authRead.ok && authRead.exists) {
+				const standing = endoAdvisoryAuthorizationStandingV0({
+					schedule: nextDue,
+					file: authRead.value,
+					nowMs,
+				});
+				if (standing.ok && standing.authorization.resourceProfile !== undefined)
+					leaseTtlMs = standing.authorization.resourceProfile.advisoryLeaseTtlMs;
+			}
+		}
 		const lease: EndoDevelopAutomationLeaseV0 = {
 			schemaVersion: ENDO_DEVELOP_AUTOMATION_LEASE_SCHEMA_V0,
 			holderId,
 			epoch: (existing?.epoch ?? 0) + 1,
 			acquiredAtMs: nowMs,
-			expiresAtMs: nowMs + L.leaseTtlMs,
+			expiresAtMs: nowMs + leaseTtlMs,
 			releasedAtMs: null,
 		};
 		if (s.writeLease(lease) !== "committed")
@@ -556,6 +581,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 	const a = phaseA.result;
 	if (!a.ok) return refuse(a.refusal, a.detail);
 	const lease = a.lease;
+	const activeLeaseTtlMs = lease.expiresAtMs - lease.acquiredAtMs;
 	const outcomes: EndoAdvisoryFireOutcomeV0[] = [...a.terminal];
 	const ownsLease = (s: EndoAdvisoryLockedSessionV0, nowMs: number): boolean => {
 		const current = s.store.readLease();
@@ -566,7 +592,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			value.holderId === holderId &&
 			leaseLive(value, nowMs) &&
 			monotonicNow() - leaseStartedMs >= 0 &&
-			monotonicNow() - leaseStartedMs < L.leaseTtlMs
+			monotonicNow() - leaseStartedMs < activeLeaseTtlMs
 		);
 	};
 	const release = (s: EndoAdvisoryLockedSessionV0, nowMs: number) => {
@@ -849,10 +875,14 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			finish(s, nowMs, "refused-budget", gate, null, false, budget.refusal);
 			return null;
 		}
-		const turnDeadlineMs = Math.min(
-			nowMs + authorization.budget.maxTurnWallClockMs,
-			lease.expiresAtMs - L.publicationMarginMs,
-			nowMs + L.leaseTtlMs - (monotonicNow() - leaseStartedMs) - L.publicationMarginMs,
+		const activePublicationMarginMs = authorization.resourceProfile?.publicationReserveMs ?? L.publicationMarginMs;
+		const activeMaxTurnWallClockMs = authorization.resourceProfile?.advisoryTurnDeadlineMs ?? L.maxTurnWallClockMs;
+		const turnDeadlineMs = Math.floor(
+			Math.min(
+				nowMs + Math.min(authorization.budget.maxTurnWallClockMs, activeMaxTurnWallClockMs),
+				lease.expiresAtMs - activePublicationMarginMs,
+				nowMs + activeLeaseTtlMs - (monotonicNow() - leaseStartedMs) - activePublicationMarginMs,
+			),
 		);
 		if (turnDeadlineMs - nowMs < L.minInferenceWindowMs) {
 			finish(
@@ -876,6 +906,9 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			actionKind: schedule.actionKind,
 			authorizationId: authorization.authorizationId,
 			poolSha256: authorization.poolSha256,
+			...(authorization.resourceProfileSha256 === undefined
+				? {}
+				: { resourceProfileSha256: authorization.resourceProfileSha256 }),
 			policySha256: endoAdvisoryPolicySha256V0(authorization.policy),
 			budgetSha256: endoAdvisoryBudgetSha256V0(authorization.budget),
 			leaseEpoch: lease.epoch,
@@ -1006,6 +1039,9 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			authorizationId: admission.authorizationId,
 			poolSha256: admission.poolSha256,
 			effectivePoolSha256: args.dispatch?.effectivePoolSha256 ?? null,
+			...(admission.resourceProfileSha256 === undefined
+				? {}
+				: { resourceProfileSha256: admission.resourceProfileSha256 }),
 			policySha256: admission.policySha256,
 			budgetSha256: admission.budgetSha256,
 			prompt: {
@@ -1153,7 +1189,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			if (admissionObserved.read === null) return notDispatched("runtime-preflight-failed", selectionSummary);
 			const { preflightOpenClawCoordinatorV0 } = await import("../coordinator/openclaw.ts");
 			const pf = preflightOpenClawCoordinatorV0(options.root, request, {
-				target: coordinatorTargetFromMemberV0(member),
+				target: coordinatorTargetFromMemberV0(member, authorization.resourceProfile),
 				pinnedObservation: admissionObserved.read,
 				briefingMode,
 				visibilityMode,
@@ -1194,13 +1230,15 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 		if (!standing.ok)
 			return standing.refusal === "authorization-expired" ? "authorization-expired" : "authorization-revoked";
 		if (standing.authorization.authorizationId !== admission.authorizationId) return "authorization-revoked";
+		const activePublicationMarginMs = authorization.resourceProfile?.publicationReserveMs ?? L.publicationMarginMs;
+		const activeMaxTurnWallClockMs = authorization.resourceProfile?.advisoryTurnDeadlineMs ?? L.maxTurnWallClockMs;
 		const effectiveTimeoutMs = Math.floor(
 			Math.min(
 				member.timeoutMs,
 				admission.turnDeadlineMs - nowMs,
 				admission.turnDeadlineMs - admission.admittedAtMs - (monotonicNow() - turnStartedMs),
-				L.leaseTtlMs - (monotonicNow() - leaseStartedMs) - L.publicationMarginMs,
-				L.maxTurnWallClockMs,
+				activeLeaseTtlMs - (monotonicNow() - leaseStartedMs) - activePublicationMarginMs,
+				activeMaxTurnWallClockMs,
 			),
 		);
 		if (effectiveTimeoutMs < L.minInferenceWindowMs) return "insufficient-lease";
@@ -1213,6 +1251,9 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 			authorizationId: admission.authorizationId,
 			scheduleRevision: admission.scheduleRevision,
 			effectivePoolSha256,
+			...(admission.resourceProfileSha256 === undefined
+				? {}
+				: { resourceProfileSha256: admission.resourceProfileSha256 }),
 			selectedMemberId: member.memberId,
 			selectedModelId: member.modelId,
 			selectedEndpoint: member.endpoint,
@@ -1233,7 +1274,7 @@ export async function runEndoAdvisoryTickV0(options: RunEndoAdvisoryTickOptionsV
 
 	// ---- F: inference (no lock; the selected member only; never failed over or replayed) ------------------------------------------
 	const target = Object.freeze({
-		...coordinatorTargetFromMemberV0(member),
+		...coordinatorTargetFromMemberV0(member, authorization.resourceProfile),
 		timeoutMs: dispatch.effectiveTimeoutMs,
 		hostDeadline: true,
 	});

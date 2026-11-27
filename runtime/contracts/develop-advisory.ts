@@ -8,10 +8,13 @@
 
 import type { EndoCoordinatorCoordinationV0 } from "../../protocol/coordinator-coordination.ts";
 import {
-	type EndoCoordinatorModelPoolV0,
+	ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1,
+	type EndoCoordinatorModelPoolAnyV1,
 	orderedCoordinatorPoolMembersV0,
 	parseEndoCoordinatorModelPoolV0,
+	parseEndoCoordinatorModelPoolV1,
 } from "../../protocol/coordinator-model-pool.ts";
+import type { EndoCoordinatorResourceProfileV1 } from "../../protocol/coordinator-resource-policy.ts";
 import type { EndoCoordinatorStatusV0 } from "../../protocol/coordinator-status.ts";
 import {
 	ENDO_ADVISORY_LIMITS_V0,
@@ -37,7 +40,7 @@ import {
 import { ENDO_TASK_ID_PATTERN_V0 } from "../../protocol/develop-tasks.ts";
 import { canonicalEndoJsonV0, sha256HexV0 } from "./canonical-json.ts";
 import { ENDO_COORDINATOR_INSTRUCTIONS_V0 } from "./coordinator-brief.ts";
-import { coordinatorModelPoolSha256V0 } from "./coordinator-model-pool.ts";
+import { coordinatorModelPoolSha256V0, endoCoordinatorResourceProfileSha256V1 } from "./coordinator-model-pool.ts";
 
 const L = ENDO_ADVISORY_LIMITS_V0;
 const digest = (value: unknown): string => sha256HexV0(canonicalEndoJsonV0(value as never));
@@ -353,6 +356,8 @@ export function endoAdvisoryAuthorizationIdV0(grant: {
 	readonly projectId: string;
 	readonly actionKind: EndoAdvisoryActionKindV0;
 	readonly poolSha256: string;
+	readonly resourceProfile?: EndoCoordinatorResourceProfileV1;
+	readonly resourceProfileSha256?: string;
 	readonly policy: EndoAdvisoryPolicyV0;
 	readonly budget: EndoAdvisoryBudgetV0;
 	readonly grantedAtMs: number;
@@ -366,6 +371,9 @@ export function endoAdvisoryAuthorizationIdV0(grant: {
 		projectId: grant.projectId,
 		actionKind: grant.actionKind,
 		poolSha256: grant.poolSha256,
+		...(grant.resourceProfile === undefined
+			? {}
+			: { resourceProfile: grant.resourceProfile, resourceProfileSha256: grant.resourceProfileSha256 }),
 		policy: grant.policy,
 		budget: grant.budget,
 		grantedAtMs: grant.grantedAtMs,
@@ -382,6 +390,7 @@ export type EndoAdvisoryAuthorizationRefusalV0 =
 	| "project-mismatch"
 	| "action-mismatch"
 	| "pool-digest-mismatch"
+	| "resource-profile-digest-mismatch"
 	| "authorization-id-mismatch";
 
 export type EndoAdvisoryAuthorizationStandingV0 =
@@ -409,6 +418,11 @@ export function endoAdvisoryAuthorizationStandingV0(args: {
 		return { ok: false, refusal: "authorization-id-mismatch" };
 	if (coordinatorModelPoolSha256V0(live.pool) !== live.poolSha256)
 		return { ok: false, refusal: "pool-digest-mismatch" };
+	if (
+		live.resourceProfile !== undefined &&
+		endoCoordinatorResourceProfileSha256V1(live.resourceProfile) !== live.resourceProfileSha256
+	)
+		return { ok: false, refusal: "resource-profile-digest-mismatch" };
 	if (live.scheduleIncarnation !== args.schedule.incarnation || live.scheduleRevision !== args.schedule.revision)
 		return { ok: false, refusal: "schedule-revision-mismatch" };
 	if (live.projectId !== args.schedule.projectId) return { ok: false, refusal: "project-mismatch" };
@@ -432,9 +446,12 @@ export function endoAdvisoryExcludedMembersV0(authorization: EndoAdvisoryAuthori
 
 export function endoAdvisoryEffectivePoolV0(
 	authorization: EndoAdvisoryAuthorizationV0,
-): EndoCoordinatorModelPoolV0 | null {
-	const eligible = (m: EndoCoordinatorModelPoolV0["members"][number]) =>
-		m.kind === "local-openai-compat" && m.maxOutputTokens <= authorization.budget.maxOutputTokensPerRequest;
+): EndoCoordinatorModelPoolAnyV1 | null {
+	const maxTimeoutMs = authorization.resourceProfile?.modelExecutionTimeoutMs;
+	const eligible = (m: EndoCoordinatorModelPoolAnyV1["members"][number]) =>
+		m.kind === "local-openai-compat" &&
+		m.maxOutputTokens <= authorization.budget.maxOutputTokensPerRequest &&
+		(maxTimeoutMs === undefined || m.timeoutMs <= maxTimeoutMs);
 	// Narrowing must not turn "only the first member" into an undisclosed fallback: under fallback "none" the pool's first member is
 	// the only candidate, and if the grant excludes it nothing is eligible.
 	const members =
@@ -442,15 +459,24 @@ export function endoAdvisoryEffectivePoolV0(
 			? orderedCoordinatorPoolMembersV0(authorization.pool).slice(0, 1).filter(eligible)
 			: authorization.pool.members.filter(eligible);
 	if (members.length === 0) return null;
+	const selection = {
+		fallback: authorization.pool.selection.fallback,
+		unconfirmedModel:
+			authorization.pool.selection.unconfirmedModel === "permit" && authorization.policy.permitModelUnconfirmed
+				? "permit"
+				: "refuse",
+	};
+	if (authorization.pool.schemaVersion === ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1) {
+		return parseEndoCoordinatorModelPoolV1({
+			schemaVersion: authorization.pool.schemaVersion,
+			selection,
+			resourceProfile: authorization.pool.resourceProfile,
+			members: members.map((m) => ({ ...m })),
+		});
+	}
 	return parseEndoCoordinatorModelPoolV0({
 		schemaVersion: authorization.pool.schemaVersion,
-		selection: {
-			fallback: authorization.pool.selection.fallback,
-			unconfirmedModel:
-				authorization.pool.selection.unconfirmedModel === "permit" && authorization.policy.permitModelUnconfirmed
-					? "permit"
-					: "refuse",
-		},
+		selection,
 		members: members.map((m) => ({ ...m })),
 	});
 }

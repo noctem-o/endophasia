@@ -37,6 +37,7 @@ import {
 	validateEndoAdvisoryBriefingV0,
 	validateEndoAdvisoryFireClaimV0,
 	validateEndoAdvisoryFireOutcomeV0,
+	validateEndoAdvisoryLeaseV0,
 	validateEndoAdvisoryObservationsFileV0,
 	validateEndoAdvisoryProposalStateV0,
 	validateEndoAdvisoryProposalV0,
@@ -44,11 +45,7 @@ import {
 	validateEndoAdvisoryTurnAdmissionV0,
 	validateEndoAdvisoryTurnDispatchV0,
 } from "../protocol/develop-advisory.ts";
-import {
-	ENDO_DEVELOP_AUTOMATION_LEASE_VERSIONS_V0,
-	type EndoDevelopAutomationLeaseV0,
-	validateEndoDevelopAutomationLeaseV0,
-} from "../protocol/develop-automation.ts";
+import type { EndoDevelopAutomationLeaseV0 } from "../protocol/develop-automation.ts";
 import { type EndoVersionTableV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import type { EndoAdvisoryLedgerTurnV0 } from "../runtime/contracts/develop-advisory.ts";
@@ -297,7 +294,7 @@ export class DevelopAdvisoryStoreV0 {
 		);
 	}
 	readLease(): EndoAutomationFileReadV0<EndoDevelopAutomationLeaseV0> {
-		return this.#read(this.#base(), this.leasePath, 16 * 1024, ENDO_DEVELOP_AUTOMATION_LEASE_VERSIONS_V0);
+		return this.#read(this.#base(), this.leasePath, 16 * 1024, ENDO_ADVISORY_VERSION_TABLES_V0.lease);
 	}
 	readObservations(): EndoAutomationFileReadV0<EndoAdvisoryObservationsFileV0> {
 		return this.#read(
@@ -459,7 +456,8 @@ export class DevelopAdvisoryStoreV0 {
 					(read.value.leaseEpoch !== admission.value.leaseEpoch ||
 						read.value.holderId !== admission.value.holderId ||
 						read.value.authorizationId !== admission.value.authorizationId ||
-						read.value.scheduleRevision !== admission.value.scheduleRevision)
+						read.value.scheduleRevision !== admission.value.scheduleRevision ||
+						(read.value.resourceProfileSha256 ?? null) !== (admission.value.resourceProfileSha256 ?? null))
 				)
 					problems.push({ name: `${id}.${kind}.json`, reason: "invalid" });
 			}
@@ -573,7 +571,7 @@ export class DevelopAdvisoryStoreV0 {
 				writeSchedules: (file) => replace("schedules.json", validateEndoAdvisorySchedulesFileV0(file)),
 				writeAuthorizations: (file) =>
 					replace("authorizations.json", validateEndoAdvisoryAuthorizationsFileV0(file)),
-				writeLease: (lease) => replace("lease.json", validateEndoDevelopAutomationLeaseV0(lease)),
+				writeLease: (lease) => replace("lease.json", validateEndoAdvisoryLeaseV0(lease)),
 				writeObservations: (file) => replace("observations.json", validateEndoAdvisoryObservationsFileV0(file)),
 				writeFireClaimOnce: (claim) => {
 					const v = validateEndoAdvisoryFireClaimV0(claim);
@@ -685,7 +683,8 @@ export class DevelopAdvisoryStoreV0 {
 									v.leaseEpoch !== a.value.leaseEpoch ||
 									v.holderId !== a.value.holderId ||
 									v.authorizationId !== a.value.authorizationId ||
-									v.scheduleRevision !== a.value.scheduleRevision,
+									v.scheduleRevision !== a.value.scheduleRevision ||
+									(v.resourceProfileSha256 ?? null) !== (a.value.resourceProfileSha256 ?? null),
 							)
 						)
 							continue;

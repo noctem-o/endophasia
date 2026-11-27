@@ -7,9 +7,14 @@
 // origin `http://127.0.0.1:<port>`: no host names (no DNS), no IPv6, no alternative IPv4 spellings, no path, query, fragment or
 // credentials. A `hosted-relay` member is parsed so M2 can add hosted providers without a new format, but M1 never contacts it.
 
+import {
+	type EndoCoordinatorResourceProfileV1,
+	validateEndoCoordinatorResourceProfileV1,
+} from "./coordinator-resource-policy.ts";
 import { EndoInvalidRecordV0, endoBoundedDetailV0, endoFirstUnknownKeyV0 } from "./versioned.ts";
 
 export const ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V0 = "endo.coordinator-model-pool.v0";
+export const ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1 = "endo.coordinator-model-pool.v1";
 
 export const ENDO_COORDINATOR_MODEL_POOL_MEMBER_KINDS_V0 = ["local-openai-compat", "hosted-relay"] as const;
 export type EndoCoordinatorModelPoolMemberKindV0 = (typeof ENDO_COORDINATOR_MODEL_POOL_MEMBER_KINDS_V0)[number];
@@ -63,6 +68,23 @@ export interface EndoCoordinatorModelPoolV0 {
 	};
 	readonly members: readonly EndoCoordinatorModelPoolMemberV0[];
 }
+
+/**
+ * Opt-in governed pool schema (`endo.coordinator-model-pool.v1`, COORDINATOR-REASONING-001).
+ * Carries an explicit `resourceProfile` whose ceilings bound every member's `maxOutputTokens` and `timeoutMs`.
+ * Existing V0 pools without `resourceProfile` keep their exact V0 limits (`<= 2048` tokens, `<= 135_000` ms).
+ */
+export interface EndoCoordinatorModelPoolV1 {
+	readonly schemaVersion: typeof ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1;
+	readonly selection: {
+		readonly fallback: (typeof ENDO_COORDINATOR_MODEL_POOL_FALLBACKS_V0)[number];
+		readonly unconfirmedModel: (typeof ENDO_COORDINATOR_MODEL_POOL_UNCONFIRMED_V0)[number];
+	};
+	readonly resourceProfile: EndoCoordinatorResourceProfileV1;
+	readonly members: readonly EndoCoordinatorModelPoolMemberV0[];
+}
+
+export type EndoCoordinatorModelPoolAnyV1 = EndoCoordinatorModelPoolV0 | EndoCoordinatorModelPoolV1;
 
 const MEMBER_KEYS_V0 = [
 	"memberId",
@@ -151,7 +173,14 @@ function hostedOrigin(text: unknown, at: string): string {
 	return text;
 }
 
-function member(value: unknown, at: string): EndoCoordinatorModelPoolMemberV0 {
+function member(
+	value: unknown,
+	at: string,
+	bounds: {
+		readonly maxOutputTokens: { readonly min: number; readonly max: number };
+		readonly timeoutMs: { readonly min: number; readonly max: number };
+	} = ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0,
+): EndoCoordinatorModelPoolMemberV0 {
 	const m = closed(value, at, MEMBER_KEYS_V0);
 	const limits = ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0;
 	if (typeof m.memberId !== "string" || !ENDO_COORDINATOR_MODEL_POOL_MEMBER_ID_PATTERN_V0.test(m.memberId))
@@ -174,10 +203,25 @@ function member(value: unknown, at: string): EndoCoordinatorModelPoolMemberV0 {
 		modelId: m.modelId as string,
 		priority: integer(m.priority, `${at}.priority`, limits.priority),
 		maxPromptBytes: integer(m.maxPromptBytes, `${at}.maxPromptBytes`, limits.maxPromptBytes),
-		maxOutputTokens: integer(m.maxOutputTokens, `${at}.maxOutputTokens`, limits.maxOutputTokens),
-		timeoutMs: integer(m.timeoutMs, `${at}.timeoutMs`, limits.timeoutMs),
+		maxOutputTokens: integer(m.maxOutputTokens, `${at}.maxOutputTokens`, bounds.maxOutputTokens),
+		timeoutMs: integer(m.timeoutMs, `${at}.timeoutMs`, bounds.timeoutMs),
 		advisoryOnly: true,
 	});
+}
+
+function validateUniqueMembers(members: readonly EndoCoordinatorModelPoolMemberV0[]): void {
+	const ids = new Set<string>();
+	const targets = new Set<string>();
+	for (const m of members) {
+		if (ids.has(m.memberId)) fail(`pool.members: memberId ${JSON.stringify(m.memberId)} is declared more than once`);
+		ids.add(m.memberId);
+		const target = JSON.stringify([m.endpoint, m.modelId]);
+		if (targets.has(target))
+			fail(
+				`pool.members: ${JSON.stringify(m.memberId)} repeats another member's endpoint and modelId, which is ambiguous`,
+			);
+		targets.add(target);
+	}
 }
 
 /**
@@ -193,18 +237,7 @@ export function parseEndoCoordinatorModelPoolV0(value: unknown): EndoCoordinator
 	const { min, max } = ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.members;
 	if (pool.members.length < min || pool.members.length > max) fail(`pool.members must hold ${min} to ${max} members`);
 	const members = pool.members.map((m, i) => member(m, `pool.members[${i}]`));
-	const ids = new Set<string>();
-	const targets = new Set<string>();
-	for (const m of members) {
-		if (ids.has(m.memberId)) fail(`pool.members: memberId ${JSON.stringify(m.memberId)} is declared more than once`);
-		ids.add(m.memberId);
-		const target = JSON.stringify([m.endpoint, m.modelId]);
-		if (targets.has(target))
-			fail(
-				`pool.members: ${JSON.stringify(m.memberId)} repeats another member's endpoint and modelId, which is ambiguous`,
-			);
-		targets.add(target);
-	}
+	validateUniqueMembers(members);
 	return Object.freeze({
 		schemaVersion: ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V0,
 		selection: Object.freeze({
@@ -219,9 +252,60 @@ export function parseEndoCoordinatorModelPoolV0(value: unknown): EndoCoordinator
 	});
 }
 
+/**
+ * Validate an opt-in governed V1 pool (`endo.coordinator-model-pool.v1`). Requires an explicit inference-capable `resourceProfile`
+ * (`reflex` is refused because a model pool configures inference endpoints) and enforces that every member stays within the
+ * profile's `maxOutputTokensPerRequest` and `modelExecutionTimeoutMs`.
+ */
+export function parseEndoCoordinatorModelPoolV1(value: unknown): EndoCoordinatorModelPoolV1 {
+	const pool = closed(value, "pool", ["schemaVersion", "selection", "resourceProfile", "members"]);
+	if (pool.schemaVersion !== ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1)
+		fail(`pool.schemaVersion must be ${JSON.stringify(ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1)}`);
+	const selection = closed(pool.selection, "pool.selection", ["fallback", "unconfirmedModel"]);
+	const resourceProfile = validateEndoCoordinatorResourceProfileV1(pool.resourceProfile, "pool.resourceProfile");
+	if (resourceProfile.tier === "reflex")
+		fail('pool.resourceProfile.tier cannot be "reflex": a model pool configures inference members');
+	if (!Array.isArray(pool.members)) return fail("pool.members must be an array");
+	const { min, max } = ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.members;
+	if (pool.members.length < min || pool.members.length > max) fail(`pool.members must hold ${min} to ${max} members`);
+	const bounds = {
+		maxOutputTokens: {
+			min: ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.maxOutputTokens.min,
+			max: resourceProfile.maxOutputTokensPerRequest,
+		},
+		timeoutMs: {
+			min: ENDO_COORDINATOR_MODEL_POOL_LIMITS_V0.timeoutMs.min,
+			max: resourceProfile.modelExecutionTimeoutMs,
+		},
+	};
+	const members = pool.members.map((m, i) => member(m, `pool.members[${i}]`, bounds));
+	validateUniqueMembers(members);
+	return Object.freeze({
+		schemaVersion: ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1,
+		selection: Object.freeze({
+			fallback: oneOf(selection.fallback, "pool.selection.fallback", ENDO_COORDINATOR_MODEL_POOL_FALLBACKS_V0),
+			unconfirmedModel: oneOf(
+				selection.unconfirmedModel,
+				"pool.selection.unconfirmedModel",
+				ENDO_COORDINATOR_MODEL_POOL_UNCONFIRMED_V0,
+			),
+		}),
+		resourceProfile,
+		members: Object.freeze(members),
+	});
+}
+
+/** Parse either a V0 pool (strict V0 limits) or an explicit V1 governed pool (`endo.coordinator-model-pool.v1`). */
+export function parseEndoCoordinatorModelPoolAnyV1(value: unknown): EndoCoordinatorModelPoolAnyV1 {
+	if (!plain(value)) fail("pool must be a JSON object");
+	const schemaVersion = (value as Record<string, unknown>).schemaVersion;
+	if (schemaVersion === ENDO_COORDINATOR_MODEL_POOL_SCHEMA_V1) return parseEndoCoordinatorModelPoolV1(value);
+	return parseEndoCoordinatorModelPoolV0(value);
+}
+
 /** Members in selection order: priority descending, then `memberId` by code unit. Independent of the file's member order. */
 export function orderedCoordinatorPoolMembersV0(
-	pool: EndoCoordinatorModelPoolV0,
+	pool: EndoCoordinatorModelPoolAnyV1,
 ): readonly EndoCoordinatorModelPoolMemberV0[] {
 	return [...pool.members].sort((a, b) =>
 		a.priority !== b.priority

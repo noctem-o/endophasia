@@ -2,14 +2,19 @@
 	"mission": "COORDINATOR-GROUNDING-002 / S2-LIVE-002",
 	"stage1OfflineReplayCompleted": true,
 	"stage2PreflightDryRunCompleted": true,
-	"stage2LiveExecuted": false,
-	"stage2RequiresOperatorApproval": true,
+	"stage2LiveExecuted": true,
+	"stage2LiveTurnsDispatched": 24,
+	"stage2LiveTotalChargedGeneratedTokens": 44757,
+	"stage3BlindedEvaluationCompleted": true,
+	"phaseDVerdict": "blocked",
+	"phaseDActivated": false,
 	"baseline": {
 		"pr192Branch": "research/s2-live-001",
 		"pr192Head": "6d8d164215b4e80ae2ba6ed3cc60b80da548c639",
 		"s2MergedMain": "2f730eb680e87d04d3a41bbb9d398e6b9a97794c",
 		"openclawFixCommit": "ce126a53ab4067ac55695367a06395a5ab5a74df",
-		"frozenImplementationCommit": "e9793b343"
+		"frozenImplementationCommit": "e9793b343",
+		"frozenHarnessCommit": "b1c6b7be989fe7ca21ed1cdfbd5266b310684d7e"
 	},
 	"frozenPromptPin": {
 		"briefingSchema": "endo.coordinator-grounded-brief.v1",
@@ -26,6 +31,7 @@
 		"openclawVersion": "2026.11.10",
 		"bubblewrapVersion": "0.13.1",
 		"nodeVersion": "v26.13.1",
+		"warmStateAtStart": "loaded-worker-resident",
 		"sampling": {
 			"temperature": 0,
 			"top_k": 1,

@@ -44,6 +44,8 @@ describe("the frontend's source", () => {
 				"coordinator/CoordinationViews.tsx",
 				"coordinator/CoordinatorWorkspace.tsx",
 				"coordinator/Evidence.tsx",
+				"coordinator/OperationsViews.tsx",
+				"coordinator/attention.ts",
 				"coordinator/read.ts",
 				"coordinator/use-coordinator.ts",
 				"use-compare.ts",
@@ -142,6 +144,12 @@ describe("the frontend's source", () => {
 		expect(coordinationProtocol).not.toMatch(
 			/\b(import\(|require\(|fetch\(|process\.\w|Date\.now\(|Math\.random\()|from "node:/,
 		);
+		const operationsProtocol = code(
+			readFileSync(new URL("../protocol/coordinator-studio-operations.ts", import.meta.url), "utf8"),
+		);
+		expect(operationsProtocol).not.toMatch(
+			/\b(import\(|require\(|fetch\(|process\.\w|Date\.now\(|Math\.random\()|from "node:/,
+		);
 		for (const [name, text] of Object.entries(sources)) {
 			for (const { typeOnly, specifier } of specifiers(text)) {
 				if (specifier.startsWith("./") || specifier.startsWith("../")) {
@@ -151,6 +159,7 @@ describe("the frontend's source", () => {
 							expect([
 								"../../../protocol/coordinator-status.ts",
 								"../../../protocol/coordinator-coordination.ts",
+								"../../../protocol/coordinator-studio-operations.ts",
 							]).toContain(specifier);
 							expect([
 								"coordinator/CoordinatorWorkspace.tsx",
@@ -244,7 +253,7 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(
 			/new URL\(\s*`\.\/api\/v0\/snapshot\?afterSequence=\$\{request\.afterSequence\}&limit=\$\{request\.limit\}`,\s*document\.baseURI/,
 		);
-		expect(api.match(/\/api\//g)?.length).toBe(27);
+		expect(api.match(/\/api\//g)?.length).toBe(28);
 		// Evolve Protected Experiment Inspector (EVOLVE-INSPECT-001): two fixed GET routes, gated by opaque selector, zero write routes.
 		expect(api).toContain("./api/v0/evolve/experiments");
 		expect(api).toMatch(/\.\/api\/v0\/evolve\/experiment\/\$\{request\.selector\}/);
@@ -259,11 +268,14 @@ describe("the frontend's source", () => {
 		expect(api).toMatch(/\.\/api\/v0\/develop\/omp\/session\/\$\{request\.selector\}/);
 		expect(api).toMatch(/if \(!ompSelector\(request\.selector\)\)/);
 		// The workbench routes: one fixed prefix, a closed list; the grant only in one header, never in a URL or the body.
-		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(16);
+		expect(api.match(/\.\/api\/v0\/workbench\//g)?.length).toBe(17);
 		const coordinator = api.slice(api.indexOf("export async function fetchCoordinator"));
 		expect(coordinator).toMatch(/new URL\("\.\/api\/v0\/workbench\/workspace\/coordinator", document\.baseURI\)/);
 		expect(coordinator).toMatch(
 			/new URL\("\.\/api\/v0\/workbench\/workspace\/coordinator\/coordination", document\.baseURI\)/,
+		);
+		expect(coordinator).toMatch(
+			/new URL\("\.\/api\/v0\/workbench\/workspace\/coordinator\/operations", document\.baseURI\)/,
 		);
 		expect(coordinator).toMatch(/method: "GET"/);
 		expect(coordinator).toMatch(/headers: \{ "X-Endo-Grant": grant \}/);
@@ -348,9 +360,25 @@ describe("the frontend's source", () => {
 				name !== "use-observe.ts" &&
 				name !== "use-compare.ts" &&
 				name !== "use-develop.ts" &&
-				name !== "use-workbench.ts"
+				name !== "use-workbench.ts" &&
+				name !== "coordinator/use-coordinator.ts"
 			)
 				expect(text, name).not.toMatch(/setTimeout|setInterval/);
+		// Coordinator hook: opt-in bounded refresh OFF by default, ONE setTimeout strictly after completion, stops when hidden or grant lost.
+		const coordHook = sources["coordinator/use-coordinator.ts"]!;
+		expect(coordHook.match(/setTimeout\(/g)?.length).toBe(1);
+		expect(coordHook).not.toMatch(/setInterval|requestAnimationFrame/);
+		expect(coordHook).toContain("useState(false)");
+		expect(coordHook).toContain("document.hidden");
+		expect(coordHook).toContain('document.addEventListener("visibilitychange", onVisibility)');
+		// Pure deterministic attention ruleset: no clock, no randomness, no React, no network.
+		expect(sources["coordinator/attention.ts"]).not.toMatch(
+			/Date\.now|new Date|fetch\(|from "react"|localStorage|setTimeout|Math\.random/,
+		);
+		// OperationsViews is strictly read-only: zero forms, zero mutation controls, zero API fetches.
+		expect(sources["coordinator/OperationsViews.tsx"]).not.toMatch(
+			/from "\.\.\/api\.ts"|fetch\(|<form\b|acceptProposal|dismissProposal|executeSchedule/i,
+		);
 		// DEVELOP has the same shape as Compare: one request at a time, one timer (the pause), a read at first entry and on action only.
 		const develop = sources["use-develop.ts"]!;
 		expect(develop.match(/setTimeout\(/g)?.length).toBe(1);

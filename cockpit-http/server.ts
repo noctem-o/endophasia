@@ -336,11 +336,15 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 		balance = Math.min(burstMs, balance + (now - refilledAt) * duty);
 		refilledAt = now;
 	};
-	/** Admit a read only while the balance is positive, and start charging it the time it takes (see `handle`). */
-	const admit = (): void => {
+	/** Admit a read only while the balance is positive, and return when its charge starts. */
+	const admitted = (): number => {
 		refill();
 		if (balance <= 0) refuse("too-many-requests");
-		chargeFrom = performance.now();
+		return performance.now();
+	};
+	/** Admit a synchronous read and charge it the time it takes when `handle` finishes (see `handle`). */
+	const admit = (): void => {
+		chargeFrom = admitted();
 	};
 
 	const guard = (request: IncomingMessage): { segments: string[]; rawQuery: string; method: "GET" | "POST" } => {
@@ -661,20 +665,28 @@ export async function startEndoCockpitServerV0(options: EndoCockpitServerOptions
 			};
 			const coordinatorRoute = workbenchRequest.route.join("/");
 			const coordinator =
-				coordinatorRoute === "workspace/coordinator" || coordinatorRoute === "workspace/coordinator/coordination";
+				coordinatorRoute === "workspace/coordinator" ||
+				coordinatorRoute === "workspace/coordinator/coordination" ||
+				coordinatorRoute === "workspace/coordinator/operations";
 			if (coordinator && method !== "GET") return sendRefusal(response, "method-not-allowed");
-			const answer =
-				coordinator && workbench instanceof EndoWorkspaceHostV0
-					? await workbench.handle(workbenchRequest, {
-							root,
-							observe: async (directory) => {
-								const seen = await new GitRevisionObserverV0().observe(directory, { within: true });
-								if (!seen.ok) return null;
-								const { worktree, commonDir, commit, dirty } = seen.observation;
-								return { worktree, commonDir, commit, clean: dirty.length === 0 };
-							},
-						})
-					: await workbench.handle(workbenchRequest);
+			const chargedFrom = coordinatorRoute === "workspace/coordinator/operations" ? admitted() : null;
+			let answer: { status: number; body: unknown };
+			try {
+				answer =
+					coordinator && workbench instanceof EndoWorkspaceHostV0
+						? await workbench.handle(workbenchRequest, {
+								root,
+								observe: async (directory) => {
+									const seen = await new GitRevisionObserverV0().observe(directory, { within: true });
+									if (!seen.ok) return null;
+									const { worktree, commonDir, commit, dirty } = seen.observation;
+									return { worktree, commonDir, commit, clean: dirty.length === 0 };
+								},
+							})
+						: await workbench.handle(workbenchRequest);
+			} finally {
+				if (chargedFrom !== null) balance -= performance.now() - chargedFrom;
+			}
 			if (!WORKBENCH_STATUSES.includes(answer.status)) throw new TypeError("workbench status");
 			send(response, answer.status, canonicalEndoJsonV0(answer.body as never));
 		} catch (error) {

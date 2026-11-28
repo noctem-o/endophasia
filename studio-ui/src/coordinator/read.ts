@@ -8,6 +8,10 @@ import {
 	type EndoCoordinatorStatusV0,
 	validateEndoCoordinatorStatusV0,
 } from "../../../protocol/coordinator-status.ts";
+import {
+	type EndoCoordinatorStudioOperationsV0,
+	validateEndoCoordinatorStudioOperationsV0,
+} from "../../../protocol/coordinator-studio-operations.ts";
 import { ATTEMPT_LABELS, RECEIPT_RELATION_LABELS } from "../model/attempts-wire.ts";
 
 export const ATTENTION_LABELS = {
@@ -148,6 +152,10 @@ export type CoordinatorCoordinationReply =
 	| { kind: "coordination"; coordination: EndoCoordinatorCoordinationV0 }
 	| { kind: "failure"; problem: CoordinatorProblem };
 
+export type CoordinatorOperationsReply =
+	| { kind: "operations"; operations: EndoCoordinatorStudioOperationsV0 }
+	| { kind: "failure"; problem: CoordinatorProblem };
+
 /** Strict read-only validation of the companion coordination projection received from the paired workspace host. */
 export function readCoordinatorCoordination(value: unknown): EndoCoordinatorCoordinationV0 | null {
 	try {
@@ -165,6 +173,27 @@ export function readCoordinatorCoordination(value: unknown): EndoCoordinatorCoor
 		)
 			return null;
 		return coordination;
+	} catch {
+		return null;
+	}
+}
+
+/** Strict read-only validation of the project-scoped S1/S2 operations projection received from the paired workspace host. */
+export function readCoordinatorOperations(value: unknown): EndoCoordinatorStudioOperationsV0 | null {
+	try {
+		const ops = validateEndoCoordinatorStudioOperationsV0(value);
+		if (
+			!unique(ops.resources.localEndpoints.map((e) => e.memberId)) ||
+			!unique(ops.resources.providers.map((p) => p.providerId)) ||
+			!unique(ops.schedules.observation.schedules.map((s) => s.scheduleId)) ||
+			!unique(ops.schedules.observation.recentFires.map((f) => f.idempotencyKey)) ||
+			!unique(ops.schedules.advisory.schedules.map((s) => s.scheduleId)) ||
+			!unique(ops.schedules.advisory.recentFires.map((f) => f.idempotencyKey)) ||
+			!unique(ops.advisoryHistory.briefings.map((b) => b.turnId)) ||
+			!unique(ops.advisoryHistory.proposals.map((p) => p.proposalId))
+		)
+			return null;
+		return ops;
 	} catch {
 		return null;
 	}

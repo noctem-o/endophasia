@@ -9555,3 +9555,120 @@ body:has(.coordinator[data-appearance="field"][data-atmosphere="storm"]) .topbar
 	display: grid;
 	gap: 10px;
 }
+
+/* Coordinator Studio F1 read-only operational views (Attention, Resources, Schedules, Advisory): OLED-friendly muted plates. */
+.coordinator-ops-view {
+	display: grid;
+	gap: 12px;
+	padding: 12px;
+}
+
+.coordinator-ops-banner {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	border: 1px solid var(--coord-rule);
+	border-radius: var(--radius);
+	background: var(--surface-1);
+	font-size: 12px;
+}
+
+.coordinator-ops-banner[data-tone="attention"] {
+	border-inline-start: 3px solid var(--attention);
+}
+
+.coordinator-ops-counts {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 8px;
+}
+
+.coordinator-ops-section {
+	display: grid;
+	gap: 8px;
+	padding-top: 8px;
+	border-top: 1px solid var(--coord-rule-subtle);
+}
+
+.coordinator-ops-section h3,
+.coordinator-ops-sub h4 {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	color: var(--fg-1);
+}
+
+.coordinator-ops-sub {
+	display: grid;
+	gap: 6px;
+	margin-top: 4px;
+}
+
+.coordinator-ops-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	gap: 8px;
+}
+
+.coordinator-ops-card {
+	border: 1px solid var(--coord-rule);
+	border-inline-start: 3px solid var(--line-strong);
+	border-radius: var(--radius);
+	background: var(--coord-card);
+	padding: 9px 11px;
+	display: grid;
+	gap: 6px;
+	min-width: 0;
+}
+
+.coordinator-ops-card[data-tier="hazard"] {
+	border-inline-start-color: var(--fault);
+}
+
+.coordinator-ops-card[data-tier="blocker"] {
+	border-inline-start-color: var(--attention);
+}
+
+.coordinator-ops-card[data-tier="verification"] {
+	border-inline-start-color: var(--obs);
+}
+
+.coordinator-ops-card-head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px 10px;
+}
+
+.coordinator-ops-title {
+	font-size: 13.5px;
+	line-height: 1.3;
+	color: var(--fg-1);
+}
+
+.coordinator-ops-subject {
+	color: var(--coord-quiet);
+	font-weight: 400;
+}
+
+.coordinator-ops-code {
+	font-family: var(--mono);
+	font-size: 10.5px;
+	color: var(--coord-quiet);
+}
+
+.coordinator-ops-answer {
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	color: var(--fg-2);
+	font-size: 12px;
+	line-height: 1.45;
+}

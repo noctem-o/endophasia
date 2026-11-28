@@ -20,6 +20,7 @@ import {
 	event,
 	ingestAll,
 	removeTempRoots,
+	seedEmptyRegistry,
 	seedRegistry,
 	specimen,
 	tempRoot,
@@ -41,7 +42,7 @@ function seeded(events = 5): string {
 		Array.from({ length: events }, () => event("agent.prompt-accepted")),
 	);
 	seedRegistry(root);
-	mkdirSync(join(root, "harness", "omp.default")); // a second attachment directory with no records
+	seedEmptyRegistry(root, "omp.default"); // a second attachment directory with no records
 	return root;
 }
 

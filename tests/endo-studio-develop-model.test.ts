@@ -1,7 +1,6 @@
 // DEVELOP frontend, pure parts: the browser wire gate and the reducer, against real server records and one-field mutations of them.
 import { describe, expect, it } from "vitest";
 import { readEndoCockpitSnapshotV0 } from "../cockpit/index.ts";
-import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import {
 	type DevelopState,
 	developFiltersActive,
@@ -24,7 +23,7 @@ import {
 	sessionsCursor,
 } from "../studio-ui/src/model/develop-wire.ts";
 import { controlsLocked, initialState, reduce } from "../studio-ui/src/model/state.ts";
-import { ingestAll, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
+import { ingestAll, seedEmptyRegistry, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 import { compareEvents } from "./studio-compare-fixtures.ts";
 import { developRecords } from "./studio-develop-fixtures.ts";
@@ -321,7 +320,7 @@ describe("the hand-off to Observe", () => {
 	ingestAll(root, compareEvents());
 	seedRegistry(root, "pi.default");
 	const older = readEndoCockpitSnapshotV0(root, { digestKey: OTHER_KEY });
-	openEndoHarnessRegistryV0(root, "pi.second"); // registered after the older snapshot was read
+	seedEmptyRegistry(root, "pi.second"); // registered after the older snapshot was read
 	const newer = readEndoCockpitSnapshotV0(root, { digestKey: OTHER_KEY });
 	const request = { afterSequence: 0, limit: 100 };
 	const read = (s: ReturnType<typeof initialState>, snapshot: typeof older) =>

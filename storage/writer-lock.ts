@@ -91,7 +91,7 @@ export function readEndoLockRecordV0(path: string): { raw: string; value: Record
 			length += count;
 		}
 		if (length === bytes.length) throw new TypeError("lock exceeds 4096 bytes");
-		const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, length));
+		const raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, length));
 		const value: unknown = JSON.parse(raw);
 		if (typeof value !== "object" || value === null || Array.isArray(value))
 			throw new TypeError("lock is not a JSON object");
@@ -164,6 +164,14 @@ function manualRecoveryHint(lockPath: string, extraPath?: string): string {
 	return `Verify no Endophasia session (Pi or Codex) is writing this store before manually removing ${files}.`;
 }
 
+function nonPidBarrier(path: string, attachment: string): EndoStoreLockedErrorV0 {
+	return new EndoStoreLockedErrorV0(
+		path,
+		`non-PID lock barrier (${attachment})`,
+		"This lock carries no owner PID and will not be automatically cleared. Never remove a store-format sentinel; inspect the store with endo store status.",
+	);
+}
+
 /**
  * Take the store root's single-writer lock (`<root>/events/session-attachment.lock` by default).
  * Returns an idempotent release function that verifies token ownership before removing the lock file.
@@ -228,11 +236,7 @@ export function acquireEndoWriterLockHandleV0(
 	}
 	if (observed.holder.pid === undefined) {
 		// Non-PID barrier (including future E4 per-attachment format sentinel): never automatically stolen.
-		throw new EndoStoreLockedErrorV0(
-			path,
-			`non-PID lock barrier (${observed.holder.attachment})`,
-			`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
-		);
+		throw nonPidBarrier(path, observed.holder.attachment);
 	}
 	if (isEndoLockPidAliveV0(observed.holder.pid)) {
 		throw new EndoStoreLockedErrorV0(path, `pid ${String(observed.holder.pid)}, ${observed.holder.attachment}`);
@@ -267,11 +271,7 @@ export function acquireEndoWriterLockHandleV0(
 				isEndoLockPidAliveV0(rechecked.holder.pid)
 			) {
 				if (rechecked.holder.pid === undefined) {
-					throw new EndoStoreLockedErrorV0(
-						path,
-						`non-PID lock barrier (${rechecked.holder.attachment})`,
-						`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
-					);
+					throw nonPidBarrier(path, rechecked.holder.attachment);
 				}
 				throw new EndoStoreLockedErrorV0(
 					path,
@@ -292,11 +292,7 @@ export function acquireEndoWriterLockHandleV0(
 			if ((claimErr as NodeJS.ErrnoException).code === "EEXIST") {
 				const winner = readLock(path);
 				if (winner.state === "ok" && winner.holder.pid === undefined) {
-					throw new EndoStoreLockedErrorV0(
-						path,
-						`non-PID lock barrier (${winner.holder.attachment})`,
-						`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
-					);
+					throw nonPidBarrier(path, winner.holder.attachment);
 				}
 				const holderDesc =
 					winner.state === "ok"

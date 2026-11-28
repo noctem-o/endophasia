@@ -37,7 +37,6 @@ import {
 	ENDO_FIXTURE_DIGEST_KEYS_V0 as FROM_STORAGE,
 	loadEndoFixtureDigestKeyV0,
 } from "../storage/digest-key.ts";
-import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import {
 	ATTACHMENT,
 	changeRecord,
@@ -45,6 +44,7 @@ import {
 	ingestAll,
 	notificationRecord,
 	removeTempRoots,
+	seedEmptyRegistry,
 	seedRegistry,
 	specimenRecords,
 	tempRoot,
@@ -176,7 +176,7 @@ describe("a digest key's id identifies its bytes, or the key is not admitted (P2
 		const logged = tempRoot();
 		ingestAll(logged, [event("agent.prompt-accepted"), event("agent.prompt-accepted")]);
 		const emptyRegistry = tempRoot();
-		openEndoHarnessRegistryV0(emptyRegistry, ATTACHMENT);
+		seedEmptyRegistry(emptyRegistry, ATTACHMENT);
 		const seeded = tempRoot();
 		seedRegistry(seeded);
 		const held = [
@@ -201,7 +201,7 @@ describe("a digest key's id identifies its bytes, or the key is not admitted (P2
 
 	it("every projector refuses an unadmitted key, even for an empty or absent source it could once project", () => {
 		const emptyRegistry = tempRoot();
-		openEndoHarnessRegistryV0(emptyRegistry, ATTACHMENT);
+		seedEmptyRegistry(emptyRegistry, ATTACHMENT);
 		const input = readEndoCockpitRegistryV0(emptyRegistry, ATTACHMENT);
 		const log = readEndoCockpitEventLogV0(tempRoot());
 		for (const key of refused) {

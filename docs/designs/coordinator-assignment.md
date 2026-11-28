@@ -374,6 +374,8 @@ sequenceDiagram
 
 ### 6.4 Concurrent heterogeneous sessions (`EVENT-STORE-CONCURRENT-001`)
 
+**2026-11-28 amendment:** The [accepted storage ADR](event-store-concurrent.md#amendments-to-coordinator-assignment-64) supersedes this section where they differ: the #182-version floor is conditional, the storage layer owns the barrier, a whole-store count over incomplete inputs is only a lower bound, and stream cursors never imply a global order. The design and acceptance criteria below describe the original proposal, not a claim that B–D alone satisfies them.
+
 In baseline `241eadfc4`, `<root>/events/events.log` is protected by `<root>/events/session-attachment.lock` (`adapters/pi/attachment.ts:517-565`): a second live attachment process either fails immediately (`PiStoreLockedErrorV0`) or—if it bypassed the lock—would corrupt a frame and permanently seal `events/events.log` read-only (`storage/event-store.ts:115-119`).
 
 Sequential attachments per store root are acceptable for the initial compatibility experiment (`E3 — COORDINATOR-HETEROGENEOUS-001`), **but genuinely concurrent live sessions (e.g., Codex building while Pi investigates or reviews simultaneously) are central to DEVELOP and Coordinator.** Rather than deferring concurrency indefinitely, we evaluate the concrete storage options and schedule a dedicated near-term milestone **`E4 — EVENT-STORE-CONCURRENT-001`**.

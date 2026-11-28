@@ -6,7 +6,12 @@
  */
 
 export * from "./artifacts.ts";
+export * from "./attachment-lock.ts";
 export * from "./event-store.ts";
+export * from "./event-store-read.ts";
+export * from "./event-stream-path.ts";
 export * from "./ledger.ts";
 export * from "./log.ts";
+export * from "./store-format.ts";
+export * from "./store-format-write.ts";
 export * from "./writer-lock.ts";

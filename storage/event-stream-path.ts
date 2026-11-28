@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { isWellFormedKindV0 } from "../protocol/identity.ts";
 
 export type EndoEventStreamIdV0 =
-	| { readonly kind: "legacy" }
+	| { readonly kind: "legacy"; readonly attachmentId?: never }
 	| { readonly kind: "attachment"; readonly attachmentId: string };
 
 export type EndoEventStreamKeyV0 = "legacy" | `attachment:${string}`;

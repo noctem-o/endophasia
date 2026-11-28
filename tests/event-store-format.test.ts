@@ -6,7 +6,9 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, it } from "vitest";
+import type { EndoHarnessFingerprintRecordV0 } from "../protocol/harness.ts";
 import { createEndoDurableEventStoreV0, openEndoEventStreamReadOnlyV0 } from "../storage/event-store.ts";
+import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { detectEndoStoreFormatV0, endoStoreFormatPathsV0 } from "../storage/store-format.ts";
 import {
 	attachEndoEventStoreWriterV0,
@@ -227,6 +229,62 @@ it("recognises a DEVELOP-only store without changing it and seals absence explic
 		findings: [{ kind: "appeared" }],
 	});
 });
+
+it("does not create an E4 registry before a matching attachment lock is held", () => {
+	const root = scratch();
+	initEndoEventStoreV0(root);
+	const attachment = "fx.attachment";
+	const record = JSON.parse(
+		readFileSync(
+			new URL("./fixtures/schema-compat/endo.harness-fingerprint.v1/minimal.json", import.meta.url),
+			"utf8",
+		),
+	) as EndoHarnessFingerprintRecordV0;
+	const directory = join(root, "harness", attachment);
+	const unlocked = openEndoHarnessRegistryV0(root, attachment);
+	expect(existsSync(directory)).toBe(false);
+	expect(() => unlocked.append("fingerprint", record)).toThrow(/live attachment lock/);
+	expect(existsSync(directory)).toBe(false);
+	const writer = attachEndoEventStoreWriterV0(root, attachment);
+	try {
+		expect(writer.mode).toBe("attachment");
+		if (writer.mode !== "attachment") throw new Error("expected attachment writer");
+		const registry = openEndoHarnessRegistryV0(root, attachment, { lock: writer.lock });
+		expect(existsSync(directory)).toBe(false);
+		registry.append("fingerprint", record);
+		expect(registry.last("fingerprint")).toEqual(record);
+		expect(existsSync(join(directory, "records.log"))).toBe(true);
+		writer.close();
+		expect(() => registry.append("fingerprint", record)).toThrow(/live attachment lock/);
+	} finally {
+		writer.close();
+	}
+});
+
+it.each(["broken-sentinel", "future-format", "invalid-witness", "streams-alone"])(
+	"refuses a %s barrier without altering its bytes",
+	(kind) => {
+		const root = scratch();
+		initEndoEventStoreV0(root);
+		const paths = endoStoreFormatPathsV0(root);
+		if (kind === "broken-sentinel") writeFileSync(paths.lock, "{");
+		if (kind === "invalid-witness") writeFileSync(paths.witness, "{");
+		if (kind === "future-format") writeFileSync(paths.lock, '{"format":"per-attachment-v2"}');
+		if (kind === "streams-alone") {
+			rmSync(paths.witness);
+			rmSync(paths.lock);
+		}
+		const contents = (path: string) => (existsSync(path) ? readFileSync(path) : null);
+		const bytes = [contents(paths.lock), contents(paths.witness)];
+		expect(detectEndoStoreFormatV0(root).state).toBe("format-barrier-broken");
+		expect(() => attachEndoEventStoreWriterV0(root, "pi.one")).toThrow(/format-barrier-broken/);
+		expect(() => createEndoDurableEventStoreV0(root)).toThrow(/format-barrier-broken/);
+		expect(() => initEndoEventStoreV0(root)).toThrow(/format-barrier-broken/);
+		expect(() => migrateEndoEventStoreV0(root, true)).toThrow(/format-barrier-broken/);
+		expect([contents(paths.lock), contents(paths.witness)]).toEqual(bytes);
+		expect(existsSync(paths.legacy)).toBe(false);
+	},
+);
 
 it.each(["truncated", "grown-append", "grown-rewritten", "rewritten-same-size", "deleted", "witness-seal-mismatch"])(
 	"reports %s drift without losing the healthy writer, but refuses after sentinel loss",

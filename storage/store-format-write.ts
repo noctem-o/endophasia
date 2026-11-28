@@ -47,6 +47,7 @@ import {
 } from "./writer-lock.ts";
 
 const INIT_WAIT_MS = 5_000;
+const initWait = new Int32Array(new SharedArrayBuffer(4));
 const ATTACHMENT_LABEL = "store format per-attachment-v1: requires Endophasia E4 or later; never remove this sentinel";
 const errno = (error: unknown) => (error as NodeJS.ErrnoException).code;
 
@@ -215,6 +216,7 @@ function initialise(root: string, state: EndoStoreBarrierV0, onLock?: () => void
 							throw error;
 						}
 						syncDirectory(root);
+						syncDirectory(dirname(root));
 					} finally {
 						rmSync(staged, { recursive: true, force: true });
 					}
@@ -334,6 +336,7 @@ export function attachEndoEventStoreWriterV0(
 			} catch (error) {
 				if (!(error instanceof EndoStoreLockedErrorV0)) throw error;
 				if (inspectEndoStoreBarrierV0(root).state === "initialising" && now() >= deadline) throw error;
+				Atomics.wait(initWait, 0, 0, 10);
 			}
 			continue;
 		}
@@ -341,6 +344,6 @@ export function attachEndoEventStoreWriterV0(
 		if (now() >= deadline)
 			throw new TypeError(`store initialisation by pid ${state.pid} has not completed; nothing was changed`);
 		options.testHooks?.onInitialisationWait?.();
-		Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+		Atomics.wait(initWait, 0, 0, 10);
 	}
 }

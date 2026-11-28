@@ -1,7 +1,7 @@
 // Builders shared by the cockpit tests: synthetic events and registry records, a seeded real store root, and a hash of a
 // whole directory tree (files, directories and bytes) to prove a read changed nothing.
 import { createHash } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,12 +18,15 @@ import type {
 import { canonicalEndoJsonV0, sha256HexV0 } from "../runtime/contracts/canonical-json.ts";
 import type { EndoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
-import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
+import { endoHarnessRegistryDirectoryV0, openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 
 export const SPECIMEN = fileURLToPath(new URL("../research/pi-conformance/1.0.0/", import.meta.url));
 export const LIFECYCLE_FIXTURES = fileURLToPath(new URL("./fixtures/pi-lifecycle/fake-pi-1.0.0/", import.meta.url));
 
 export const ATTACHMENT = "pi.default";
+export function seedEmptyRegistry(root: string, attachment: string): void {
+	mkdirSync(endoHarnessRegistryDirectoryV0(root, attachment), { recursive: true });
+}
 export const CANARY = "CANARY-9f3a-leak";
 
 const roots: string[] = [];

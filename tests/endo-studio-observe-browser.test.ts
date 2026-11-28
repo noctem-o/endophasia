@@ -20,6 +20,7 @@ import {
 	ingestAll,
 	lifecycleEvents,
 	removeTempRoots,
+	seedEmptyRegistry,
 	seedRegistry,
 	specimen,
 	tempRoot,
@@ -375,7 +376,7 @@ suite("sources the page must not misrepresent", () => {
 	it("an attachment with a registry but no capability state says that, not that nothing is supported", async () => {
 		const root = tempRoot();
 		ingestAll(root, [event("tool.started")]);
-		openEndoHarnessRegistryV0(root, "omp.default");
+		seedEmptyRegistry(root, "omp.default");
 		const server = await serve(root, { ui });
 		const page = await open(`${server.baseUrl}/`);
 		expect(await text(page, "#capabilities")).toContain("This is not a statement that nothing is supported.");
@@ -502,7 +503,7 @@ suite("reading, paging and refreshing", () => {
 			),
 		);
 		seedRegistry(root);
-		openEndoHarnessRegistryV0(root, "omp.default");
+		seedEmptyRegistry(root, "omp.default");
 		const server = await serve(root, { ui, readBudget: { duty: 1, burstMs: 1e9 } });
 		const page = await open(`${server.baseUrl}/`);
 		const focused = () =>

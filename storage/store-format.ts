@@ -147,11 +147,10 @@ function inspectBarrier(root: string): EndoStoreBarrierV0 {
 				if (witness !== null) {
 					const copy = readEndoStoreFormatSentinelV0(witness.value);
 					if (!copy.ok) return broken("witness-format-mismatch", paths.witness, copy.message);
-					const { legacy: witnessSeal, ...witnessMetadata } = copy.value;
-					const { legacy: seal, ...sentinelMetadata } = sentinel;
-					if (canonicalEndoJsonV0(witnessMetadata) !== canonicalEndoJsonV0(sentinelMetadata))
-						return broken("witness-format-mismatch", paths.witness, "sentinel metadata differs");
-					state = canonicalEndoJsonV0(witnessSeal) === canonicalEndoJsonV0(seal) ? "present" : "seal-mismatch";
+					state =
+						canonicalEndoJsonV0(copy.value.legacy) === canonicalEndoJsonV0(sentinel.legacy)
+							? "present"
+							: "seal-mismatch";
 				}
 				return {
 					state: sentinel.origin === "created" ? "e4-sentinel-only" : "mixed",
@@ -234,9 +233,32 @@ export function detectEndoStoreFormatV0(root: string): EndoStoreFormatV0 {
 	if (!hasEndoStoreSentinelV0(state)) return state;
 	const path = endoStoreFormatPathsV0(root).legacy;
 	const seal = endoLegacySealPresenceV0(state.sentinel.legacy);
+	let measured: LegacyMeasurement = null;
+	let observedSize: number | null = null;
+	try {
+		const info = stat(path);
+		if (info !== undefined) {
+			observedSize = info.size;
+			measured = hashEndoLegacyLogV0(path, seal?.bytes);
+		}
+	} catch {
+		measured = "unreadable";
+	}
+	return classifyEndoLegacySnapshotV0(state, path, measured, observedSize);
+}
+
+type LegacyMeasurement = { bytes: number; sha256: string; prefix?: string } | "unreadable" | null;
+
+export function classifyEndoLegacySnapshotV0(
+	state: Established,
+	path: string,
+	measured: LegacyMeasurement,
+	observedSize: number | null = null,
+): EndoStoreFormatV0 {
+	const seal = endoLegacySealPresenceV0(state.sentinel.legacy);
 	const findings: LegacyDrift[] = [];
-	let bytes: number | null = null;
-	let hash: string | null = null;
+	const bytes = typeof measured === "object" ? (measured?.bytes ?? null) : observedSize;
+	const hash = typeof measured === "object" ? (measured?.sha256 ?? null) : null;
 	const finding = (kind: LegacyDrift["kind"], prefix?: string) =>
 		findings.push({
 			kind,
@@ -247,24 +269,14 @@ export function detectEndoStoreFormatV0(root: string): EndoStoreFormatV0 {
 			observedSha256: hash,
 			...(prefix === undefined ? {} : { observedPrefixSha256: prefix }),
 		});
-	try {
-		const info = stat(path);
-		if (info === undefined) {
-			if (seal !== null) finding("deleted");
-		} else {
-			bytes = info.size;
-			const measured = hashEndoLegacyLogV0(path, seal?.bytes);
-			bytes = measured.bytes;
-			hash = measured.sha256;
-			if (seal === null) finding("appeared");
-			else if (bytes < seal.bytes) finding("truncated");
-			else if (bytes > seal.bytes)
-				finding(measured.prefix === seal.sha256 ? "grown-append" : "grown-rewritten", measured.prefix);
-			else if (hash !== seal.sha256) finding("rewritten-same-size");
-		}
-	} catch {
-		finding("unreadable");
-	}
+	if (measured === "unreadable") finding("unreadable");
+	else if (measured === null) {
+		if (seal !== null) finding("deleted");
+	} else if (seal === null) finding("appeared");
+	else if (measured.bytes < seal.bytes) finding("truncated");
+	else if (measured.bytes > seal.bytes)
+		finding(measured.prefix === seal.sha256 ? "grown-append" : "grown-rewritten", measured.prefix);
+	else if (measured.sha256 !== seal.sha256) finding("rewritten-same-size");
 	if (state.witness === "seal-mismatch") finding("witness-seal-mismatch");
 	return findings.length === 0 ? state : { ...state, state: "legacy-seal-drift", findings };
 }

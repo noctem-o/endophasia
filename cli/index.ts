@@ -56,6 +56,7 @@ import {
 	SCHEDULER_USAGE_V0,
 } from "./scheduler.ts";
 import { STEER_COMMANDS_V0 } from "./steer.ts";
+import { STORE_FORMAT_COMMANDS_V0, STORE_FORMAT_USAGE_V0 } from "./store-format.ts";
 import { TRAJECTORY_COMMANDS_V0 } from "./trajectory.ts";
 
 /** A command family: its subcommand table is read by own property only, so inherited names ("constructor") are usage errors. */
@@ -73,6 +74,7 @@ function family(
 
 /** The closed command table: name to command function. */
 const COMMANDS_V0: Record<string, (argv: readonly string[]) => void | Promise<void>> = {
+	store: family(STORE_FORMAT_COMMANDS_V0, STORE_FORMAT_USAGE_V0),
 	status: statusCommand,
 	events: eventsCommand,
 	ingest: ingestCommand,

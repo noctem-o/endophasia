@@ -1,5 +1,6 @@
 import { dirname, join, resolve } from "node:path";
 import { endoEventStreamPathV0 } from "./event-stream-path.ts";
+import { hasEndoStoreSentinelV0, inspectEndoStoreBarrierV0, refuseEndoStoreBarrierV0 } from "./store-format.ts";
 import { acquireEndoWriterLockHandleV0, type EndoEventStoreWriterLockTestHooksV0 } from "./writer-lock.ts";
 
 export interface EndoAttachmentLockHandleV0 {
@@ -15,6 +16,9 @@ export function acquireEndoAttachmentLockV0(
 	testHooks?: EndoEventStoreWriterLockTestHooksV0,
 ): EndoAttachmentLockHandleV0 {
 	const log = endoEventStreamPathV0(root, { kind: "attachment", attachmentId });
+	const state = inspectEndoStoreBarrierV0(root);
+	refuseEndoStoreBarrierV0(root, state);
+	if (!hasEndoStoreSentinelV0(state)) throw new TypeError("an established per-attachment-v1 sentinel is required");
 	const lock = acquireEndoWriterLockHandleV0(root, attachmentId, {
 		lockPath: join(dirname(log), "attachment.lock"),
 		testHooks,

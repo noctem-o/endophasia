@@ -34,6 +34,7 @@ import {
 	type EndoFrameLogRecoveryV0,
 	endoFrameLogRecoveryV0,
 } from "./log.ts";
+import { hasEndoStoreSentinelV0, inspectEndoStoreBarrierV0, refuseEndoStoreBarrierV0 } from "./store-format.ts";
 
 /**
  * The record kinds the registry holds, each with the schema versions it may carry. A log is append-only and may hold
@@ -93,9 +94,13 @@ export function openEndoHarnessRegistryV0(
 	const readOnly = options.readOnly === true;
 	const directory = endoHarnessRegistryDirectoryV0(root, attachment);
 	const assertHeld = () => {
+		const state = inspectEndoStoreBarrierV0(root);
+		refuseEndoStoreBarrierV0(root, state);
+		if (state.state === "initialising") throw new TypeError("store initialisation has not completed");
+		if (hasEndoStoreSentinelV0(state) && options.lock === undefined)
+			throw new TypeError("a live attachment lock is required before writing this registry");
 		if (options.lock !== undefined) assertEndoAttachmentLockV0(root, attachment, options.lock);
 	};
-	if (!readOnly) assertHeld();
 	const log = createEndoFrameLogV0(`${directory}/records.log`, { readOnly });
 	const read = log.read();
 	const { frames } = read;
@@ -137,7 +142,11 @@ export function openEndoHarnessRegistryV0(
 	}
 
 	// Only now, with every remaining frame validated, is a torn tail cut.
-	const discarded = read.truncated && !readOnly ? log.truncateTo(frames.length) : null;
+	let discarded = null;
+	if (read.truncated && !readOnly) {
+		assertHeld();
+		discarded = log.truncateTo(frames.length);
+	}
 	const recovery = endoFrameLogRecoveryV0(read, readOnly, discarded);
 
 	return {

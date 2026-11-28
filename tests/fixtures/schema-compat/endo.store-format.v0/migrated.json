@@ -1,0 +1,1 @@
+{"attachment":"store format per-attachment-v1: requires Endophasia E4 or later; never remove this sentinel","createdAt":"2026-11-28T00:00:00.000Z","format":"per-attachment-v1","legacy":{"bytes":0,"frames":0,"prefixDigest":null,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},"origin":"migrated","schemaVersion":"endo.store-format.v0"}

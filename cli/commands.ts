@@ -18,6 +18,7 @@ import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { createEndoArtifactStoreV0 } from "../storage/artifacts.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { createEndoDurableEvidenceLedgerV0 } from "../storage/ledger.ts";
+import { acquireEndoLegacyStoreWriterV0 } from "../storage/store-format-write.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 
 /** The open mode of every reporting command. */
@@ -108,10 +109,18 @@ export function ingestCommand(argv: readonly string[]): void {
 	if (typeof file !== "string" || taken.rest.length !== 1)
 		throw new TypeError("usage: endo ingest [<root> | --root dir] <file>");
 	announceEndoRootV0(taken);
-	const store = createEndoDurableEventStoreV0(root);
-	const event = store.ingest(readJsonValueV0(file));
-	store.close();
-	console.log(canonicalEndoJsonV0(event));
+	const value = readJsonValueV0(file);
+	const release = acquireEndoLegacyStoreWriterV0(root, "endo.ingest");
+	try {
+		const store = createEndoDurableEventStoreV0(root);
+		try {
+			console.log(canonicalEndoJsonV0(store.ingest(value)));
+		} finally {
+			store.close();
+		}
+	} finally {
+		release();
+	}
 }
 
 /** `ledger <root>` — the ledger's replay classification and its full record list. */

@@ -96,6 +96,7 @@ Classified from the tree; a `schemaVersion` string is not by itself a durability
 | `endo.evaluation-profile`                         | v0, v1        | v0 (Reef adapter), v1 (experiment runner) | nested in results |
 | `endo.workspace-archive`                          | v0, v1        | **v1 only** | blob store, cassette replay                 |
 | `endo.digest-key`                                 | v0            | v0          | key file                                    |
+| `endo.store-format`                               | v0            | v0          | event-store sentinel and witness            |
 | `endo.experiment-spec`                            | v0            | v0 (operator-authored) | the spec file `endo experiment run` reads |
 | `endo.experiment-run`                             | v0            | v0          | run directory `experiment.json`             |
 | `endo.experiment-plan`                            | v0 (+ the unversioned legacy form, below) | v0 | run directory `plan.json`      |

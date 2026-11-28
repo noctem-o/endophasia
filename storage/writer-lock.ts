@@ -180,9 +180,10 @@ export function acquireEndoWriterLockHandleV0(
 	root: string,
 	attachment: string,
 	options: EndoEventStoreWriterLockOptionsV0 = {},
+	publishFresh?: (path: string, content: string) => void,
 ): { assertHeld(): void; release(): void } {
 	const path = options.lockPath ?? join(root, "events", "session-attachment.lock");
-	mkdirSync(dirname(path), { recursive: true });
+	if (publishFresh === undefined) mkdirSync(dirname(path), { recursive: true });
 	const now = options.now ?? (() => new Date());
 	const token = randomBytes(12).toString("hex");
 	const content = `${JSON.stringify({ pid: process.pid, attachment, at: now().toISOString(), token })}\n`;
@@ -194,6 +195,10 @@ export function acquireEndoWriterLockHandleV0(
 		},
 		release: makeRelease(path, token),
 	});
+	if (publishFresh !== undefined) {
+		publishFresh(path, content);
+		return handle();
+	}
 
 	// Fast path: single atomic O_CREAT|O_EXCL create.
 	try {

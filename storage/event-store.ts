@@ -43,6 +43,12 @@ import {
 	type EndoFrameLogRecoveryV0,
 	endoFrameLogRecoveryV0,
 } from "./log.ts";
+import {
+	assertEndoLegacyStoreWritableV0,
+	hasEndoStoreSentinelV0,
+	inspectEndoStoreBarrierV0,
+	refuseEndoStoreBarrierV0,
+} from "./store-format.ts";
 
 /**
  * How open classified the event log, and what it discarded.
@@ -89,7 +95,9 @@ export function createEndoDurableEventStoreV0(
 	const path = options.logPath ?? legacyPath;
 	if (options.readOnly !== true && resolve(path) !== resolve(legacyPath))
 		throw new TypeError("writable log overrides are not allowed; use an attachment writer lock");
-	return openEventLog(path, options);
+	const assertWritable = () => assertEndoLegacyStoreWritableV0(root);
+	if (options.readOnly !== true) assertWritable();
+	return openEventLog(path, options, assertWritable);
 }
 
 const openWriters = new WeakSet<EndoAttachmentLockHandleV0>();
@@ -100,7 +108,12 @@ export function openEndoAttachmentEventStreamV0(
 	options: { maxReadBytes?: number } = {},
 ): EndoDurableEventStoreV0 {
 	const attachmentId = lock.attachmentId;
-	const assertHeld = () => assertEndoAttachmentLockV0(root, attachmentId, lock);
+	const assertHeld = () => {
+		const state = inspectEndoStoreBarrierV0(root);
+		refuseEndoStoreBarrierV0(root, state);
+		if (!hasEndoStoreSentinelV0(state)) throw new TypeError("an established per-attachment-v1 sentinel is required");
+		assertEndoAttachmentLockV0(root, attachmentId, lock);
+	};
 	assertHeld();
 	if (openWriters.has(lock)) throw new TypeError("this attachment lock already has an open event writer");
 	const path = endoEventStreamPathV0(root, { kind: "attachment", attachmentId });

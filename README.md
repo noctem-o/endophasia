@@ -416,7 +416,7 @@ flowchart TB
     PROP -.->|"shown as untrusted"| BOARD
 ```
 
-Advisory output has no automatic path to execution or authorisation. Briefings and proposals are displayed on the read-only board,
+Advisory output has no automatic path to execution or authorisation. S2 briefings and proposals are displayed on the read-only board,
 which has no prompt or dispatch route, and only a person can act on what they read there. The live workbench page is a separate
 host that can draft and request; approval comes from the controlling terminal, or from a terminal-issued Pi Everyday grant inside
 the narrow attested configuration above. In ordinary Strict operation Pi and Codex call their own model providers along their own

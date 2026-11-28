@@ -123,6 +123,8 @@ Every row of [coordinator-assignment.md §12](coordinator-assignment.md), in its
 
 ## 8. E4 reconnaissance: what #182's shared writer lock implies for the store-format sentinel
 
+**2026-11-28 amendment:** See the [accepted storage ADR](event-store-concurrent.md). The migrator commits by renaming over its own verified PID lock; the mixed-version floor only applies to lock-taking writers. This section records the earlier reconnaissance.
+
 This is reconnaissance only. Nothing here is implemented.
 
 #182 moved the event-store writer lock into `storage/writer-lock.ts`, shared by Pi and Codex. It works like this:

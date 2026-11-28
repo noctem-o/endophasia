@@ -2,6 +2,7 @@
 // folds them into lifecycle events as it goes, and the overview is reduced from the store. The fake Pi speaks Pi
 // 1.0.0's documented records; nothing here shows what a real Pi or model does (see pi-lifecycle-fixtures.test.ts for
 // the real-fixture check, which stays skipped until a maintainer records one).
+
 import { closeSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,6 +21,7 @@ import {
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
 import { type FakePiInstall, fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 import { recordFakeLifecycleFixtures } from "./fixtures/pi-lifecycle/record-fake.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -107,7 +109,7 @@ describe("runtime-reported outcomes", () => {
 			},
 		});
 		// The event log, and every record digest built from it, holds no byte of the text.
-		expect(readFileSync(join(root, "events", "events.log")).includes(Buffer.from("529 overloaded"))).toBe(false);
+		expect(readEventLogBytesV0(root).includes(Buffer.from("529 overloaded"))).toBe(false);
 		// The text is kept beside the store, content-addressed by the digest the event carries.
 		expect(readFileSync(join(root, PI_RUNTIME_TEXT_DIRECTORY_V0, "artifacts", digest), "utf8")).toBe(text);
 		expect(session.counters.runtimeTextsNotKept).toBe(0);
@@ -125,7 +127,7 @@ describe("runtime-reported outcomes", () => {
 				value: { source: "auto_retry_end.finalError", sha256: sha256HexV0("fake provider: retries exhausted") },
 			},
 		});
-		expect(readFileSync(join(root, "events", "events.log")).includes(Buffer.from("retries exhausted"))).toBe(false);
+		expect(readEventLogBytesV0(root).includes(Buffer.from("retries exhausted"))).toBe(false);
 	});
 
 	it("a compaction is recorded as compacted, with Pi's first kept entry", async () => {

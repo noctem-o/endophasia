@@ -8,6 +8,7 @@
 // Part 2, the broker over a REAL attachment to the fake Pi (a real child process speaking Pi's RPC) and a real event store: the relation
 // from the attempt to the session is recovered later, from the files alone, by a reader that is not the process that sent it; including
 // after Pi never answered, and after Pi exited on the prompt. No provider, no model, no network.
+
 import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -26,6 +27,7 @@ import { DevelopAttemptsStoreV0 } from "../storage/develop-attempts.ts";
 import { DevelopTasksStoreV0 } from "../storage/develop-tasks.ts";
 import { readAttempts } from "../studio-ui/src/model/attempts-wire.ts";
 import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 import { Approval, FakeSession, settle } from "./workbench-fixtures.ts";
 
 const KEY = endoDigestKeyV0(Buffer.alloc(32, 9), "workbench-attempt-test");
@@ -627,7 +629,7 @@ describe("over a real attachment to the fake Pi and a real event store", () => {
 		expect(shown?.execution).toMatchObject({ send: "runtime-accepted", run: "completed", session: "session-alias" });
 		expect(readAttempts(JSON.parse(JSON.stringify(await host.attemptsView())))).not.toBeNull();
 		// The brief's text is in no event: only its keyed digest.
-		const log = readFileSync(join(w.root, "events", "events.log"), "utf8");
+		const log = readEventLogBytesV0(w.root).toString("utf8");
 		expect(log).not.toContain("Accept trailing commas");
 	});
 

@@ -25,7 +25,7 @@
  */
 
 import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import type { EndoEventCoordinatesV0, EndoEventV0 } from "../protocol/event.ts";
 import type {
 	EndoEventRecordPageQueryV0,
@@ -35,12 +35,20 @@ import type {
 } from "../protocol/event-record.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { createEndoEventStoreV0 } from "../runtime/contracts/event-store.ts";
+import { assertEndoAttachmentLockV0, type EndoAttachmentLockHandleV0 } from "./attachment-lock.ts";
+import { type EndoEventStreamIdV0, endoEventStreamPathV0 } from "./event-stream-path.ts";
 import {
 	createEndoFrameLogV0,
 	type EndoDurableStoreOptionsV0,
 	type EndoFrameLogRecoveryV0,
 	endoFrameLogRecoveryV0,
 } from "./log.ts";
+import {
+	assertEndoLegacyStoreWritableV0,
+	hasEndoStoreSentinelV0,
+	inspectEndoStoreBarrierV0,
+	refuseEndoStoreBarrierV0,
+} from "./store-format.ts";
 
 /**
  * How open classified the event log, and what it discarded.
@@ -72,7 +80,7 @@ export interface EndoDurableEventStoreV0 {
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
 export interface EndoDurableEventStoreOptionsV0 extends EndoDurableStoreOptionsV0 {
-	/** Optional explicit event log file path (default: `<root>/events/events.log`). Injectable for future per-attachment logs. */
+	/** Optional explicit log path for read-only callers. A writable legacy open always targets the root's legacy log. */
 	logPath?: string;
 }
 
@@ -83,8 +91,63 @@ export function createEndoDurableEventStoreV0(
 	root: string,
 	options: EndoDurableEventStoreOptionsV0 = {},
 ): EndoDurableEventStoreV0 {
+	const legacyPath = endoEventStreamPathV0(root, { kind: "legacy" });
+	const path = options.logPath ?? legacyPath;
+	if (options.readOnly !== true && resolve(path) !== resolve(legacyPath))
+		throw new TypeError("writable log overrides are not allowed; use an attachment writer lock");
+	const assertWritable = () => assertEndoLegacyStoreWritableV0(root);
+	if (options.readOnly !== true) assertWritable();
+	return openEventLog(path, options, assertWritable);
+}
+
+const openWriters = new WeakSet<EndoAttachmentLockHandleV0>();
+
+export function openEndoAttachmentEventStreamV0(
+	root: string,
+	lock: EndoAttachmentLockHandleV0,
+	options: { maxReadBytes?: number } = {},
+): EndoDurableEventStoreV0 {
+	const attachmentId = lock.attachmentId;
+	const assertHeld = () => {
+		const state = inspectEndoStoreBarrierV0(root);
+		refuseEndoStoreBarrierV0(root, state);
+		if (!hasEndoStoreSentinelV0(state)) throw new TypeError("an established per-attachment-v1 sentinel is required");
+		assertEndoAttachmentLockV0(root, attachmentId, lock);
+	};
+	assertHeld();
+	if (openWriters.has(lock)) throw new TypeError("this attachment lock already has an open event writer");
+	const path = endoEventStreamPathV0(root, { kind: "attachment", attachmentId });
+	const store = openEventLog(path, options, assertHeld);
+	openWriters.add(lock);
+	let closed = false;
+	return {
+		...store,
+		get length() {
+			return store.length;
+		},
+		close() {
+			if (closed) return;
+			closed = true;
+			store.close();
+			openWriters.delete(lock);
+		},
+	};
+}
+
+export function openEndoEventStreamReadOnlyV0(
+	root: string,
+	id: EndoEventStreamIdV0,
+	options: { maxReadBytes?: number } = {},
+): EndoDurableEventStoreV0 {
+	return openEventLog(endoEventStreamPathV0(root, id), { ...options, readOnly: true });
+}
+
+function openEventLog(
+	logPath: string,
+	options: EndoDurableStoreOptionsV0,
+	assertWritable?: () => void,
+): EndoDurableEventStoreV0 {
 	const readOnly = options.readOnly === true;
-	const logPath = options.logPath ?? `${root}/events/events.log`;
 	if (!readOnly) mkdirSync(dirname(logPath), { recursive: true });
 	const log = createEndoFrameLogV0(logPath, { ...options, readOnly });
 	const read = log.read();
@@ -118,6 +181,7 @@ export function createEndoDurableEventStoreV0(
 				"the durable event store is dead: a log write failed and the in-memory state outruns the log",
 			);
 		if (write && readOnly) throw new TypeError("the durable event store is open read-only");
+		if (write) assertWritable?.();
 		if (write && recovery.sealed) {
 			throw new TypeError(
 				`the durable event store is sealed: frame ${recovery.corruptAt} failed verification on open; the store is read-only`,

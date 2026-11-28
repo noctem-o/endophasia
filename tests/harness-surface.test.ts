@@ -40,6 +40,7 @@ import { readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { ENDO_DIGEST_KEY_ID_PATTERN_V0 } from "../runtime/contracts/keyed-digest.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../storage/digest-key.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 const key = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0());
 const altKey = loadEndoFixtureDigestKeyV0(endoFixtureDigestKeyPathV0("fixture-public-alt"));
@@ -339,7 +340,7 @@ describe("the harness surface is derived from the recorded wire", () => {
 		expect(text).not.toContain(plain);
 		// The raw request exists only in the keyed blob store, outside the canonical event log.
 		const store = record([{ body: chat({ messages: [{ role: "system", content: secret }] }) }]);
-		const events = readFileSync(join(store, "capture", "events", "events.log"), "utf8");
+		const events = readEventLogBytesV0(store, "capture").toString("utf8");
 		expect(events).not.toContain(secret);
 	});
 

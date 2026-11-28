@@ -10,6 +10,8 @@ import { DSH_NATIVE_LOSS_ACCOUNTING_V0 } from "../adapters/dsh-native/loss.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { endoDigestKeyPathV0, loadOrCreateEndoDigestKeyV0 } from "../storage/digest-key.ts";
 import { createEndoDurableEventStoreV0, type EndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { assertEndoLegacyStoreWritableV0 } from "../storage/store-format.ts";
+import { acquireEndoLegacyStoreWriterV0 } from "../storage/store-format-write.ts";
 import { announceEndoRootV0, takeEndoRootV0 } from "./root-args.ts";
 
 const USAGE = "usage: endo dsh import [<root> | --root dir] <session-directory> (one root only)";
@@ -105,6 +107,16 @@ export function dshImportCommand(argv: readonly string[]): void {
 		);
 	}
 
+	assertEndoLegacyStoreWritableV0(root);
+	const legacyPath = join(root, "events", "events.log");
+	const logIdentity = () => {
+		const found = lstatSync(legacyPath, { bigint: true, throwIfNoEntry: false });
+		if (found === undefined) return null;
+		if (!found.isFile() || found.nlink !== 1n)
+			throw new TypeError("DSH destination needs a singly linked regular event log");
+		return [found.dev, found.ino, found.size, found.ctimeNs, found.mtimeNs].join(":");
+	};
+	const before = logIdentity();
 	let reader: EndoDurableEventStoreV0;
 	try {
 		reader = createEndoDurableEventStoreV0(root, { readOnly: true });
@@ -112,6 +124,7 @@ export function dshImportCommand(argv: readonly string[]): void {
 		throw new TypeError("DSH destination could not be opened read-only");
 	}
 	let writer: EndoDurableEventStoreV0 | undefined;
+	let release: (() => void) | undefined;
 	try {
 		if (reader.recovery().truncated || reader.recovery().sealed)
 			throw new TypeError("DSH import requires a clean destination event log; no recovery was performed");
@@ -131,7 +144,11 @@ export function dshImportCommand(argv: readonly string[]): void {
 				{
 					page: (query) => (writer ?? reader).page(query),
 					ingest: (value) => {
-						writer ??= createEndoDurableEventStoreV0(root);
+						if (writer === undefined) {
+							release = acquireEndoLegacyStoreWriterV0(root, "dsh.import");
+							if (logIdentity() !== before) throw new TypeError("DSH destination changed since preflight");
+							writer = createEndoDurableEventStoreV0(root);
+						}
 						return writer.ingest(value);
 					},
 				},
@@ -148,7 +165,11 @@ export function dshImportCommand(argv: readonly string[]): void {
 		try {
 			writer?.close();
 		} finally {
-			reader.close();
+			try {
+				reader.close();
+			} finally {
+				release?.();
+			}
 		}
 	}
 }

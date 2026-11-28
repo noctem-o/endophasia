@@ -27,12 +27,14 @@ import { isWellFormedKindV0 } from "../protocol/identity.ts";
 import { isPlainJsonObjectV0 } from "../protocol/primitives.ts";
 import { EndoSchemaVersionErrorV0, endoFirstUnknownKeyV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { assertEndoAttachmentLockV0, type EndoAttachmentLockHandleV0 } from "./attachment-lock.ts";
 import {
 	createEndoFrameLogV0,
 	type EndoDurableStoreOptionsV0,
 	type EndoFrameLogRecoveryV0,
 	endoFrameLogRecoveryV0,
 } from "./log.ts";
+import { hasEndoStoreSentinelV0, inspectEndoStoreBarrierV0, refuseEndoStoreBarrierV0 } from "./store-format.ts";
 
 /**
  * The record kinds the registry holds, each with the schema versions it may carry. A log is append-only and may hold
@@ -87,11 +89,18 @@ export function endoHarnessRegistryDirectoryV0(root: string, attachment: string)
 export function openEndoHarnessRegistryV0(
 	root: string,
 	attachment: string,
-	options: EndoDurableStoreOptionsV0 = {},
+	options: EndoDurableStoreOptionsV0 & { lock?: EndoAttachmentLockHandleV0 } = {},
 ): EndoHarnessRegistryV0 {
 	const readOnly = options.readOnly === true;
 	const directory = endoHarnessRegistryDirectoryV0(root, attachment);
-	if (!readOnly) mkdirSync(directory, { recursive: true });
+	const assertHeld = () => {
+		const state = inspectEndoStoreBarrierV0(root);
+		refuseEndoStoreBarrierV0(root, state);
+		if (state.state === "initialising") throw new TypeError("store initialisation has not completed");
+		if (hasEndoStoreSentinelV0(state) && options.lock === undefined)
+			throw new TypeError("a live attachment lock is required before writing this registry");
+		if (options.lock !== undefined) assertEndoAttachmentLockV0(root, attachment, options.lock);
+	};
 	const log = createEndoFrameLogV0(`${directory}/records.log`, { readOnly });
 	const read = log.read();
 	const { frames } = read;
@@ -133,19 +142,25 @@ export function openEndoHarnessRegistryV0(
 	}
 
 	// Only now, with every remaining frame validated, is a torn tail cut.
-	const discarded = read.truncated && !readOnly ? log.truncateTo(frames.length) : null;
+	let discarded = null;
+	if (read.truncated && !readOnly) {
+		assertHeld();
+		discarded = log.truncateTo(frames.length);
+	}
 	const recovery = endoFrameLogRecoveryV0(read, readOnly, discarded);
 
 	return {
 		attachment,
 		append(kind, record) {
 			if (readOnly) throw new TypeError("the harness registry is open read-only");
+			assertHeld();
 			if (recovery.sealed) {
 				throw new TypeError(`the harness registry is sealed: frame ${recovery.corruptAt} failed verification`);
 			}
 			const entry = admit(kind, record);
 			// Stored as a plain JSON copy: later changes to the caller's object never reach the registry.
 			const copy = JSON.parse(canonicalEndoJsonV0(entry.record)) as { id?: string };
+			mkdirSync(directory, { recursive: true });
 			log.append(new TextEncoder().encode(canonicalEndoJsonV0({ kind, record: copy })));
 			records.push({ kind, record: copy });
 			if (copy.id !== undefined) ids.add(copy.id);

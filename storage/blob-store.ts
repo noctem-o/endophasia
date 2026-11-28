@@ -10,6 +10,7 @@
 // Writes are atomic (tmp + rename + directory fsync). A put for an address that already holds verifying bytes is a
 // no-op; one whose existing file does not verify is a tamper and throws. Every get re-verifies. Synchronous node:fs.
 
+import { randomUUID } from "node:crypto";
 import {
 	closeSync,
 	constants,
@@ -84,8 +85,8 @@ export function createEndoBlobStoreV0(
 				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
 			}
 			mkdirSync(dir, { recursive: true });
-			const tmp = `${file}.tmp`;
-			const fd = openSync(tmp, "w");
+			const tmp = `${file}.tmp-${randomUUID()}`;
+			const fd = openSync(tmp, "wx");
 			try {
 				writeExactSyncV0(fd, bytes, tmp);
 				fsyncSync(fd);

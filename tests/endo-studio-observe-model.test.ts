@@ -10,7 +10,6 @@ import {
 	type EndoCockpitTimelineEntryV0,
 	readEndoCockpitSnapshotV0,
 } from "../cockpit/index.ts";
-import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
 import { createEndoFrameLogV0, endoFrameBytesV0 } from "../storage/log.ts";
 import { NO_FILTERS, type Reply } from "../studio-ui/src/model/contract.ts";
 import { capabilityDetail, eventDetail } from "../studio-ui/src/model/detail.ts";
@@ -32,7 +31,15 @@ import {
 	markClassOf,
 	splitClock,
 } from "../studio-ui/src/model/timeline.ts";
-import { event, ingestAll, lifecycleEvents, removeTempRoots, seedRegistry, tempRoot } from "./cockpit-fixtures.ts";
+import {
+	event,
+	ingestAll,
+	lifecycleEvents,
+	removeTempRoots,
+	seedEmptyRegistry,
+	seedRegistry,
+	tempRoot,
+} from "./cockpit-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
 
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -207,7 +214,7 @@ describe("four different facts about a source: absent, empty, degraded, unopenab
 	it("a registry with no capability state says that, not that nothing is supported", () => {
 		const root = tempRoot();
 		ingestAll(root, [event("tool.started")]);
-		openEndoHarnessRegistryV0(root, "omp.default");
+		seedEmptyRegistry(root, "omp.default");
 		const model = view(read(root));
 		expect(model.capabilities).toMatchObject({ kind: "no-state", tone: "info" });
 		expect(model.capabilities.kind === "no-state" && model.capabilities.text).toMatch(

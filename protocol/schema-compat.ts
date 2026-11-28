@@ -428,6 +428,17 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		fixtures: [{ file: "minimal.json", sha256: "f5f7e44bbabfd5f15722ab682140a7eac000fa1fc4163b55481b3ac12cfaa8b0" }],
 	},
 	{
+		family: "endo.store-format",
+		schemaVersion: "endo.store-format.v0",
+		status: "current",
+		boundary: "storage/store-format.ts (format sentinel and witness)",
+		fixtures: [
+			{ file: "created.json", sha256: "631e12a9aaa085ec489522ba18a3aa20c8529eeeb6945e318e8262f4e7be7503" },
+			{ file: "migrated.json", sha256: "dff44ae68a1bfb8377257c7703e1af6a951921489e9bd87306bed46f74bf6dd3" },
+			{ file: "no-log.json", sha256: "ada7597d56adc0575670adc13d2958fd4318a4f8bda5893dd5053625f0110485" },
+		],
+	},
+	{
 		family: "endo.witness",
 		schemaVersion: "endo.witness.v0",
 		status: "current",

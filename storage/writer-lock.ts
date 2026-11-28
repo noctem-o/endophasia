@@ -23,7 +23,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, mkdirSync, openSync, readSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /** Thrown when another live session attachment already holds the store's writer lock (or recovery is blocked). */
@@ -73,10 +73,40 @@ type ReadLockResult =
 	| { readonly state: "malformed"; readonly raw: string | null }
 	| { readonly state: "ok"; readonly raw: string; readonly holder: ParsedLockHolder };
 
+export function readEndoLockRecordV0(path: string): { raw: string; value: Record<string, unknown> } | null {
+	let fd: number;
+	try {
+		fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw error;
+	}
+	try {
+		if (!fstatSync(fd).isFile()) throw new TypeError("lock is not a regular file");
+		const bytes = Buffer.alloc(4097);
+		let length = 0;
+		while (length < bytes.length) {
+			const count = readSync(fd, bytes, length, bytes.length - length, length);
+			if (count === 0) break;
+			length += count;
+		}
+		if (length === bytes.length) throw new TypeError("lock exceeds 4096 bytes");
+		const raw = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes.subarray(0, length));
+		const value: unknown = JSON.parse(raw);
+		if (typeof value !== "object" || value === null || Array.isArray(value))
+			throw new TypeError("lock is not a JSON object");
+		return { raw, value: value as Record<string, unknown> };
+	} finally {
+		closeSync(fd);
+	}
+}
+
 function readLock(lockPath: string): ReadLockResult {
 	let raw: string;
 	try {
-		raw = readFileSync(lockPath, "utf8");
+		const record = readEndoLockRecordV0(lockPath);
+		if (record === null) return { state: "missing" };
+		raw = record.raw;
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: "missing" };
 		return { state: "malformed", raw: null };
@@ -105,7 +135,7 @@ function readLock(lockPath: string): ReadLockResult {
 	}
 }
 
-function isPidAlive(pid: number): boolean {
+export function isEndoLockPidAliveV0(pid: number): boolean {
 	if (pid === process.pid) return true;
 	if (!Number.isSafeInteger(pid) || pid <= 0 || pid > 0x7fffffff) return true;
 	try {
@@ -134,6 +164,14 @@ function manualRecoveryHint(lockPath: string, extraPath?: string): string {
 	return `Verify no Endophasia session (Pi or Codex) is writing this store before manually removing ${files}.`;
 }
 
+function nonPidBarrier(path: string, attachment: string): EndoStoreLockedErrorV0 {
+	return new EndoStoreLockedErrorV0(
+		path,
+		`non-PID lock barrier (${attachment})`,
+		`The lock at ${path} carries no owner PID and will not be automatically cleared. Never remove a store-format sentinel; inspect the store with endo store status.`,
+	);
+}
+
 /**
  * Take the store root's single-writer lock (`<root>/events/session-attachment.lock` by default).
  * Returns an idempotent release function that verifies token ownership before removing the lock file.
@@ -143,16 +181,37 @@ export function acquireEndoEventStoreWriterLockV0(
 	attachment: string,
 	options: EndoEventStoreWriterLockOptionsV0 = {},
 ): () => void {
+	return acquireEndoWriterLockHandleV0(root, attachment, options).release;
+}
+
+export function acquireEndoWriterLockHandleV0(
+	root: string,
+	attachment: string,
+	options: EndoEventStoreWriterLockOptionsV0 = {},
+	publishFresh?: (path: string, content: string) => void,
+): { assertHeld(): void; release(): void } {
 	const path = options.lockPath ?? join(root, "events", "session-attachment.lock");
-	mkdirSync(dirname(path), { recursive: true });
+	if (publishFresh === undefined) mkdirSync(dirname(path), { recursive: true });
 	const now = options.now ?? (() => new Date());
 	const token = randomBytes(12).toString("hex");
 	const content = `${JSON.stringify({ pid: process.pid, attachment, at: now().toISOString(), token })}\n`;
+	const handle = () => ({
+		assertHeld() {
+			const current = readLock(path);
+			if (current.state !== "ok" || current.raw !== content)
+				throw new TypeError(`writer lock no longer held: ${path}`);
+		},
+		release: makeRelease(path, token),
+	});
+	if (publishFresh !== undefined) {
+		publishFresh(path, content);
+		return handle();
+	}
 
 	// Fast path: single atomic O_CREAT|O_EXCL create.
 	try {
 		writeFileSync(path, content, { flag: "wx" });
-		return makeRelease(path, token);
+		return handle();
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
 	}
@@ -163,7 +222,7 @@ export function acquireEndoEventStoreWriterLockV0(
 		// Disappeared between wx and read; try one clean wx without any unlink.
 		try {
 			writeFileSync(path, content, { flag: "wx" });
-			return makeRelease(path, token);
+			return handle();
 		} catch (retryErr) {
 			if ((retryErr as NodeJS.ErrnoException).code === "EEXIST") {
 				throw new EndoStoreLockedErrorV0(path, "concurrent writer");
@@ -177,13 +236,9 @@ export function acquireEndoEventStoreWriterLockV0(
 	}
 	if (observed.holder.pid === undefined) {
 		// Non-PID barrier (including future E4 per-attachment format sentinel): never automatically stolen.
-		throw new EndoStoreLockedErrorV0(
-			path,
-			`non-PID lock barrier (${observed.holder.attachment})`,
-			`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
-		);
+		throw nonPidBarrier(path, observed.holder.attachment);
 	}
-	if (isPidAlive(observed.holder.pid)) {
+	if (isEndoLockPidAliveV0(observed.holder.pid)) {
 		throw new EndoStoreLockedErrorV0(path, `pid ${String(observed.holder.pid)}, ${observed.holder.attachment}`);
 	}
 
@@ -210,13 +265,13 @@ export function acquireEndoEventStoreWriterLockV0(
 		// identical to the observed dead lock AND its PID is still dead.
 		const rechecked = readLock(path);
 		if (rechecked.state === "ok") {
-			if (rechecked.raw !== observed.raw || rechecked.holder.pid === undefined || isPidAlive(rechecked.holder.pid)) {
+			if (
+				rechecked.raw !== observed.raw ||
+				rechecked.holder.pid === undefined ||
+				isEndoLockPidAliveV0(rechecked.holder.pid)
+			) {
 				if (rechecked.holder.pid === undefined) {
-					throw new EndoStoreLockedErrorV0(
-						path,
-						`non-PID lock barrier (${rechecked.holder.attachment})`,
-						`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
-					);
+					throw nonPidBarrier(path, rechecked.holder.attachment);
 				}
 				throw new EndoStoreLockedErrorV0(
 					path,
@@ -232,16 +287,12 @@ export function acquireEndoEventStoreWriterLockV0(
 		// Now either `path` was missing or we just unlinked the verified dead lock. Attempt one atomic `wx`.
 		try {
 			writeFileSync(path, content, { flag: "wx" });
-			return makeRelease(path, token);
+			return handle();
 		} catch (claimErr) {
 			if ((claimErr as NodeJS.ErrnoException).code === "EEXIST") {
 				const winner = readLock(path);
 				if (winner.state === "ok" && winner.holder.pid === undefined) {
-					throw new EndoStoreLockedErrorV0(
-						path,
-						`non-PID lock barrier (${winner.holder.attachment})`,
-						`This lock carries no owner PID (for example, a newer store format barrier) and will not be automatically cleared. ${manualRecoveryHint(path)}`,
-					);
+					throw nonPidBarrier(path, winner.holder.attachment);
 				}
 				const holderDesc =
 					winner.state === "ok"

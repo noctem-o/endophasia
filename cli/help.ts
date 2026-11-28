@@ -25,7 +25,7 @@ export function endoVersionV0(from: string = dirname(fileURLToPath(import.meta.u
 }
 
 export const ENDO_USAGE_LINE_V0 =
-	"usage: endo <doctor|status|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt|assign|dep|candidate|worktree|review|coordinator|schedule|scheduler|resource|advisory> ...";
+	"usage: endo <doctor|status|store|events|ingest|ledger|artifacts|harness|develop|dsh|trajectory|digest-key|studio|workspace|proxy|replay|experiment|steer|project|task|attempt|assign|dep|candidate|worktree|review|coordinator|schedule|scheduler|resource|advisory> ...";
 
 export function endoHelpV0(): string {
 	return `endo — Endophasia, an experimental research instrument (alpha; not a stable product).
@@ -64,6 +64,9 @@ Interactive, writes only DEVELOP task metadata, and only from a paired page (lon
 
 Commands that write to a store:
   ingest <root> <file>               append records from a file
+  store status [--root dir]         inspect store format and legacy seal (read-only)
+  store migrate --root dir --to per-attachment-v1 [--commit]
+  store init --root dir --format per-attachment-v1
   dsh import [<root> | --root dir] <session-directory>
                                      cold-import one explicit DSH session directory; never starts or controls DSH
                                      Prints a canonical-JSON import report: imported/unchanged exit 0; refused exit 1.

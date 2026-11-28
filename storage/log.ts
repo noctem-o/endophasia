@@ -35,6 +35,7 @@ import {
 	constants,
 	fstatSync,
 	fsyncSync,
+	lstatSync,
 	openSync,
 	readFileSync,
 	readSync,
@@ -201,30 +202,39 @@ export class EndoLogUnreadableErrorV0 extends TypeError {
  * Opens nonblocking without following a final symlink and verifies a regular file via fstat so a FIFO, socket, or device
  * never blocks synchronous readers.
  */
-function readLogBytes(path: string, maxBytes?: number): Buffer {
+export function readEndoLogBytesV0(path: string, maxBytes?: number, requirePresent = false): Buffer {
 	const flags = constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0);
 	let fd: number;
 	try {
 		fd = openSync(path, flags);
 	} catch (error) {
 		const code = (error as NodeJS.ErrnoException).code;
-		if (code === "ENOENT") return Buffer.alloc(0);
+		if (code === "ENOENT" && !requirePresent) return Buffer.alloc(0);
 		throw new EndoLogUnreadableErrorV0(code ?? "unknown error");
 	}
 	try {
-		const st = fstatSync(fd);
+		const st = fstatSync(fd, { bigint: true });
 		if (st.isDirectory()) throw new EndoLogUnreadableErrorV0("EISDIR");
 		if (!st.isFile()) throw new EndoLogUnreadableErrorV0("ENOTREG");
 		if (maxBytes === undefined) return readFileSync(fd);
-		if (st.size > maxBytes) throw new EndoLogUnreadableErrorV0("EFBIG");
-		const bytes = Buffer.alloc(st.size + 1);
+		if (st.size > BigInt(maxBytes)) throw new EndoLogUnreadableErrorV0("EFBIG");
+		const size = Number(st.size);
+		const bytes = Buffer.alloc(size);
 		let at = 0;
 		while (at < bytes.length) {
 			const read = readSync(fd, bytes, at, bytes.length - at, at);
 			if (read === 0) break;
 			at += read;
 		}
-		if (at !== st.size) throw new EndoLogUnreadableErrorV0(at > maxBytes ? "EFBIG" : "EAGAIN");
+		const after = fstatSync(fd, { bigint: true });
+		if (after.size > BigInt(maxBytes)) throw new EndoLogUnreadableErrorV0("EFBIG");
+		if (at !== size || after.size !== st.size || after.ctimeNs !== st.ctimeNs)
+			throw new EndoLogUnreadableErrorV0("EAGAIN");
+		if (requirePresent) {
+			const named = lstatSync(path, { bigint: true });
+			if (named.dev !== st.dev || named.ino !== st.ino || named.ctimeNs !== st.ctimeNs)
+				throw new EndoLogUnreadableErrorV0("EAGAIN");
+		}
 		return bytes.subarray(0, at);
 	} catch (error) {
 		if (error instanceof EndoLogUnreadableErrorV0) throw error;
@@ -233,6 +243,41 @@ function readLogBytes(path: string, maxBytes?: number): Buffer {
 	} finally {
 		closeSync(fd);
 	}
+}
+
+export function decodeEndoFrameLogV0(buffer: Buffer): EndoFrameLogReadV0 {
+	const frames: Uint8Array[] = [];
+	let truncated = false;
+	let corruptAt: number | null = null;
+	let offset = 0;
+	let index = 0;
+	/** The end of the last valid frame: where a torn tail begins. */
+	let validEnd = 0;
+	while (offset < buffer.length) {
+		index += 1;
+		if (buffer.length - offset < 4) {
+			truncated = true;
+			break;
+		}
+		const length = buffer.readUInt32BE(offset);
+		offset += 4;
+		if (buffer.length - offset < length + DIGEST_LENGTH) {
+			truncated = true;
+			break;
+		}
+		const lengthStart = offset;
+		const payload = buffer.subarray(offset, offset + length);
+		offset += length + DIGEST_LENGTH;
+		const check = digestOf(Buffer.concat([buffer.subarray(lengthStart - 4, lengthStart), payload]));
+		if (!timingSafeEqual(check, buffer.subarray(offset - DIGEST_LENGTH, offset))) {
+			corruptAt = index;
+			break;
+		}
+		frames.push(Uint8Array.from(payload));
+		validEnd = offset;
+	}
+	const tail = truncated ? tailOf(buffer.subarray(validEnd)) : null;
+	return { frames, truncated, corruptAt, tail };
 }
 
 /** Create the durable frame log at `path` (the file is created on first append). */
@@ -257,43 +302,13 @@ export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV
 	};
 
 	const read = (): EndoFrameLogReadV0 => {
-		const frames: Uint8Array[] = [];
-		let truncated = false;
-		let corruptAt: number | null = null;
-		const buffer = readLogBytes(path, options.maxReadBytes);
-		let offset = 0;
-		let index = 0;
-		/** The end of the last valid frame: where a torn tail begins. */
-		let validEnd = 0;
-		while (offset < buffer.length) {
-			index += 1;
-			if (buffer.length - offset < 4) {
-				truncated = true;
-				break;
-			}
-			const length = buffer.readUInt32BE(offset);
-			offset += 4;
-			if (buffer.length - offset < length + DIGEST_LENGTH) {
-				truncated = true;
-				break;
-			}
-			const lengthStart = offset;
-			const payload = buffer.subarray(offset, offset + length);
-			offset += length + DIGEST_LENGTH;
-			const check = digestOf(Buffer.concat([buffer.subarray(lengthStart - 4, lengthStart), payload]));
-			if (!timingSafeEqual(check, buffer.subarray(offset - DIGEST_LENGTH, offset))) {
-				corruptAt = index;
-				break;
-			}
-			frames.push(Uint8Array.from(payload));
-			validEnd = offset;
-		}
-		count = frames.length;
+		const buffer = readEndoLogBytesV0(path, options.maxReadBytes);
+		const decoded = decodeEndoFrameLogV0(buffer);
+		count = decoded.frames.length;
 		loaded = true;
-		damaged = truncated || corruptAt !== null;
+		damaged = decoded.truncated || decoded.corruptAt !== null;
 		knownBytes = buffer.length;
-		const tail = truncated ? tailOf(buffer.subarray(validEnd)) : null;
-		return { frames, truncated, corruptAt, tail };
+		return decoded;
 	};
 
 	return {
@@ -306,7 +321,11 @@ export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV
 				);
 			}
 			const frame = frameOf(payload);
-			const fd = openSync(path, "a");
+			const fd = openSync(
+				path,
+				constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
+				0o666,
+			);
 			try {
 				writeExactSyncV0(fd, frame, path);
 				fsyncSync(fd);
@@ -329,7 +348,7 @@ export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV
 			const out = Buffer.concat(frames.slice(0, cut).map(frameOf));
 			// The kept frames verified, and framing is deterministic, so `out` is byte-for-byte the file's prefix and
 			// everything after it is what this call removes. Preserve it before the file is replaced.
-			const original = readLogBytes(path);
+			const original = readEndoLogBytesV0(path);
 			const cutBytes = original.subarray(out.length);
 			let discarded: EndoFrameLogDiscardV0 | null = null;
 			if (cutBytes.length > 0) {

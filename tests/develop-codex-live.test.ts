@@ -58,6 +58,7 @@ import { acquireEndoEventStoreWriterLockV0, EndoStoreLockedErrorV0 } from "../st
 import { developSurface, presentLiveCodex } from "../studio-ui/src/model/develop-session.ts";
 import { fakePiEnv, installFakePi } from "./fixtures/fake-pi/install.ts";
 import { buildOperatorProofV0, runDevelopAdapterConformanceSuiteV0 } from "./helpers/develop-adapter-conformance.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex-app-server.mjs", import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
@@ -650,7 +651,7 @@ describe("DEVELOP-CODEX-LIVE-001: D3/D4 governed turns, targeted stop, privacy &
 		}
 
 		// Independent read-only verification of `<root>/events/events.log`:
-		const rawLog = readFileSync(join(fx.root, "events", "events.log"), "utf8");
+		const rawLog = readEventLogBytesV0(fx.root).toString("utf8");
 		expect(rawLog).not.toContain("PROMPT_PRIVATE_SECRET_TEXT");
 		expect(rawLog).not.toContain("ASSISTANT_PRIVATE_REPLY_PART1");
 		expect(rawLog).not.toContain("Checking fixture safely");

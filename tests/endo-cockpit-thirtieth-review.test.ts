@@ -11,8 +11,16 @@ import { afterAll, describe, expect, it } from "vitest";
 import { checkEndoCockpitSourceFreshnessV0 as check } from "../cockpit/reader.ts";
 import { type EndoDigestKeyV0, endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { endoFixtureDigestKeyPathV0, loadEndoFixtureDigestKeyV0 } from "../storage/digest-key.ts";
-import { openEndoHarnessRegistryV0 } from "../storage/harness-registry.ts";
-import { ATTACHMENT, event, ingestAll, removeTempRoots, seedRegistry, tempRoot, treeHash } from "./cockpit-fixtures.ts";
+import {
+	ATTACHMENT,
+	event,
+	ingestAll,
+	removeTempRoots,
+	seedEmptyRegistry,
+	seedRegistry,
+	tempRoot,
+	treeHash,
+} from "./cockpit-fixtures.ts";
 import { OTHER_KEY, readEndoCockpitEventLogV0, readEndoCockpitRegistryV0, TEST_KEY } from "./cockpit-keyed.ts";
 
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -46,7 +54,7 @@ function heldUnder(key: EndoDigestKeyV0): Held[] {
 	const logged = tempRoot();
 	ingestAll(logged, [event("agent.prompt-accepted"), event("agent.prompt-accepted")]);
 	const emptyRegistry = tempRoot();
-	openEndoHarnessRegistryV0(emptyRegistry, ATTACHMENT);
+	seedEmptyRegistry(emptyRegistry, ATTACHMENT);
 	const seeded = tempRoot();
 	seedRegistry(seeded);
 	return [

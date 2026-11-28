@@ -215,7 +215,8 @@ stopping or launching anything. Those are separate, later changes.
 ## Live workbench (opt-in; the boundary that can request agent work)
 
 > **Note (28 November 2026):** the heading once called this "the one writable boundary". The paired `endo workspace open` host also
-> writes, but only operator task metadata, and it has no prompt, steer, stop or dispatch route. The workbench also serves Codex (`endo develop --harness codex`).
+> writes, but only operator task metadata, and it has no prompt, steer, stop or dispatch route. The workbench also serves Codex
+> (`endo develop --harness codex`), and both hosts now show project worktree changes, so "project or worktree views" in the list below is out of date.
 
 `endo studio` is read-only and stays so: its server has no command route. A live session is worked with through a **separate,
 explicitly enabled** process, the one that owns the Pi child:

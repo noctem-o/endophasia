@@ -3,7 +3,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/endophasia-plate-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/images/endophasia-plate-light.svg">
-  <img src="docs/images/endophasia-plate-light.svg" width="100%" alt="Endophasia title plate, conceptual artwork. A wavering line labelled inner speech enters an instrument and leaves as four separate records: reported (not evidence), observed (gaps stay gaps, with one gap marked unavailable), checked (a failure at an earlier commit and a pass at HEAD) and authorised (a flat line with a single operator pulse).">
+  <img src="docs/images/endophasia-plate-light.svg" width="100%" alt="Endophasia title plate, conceptual artwork. A wavering line labelled inner speech enters an instrument and continues only as the reported record (not evidence). Three other records run beside it from their own sources: observed, from the runtime (gaps stay gaps, with one gap marked unavailable); checked, from your command (a failure at an earlier commit and a pass at HEAD); and authorised, from the operator (a flat line with a single pulse).">
 </picture>
 
 <p align="center">
@@ -78,7 +78,7 @@ These are the working rules. Each one is enforced somewhere in the code, not onl
 | **Observation is not interpretation.** | Every record names its basis: controller-observed, agent-reported, derived, or interpreted by a model. |
 | **A passing check is not acceptance.** | A receipt records what *your* command did at one commit. It never moves a task. Only you do. |
 | **A model's report is not independent evidence.** | An agent-written review stays `advisory-agent-review` and can never become a host check receipt. |
-| **Missing stays missing.** | An unrun check reads *not run*, withheld reasoning reads *withheld*, and an unreadable source reads `UNAVAILABLE`. None is ever rounded to zero or passed silently. |
+| **Missing stays missing.** | An unrun check reads *not run*, withheld reasoning reads *withheld*, and an unreadable source is named as unavailable or unreadable. None is ever rounded to zero or passed silently. |
 | **Accepted is not executed.** | A runtime accepting a request, consuming it, and the effect that followed are three separate records. |
 | **Capability is measured.** | Harness capabilities are admitted from conformance evidence. Changing the runtime invalidates the evidence that depended on it. |
 | **Harnesses stay themselves.** | Pi and Codex sit behind one adapter contract without being flattened. Each keeps its own loop, tools and control set. |
@@ -89,14 +89,15 @@ These are the working rules. Each one is enforced somewhere in the code, not onl
 
 Endophasia can do some things without you watching, and it is worth being exact about which ones. Endophasia installs no
 timer or service itself (`endo scheduler print-systemd-unit` prints an example and writes nothing). But if *you* run its ticks from a
-timer, an S1 tick observes local model health with zero-token `GET` requests and records what it saw. An S2 tick, for a schedule you
-have enabled and explicitly granted, asks one local model for a briefing within fixed turn, token and time ceilings. Neither tick
+timer, an S1 tick can observe local model health with zero-token `GET` requests and record what it saw. An S2 tick, for a schedule you
+have enabled and explicitly granted, can ask one local model for a briefing within fixed turn, token and time ceilings, if its wake gate admits a turn. Neither tick
 dispatches an agent, claims an attempt, moves a task, applies a change or merges anything, and nothing the model writes can change that.
 
 Authority comes from explicit operator acts, and they take different forms. These are worth telling apart:
 
-- **Per-send terminal approval.** In Strict mode, every page request to the live workbench and every prepared attempt (and every
-  protected attempt run) needs a phrase typed on the controlling terminal, once per act. Codex is always Strict.
+- **Per-send terminal confirmation.** In Strict mode, each dispatch the live workbench page requests needs confirmation on the
+  controlling terminal: a phrase, or a short code where `--confirm short` is enabled. Each prepared attempt and each protected attempt run
+  always needs its own phrase. Codex is always Strict.
 - **A bounded grant.** Pi's Everyday mode replaces per-send approval with one terminal-issued session grant, and only inside a narrow
   attested configuration (described [below](#develop)). An S2 grant authorises advisory turns, not actions.
 - **An explicit command.** Running `endo harness attach --prompt …` or `endo task status …` is itself the operator's act, with no extra
@@ -125,7 +126,8 @@ starts, approve each dispatch on your terminal, run your own checks, and read on
   page-driven sends) only inside one narrow attested configuration: stock Pi 1.5.2, the local `Ornith-1.5-9B-Q8_0` model through
   the governed relay (one model exchange, at most 128 completion tokens), no tools, a read-only workspace snapshot, no
   credentials and no `--project`. Everywhere else it runs Strict. Codex's own native tool and file approvals are answered on the
-  terminal too: allowed once, cancelled or declined, never for a whole session. Unsupported, over-long or permission-widening requests are declined.
+  terminal too: allowed once, cancelled or declined, never for a whole session. Over-long or unsupported requests are declined, and a
+  requested widening of scope or permissions is never granted.
 - **Tasks, attempts and verification.** Plans, operator-run checks at clean commits, receipts, behavioural diffs, an acceptance
   ledger, working-tree provenance, and an attention overview across tasks.
 - **Protected attempts.** `endo attempt protected-run` sends one prepared attempt through the Bubblewrap protected runner once,
@@ -153,8 +155,8 @@ starts, approve each dispatch on your terminal, run your own checks, and read on
 
 Organise tasks, participants, assignments, dependencies, worktrees, resources and schedules across agents. The Coordinator is
 built as a **deterministic operational environment first**. It ranks recorded facts with a published ruleset and shows what it
-does not know. **Advisory intelligence second**: optionally, a local model can read a bounded view and write a briefing or a
-proposal, stored as untrusted interpretation that grants nothing.
+does not know. **Advisory intelligence second**: optionally, a local model can read a bounded view and produce a briefing (on demand, printed to
+stdout) or, under an S2 schedule, a stored briefing and at most one proposal, kept as untrusted interpretation that grants nothing.
 
 <img src="docs/images/coordinator-f1-attention-1440.png" width="100%" alt="Coordinator Mission Board, Attention view, synthetic fixture. A banner names the ruleset endo.coordinator-attention-rules.v1 and says it is deterministic rule ranking with zero language models, not a verified optimal plan. Tier counts read 2 hazards, 4 blockers, 5 verification and 2 observation. The first item is an unverified session termination hazard, with separate Observed, Rule consequence and Not established lines.">
 <p><sub><strong>Mission Board → Attention</strong> (Studio F1, synthetic multi-agent fixture). Hazards, blockers, verification gaps and observations, each split into <em>Observed</em>, <em>Rule consequence</em> and <em>Not established</em>. Read-only, with zero inference calls.</sub></p>
@@ -284,7 +286,7 @@ flowchart TB
 | **Task** | What you intend to get done, with a status only you move | That any work satisfies it |
 | **Attempt & brief** | One frozen request: objective, constraints and verification plan | That anything was sent (preparing sends nothing) |
 | **Plan** | Your checks, what each should show, and optionally the expected exit code and exact stdout | That the checks are sufficient |
-| **Receipt** | What Endophasia observed when *you* ran a command at a clean commit: commit, exit status, stdout SHA-256 | Acceptance (no status moves) |
+| **Receipt** | What Endophasia observed when *you* ran a command at a clean commit: commit, exit status, stdout SHA-256 if the stream was read completely | Acceptance (no status moves) |
 | **Ledger** | Each planned check at `HEAD` (`passed`, `failed`, `inconclusive`, `mixed`, `stale`, `not run`), with history | That a passing check proves the criterion |
 | **Provenance** | Git blob ids and modes before the send, at run end and now, never file contents | Authorship: a diff between two states doesn't say who wrote it |
 
@@ -348,7 +350,7 @@ native desktop app. Studio's **Research** and **Hardware** tabs are explicit pla
 | **Acceptance / completion** | A runtime accepting a request doesn't prove it executed it, obeyed a steer or produced correct code. |
 | **Evidence / authority** | A passing check, a matching comparison, a capability descriptor or a model proposal grants no permission. |
 | **Approval / containment** | Terminal approval governs what is dispatched. It doesn't sandbox an agent's tools. |
-| **Reasoning / cognition** | Model-provided reasoning is relayed verbatim, never as a verified trace of internal computation. |
+| **Reasoning / cognition** | Model-provided reasoning is relayed as emitted, within size bounds and with redaction marked, never as a verified trace of internal computation. |
 | **Captured / live** | Offline representation captures aren't inference-time activation inspection. |
 | **Mechanism / competence** | That a Coordinator mechanism works end to end doesn't show that its model output is reliable or useful. |
 | **Local / trusted** | Records are unsigned local files. Re-hashing detects records that are inconsistent with themselves. It can't detect a same-UID writer who rewrites a record and recomputes its digests. Workstation H0 remains blocked. |

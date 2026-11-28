@@ -1,0 +1,19 @@
+{
+	"actionKind": "emit-operator-proposal",
+	"completedAtMs": 1795767219124,
+	"detail": "receipt-absence-unestablished",
+	"gate": null,
+	"holderId": "endo.advisory.1107570.f6d86cfc0663",
+	"idempotencyKey": "ce4327255742cb20776b659ce1af74e44c628a108c7737466b64d6fc926d30f4",
+	"inferenceDispatched": "yes",
+	"leaseEpoch": 11,
+	"missedWindowCount": 0,
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"scheduleId": "ctrl-on-change",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+	"status": "briefing-refused",
+	"turnId": "e834a7e889263cbd0480945a994b67fcf9a1e77a2fa1f1420f44f3ae06a4c6ea",
+	"windowStartMs": 1795767186000
+}
+

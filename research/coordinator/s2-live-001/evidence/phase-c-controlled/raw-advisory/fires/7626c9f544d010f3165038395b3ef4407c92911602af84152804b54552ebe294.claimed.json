@@ -1,0 +1,18 @@
+{
+	"actionKind": "emit-operator-proposal",
+	"claimedAtMs": 1795767255429,
+	"holderId": "endo.advisory.1108697.9db4263c5980",
+	"idempotencyKey": "7626c9f544d010f3165038395b3ef4407c92911602af84152804b54552ebe294",
+	"leaseEpoch": 14,
+	"missedWindowsBefore": 0,
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"scheduleId": "ctrl-on-change",
+	"scheduleIncarnation": "15030d92834c70e4bef9b3875b1148db00807e082040024f3b3a0407e7bc3c55",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-claim.v0",
+	"triggerCursor": "interval:60000:1795766646000",
+	"triggerKind": "interval",
+	"wake": "on-change",
+	"windowStartMs": 1795767246000
+}
+

@@ -1,0 +1,23 @@
+# S2-LIVE-001 Phase D — Temporary Operator-Owned Oneshot Service Template
+# DO NOT install or activate without explicit operator approval.
+# Do NOT enable permanently (start timer manually for the bounded 24h window only).
+# Replace <PLACEHOLDERS> before copying to ~/.config/systemd/user/endo-s2-live-001.service.
+
+[Unit]
+Description=Endophasia S2-LIVE-001 Bounded Advisory Tick (Temporary 24h Experiment)
+After=default.target
+
+[Service]
+Type=oneshot
+Environment=ENDO_NODE_BIN=/usr/bin/node
+Environment=ENDO_CLI_ENTRY=/home/noctem/.gemini/antigravity/worktrees/endophasia/live_coordinator_experiment_s2/cli/index.ts
+Environment=ENDO_STORE_ROOT=<OPERATOR_APPROVED_STORE_ROOT>
+Environment=ENDO_LOG_FILE=<OPERATOR_APPROVED_LOG_DIR>/s2-live-001-ticks.jsonl
+Environment=CUTOFF_EPOCH=<START_UTC_EPOCH_PLUS_86400>
+ExecStart=/usr/bin/bash /home/noctem/.gemini/antigravity/worktrees/endophasia/live_coordinator_experiment_s2/research/coordinator/s2-live-001/templates/endo-s2-live-001-tick.sh
+TimeoutStartSec=240
+MemoryMax=2G
+TasksMax=128
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal

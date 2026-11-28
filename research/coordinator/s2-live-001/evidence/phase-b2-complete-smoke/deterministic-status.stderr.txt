@@ -1,0 +1,13 @@
+coordinator status endo.coordinator-status.v0 read 2026-11-27T07:53:37.484Z (read-only; grants nothing; decisions are yours)
+  sources   tasks=ready/fresh attempts=ready/fresh events=ready/fresh
+  project   endo.project.d2be055f71d5b69f74dc69bc8fbec814 s2-live-smoke-complete [fresh] HEAD c6d278f4c485
+    task    [open; operator-declared] endo.task.4513e43a42dfa1b7909b1609a67a4fc7 Review initial repository setup — verification no-checks [unavailable]; attempts 0; sessions unknown
+      gap   no-check-recorded: No verification receipt was found in the complete read of its attempts.
+  sessions  none listed
+  not established:
+    - That a session is alive now: there is no read-only liveness probe, so an attached session that has said nothing for longer than the staleness window reads as last-observed.
+    - Which task an unlinked session worked on: relationships are taken only from explicit records, never from names, prompt text or timestamps.
+    - That an agent's reported result is true, or that a passing check satisfies a task's acceptance criteria.
+    - Who or what wrote any changed byte in a working tree.
+    - Verification of completed tasks: their receipts are not re-read by this status.
+    - Protection against a same-uid process editing the records this status reads.

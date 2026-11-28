@@ -1,0 +1,96 @@
+{
+	"retiredCursors": [],
+	"revision": 46,
+	"schedules": [
+		{
+			"actionKind": "emit-operator-proposal",
+			"createdAtMs": 1795766639739,
+			"cursor": {
+				"completedOnce": false,
+				"lastAttemptedAtMs": 1795767188358,
+				"lastAttemptedSemanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+				"lastConsideredAtMs": 1795767037977,
+				"lastConsideredSemanticDigest": "213dddfbfc70601ed824589c562e86eaf0baccee76d103d4225962f832040201",
+				"lastConsumedWindowStartMs": 1795767306000,
+				"lastEvaluatedAtMs": 1795767309339,
+				"lastFireIdempotencyKey": "4adf656621cd6e508ad2d2e0e975037113cd50f6905fb161c7bd501d2737322b",
+				"lastFireStatus": "skipped-already-attempted"
+			},
+			"enabled": true,
+			"incarnation": "15030d92834c70e4bef9b3875b1148db00807e082040024f3b3a0407e7bc3c55",
+			"label": "Phase C controlled on-change",
+			"missedRunPolicy": "skip-and-report",
+			"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+			"revision": 2,
+			"scheduleId": "ctrl-on-change",
+			"trigger": {
+				"anchorMs": 1795766646000,
+				"everyMs": 60000,
+				"kind": "interval"
+			},
+			"updatedAtMs": 1795766640064,
+			"wake": "on-change"
+		},
+		{
+			"actionKind": "generate-advisory-brief",
+			"createdAtMs": 1795766640698,
+			"cursor": {
+				"completedOnce": false,
+				"lastAttemptedAtMs": 1795767223347,
+				"lastAttemptedSemanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+				"lastConsideredAtMs": 1795766946458,
+				"lastConsideredSemanticDigest": "4040cce2db08d4c87a503971b07c221036bf7680177f50ce3ca20ee96863e35c",
+				"lastConsumedWindowStartMs": 1795767221000,
+				"lastEvaluatedAtMs": 1795767223304,
+				"lastFireIdempotencyKey": "0d9990da9bbd31f6f1632384dbcd229b6d880cce0f6439c682e4c273a3c88b11",
+				"lastFireStatus": "briefing-refused"
+			},
+			"enabled": true,
+			"incarnation": "da1da2dcc2b0512ebbe2dd84bfcb080e57a894c65c81159500465002680dffb5",
+			"label": "Phase C controlled 5m digest",
+			"missedRunPolicy": "skip-and-report",
+			"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+			"revision": 2,
+			"scheduleId": "ctrl-digest",
+			"trigger": {
+				"anchorMs": 1795766921000,
+				"everyMs": 300000,
+				"kind": "interval"
+			},
+			"updatedAtMs": 1795766641019,
+			"wake": "digest-window"
+		},
+		{
+			"actionKind": "generate-advisory-brief",
+			"createdAtMs": 1795767253421,
+			"cursor": {
+				"completedOnce": false,
+				"lastAttemptedAtMs": 1795767254427,
+				"lastAttemptedSemanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+				"lastConsideredAtMs": null,
+				"lastConsideredSemanticDigest": null,
+				"lastConsumedWindowStartMs": 1795767306000,
+				"lastEvaluatedAtMs": 1795767308306,
+				"lastFireIdempotencyKey": "080d0756b25f403d24df0bcdd3e0512671173b55890273af0327027d870e7c56",
+				"lastFireStatus": "skipped-already-attempted"
+			},
+			"enabled": true,
+			"incarnation": "29332e47f8fb1a3c9b954d4b376ac3c68415fe5c0028664a8d00eeebc60cdd37",
+			"label": "Phase C isolated outage probe (127.0.0.1:18099)",
+			"missedRunPolicy": "skip-and-report",
+			"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+			"revision": 2,
+			"scheduleId": "ctrl-outage",
+			"trigger": {
+				"anchorMs": 1795767246000,
+				"everyMs": 60000,
+				"kind": "interval"
+			},
+			"updatedAtMs": 1795767253741,
+			"wake": "on-change"
+		}
+	],
+	"schemaVersion": "endo.develop-advisory-schedules.v0",
+	"updatedAtMs": 1795767309382
+}
+

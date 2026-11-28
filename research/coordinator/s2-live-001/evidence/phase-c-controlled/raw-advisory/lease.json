@@ -1,0 +1,9 @@
+{
+	"acquiredAtMs": 1795767309339,
+	"epoch": 16,
+	"expiresAtMs": 1795767609339,
+	"holderId": "endo.advisory.1109384.9a6e36d4b8df",
+	"releasedAtMs": 1795767309382,
+	"schemaVersion": "endo.develop-automation-lease.v0"
+}
+

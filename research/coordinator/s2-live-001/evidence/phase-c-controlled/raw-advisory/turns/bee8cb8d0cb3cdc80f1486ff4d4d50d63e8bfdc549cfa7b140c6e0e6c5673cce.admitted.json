@@ -1,0 +1,34 @@
+{
+	"actionKind": "generate-advisory-brief",
+	"admittedAtMs": 1795767223347,
+	"authorizationId": "8875cb1cd90029a56cf0062ac1ae91d29aed8d5c7cdf1566512463b3609e246e",
+	"budgetBefore": {
+		"generatedTokensCharged": 772,
+		"periodStartMs": 1795760023347,
+		"turnsCharged": 1,
+		"uncertainTurns": 0
+	},
+	"budgetSha256": "2669bc1f109733f10a438566eea23123d5c9fa5b93e4857db96c80c8672d42db",
+	"completeness": "complete",
+	"fireIdempotencyKey": "0d9990da9bbd31f6f1632384dbcd229b6d880cce0f6439c682e4c273a3c88b11",
+	"gaps": [],
+	"holderId": "endo.advisory.1108124.dc1b9d02adea",
+	"leaseEpoch": 12,
+	"observedAtMs": 1795767223310,
+	"policySha256": "83bbbe853329e489568a82b6f27dc3f29140136efa0825857b41ffd897b3c510",
+	"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"reservation": {
+		"completionRequests": 2,
+		"generatedTokens": 4096,
+		"wallClockMs": 180000
+	},
+	"scheduleId": "ctrl-digest",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-turn-admission.v0",
+	"semanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+	"turnDeadlineMs": 1795767403347,
+	"turnId": "bee8cb8d0cb3cdc80f1486ff4d4d50d63e8bfdc549cfa7b140c6e0e6c5673cce",
+	"wakeReason": "digest-window"
+}
+

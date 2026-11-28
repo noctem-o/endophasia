@@ -1,0 +1,76 @@
+{
+	"accounting": {
+		"admittedExchanges": 2,
+		"chargedCompletionRequests": 2,
+		"chargedGeneratedTokens": 675,
+		"inferenceElapsedMs": 36193,
+		"reportedCompletionTokens": 675,
+		"reportedPromptTokens": 6099,
+		"reserved": {
+			"completionRequests": 2,
+			"generatedTokens": 4096,
+			"wallClockMs": 180000
+		},
+		"usageReportComplete": true
+	},
+	"actionKind": "generate-advisory-brief",
+	"admittedAtMs": 1795765939806,
+	"answer": null,
+	"authorizationId": "fddbf0e124988db9d27819568179a356015330aa151f26cde3e59083673e010a",
+	"availability": "unavailable",
+	"budgetSha256": "f28d72a6f1082176729668bf99994e60300c68b7fdaa42dfee993ac5b6596ac7",
+	"effectivePoolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+	"fireIdempotencyKey": "321e87022813f651502c3ae9fc0d0c21f9ef25d22fc15ad3ebb11525661167fb",
+	"holderId": "endo.advisory.1085045.983cb113ea74",
+	"leaseEpoch": 1,
+	"model": {
+		"capacityConfirmed": false,
+		"fallbackOccurred": false,
+		"harness": "OpenClaw 2026.11.10",
+		"inferenceFailover": "never",
+		"provider": "llama.cpp (advisory pool member)",
+		"reportedModel": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+		"selectedEndpoint": "http://127.0.0.1:8091",
+		"selectedMemberId": "inkling",
+		"selectedModelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+		"selectedReadiness": "model-unconfirmed",
+		"skippedMembers": []
+	},
+	"policySha256": "57f200fd8b4d2d2924adfea7a4feb8b75c364bd93a9f2ed3e9a080a5d18ead7d",
+	"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+	"projectId": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+	"prompt": {
+		"instructionsSha256": "d564ba57fa0036d72037b0e1f6ae92f25ac97b16eec5486ea54f3d976e8c1586",
+		"promptSha256": "7605cf5a9e092700e96e8e54aa1373dd97874701601b99b9fc08b00a9ea26724",
+		"questionSha256": null
+	},
+	"proposal": {
+		"outcome": "not-requested",
+		"proposalId": null,
+		"refusal": null
+	},
+	"publishedAtMs": 1795765976050,
+	"refusal": "event-absence-unestablished",
+	"scheduleId": "smoke",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-briefing.v0",
+	"source": {
+		"admissionObservedAtMs": 1795765939775,
+		"admissionSemanticDigest": "a179199843a05e4a517275ca4807bb22972a8ad5884b65d0684b61f4dabee4f5",
+		"completeness": "partial",
+		"currency": "unknown-at-publication",
+		"evidence": null,
+		"gaps": [
+			"finding-attempt-records-missing",
+			"finding-event-log-unavailable",
+			"status-attempts-missing",
+			"status-events-unavailable"
+		],
+		"publicationObservedAtMs": 1795765976025,
+		"publicationSemanticDigest": "a179199843a05e4a517275ca4807bb22972a8ad5884b65d0684b61f4dabee4f5"
+	},
+	"standing": "untrusted-model-interpretation",
+	"turnId": "c8194014954472ac6e337e102c75acca8c11e46cabb756e7a1e11652a6f94194",
+	"wakeReason": "first-observation"
+}
+

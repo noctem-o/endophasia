@@ -1,0 +1,14 @@
+{
+	"projects": [
+		{
+			"completeness": "complete",
+			"leaseEpoch": 1,
+			"observedAtMs": 1795766044974,
+			"projectId": "endo.project.d2be055f71d5b69f74dc69bc8fbec814",
+			"semanticDigest": "043de6eaf2f1f943534a366fc8f264196a1e2d746a9968d9727b6eec7cf53e6d"
+		}
+	],
+	"schemaVersion": "endo.develop-advisory-observations.v0",
+	"updatedAtMs": 1795766044996
+}
+

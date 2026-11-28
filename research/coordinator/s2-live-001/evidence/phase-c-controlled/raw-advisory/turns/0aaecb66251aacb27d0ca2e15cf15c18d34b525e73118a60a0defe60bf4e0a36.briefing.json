@@ -1,0 +1,71 @@
+{
+	"accounting": {
+		"admittedExchanges": 2,
+		"chargedCompletionRequests": 2,
+		"chargedGeneratedTokens": 1293,
+		"inferenceElapsedMs": 31601,
+		"reportedCompletionTokens": 1293,
+		"reportedPromptTokens": 6554,
+		"reserved": {
+			"completionRequests": 2,
+			"generatedTokens": 4096,
+			"wallClockMs": 180000
+		},
+		"usageReportComplete": true
+	},
+	"actionKind": "emit-operator-proposal",
+	"admittedAtMs": 1795767128347,
+	"answer": null,
+	"authorizationId": "496d971a75ef257677fbb388aedcc89936104e1782d3e37aadb1934b4ed18aa3",
+	"availability": "unavailable",
+	"budgetSha256": "add564a7e117749cb1bd6db2dcda020bd4689e34b0f63127481beedc9cd5f846",
+	"effectivePoolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+	"fireIdempotencyKey": "cdbdf4e900218426d5765e9e4fdafa4b04c9d1ca769398f77b7f11f0717851ab",
+	"holderId": "endo.advisory.1105553.d0abf549271e",
+	"leaseEpoch": 10,
+	"model": {
+		"capacityConfirmed": false,
+		"fallbackOccurred": false,
+		"harness": "OpenClaw 2026.11.10",
+		"inferenceFailover": "never",
+		"provider": "llama.cpp (advisory pool member)",
+		"reportedModel": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+		"selectedEndpoint": "http://127.0.0.1:8091",
+		"selectedMemberId": "inkling",
+		"selectedModelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+		"selectedReadiness": "model-unconfirmed",
+		"skippedMembers": []
+	},
+	"policySha256": "83bbbe853329e489568a82b6f27dc3f29140136efa0825857b41ffd897b3c510",
+	"poolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"prompt": {
+		"instructionsSha256": "d564ba57fa0036d72037b0e1f6ae92f25ac97b16eec5486ea54f3d976e8c1586",
+		"promptSha256": "105eb39492133b57ac728da2a310e32d982c2f484ba52ee1158db124dcfb4daa",
+		"questionSha256": "42da2baa7af15b3cef3dafcdec49144d16d58a4618bc2fe95bef45901f0538ad"
+	},
+	"proposal": {
+		"outcome": "refused",
+		"proposalId": null,
+		"refusal": "briefing-unavailable"
+	},
+	"publishedAtMs": 1795767160002,
+	"refusal": "receipt-absence-unestablished",
+	"scheduleId": "ctrl-on-change",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-briefing.v0",
+	"source": {
+		"admissionObservedAtMs": 1795767128311,
+		"admissionSemanticDigest": "591d7dbc24b25ec4ed50887acb44273c536c5904817684abc39c82543599eb0c",
+		"completeness": "complete",
+		"currency": "unknown-at-publication",
+		"evidence": null,
+		"gaps": [],
+		"publicationObservedAtMs": 1795767159977,
+		"publicationSemanticDigest": "591d7dbc24b25ec4ed50887acb44273c536c5904817684abc39c82543599eb0c"
+	},
+	"standing": "untrusted-model-interpretation",
+	"turnId": "0aaecb66251aacb27d0ca2e15cf15c18d34b525e73118a60a0defe60bf4e0a36",
+	"wakeReason": "state-changed"
+}
+

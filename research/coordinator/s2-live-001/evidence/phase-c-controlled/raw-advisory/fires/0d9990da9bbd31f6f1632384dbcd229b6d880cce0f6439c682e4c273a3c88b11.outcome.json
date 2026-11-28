@@ -1,0 +1,19 @@
+{
+	"actionKind": "generate-advisory-brief",
+	"completedAtMs": 1795767252438,
+	"detail": "receipt-absence-unestablished",
+	"gate": null,
+	"holderId": "endo.advisory.1108124.dc1b9d02adea",
+	"idempotencyKey": "0d9990da9bbd31f6f1632384dbcd229b6d880cce0f6439c682e4c273a3c88b11",
+	"inferenceDispatched": "yes",
+	"leaseEpoch": 12,
+	"missedWindowCount": 0,
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"scheduleId": "ctrl-digest",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+	"status": "briefing-refused",
+	"turnId": "bee8cb8d0cb3cdc80f1486ff4d4d50d63e8bfdc549cfa7b140c6e0e6c5673cce",
+	"windowStartMs": 1795767221000
+}
+

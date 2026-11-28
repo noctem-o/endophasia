@@ -1,0 +1,42 @@
+{
+	"authority": {
+		"executionAuthority": false,
+		"grants": "none",
+		"requiresOperatorConfirmationPerAttempt": true
+	},
+	"dedupKey": "1cdcf64b2c41c4cd21ed17d8122e80ab7dca5eb8e18a7ff99d8e354a303a12b4",
+	"evidence": {
+		"admissionSemanticDigest": "213dddfbfc70601ed824589c562e86eaf0baccee76d103d4225962f832040201",
+		"facts": [
+			{
+				"fact": "task-verification-failing",
+				"subject": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf"
+			}
+		],
+		"projectionSha256": null,
+		"semanticDigest": "213dddfbfc70601ed824589c562e86eaf0baccee76d103d4225962f832040201"
+	},
+	"fireIdempotencyKey": "b0c1d683eed79c2224688a6c3106e16924604ff11cc8413f23a16daa762abd27",
+	"generatedAtMs": 1795767037977,
+	"kind": "review-failing-verification",
+	"projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+	"proposalId": "98a73d1d15e01a001dbbb9e56b745eaa5d9ceb1ca4029dfed1be49bd75dd020c",
+	"rationale": {
+		"source": "model-briefing",
+		"turnId": "2ba0b59efd0cfeae7ea037ef84c6a1059f28e1f36264501b326588e29ff9f034"
+	},
+	"scheduleId": "ctrl-on-change",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-proposal.v0",
+	"standing": "untrusted-advisory-proposal",
+	"subject": {
+		"assignmentId": null,
+		"candidateId": null,
+		"taskId": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf"
+	},
+	"turnId": "2ba0b59efd0cfeae7ea037ef84c6a1059f28e1f36264501b326588e29ff9f034",
+	"uncertainties": [
+		"review-without-passing-check"
+	]
+}
+

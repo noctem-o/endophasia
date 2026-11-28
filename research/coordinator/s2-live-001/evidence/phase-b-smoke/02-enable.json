@@ -1,0 +1,32 @@
+{
+	"schedule": {
+		"actionKind": "generate-advisory-brief",
+		"createdAtMs": 1795765933803,
+		"cursor": {
+			"completedOnce": false,
+			"lastAttemptedAtMs": null,
+			"lastAttemptedSemanticDigest": null,
+			"lastConsideredAtMs": null,
+			"lastConsideredSemanticDigest": null,
+			"lastConsumedWindowStartMs": null,
+			"lastEvaluatedAtMs": null,
+			"lastFireIdempotencyKey": null,
+			"lastFireStatus": null
+		},
+		"enabled": true,
+		"incarnation": "9c8cd2399acd396fc9e90c1972764f1f38de0e7543ffc8c0463743701a783007",
+		"label": null,
+		"missedRunPolicy": "coalesce-once",
+		"projectId": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+		"revision": 2,
+		"scheduleId": "smoke",
+		"trigger": {
+			"atMs": 1795765938000,
+			"kind": "once"
+		},
+		"updatedAtMs": 1795765934123,
+		"wake": "on-change"
+	},
+	"supersededAuthorizations": 0
+}
+

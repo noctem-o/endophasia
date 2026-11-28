@@ -1,0 +1,13 @@
+{
+	"tick": {
+		"holderId": "endo.advisory.1087482.a41126a10520",
+		"inferenceDispatched": false,
+		"leaseEpoch": 2,
+		"ok": true,
+		"outcomes": [],
+		"recovered": [],
+		"schemaVersion": "endo.advisory-tick-result.v0",
+		"turnId": null
+	}
+}
+

@@ -1,0 +1,43 @@
+{
+  "assignment": {
+    "assignment": {
+      "assignmentId": "endo.assignment.2620d2aa7291194ae07222cd1c728a21",
+      "attemptIds": [],
+      "ended": null,
+      "origin": {
+        "confirmedAtMs": 1795767122629,
+        "confirmedBy": "operator",
+        "via": "cli"
+      },
+      "participant": {
+        "intendedHarnessFamily": "pi",
+        "participantId": "worker-1",
+        "role": "builder"
+      },
+      "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+      "revision": 1,
+      "session": null,
+      "state": "active",
+      "supersededByAssignmentId": null,
+      "supersedesAssignmentId": null,
+      "targetCandidate": null,
+      "taskId": "endo.task.1467d1b3cd426317314cf61e6dea8840",
+      "taskRevisionAtBind": 2,
+      "updatedAtMs": 1795767122629,
+      "workspace": {
+        "accessIntent": "read-write-intended",
+        "acknowledgedConflictIds": [],
+        "pathHints": [],
+        "registration": "project-path",
+        "sharedWorktreeAcknowledged": false,
+        "worktreePath": "/tmp/endo-s2-live-001/controlled/project"
+      },
+      "worktreeHazard": {
+        "state": "none"
+      }
+    },
+    "commit": "committed",
+    "coordinationRevision": 1
+  },
+  "fixedHead": "a75be446892e1864ee6b2ffa1894ec34dc36f37f"
+}

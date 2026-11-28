@@ -1,0 +1,21 @@
+{
+	"authorizationId": "496d971a75ef257677fbb388aedcc89936104e1782d3e37aadb1934b4ed18aa3",
+	"capacityConfirmed": false,
+	"dispatchedAtMs": 1795767128359,
+	"effectivePoolSha256": "290ba309ec80c733d07b5a4825e40c9f49bd9a6b4d42718a8aad0f4f708aaa32",
+	"effectiveTimeoutMs": 135000,
+	"fallbackOccurred": false,
+	"holderId": "endo.advisory.1105553.d0abf549271e",
+	"inferenceDeadlineMs": 1795767263359,
+	"leaseEpoch": 10,
+	"observationBasis": "live-probe",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-turn-dispatch.v0",
+	"selectedEndpoint": "http://127.0.0.1:8091",
+	"selectedMemberId": "inkling",
+	"selectedModelId": "Inkling-2-Mini-Uncensored-AD-Q4_K",
+	"selectedReadiness": "model-unconfirmed",
+	"skippedMembers": [],
+	"turnId": "0aaecb66251aacb27d0ca2e15cf15c18d34b525e73118a60a0defe60bf4e0a36"
+}
+

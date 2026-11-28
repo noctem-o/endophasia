@@ -1,0 +1,25 @@
+{
+	"fires": [
+		{
+			"actionKind": "generate-advisory-brief",
+			"completedAtMs": 1795765976050,
+			"detail": "event-absence-unestablished",
+			"gate": null,
+			"holderId": "endo.advisory.1085045.983cb113ea74",
+			"idempotencyKey": "321e87022813f651502c3ae9fc0d0c21f9ef25d22fc15ad3ebb11525661167fb",
+			"inferenceDispatched": "yes",
+			"leaseEpoch": 1,
+			"missedWindowCount": 0,
+			"projectId": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+			"scheduleId": "smoke",
+			"scheduleRevision": 2,
+			"schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+			"status": "briefing-refused",
+			"turnId": "c8194014954472ac6e337e102c75acca8c11e46cabb756e7a1e11652a6f94194",
+			"windowStartMs": 1795765938000
+		}
+	],
+	"problems": [],
+	"readAtMs": 1795765976771
+}
+

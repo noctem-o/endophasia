@@ -1,0 +1,219 @@
+{
+  "tick": {
+    "tick": {
+      "holderId": "endo.advisory.1108616.19feb0552046",
+      "inferenceDispatched": false,
+      "leaseEpoch": 13,
+      "ok": true,
+      "outcomes": [
+        {
+          "actionKind": "generate-advisory-brief",
+          "completedAtMs": 1795767254439,
+          "detail": "no-eligible-member",
+          "gate": null,
+          "holderId": "endo.advisory.1108616.19feb0552046",
+          "idempotencyKey": "8c7be74e0cbd71ee139583c7f35d49531c766703e79e0c4efbecc1bf7e7ae0ec",
+          "inferenceDispatched": "no",
+          "leaseEpoch": 13,
+          "missedWindowCount": 0,
+          "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+          "scheduleId": "ctrl-outage",
+          "scheduleRevision": 2,
+          "schemaVersion": "endo.develop-advisory-fire-outcome.v0",
+          "status": "refused-model-unavailable",
+          "turnId": "34b9e54193f89603f2802bca9e272889e157c1eab28741cdf84da451012cf426",
+          "windowStartMs": 1795767246000
+        }
+      ],
+      "recovered": [],
+      "schemaVersion": "endo.advisory-tick-result.v0",
+      "turnId": "34b9e54193f89603f2802bca9e272889e157c1eab28741cdf84da451012cf426"
+    }
+  },
+  "elapsedMs": 390,
+  "newBriefings": [
+    {
+      "accounting": {
+        "admittedExchanges": 0,
+        "chargedCompletionRequests": 0,
+        "chargedGeneratedTokens": 0,
+        "inferenceElapsedMs": null,
+        "reportedCompletionTokens": null,
+        "reportedPromptTokens": null,
+        "reserved": {
+          "completionRequests": 2,
+          "generatedTokens": 4096,
+          "wallClockMs": 60000
+        },
+        "usageReportComplete": false
+      },
+      "actionKind": "generate-advisory-brief",
+      "admittedAtMs": 1795767254427,
+      "answer": null,
+      "authorizationId": "f68f5000f94a42acfbbbc39864a5a93dd722c4fbef7b363da02a8045ee0e36bb",
+      "availability": "not-dispatched",
+      "budgetSha256": "4b3939b20c515109043e4d754a7d9adaa845889b5a6d253998f6bef1b34c2610",
+      "effectivePoolSha256": null,
+      "fireIdempotencyKey": "8c7be74e0cbd71ee139583c7f35d49531c766703e79e0c4efbecc1bf7e7ae0ec",
+      "holderId": "endo.advisory.1108616.19feb0552046",
+      "leaseEpoch": 13,
+      "model": {
+        "capacityConfirmed": false,
+        "fallbackOccurred": false,
+        "harness": "none",
+        "inferenceFailover": "never",
+        "provider": "none",
+        "reportedModel": "none",
+        "selectedEndpoint": null,
+        "selectedMemberId": null,
+        "selectedModelId": null,
+        "selectedReadiness": null,
+        "skippedMembers": [
+          {
+            "memberId": "isolated-closed-port",
+            "reason": "unreachable"
+          }
+        ]
+      },
+      "policySha256": "83bbbe853329e489568a82b6f27dc3f29140136efa0825857b41ffd897b3c510",
+      "poolSha256": "9492a6e06a65c1bb77f005c87e0c36a959c8e9da2014050d9b82ee9bb90b6580",
+      "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+      "prompt": {
+        "instructionsSha256": "d564ba57fa0036d72037b0e1f6ae92f25ac97b16eec5486ea54f3d976e8c1586",
+        "promptSha256": null,
+        "questionSha256": null
+      },
+      "proposal": {
+        "outcome": "not-requested",
+        "proposalId": null,
+        "refusal": null
+      },
+      "publishedAtMs": 1795767254439,
+      "refusal": "no-eligible-member",
+      "scheduleId": "ctrl-outage",
+      "scheduleRevision": 2,
+      "schemaVersion": "endo.develop-advisory-briefing.v0",
+      "source": {
+        "admissionObservedAtMs": 1795767254392,
+        "admissionSemanticDigest": "9614be84c106089d811731a7eab019920397fe276d27099e6f32d70735e619f6",
+        "completeness": "complete",
+        "currency": "unknown-at-publication",
+        "evidence": null,
+        "gaps": [],
+        "publicationObservedAtMs": null,
+        "publicationSemanticDigest": null
+      },
+      "standing": "untrusted-model-interpretation",
+      "turnId": "34b9e54193f89603f2802bca9e272889e157c1eab28741cdf84da451012cf426",
+      "wakeReason": "first-observation"
+    }
+  ],
+  "proposals": {
+    "problems": [],
+    "proposalCounts": {
+      "listed": 2,
+      "pending": 1,
+      "retained": 2,
+      "withheld": 0,
+      "withheldHint": null
+    },
+    "proposals": [
+      {
+        "currency": "stale",
+        "decidedAtMs": 1795767069669,
+        "note": "Operator acknowledged during Phase C controlled validation",
+        "proposal": {
+          "authority": {
+            "executionAuthority": false,
+            "grants": "none",
+            "requiresOperatorConfirmationPerAttempt": true
+          },
+          "dedupKey": "1cdcf64b2c41c4cd21ed17d8122e80ab7dca5eb8e18a7ff99d8e354a303a12b4",
+          "evidence": {
+            "admissionSemanticDigest": "213dddfbfc70601ed824589c562e86eaf0baccee76d103d4225962f832040201",
+            "facts": [
+              {
+                "fact": "task-verification-failing",
+                "subject": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf"
+              }
+            ],
+            "projectionSha256": null,
+            "semanticDigest": "213dddfbfc70601ed824589c562e86eaf0baccee76d103d4225962f832040201"
+          },
+          "fireIdempotencyKey": "b0c1d683eed79c2224688a6c3106e16924604ff11cc8413f23a16daa762abd27",
+          "generatedAtMs": 1795767037977,
+          "kind": "review-failing-verification",
+          "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+          "proposalId": "98a73d1d15e01a001dbbb9e56b745eaa5d9ceb1ca4029dfed1be49bd75dd020c",
+          "rationale": {
+            "source": "model-briefing",
+            "turnId": "2ba0b59efd0cfeae7ea037ef84c6a1059f28e1f36264501b326588e29ff9f034"
+          },
+          "scheduleId": "ctrl-on-change",
+          "scheduleRevision": 2,
+          "schemaVersion": "endo.develop-advisory-proposal.v0",
+          "standing": "untrusted-advisory-proposal",
+          "subject": {
+            "assignmentId": null,
+            "candidateId": null,
+            "taskId": "endo.task.2a93306eb61e83e2b8d5bcc6a9afebaf"
+          },
+          "turnId": "2ba0b59efd0cfeae7ea037ef84c6a1059f28e1f36264501b326588e29ff9f034",
+          "uncertainties": [
+            "review-without-passing-check"
+          ]
+        },
+        "queueState": "acknowledged"
+      },
+      {
+        "currency": "stale",
+        "decidedAtMs": null,
+        "note": null,
+        "proposal": {
+          "authority": {
+            "executionAuthority": false,
+            "grants": "none",
+            "requiresOperatorConfirmationPerAttempt": true
+          },
+          "dedupKey": "01852d7ac802609cc5d4bc4082d59bc081496631a57896694a9ab991ccbe7f20",
+          "evidence": {
+            "admissionSemanticDigest": "4040cce2db08d4c87a503971b07c221036bf7680177f50ce3ca20ee96863e35c",
+            "facts": [
+              {
+                "fact": "task-status-blocked",
+                "subject": "endo.task.1467d1b3cd426317314cf61e6dea8840"
+              }
+            ],
+            "projectionSha256": null,
+            "semanticDigest": "4040cce2db08d4c87a503971b07c221036bf7680177f50ce3ca20ee96863e35c"
+          },
+          "fireIdempotencyKey": "d3d9d6aa896535fc49c62bf4f944d0b559af51d1fc9dce9c78459cdc871c09e3",
+          "generatedAtMs": 1795766862758,
+          "kind": "resolve-blocked-task",
+          "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+          "proposalId": "8c41cf5a525e63e343dce62ab6a114350cc8ae30605fe280a300009ab5e78971",
+          "rationale": {
+            "source": "model-briefing",
+            "turnId": "fcd0cea1cf91529bc0fe06eec3099f1b668a5ac9619259a586da2fcbf78ec9e3"
+          },
+          "scheduleId": "ctrl-on-change",
+          "scheduleRevision": 2,
+          "schemaVersion": "endo.develop-advisory-proposal.v0",
+          "standing": "untrusted-advisory-proposal",
+          "subject": {
+            "assignmentId": null,
+            "candidateId": null,
+            "taskId": "endo.task.1467d1b3cd426317314cf61e6dea8840"
+          },
+          "turnId": "fcd0cea1cf91529bc0fe06eec3099f1b668a5ac9619259a586da2fcbf78ec9e3",
+          "uncertainties": [
+            "no-check-recorded"
+          ]
+        },
+        "queueState": "pending"
+      }
+    ],
+    "readAtMs": 1795767255094,
+    "standing": "untrusted-advisory-state"
+  }
+}

@@ -1,0 +1,18 @@
+{
+	"actionKind": "generate-advisory-brief",
+	"claimedAtMs": 1795765939771,
+	"holderId": "endo.advisory.1085045.983cb113ea74",
+	"idempotencyKey": "321e87022813f651502c3ae9fc0d0c21f9ef25d22fc15ad3ebb11525661167fb",
+	"leaseEpoch": 1,
+	"missedWindowsBefore": 0,
+	"projectId": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+	"scheduleId": "smoke",
+	"scheduleIncarnation": "9c8cd2399acd396fc9e90c1972764f1f38de0e7543ffc8c0463743701a783007",
+	"scheduleRevision": 2,
+	"schemaVersion": "endo.develop-advisory-fire-claim.v0",
+	"triggerCursor": "once:1795765938000",
+	"triggerKind": "once",
+	"wake": "on-change",
+	"windowStartMs": 1795765938000
+}
+

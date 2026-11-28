@@ -1,0 +1,15 @@
+# S2-LIVE-001 Phase D — Temporary Operator-Owned 60s Timer Template
+# DO NOT install or activate without explicit operator approval.
+# Intentionally omits [Install] section to prevent accidental permanent enablement.
+# Start transiently for the 24h window with: systemctl --user start endo-s2-live-001.timer
+# Stop with: systemctl --user stop endo-s2-live-001.timer
+
+[Unit]
+Description=Endophasia S2-LIVE-001 Bounded 60s Advisory Wake Timer (Temporary 24h Experiment)
+
+[Timer]
+OnActiveSec=10s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Persistent=false
+Unit=endo-s2-live-001.service

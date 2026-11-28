@@ -1,0 +1,163 @@
+{
+	"coordinatorStatus": {
+		"attention": [
+			{
+				"kind": "source-unavailable",
+				"subject": null,
+				"text": "The attempt directory is absent: attempt records, their checks and links are unknown, not assumed absent."
+			},
+			{
+				"kind": "source-unavailable",
+				"subject": null,
+				"text": "The event log is absent or cannot be opened read-only: no session is known."
+			}
+		],
+		"authority": {
+			"decisionAuthority": "operator-only",
+			"grants": "none",
+			"kind": "read-only-projection",
+			"notes": [
+				"Reading this status writes nothing, moves no task, sends no prompt, launches no agent and changes no approval.",
+				"Task status is the operator's own record; an agent finishing or a run ending never moves a task.",
+				"DEVELOP records and the event log are unsigned local files writable by any same-uid process.",
+				"Attention items are advisory triage, not acceptance and not an authoritative verification PASS."
+			],
+			"writes": "none"
+		},
+		"findings": [
+			{
+				"code": "attempt-records-missing",
+				"severity": "unavailable",
+				"subject": null,
+				"text": "The attempt directory is absent: attempt records, their checks and links are unknown, not assumed absent."
+			},
+			{
+				"code": "event-log-unavailable",
+				"severity": "unavailable",
+				"subject": null,
+				"text": "The event log is absent or cannot be opened read-only: no session is known."
+			}
+		],
+		"notEstablished": [
+			"That a session is alive now: there is no read-only liveness probe, so an attached session that has said nothing for longer than the staleness window reads as last-observed.",
+			"Which task an unlinked session worked on: relationships are taken only from explicit records, never from names, prompt text or timestamps.",
+			"That an agent's reported result is true, or that a passing check satisfies a task's acceptance criteria.",
+			"Who or what wrote any changed byte in a working tree.",
+			"Verification of completed tasks: their receipts are not re-read by this status.",
+			"Protection against a same-uid process editing the records this status reads."
+		],
+		"projects": [
+			{
+				"counts": {
+					"awaiting-review": 0,
+					"blocked": 0,
+					"completed": 0,
+					"in-progress": 0,
+					"open": 1
+				},
+				"freshness": {
+					"ageMs": 1,
+					"observedAtMs": 1795765933475,
+					"reason": null,
+					"state": "fresh"
+				},
+				"head": {
+					"clean": true,
+					"commit": "40b72e7249351f21cdfbb92ec56c5e85166f64a1"
+				},
+				"id": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+				"name": "s2-live-smoke",
+				"source": "operator-declared",
+				"tasks": [
+					{
+						"association": "unknown",
+						"attempts": {
+							"count": 0,
+							"latest": null
+						},
+						"gaps": [
+							{
+								"code": "attempt-records-missing",
+								"text": "The store's attempt records are missing: its attempts and checks are unknown, not absent."
+							}
+						],
+						"phase": "open",
+						"projectId": "endo.project.e2225a56cdf4c6551c08ac17837f17ef",
+						"revision": 0,
+						"sessions": [],
+						"status": "open",
+						"statusSource": "operator-declared",
+						"taskId": "endo.task.72c41dc3d7ec68eb9607cce94442aad8",
+						"title": "S2-LIVE-001 smoke verification task",
+						"updatedAtMs": 1795765161591,
+						"verification": {
+							"basis": "controller-observed-host-check",
+							"freshness": {
+								"ageMs": null,
+								"observedAtMs": null,
+								"reason": "the store's attempt directory is absent",
+								"state": "unavailable"
+							},
+							"incomplete": true,
+							"moreResults": 0,
+							"receiptReadComplete": false,
+							"results": [],
+							"state": "unavailable"
+						}
+					}
+				]
+			}
+		],
+		"readAtMs": 1795765933476,
+		"schemaVersion": "endo.coordinator-status.v0",
+		"scope": {
+			"projects": [
+				"endo.project.e2225a56cdf4c6551c08ac17837f17ef"
+			],
+			"requested": [
+				"endo.project.e2225a56cdf4c6551c08ac17837f17ef"
+			],
+			"unknown": []
+		},
+		"sessions": [],
+		"sources": {
+			"attempts": {
+				"detail": "no attempt directory",
+				"freshness": {
+					"ageMs": null,
+					"observedAtMs": null,
+					"reason": "the attempt directory is absent",
+					"state": "unavailable"
+				},
+				"state": "missing"
+			},
+			"events": {
+				"detail": null,
+				"freshness": {
+					"ageMs": null,
+					"observedAtMs": null,
+					"reason": "the event log is absent or cannot be opened read-only",
+					"state": "unavailable"
+				},
+				"state": "unavailable"
+			},
+			"tasks": {
+				"detail": "task file revision 2",
+				"freshness": {
+					"ageMs": 0,
+					"observedAtMs": 1795765933476,
+					"reason": null,
+					"state": "fresh"
+				},
+				"state": "ready"
+			}
+		},
+		"staleAfterMs": 600000,
+		"unlistedSessions": {
+			"outOfScope": 0,
+			"unknownActive": 0,
+			"unknownRelationship": 0
+		}
+	}
+}
+

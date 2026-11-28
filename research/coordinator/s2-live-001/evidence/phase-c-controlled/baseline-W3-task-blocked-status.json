@@ -1,0 +1,144 @@
+{
+  "coordinatorStatus": {
+    "attention": [
+      {
+        "kind": "blocked",
+        "subject": "endo.task.1467d1b3cd426317314cf61e6dea8840",
+        "text": "Task endo.task.1467d1b3cd426317314cf61e6dea8840 is blocked by the operator's record."
+      }
+    ],
+    "authority": {
+      "decisionAuthority": "operator-only",
+      "grants": "none",
+      "kind": "read-only-projection",
+      "notes": [
+        "Reading this status writes nothing, moves no task, sends no prompt, launches no agent and changes no approval.",
+        "Task status is the operator's own record; an agent finishing or a run ending never moves a task.",
+        "DEVELOP records and the event log are unsigned local files writable by any same-uid process.",
+        "Attention items are advisory triage, not acceptance and not an authoritative verification PASS."
+      ],
+      "writes": "none"
+    },
+    "findings": [],
+    "notEstablished": [
+      "That a session is alive now: there is no read-only liveness probe, so an attached session that has said nothing for longer than the staleness window reads as last-observed.",
+      "Which task an unlinked session worked on: relationships are taken only from explicit records, never from names, prompt text or timestamps.",
+      "That an agent's reported result is true, or that a passing check satisfies a task's acceptance criteria.",
+      "Who or what wrote any changed byte in a working tree.",
+      "Verification of completed tasks: their receipts are not re-read by this status.",
+      "Protection against a same-uid process editing the records this status reads."
+    ],
+    "projects": [
+      {
+        "counts": {
+          "awaiting-review": 0,
+          "blocked": 1,
+          "completed": 0,
+          "in-progress": 0,
+          "open": 0
+        },
+        "freshness": {
+          "ageMs": 0,
+          "observedAtMs": 1795766825666,
+          "reason": null,
+          "state": "fresh"
+        },
+        "head": {
+          "clean": true,
+          "commit": "c9b0cd9dfda58d29caa44e4146f5c38722f9f4a3"
+        },
+        "id": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+        "name": "s2-live-controlled",
+        "source": "operator-declared",
+        "tasks": [
+          {
+            "association": "unknown",
+            "attempts": {
+              "count": 0,
+              "latest": null
+            },
+            "gaps": [
+              {
+                "code": "no-check-recorded",
+                "text": "No verification receipt was found in the complete read of its attempts."
+              }
+            ],
+            "phase": "blocked",
+            "projectId": "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3",
+            "revision": 1,
+            "sessions": [],
+            "status": "blocked",
+            "statusSource": "operator-declared",
+            "taskId": "endo.task.1467d1b3cd426317314cf61e6dea8840",
+            "title": "Verify arithmetic module API",
+            "updatedAtMs": 1795766825308,
+            "verification": {
+              "basis": "controller-observed-host-check",
+              "freshness": {
+                "ageMs": null,
+                "observedAtMs": null,
+                "reason": "no check record was found; the absence of a record is not evidence about the work",
+                "state": "unavailable"
+              },
+              "incomplete": false,
+              "moreResults": 0,
+              "receiptReadComplete": true,
+              "results": [],
+              "state": "no-checks"
+            }
+          }
+        ]
+      }
+    ],
+    "readAtMs": 1795766825666,
+    "schemaVersion": "endo.coordinator-status.v0",
+    "scope": {
+      "projects": [
+        "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3"
+      ],
+      "requested": [
+        "endo.project.2beef2a5596c15c8a5ea3d4b87a7e0b3"
+      ],
+      "unknown": []
+    },
+    "sessions": [],
+    "sources": {
+      "attempts": {
+        "detail": "0 attempt(s)",
+        "freshness": {
+          "ageMs": 0,
+          "observedAtMs": 1795766825666,
+          "reason": null,
+          "state": "fresh"
+        },
+        "state": "ready"
+      },
+      "events": {
+        "detail": "0 event(s)",
+        "freshness": {
+          "ageMs": 0,
+          "observedAtMs": 1795766825666,
+          "reason": null,
+          "state": "fresh"
+        },
+        "state": "ready"
+      },
+      "tasks": {
+        "detail": "task file revision 3",
+        "freshness": {
+          "ageMs": 0,
+          "observedAtMs": 1795766825666,
+          "reason": null,
+          "state": "fresh"
+        },
+        "state": "ready"
+      }
+    },
+    "staleAfterMs": 600000,
+    "unlistedSessions": {
+      "outOfScope": 0,
+      "unknownActive": 0,
+      "unknownRelationship": 0
+    }
+  }
+}

@@ -168,7 +168,7 @@ function nonPidBarrier(path: string, attachment: string): EndoStoreLockedErrorV0
 	return new EndoStoreLockedErrorV0(
 		path,
 		`non-PID lock barrier (${attachment})`,
-		"This lock carries no owner PID and will not be automatically cleared. Never remove a store-format sentinel; inspect the store with endo store status.",
+		`The lock at ${path} carries no owner PID and will not be automatically cleared. Never remove a store-format sentinel; inspect the store with endo store status.`,
 	);
 }
 

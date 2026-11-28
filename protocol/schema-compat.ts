@@ -434,7 +434,7 @@ export const ENDO_DURABLE_SCHEMAS_V0: readonly EndoDurableSchemaV0[] = [
 		boundary: "storage/store-format.ts (format sentinel and witness)",
 		fixtures: [
 			{ file: "created.json", sha256: "631e12a9aaa085ec489522ba18a3aa20c8529eeeb6945e318e8262f4e7be7503" },
-			{ file: "migrated.json", sha256: "3a4797d2be29a7ad7543ed8b5867997824819c579935d55e50ba709cc388dce7" },
+			{ file: "migrated.json", sha256: "dff44ae68a1bfb8377257c7703e1af6a951921489e9bd87306bed46f74bf6dd3" },
 			{ file: "no-log.json", sha256: "ada7597d56adc0575670adc13d2958fd4318a4f8bda5893dd5053625f0110485" },
 		],
 	},

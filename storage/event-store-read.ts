@@ -300,7 +300,7 @@ export function readEndoEventStoreV0(root: string, options: EndoEventStoreReadOp
 					format.findings[0]?.kind === "grown-append" &&
 					seal !== null &&
 					seal.frames <= events.length &&
-					prefixHash(events, seal.frames) === seal.prefixDigest
+					(prefixHash(events, seal.frames) ?? sha256HexV0("")) === seal.prefixDigest
 						? seal.frames
 						: 0;
 			}

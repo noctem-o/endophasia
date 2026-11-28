@@ -15,7 +15,7 @@ This is the implementation update to the A1 architecture and consumer inventory.
 
 `attachEndoEventStoreWriterV0` is the storage admission entry for E. It returns a writer and its lifetime; the attachment variant carries a process-local lock handle backed by the lock's disk identity. There is at most one writable event store per handle. A forged, released or wrong-root handle cannot open or append. Legacy callers use the existing store and the legacy PID lock. Ingest and DSH now participate in that lock; DSH snapshots log identity before preflight and validates it again after acquiring, before appending. Unsupported writable explicit log paths cannot bypass the format guard.
 
-Keep the lock order: resolve format, take the attachment lock, then perform registry or metadata work. Don't take that lock while holding a short governance lock. Never take two attachment locks. Frame format, decoding, fsync per append, and preservation of cut bytes on torn-tail recovery are reused. Artifact and blob puts use independent exclusively created temp names.
+The D4a order for E is outermost first: store-format/init, `capture.lock`, `attachment.lock`, `coordination.lock.<n>`, `records.lock.<n>`. A holder of the attachment lock may take the numbered registry lock; a holder of the registry lock never takes the attachment lock. Never hold `coordination.lock.<n>` and `tasks.lock.<n>` together or take two attachment locks. B–D validates the attachment lock before an E4 registry write but does not introduce the numbered registry lock. Frame format, decoding, fsync per append, and preservation of cut bytes on torn-tail recovery are reused. Artifact and blob puts use independent exclusively created temp names.
 
 ## Reads
 

@@ -146,7 +146,7 @@ function sealLegacy(root: string): EndoLegacySealV0 {
 			bytes: after.bytes,
 			frames: store.length,
 			sha256: after.sha256,
-			prefixDigest: store.length === 0 ? null : digest.digest("hex"),
+			prefixDigest: digest.digest("hex"),
 		};
 	} finally {
 		store.close();

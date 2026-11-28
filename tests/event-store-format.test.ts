@@ -230,6 +230,18 @@ it("recognises a DEVELOP-only store without changing it and seals absence explic
 	});
 });
 
+it("seals a present empty legacy log with two hex digests, distinct from a missing log", () => {
+	const root = scratch();
+	const paths = endoStoreFormatPathsV0(root);
+	mkdirSync(paths.events);
+	writeFileSync(paths.legacy, "");
+	const emptyDigest = createHash("sha256").digest("hex");
+	const seal = { bytes: 0, frames: 0, sha256: emptyDigest, prefixDigest: emptyDigest };
+	expect(migrateEndoEventStoreV0(root).proposedSeal).toEqual(seal);
+	expect(migrateEndoEventStoreV0(root, true).state).toMatchObject({ state: "mixed", sentinel: { legacy: seal } });
+	expect(readFileSync(paths.witness)).toEqual(readFileSync(paths.lock));
+});
+
 it("does not create an E4 registry before a matching attachment lock is held", () => {
 	const root = scratch();
 	initEndoEventStoreV0(root);

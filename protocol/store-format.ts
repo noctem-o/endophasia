@@ -7,7 +7,7 @@ const SHA256 = /^[a-f0-9]{64}$/;
 
 export type EndoLegacySealV0 =
 	| { readonly logPresent: false }
-	| { readonly bytes: number; readonly frames: number; readonly sha256: string; readonly prefixDigest: string | null };
+	| { readonly bytes: number; readonly frames: number; readonly sha256: string; readonly prefixDigest: string };
 
 export type EndoStoreFormatSentinelV0 = {
 	readonly schemaVersion: typeof SCHEMA;
@@ -50,9 +50,8 @@ function validate(value: unknown): EndoStoreFormatSentinelV0 | null {
 		(legacy.frames === 0 && legacy.bytes !== 0) ||
 		typeof legacy.sha256 !== "string" ||
 		!SHA256.test(legacy.sha256) ||
-		(legacy.frames === 0
-			? legacy.prefixDigest !== null
-			: typeof legacy.prefixDigest !== "string" || !SHA256.test(legacy.prefixDigest))
+		typeof legacy.prefixDigest !== "string" ||
+		!SHA256.test(legacy.prefixDigest)
 	)
 		return null;
 	return body as EndoStoreFormatSentinelV0;

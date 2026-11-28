@@ -1,6 +1,6 @@
 # Store-format protocol — implemented B–D
 
-This is the implementation update to the A2 protocol. The sentinel schema `endo.store-format.v0` is closed and fixture-pinned. It carries `format: "per-attachment-v1"`, `createdAt`, `attachment` (operator-readable), `origin` and `legacy`. There is no `pid` or `token`. Created roots use `legacy: null`. Migrated roots use a seal of `{bytes, frames, sha256, prefixDigest}` or `{logPresent: false}`. The prefix digest is SHA-256 over newline-terminated, canonical per-event hashes. An empty stream's prefix digest is null.
+This is the implementation update to the A2 protocol. The closed, fixture-pinned sentinel carries `schemaVersion: "endo.store-format.v0"`, `format: "per-attachment-v1"`, `createdAt`, `attachment` (operator-readable), `origin` and `legacy`. There is no `pid` or `token`. Created roots use `legacy: null`. Migrated roots use a seal of `{bytes, frames, sha256, prefixDigest}` or `{logPresent: false}`. Both digests in a present-log seal are lowercase SHA-256 hex. The prefix digest hashes newline-terminated, canonical per-event hashes, so a present empty log uses the SHA-256 of empty input rather than null.
 
 | Classification | Writes | Reads |
 | --- | --- | --- |

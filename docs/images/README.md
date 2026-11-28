@@ -4,7 +4,9 @@ Every image the [README](../../README.md) uses is listed here with how it was pr
 checked. There are two kinds, and they are never mixed:
 
 - **Rendered application surfaces.** These are real screenshots of the built Studio UI, served by the real cockpit server over
-  **synthetic fixtures** that the repository's browser tests construct in temporary directories. No model is called: the
+  data from the repository's browser tests: **synthetic fixtures** built in temporary directories for sessions, runs and Coordinator
+  records, and, for the Representation Explorer only, a **real offline capture** of SmolLM2-135M committed at
+  `research/observe-geometry/examples/` and rendered without running a model. No model is called: the
   Coordinator and Codex tests run a prohibited-route sentinel or a fake App Server, and fail if a model route is contacted.
   Paths such as `/tmp/endo-…`, ports, ids and model names in these images belong to the fixtures.
 - **Conceptual artwork.** This is drawn, not rendered from the application, and is labelled as conceptual in the image itself.
@@ -39,6 +41,6 @@ For an interactive look at the same surfaces, run `node scripts/demo-coordinator
 | File | Origin |
 | :--- | :--- |
 | `readme-hero-field-storm-1440.png`, `readme-instrument-ledger-1440.png` | Synthetic workbench fixtures from earlier README refreshes (history: `git log -- docs/images/readme-hero-field-storm-1440.png`). Kept unchanged. |
-| `observe-representation-explorer-1440.png` | Representation Explorer over an offline SmolLM2 capture ([design](../designs/observe-representation-explorer.md)). |
+| `observe-representation-explorer-1440.png` | Representation Explorer over the committed real offline SmolLM2 capture, saved by `tests/endo-studio-representation-browser.test.ts` ([design](../designs/observe-representation-explorer.md)). |
 
 The other images in this directory belong to the design records that embed them.

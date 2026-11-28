@@ -72,7 +72,7 @@ function plate(name) {
 		'<text x="' + (x1 + 16) + '" y="' + (y + 20) + '" fill="' + c.dim + '" font-family="' + SERIF + '" font-style="italic" font-size="12">' + note + "</text>";
 	return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + " " + H + '" width="' + W + '" height="' + H + '" role="img" aria-labelledby="t d">' +
 		'<title id="t">Endophasia</title>' +
-		'<desc id="d">Conceptual plate. A wavering line labelled inner speech enters an instrument and leaves as four separate records: reported, observed, checked and authorised. The observed record has a deliberate gap marked unavailable.</desc>' +
+		'<desc id="d">Conceptual plate. A wavering line labelled inner speech enters an instrument and continues only as the reported record. Three other records run beside it from their own sources: observed (from the runtime, with a deliberate gap marked unavailable), checked (from your command) and authorised (from the operator).</desc>' +
 		'<rect width="' + W + '" height="' + H + '" rx="14" fill="' + c.bg + '"/>' +
 		'<rect x="24.5" y="24.5" width="' + (W - 49) + '" height="' + (H - 49) + '" rx="8" fill="none" stroke="' + c.rule + '"/>' +
 		'<text x="72" y="92" fill="' + c.ink + '" font-family="' + MONO + '" font-size="34" letter-spacing="14">ENDOPHASIA</text>' +
@@ -86,7 +86,8 @@ function plate(name) {
 		'<line x1="' + xm + '" y1="160" x2="' + xm + '" y2="400" stroke="' + c.ink + '" stroke-width="1.2"/>' +
 		ticks.join("") +
 		'<path d="M' + xIn1 + " " + yIn + " C 580 " + yIn + ", 590 " + yIn + ", " + xm + " " + yIn + '" fill="none" stroke="' + c.speech + '" stroke-width="1.2" opacity="0.6"/>' +
-		Object.values(rows).map((y) => '<path d="M' + xm + " " + yIn + " C 624 " + yIn + ", 628 " + y + ", " + x0 + " " + y + '" fill="none" stroke="' + c.faint + '" stroke-width="1"/>').join("") +
+		'<path d="M' + xm + " " + yIn + " C 624 " + yIn + ", 628 " + rows.reported + ", " + x0 + " " + rows.reported + '" fill="none" stroke="' + c.speech + '" stroke-width="1" opacity="0.6"/>' +
+		[[rows.reported, "from the agent"], [rows.observed, "from the runtime"], [rows.checked, "from your command"], [rows.authority, "from the operator"]].map(([y, s]) => '<text x="' + (x1 + 16) + '" y="' + (y + 34) + '" fill="' + c.dim + '" font-family="' + MONO + '" font-size="9" letter-spacing="1" opacity="0.75">' + s + "</text>").join("") +
 		Object.values(rows).map((y) => '<line x1="' + x0 + '" y1="' + y + '" x2="' + x1 + '" y2="' + y + '" stroke="' + c.rule + '" stroke-width="1"/>').join("") +
 		'<path d="' + reported(x0, x1, rows.reported, 16) + '" fill="none" stroke="' + c.speech + '" stroke-width="1.2" stroke-dasharray="3 4" opacity="0.8"/>' +
 		'<path d="' + obsA + '" fill="none" stroke="' + c.observed + '" stroke-width="1.6"/>' +
@@ -104,7 +105,7 @@ function plate(name) {
 		label(rows.observed, "OBSERVED", "gaps stay gaps") +
 		label(rows.checked, "CHECKED", "not acceptance") +
 		label(rows.authority, "AUTHORISED", "rare, explicit") +
-		'<text x="72" y="' + (H - 44) + '" fill="' + c.dim + '" font-family="' + MONO + '" font-size="10" letter-spacing="1.5">FIG. 0 · CONCEPTUAL PLATE · ONE SIGNAL, FOUR RECORDS</text>' +
+		'<text x="72" y="' + (H - 44) + '" fill="' + c.dim + '" font-family="' + MONO + '" font-size="10" letter-spacing="1.5">FIG. 0 · CONCEPTUAL PLATE · FOUR RECORDS, KEPT APART</text>' +
 		"</svg>\n";
 }
 

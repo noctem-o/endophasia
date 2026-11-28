@@ -52,7 +52,10 @@ treated as authoritative; several still say "draft PR" after merge. Registry fac
 | C13 | [roadmap.md](../roadmap.md) "Delivery sequence — current priority" ends at two-turn continuation. | Predates DEVELOP, Codex and the Coordinator programme. | Dated current-direction section added above; the earlier sequence kept as dated history. |
 | C14 | [vision.md](../vision.md): Endophasia "Observes, steers, and compares agent runs". | Narrow. | Related-projects row widened. |
 | C15 | Design records for E2, S1, S2, F1 and consolidation say "draft PR" / "review package". | All merged. | One dated merge annotation added under each title; body unchanged. |
-| C16 | README Studio summary: "Every mode binds strictly to `127.0.0.1` … with no external requests." | Accurate for the server and page. An authorised `advisory tick` or `coordinator brief` is CLI-side and is the only Coordinator path that can contact a (local) model. | Distinguished in the README's Coordinate section. |
+| C17 | Old README and quickstart: Codex native approvals are "deny-only fail-closed". | `cli/codex.ts` and `adapters/codex/native-approvals.ts` accept `ALLOW ONCE` for command and file approvals; unsupported or widening requests are declined. Found by the adversarial review. | Corrected in quickstart.md and status.md. |
+| C18 | README: "nothing runs on its own" was replaced in the first draft by "every consequential act is approved on the terminal". | Also too broad: `harness attach --prompt` dispatches on the command line, S2 grants come from CLI arguments, and paired pages edit task metadata. Found by the adversarial review. | README now distinguishes per-send terminal approval, bounded grants and explicit commands. |
+| C19 | S1 described as "disabled by default". | `schedule add` enables a schedule unless `--disabled` is passed (`cli/scheduler.ts`); what is absent by default is any timer. | Corrected everywhere. |
+| C16 | README Studio summary: "Every mode binds strictly to `127.0.0.1` … with no external requests." | Accurate for the server and page. `coordinator brief` and an authorised `advisory tick` are CLI-side and are the only Coordinator paths that run inference (on a local model). `coordinator pool check` and S1 health ticks also contact local endpoints, but only with zero-token `GET`s. | Distinguished in the README's Coordinate section. |
 
 ## Claims re-verified and kept
 
@@ -60,6 +63,7 @@ treated as authoritative; several still say "draft PR" after merge. Registry fac
 - **Codex is Strict-only.** `session-grant` is refused at protocol, adapter and dispatcher layers (E2 doc §1; `cli/help.ts`).
 - **Pi Everyday is narrow.** `cli/everyday-pi.ts` returns no grant unless: Linux, non-root, `--provider relay`, model `Ornith-1.5-9B-Q8_0`, no tools, `/usr/bin/pi`, `/usr/bin/bwrap`, a local filesystem and a trusted Pi installation. The CHANGELOG's DEVELOP-UX-002 entry ("no provider in this build reports one") predates commit `7384d1c02` and is left as history.
 - **E4 is not implemented.** Pi and Codex share one single-writer store lock; concurrent heterogeneous sessions in one store are not supported.
+- **S1 installs no timer**, but `schedule add` enables a schedule unless `--disabled` is passed (`cli/scheduler.ts`).
 - **S2 is disabled by default.** `advisory add` creates a disabled, unauthorised schedule; a grant binds the exact revision, pool digest, budget and validity window (S2 doc §5).
 - **F1 makes zero model calls.** The browser test runs a prohibited-route sentinel and asserts zero hits (`tests/coordinator-studio-f1-browser.test.ts`).
 - **Workstation H0 remains BLOCKED** (`cli/help.ts`, `attempt bridge`).
@@ -71,7 +75,7 @@ treated as authoritative; several still say "draft PR" after merge. Registry fac
 | F-1 | No operator surface dispatches an assignment-linked attempt. E2's dispatcher is library-only, and the raw Pi and protected routes refuse such attempts. An operator who links an attempt with `endo assign link` can't send it through any shipped command. | Wiring a dispatch command is runtime work (the E2 doc's E3 handoff names `endo assign dispatch`). |
 | F-2 | `endo --help` opens with "an experimental research instrument … attaches to an existing agent harness and records what it observes", and `endo studio --help` says "Studio currently shows a single read-only observation page … does not yet implement the other modes". Both are stale. | They are CLI output strings with tests around them. Changing them is a small, separate code change. |
 | F-3 | In `tests/coordinator-studio-f1-browser.test.ts`, capture `06-desktop-field-attention` shows the top-bar appearance toggle still on *Instrument*. The test asserts `data-appearance=field` on the board, but the image doesn't visibly show Field. | Test or capture-timing issue. The README doesn't use that frame. |
-| F-4 | The README's `Everyday` description and the CHANGELOG's Unreleased DEVELOP-UX-002 entry disagree about whether any provider attests a boundary. | The CHANGELOG entry is history. A follow-up note under Unreleased would close it. |
+| F-4 | The README's `Everyday` description and the CHANGELOG's Unreleased DEVELOP-UX-002 entry disagree about whether any provider attests a boundary. | Closed in this PR: a correction note under Unreleased → Documentation cites `7384d1c02`. |
 
 ## Capability manifest (brief §13): declined
 

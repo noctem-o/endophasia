@@ -83,8 +83,8 @@ flowchart TB
     subgraph ring["Advisory ring · optional · bounded · untrusted"]
         direction LR
         POOL["M1 pool selection<br/>local members only"]
-        TURN["Briefing turn<br/>sandboxed OpenClaw · one read-only tool"]
-        ADV[("Advisory store<br/>briefings · proposals")]
+        TURN["S2 advisory turn<br/>sandboxed OpenClaw · one read-only tool"]
+        ADV[("S2 advisory store<br/>briefings · proposals")]
         POOL --> TURN --> ADV
     end
     F1["Studio F1 views<br/>read-only"]
@@ -95,12 +95,14 @@ flowchart TB
 ```
 
 - **The core makes no model calls.** Status, coordination and attention are pure projections over local records.
-  The S1 observer (`endo scheduler tick`) writes resource observations from zero-token `GET` health requests and writes nothing else.
+  The S1 observer (`endo scheduler tick`) sends zero-token `GET` health requests and maintains its own ledger: observations, fire outcomes, cursors, retention and its lease. It never dispatches or touches task and attempt records.
   F1 reads these records and never probes an endpoint (`liveProbed: false`).
 - **The advisory ring is optional and fenced.** A briefing turn sees a bounded view of the status projection, not the store. It runs
   in a sandboxed OpenClaw agent with one read-only tool, through a relay that allows one route, one model and two exchanges.
   S2 adds deterministic wake gating, per-revision grants, budgets and crash-honest accounting around that same path.
-  Nothing in the ring writes outside `develop/automation/advisory/`. Test S0-AT10 compares every other byte before and after.
+  S2's durable advisory records are confined to `develop/automation/advisory/`, apart from the shared automation lock beside it and
+  temporary runner files outside the store. Test S0-AT10 compares the rest of the store before and after. On-demand `endo coordinator brief`
+  takes the same turn path but writes its result to stdout and stores nothing.
 - **There is no edge from the ring to execution.** Proposals are one of six closed kinds about a task that exists, and they
   carry `authority: none`. Acknowledging or dismissing a proposal changes the advisory queue and nothing else.
 - **Attention is ranking, not planning.** The ruleset orders recorded facts into hazard, blocker, verification and observation
@@ -118,6 +120,6 @@ flowchart TB
 | `<root>/develop/automation/advisory/` | S2 schedules, grants, turns, briefings and proposals | `endo advisory` |
 
 All of these are local, unsigned files. Anything that can write the store as the same user can change them. Readers detect
-damage and fail closed, but they can't prevent same-UID tampering.
+inconsistency and fail closed, but a same-UID writer who rewrites a record and recomputes its digests isn't detected, and nothing prevents it.
 
 Coordinator records: [status](designs/coordinator-status.md) · [Mission Board](designs/coordinator-board.md) · [runtime](designs/coordinator-runtime.md) · [assignment architecture](designs/coordinator-assignment.md) · [E1](designs/coordinator-assignment-implementation.md) · [E2](designs/coordinator-assignment-e2-implementation.md) · [S0](designs/coordinator-automation.md) · [M1](designs/coordinator-model-pool-m1-implementation.md) · [S1](designs/coordinator-automation-s1-implementation.md) · [S2](designs/coordinator-automation-s2-implementation.md) · [consolidation](designs/coordinator-consolidation-001.md) · [F1](designs/coordinator-studio-f1-002.md).

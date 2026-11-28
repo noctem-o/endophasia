@@ -33,7 +33,7 @@
 
 *Endophasia* is an old word for inner speech. Coding agents produce a lot of it: plans, reasoning, progress notes, and the
 confident closing line that says the tests pass. Endophasia is a workbench for working alongside those agents, and an instrument
-for finding out what they actually did. It shows an agent's inner speech in full and never treats it as evidence. What counts is
+for finding out what they actually did. It shows the reasoning and reports a runtime supplies, labelled by source and marked where they were redacted or truncated, and it never treats them as evidence. What counts is
 what was observed, what was checked at which commit, and what a person explicitly allowed.
 
 > **A coding agent says the work is done and the tests exit `0`.**
@@ -78,7 +78,7 @@ These are the working rules. Each one is enforced somewhere in the code, not onl
 | **Observation is not interpretation.** | Every record names its basis: controller-observed, agent-reported, derived, or interpreted by a model. |
 | **A passing check is not acceptance.** | A receipt records what *your* command did at one commit. It never moves a task. Only you do. |
 | **A model's report is not independent evidence.** | An agent-written review stays `advisory-agent-review` and can never become a host check receipt. |
-| **Missing stays missing.** | An unrun check, a withheld reasoning block or an unread source is shown as `UNAVAILABLE`. It is never rounded to zero or passed silently. |
+| **Missing stays missing.** | An unrun check reads *not run*, withheld reasoning reads *withheld*, and an unreadable source reads `UNAVAILABLE`. None is ever rounded to zero or passed silently. |
 | **Accepted is not executed.** | A runtime accepting a request, consuming it, and the effect that followed are three separate records. |
 | **Capability is measured.** | Harness capabilities are admitted from conformance evidence. Changing the runtime invalidates the evidence that depended on it. |
 | **Harnesses stay themselves.** | Pi and Codex sit behind one adapter contract without being flattened. Each keeps its own loop, tools and control set. |
@@ -87,19 +87,28 @@ These are the working rules. Each one is enforced somewhere in the code, not onl
 
 ### Autonomy is not authority
 
-Endophasia can do some things without you watching, and it is worth being exact about which ones. When *you* schedule
-it, a tick can observe local model health, record what it saw and, for an S2 schedule you have explicitly authorised,
-ask one local model for a briefing within fixed turn, token and time ceilings. Endophasia installs no timer or
-service itself: `endo scheduler print-systemd-unit` prints an example and writes nothing. None of these ticks acquires authority. Nothing
-automatic dispatches an agent, claims an attempt, moves a task, applies a change or merges anything. Every consequential act
-is approved by the operator on a controlling terminal, one act at a time, apart from one narrow, attested Pi configuration described [below](#develop).
+Endophasia can do some things without you watching, and it is worth being exact about which ones. Endophasia installs no
+timer or service itself (`endo scheduler print-systemd-unit` prints an example and writes nothing). But if *you* run its ticks from a
+timer, an S1 tick observes local model health with zero-token `GET` requests and records what it saw. An S2 tick, for a schedule you
+have enabled and explicitly granted, asks one local model for a briefing within fixed turn, token and time ceilings. Neither tick
+dispatches an agent, claims an attempt, moves a task, applies a change or merges anything, and nothing the model writes can change that.
+
+Authority comes from explicit operator acts, and they take different forms. These are worth telling apart:
+
+- **Per-send terminal approval.** In Strict mode, every page request to the live workbench and every prepared attempt (and every
+  protected attempt run) needs a phrase typed on the controlling terminal, once per act. Codex is always Strict.
+- **A bounded grant.** Pi's Everyday mode replaces per-send approval with one terminal-issued session grant, and only inside a narrow
+  attested configuration (described [below](#develop)). An S2 grant authorises advisory turns, not actions.
+- **An explicit command.** Running `endo harness attach --prompt …` or `endo task status …` is itself the operator's act, with no extra
+  confirmation step. A paired workspace page can likewise edit task metadata, but it cannot prompt, steer or stop an agent.
 
 ---
 
 ## Four ways of working
 
 These are four ways of working with the same local records, not four products. Each section says how mature each part is.
-Every screenshot is the real Studio rendering a **synthetic fixture** from the repository's browser tests, with zero model calls.
+Every screenshot is the real Studio rendering data from the repository's browser tests, with no model running. Session and run data are
+**synthetic fixtures**. The Representation Explorer shows a real offline capture of a small model, committed to the repository.
 How each was produced is recorded in [docs/images/README.md](docs/images/README.md).
 
 ### Develop
@@ -114,7 +123,9 @@ starts, approve each dispatch on your terminal, run your own checks, and read on
   second live integration, both behind the harness-neutral `endo.develop-adapter.v0` contract. The page can *ask*. Only the
   controlling terminal approves. **Codex is Strict-only.** Pi can run in **Everyday** mode (one terminal grant for bounded
   page-driven sends) only inside one narrow attested configuration: stock Pi 1.5.2, the local `Ornith-1.5-9B-Q8_0` model through
-  the governed relay, no tools, a read-only workspace snapshot and no credentials. Everywhere else it runs Strict.
+  the governed relay (one model exchange, at most 128 completion tokens), no tools, a read-only workspace snapshot, no
+  credentials and no `--project`. Everywhere else it runs Strict. Codex's own native tool and file approvals are answered on the
+  terminal too: allowed once, cancelled or declined, never for a whole session. Unsupported, over-long or permission-widening requests are declined.
 - **Tasks, attempts and verification.** Plans, operator-run checks at clean commits, receipts, behavioural diffs, an acceptance
   ledger, working-tree provenance, and an attention overview across tasks.
 - **Protected attempts.** `endo attempt protected-run` sends one prepared attempt through the Bubblewrap protected runner once,
@@ -155,7 +166,7 @@ proposal, stored as untrusted interpretation that grants nothing.
 | **Studio F1** | Deterministic Attention, Resources, Schedules and Advisory views in the paired workspace | On read or opt-in 30 s refresh | **Zero calls, zero wakes** | Read-only |
 | **S1 scheduler** | Durable schedule ledger, zero-token local health observations, operator-declared allowance windows | `endo scheduler tick`, run by you or a timer you own | Health `GET` only, 0 tokens | None |
 | **M1 model pool** | Chooses one eligible *local* member for a briefing. Fallback happens only before inference | Per briefing | Local only | None |
-| **Briefing** | One sandboxed OpenClaw turn with one read-only status tool | `endo coordinator brief` | One local model | Advisory |
+| **Briefing** | One sandboxed OpenClaw turn with one read-only status tool; the answer goes to stdout and nothing is stored | `endo coordinator brief` | One local model | Advisory |
 | **S2 advisory schedules** | Wake-gated briefings and at most one untrusted proposal per turn, with budgets and crash-honest accounting | `endo advisory tick`, only for an enabled schedule with a current grant | One local model, bounded | Proposals grant nothing |
 
 **Disabled by default.** An S2 schedule is created disabled and unauthorised. A grant binds that exact revision, pool digest,
@@ -175,8 +186,9 @@ reaches it yet. **F2** (guided operator actions such as acknowledging a proposal
 
 Inspect what agents did after the fact, with every source labelled for what it is. Live Pi and Codex sessions are
 **recorded**. Saved DeepSeek Harness sessions are **cold-imported** with explicit mapping losses. Oh My Pi's saved files are
-**read in place** as metadata only. None of those last two is live integration. Trajectories are compared layer by layer
-(lifecycle, tool calls, tool results, outcome) as `EXACT`, `DIVERGED` or `UNAVAILABLE`.
+**read in place** as metadata only. Neither of those two is a live integration. Pi trajectories are compared layer by layer
+(lifecycle, tool calls, tool results, outcome) as `EXACT`, `DIVERGED` or `UNAVAILABLE`. Studio's Compare workspace accepts
+Pi and DSH recordings.
 
 <img src="docs/images/observe-representation-explorer-1440.png" width="100%" alt="Observe Representation Explorer showing a 2D PCA projection of a SmolLM2 residual stream with Observed, Derived, Interpreted and Unavailable badges.">
 <p><sub><strong>Observe → Representation Explorer.</strong> Offline TransformerLens <code>TransformerBridge</code> captures (<code>endo studio --representations &lt;dir&gt;</code>) with strict <code>OBSERVED</code> / <code>DERIVED</code> / <code>INTERPRETED</code> / <code>UNAVAILABLE</code> separation. These are captures made offline, not live inspection of a serving model.</sub></p>
@@ -237,8 +249,8 @@ store in a temporary directory, serves the paired workspace and prints the URL a
 
 > [!NOTE]
 > **npm lags far behind.** As checked on 28 November 2026, npm's `latest` tag is the CLI-only `0.1.0-alpha.1` and `alpha` is
-> `0.1.0-alpha.2` (22 October 2026), with an early read-only browser page. Neither has the workbench, Codex, the Coordinator or
-> anything else above. The source manifest still reads `0.1.0-alpha.2`, so the version string doesn't distinguish a source build. See
+> `0.1.0-alpha.2` (22 October 2026), with an early read-only browser page. Both have the Pi recording, trajectory and replay CLI, but
+> the live workbench, Codex, the Coordinator and the newer Studio workspaces need a source build. The source manifest still reads `0.1.0-alpha.2`, so the version string doesn't distinguish a source build. See
 > [docs/install.md](docs/install.md).
 
 ---
@@ -305,8 +317,8 @@ non-authoritative or opt-in. **Design only**: specification without implementati
 | | Coordination intent: assignments, dependencies, candidates, worktrees, reviews | Implemented (records only) | `assign`, `dep`, `candidate`, `worktree`, `review` |
 | | Governed dispatch of assignment-linked attempts (E2) | Library | None yet |
 | | Studio F1 deterministic Attention, Resources, Schedules, Advisory | Implemented (read-only) | `workspace open` |
-| | S1 schedule ledger and zero-token resource observations | Implemented, disabled by default | `schedule`, `scheduler tick`, `resource` |
-| | M1 local model pool | Implemented (local endpoints only) | `coordinator pool check`, `brief --pool` |
+| | S1 schedule ledger and zero-token resource observations | Implemented; no timer installed (a schedule is enabled when added unless `--disabled`) | `schedule`, `scheduler tick`, `resource` |
+| | M1 local model pool | Implemented (local endpoints only) | `coordinator pool check`, `coordinator brief --pool` |
 | | Coordinator briefing | Experimental (advisory) | `coordinator brief` |
 | | S2 scheduled advisory briefings and proposal queue | Experimental, disabled by default | `advisory …` |
 | | S0 persistent automation architecture | Design only | [design](docs/designs/coordinator-automation.md) |
@@ -318,7 +330,7 @@ non-authoritative or opt-in. **Design only**: specification without implementati
 | | Offline representation captures | Implemented (offline only) | `studio --representations` |
 | **Experiment** | Model-boundary capture and cassette replay | Implemented | `proxy record\|replay`, `replay` |
 | | Controlled Pi experiments with declared conditions | Implemented | `experiment run\|report` |
-| | Bubblewrap protected experiments (`v0`–`v3`) and read-only inspector | Implemented (Linux); evaluation experimental | `experiment protected-run\|report`, `studio --protected-runs` |
+| | Bubblewrap protected experiments (`v0`–`v3`) and read-only inspector | Implemented (Linux); evaluation experimental | `experiment protected-run`, `experiment protected-report`, `studio --protected-runs` |
 | | Scratch copies, governed continuation, A/A workflow | Library and research scripts | Source-tree APIs |
 
 Evidence and limits for every row, plus the library-only surfaces, are in [docs/status.md](docs/status.md). The claim-by-claim
@@ -339,71 +351,75 @@ native desktop app. Studio's **Research** and **Hardware** tabs are explicit pla
 | **Reasoning / cognition** | Model-provided reasoning is relayed verbatim, never as a verified trace of internal computation. |
 | **Captured / live** | Offline representation captures aren't inference-time activation inspection. |
 | **Mechanism / competence** | That a Coordinator mechanism works end to end doesn't show that its model output is reliable or useful. |
-| **Local / trusted** | Records are unsigned local files. Same-UID tampering is detected where re-hashing allows, not prevented. Workstation H0 remains blocked. |
+| **Local / trusted** | Records are unsigned local files. Re-hashing detects records that are inconsistent with themselves. It can't detect a same-UID writer who rewrites a record and recomputes its digests. Workstation H0 remains blocked. |
 
 ---
 
 ## Architecture
 
 The diagram below is an **authority map**, drawn from the implementation and simplified. Read the arrows literally. A solid arrow
-means records are written or read along it. A **thick arrow** means authority, and every one starts with the operator. A dotted
-arrow means advisory output, shown to a person and read by nothing that acts.
+means records or requests travel along it. A **thick arrow** means authority is exercised or delegated along it, and every chain
+of thick arrows begins with the operator. A dotted arrow means advisory output, shown to a person and read by nothing that acts.
 
 ```mermaid
-flowchart LR
+flowchart TB
     OP(["Operator"])
 
-    subgraph SURF["Surfaces"]
-        direction TB
-        CLI["endo CLI<br/>controlling terminal"]
-        WEB["Studio on 127.0.0.1<br/>read-only views · paired pages"]
-    end
-
-    subgraph DET["Deterministic environment · no model required"]
-        direction TB
-        REC[("Local records<br/>events · develop/ · automation/")]
-        PROJ["Projections<br/>status · coordination · attention"]
-        TICK["S1 tick<br/>zero-token observations"]
-    end
-
-    subgraph ADV["Advisory intelligence · optional"]
-        direction TB
-        TURN["Briefing / S2 turn<br/>sandboxed OpenClaw"]
-        PROP[("Briefings · proposals<br/>authority: none")]
+    subgraph PAGES["Browser pages on 127.0.0.1"]
+        direction LR
+        BOARD["Studio and paired workspace<br/>read-only views · task metadata · Mission Board"]
+        WBP["Live workbench page<br/>drafts and requests only"]
     end
 
     subgraph EXE["Execution"]
-        direction TB
-        GATE{"Dispatch gate"}
+        direction LR
+        GATE{"Dispatch gate<br/>controlling terminal"}
         HAR["Pi · Codex<br/>own loop, tools, provider"]
         PROT["Protected runner<br/>Bubblewrap + evaluator"]
     end
 
+    subgraph DET["Deterministic environment · no model required"]
+        direction LR
+        TICK["S1 tick<br/>zero-token health GETs"]
+        REC[("Local records<br/>events · develop/ · automation/")]
+        PROJ["Projections<br/>status · coordination · attention"]
+    end
+
+    subgraph ADV["Advisory intelligence · optional"]
+        direction LR
+        BRIEF["coordinator brief<br/>on demand · answer to stdout"]
+        TURN["S2 advisory turn<br/>only under a current grant"]
+        PROP[("S2 briefings · proposals<br/>authority: none")]
+    end
+
     LM[("Local model endpoint")]
 
-    OP ==>|"approves each dispatch"| GATE
-    OP ==>|"enables + grants S2"| TURN
-    OP -->|"commands · intent · schedules"| CLI
-    WEB -->|"requests only"| GATE
+    OP ==>|"approves on the terminal"| GATE
     GATE ==>|"approved send"| HAR
     GATE ==>|"approved run"| PROT
-    CLI --> REC
+    OP ==>|"enables and grants"| TURN
+    OP -->|"CLI: commands · intent · schedules"| REC
+    WBP -->|"requests"| GATE
     HAR -->|"recorded events"| REC
     PROT -->|"sealed run records"| REC
     TICK -->|"observations"| REC
     TICK -->|"health GET"| LM
     REC --> PROJ
-    PROJ --> WEB
-    PROJ --> CLI
+    PROJ --> BOARD
+    PROJ -->|"bounded view"| BRIEF
     PROJ -->|"bounded view"| TURN
+    BRIEF -->|"one route, two exchanges"| LM
     TURN -->|"one route, two exchanges"| LM
     TURN --> PROP
-    PROP -.->|"shown as untrusted"| WEB
+    PROP -.->|"shown as untrusted"| BOARD
 ```
 
-There is no path from advisory output to the dispatch gate. A paired page can draft and request, but approval comes from the
-controlling terminal. The one exception is a Pi Everyday grant, which the terminal issues, inside the narrow attested configuration
-above. Pi and Codex call their own model providers along their own routes. Endophasia records what they report and doesn't stand in that path.
+Advisory output has no automatic path to execution or authorisation. Briefings and proposals are displayed on the read-only board,
+which has no prompt or dispatch route, and only a person can act on what they read there. The live workbench page is a separate
+host that can draft and request; approval comes from the controlling terminal, or from a terminal-issued Pi Everyday grant inside
+the narrow attested configuration above. In ordinary Strict operation Pi and Codex call their own model providers along their own
+routes, and Endophasia records what they report. In Everyday mode, Endophasia's recording relay does stand in that path, and it
+enforces the attested limits.
 The evidence pipeline, the Coordinator layering and the storage layout are in [docs/architecture.md](docs/architecture.md).
 
 ---

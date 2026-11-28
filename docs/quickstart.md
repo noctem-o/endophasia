@@ -109,7 +109,7 @@ The planned check now reads *Passed at HEAD*, followed by *at another commit …
 endo workspace open --project endo.project.<id>
 ```
 
-Open the private loopback address it prints, enter the pairing code from the terminal and pick the task. Stop with **Ctrl-C** and delete `~/endo-tour` when done.
+Open the private loopback address it prints, enter the pairing code from the terminal and pick the task. Stop with **Ctrl-C**. Then leave the directory and clear the variable before deleting the throwaway store, so later commands don't silently recreate it: `cd ~ && unset ENDO_STORE_ROOT && rm -rf ~/endo-tour`.
 
 </details>
 
@@ -135,9 +135,9 @@ endo develop --harness codex --project endo.project.<id> --model <model-id>
 | Harness | Modes | Live controls | Current boundaries |
 | :--- | :--- | :--- | :--- |
 | **Pi** (`endo develop`) | Requests **Everyday** (narrow attested sandbox only); otherwise **Strict** | `PROMPT`, `STEER`, `QUEUE`, `STOP`, prepared-attempt send (`attempt <id>`) | Terminal approval governs dispatch, not Pi's tools |
-| **Codex** (`endo develop --harness codex`) | **Strict-only** (no Everyday grants; `--mode everyday\|protected` refused) | `PROMPT`, targeted `turn/interrupt` (`STOP`), read-only pending native approval banner | Native Codex approvals are terminal-handled (deny-only fail-closed); no `STEER`, `QUEUE` or prepared-attempt dispatch yet; shares a single-writer event-store lock with Pi |
+| **Codex** (`endo develop --harness codex`) | **Strict-only** (no Everyday grants; `--mode everyday\|protected` refused) | `PROMPT`, targeted `turn/interrupt` (`STOP`), read-only pending native approval banner | Native Codex tool and file approvals are answered on the terminal: allowed once (`ALLOW ONCE`), cancelled or declined; never session-wide; unsupported, over-long or permission-widening requests are declined; no `STEER`, `QUEUE` or prepared-attempt dispatch yet; shares a single-writer event-store lock with Pi |
 
-**Modes** ([DEVELOP-UX-002](../research/develop-ux/DEVELOP-UX-002.md)). On Pi, `endo develop` *requests* **Everyday**: one terminal authorisation grants bounded page-driven prompts, steers, queues and stops for 30 minutes (up to 200 sends) in one workspace — *only* while Endophasia verifies an enforced sandboxed session. Today that attested configuration is narrow: stock Pi 1.5.2 with local `Ornith-1.5-9B-Q8_0` through the governed relay, no tools, ephemeral session, read-only workspace snapshot, no credentials and no unrestricted network. Everywhere else — and always on Codex — the workbench runs in **Strict** (each request approved on the terminal) and states why. Use `--mode strict` to ask for Strict outright, `--mode protected` to refuse to start where protection cannot be enforced, or `--confirm short` to approve non-attempt Strict requests with a four-character code shown on the terminal.
+**Modes** ([DEVELOP-UX-002](../research/develop-ux/DEVELOP-UX-002.md)). On Pi, `endo develop` *requests* **Everyday**: one terminal authorisation grants bounded page-driven prompts, steers, queues and stops in one workspace (the control grant defaults to 30 minutes and 200 sends) — *only* while Endophasia verifies an enforced sandboxed session. Today that attested configuration is narrow: stock Pi 1.5.2 with local `Ornith-1.5-9B-Q8_0` through the governed relay, no tools, ephemeral session, read-only workspace snapshot, no credentials and no unrestricted network. Its recording relay admits one model exchange of at most 128 completion tokens, and passing `--project` (or `--prompt`) skips Everyday preparation entirely. Everywhere else — and always on Codex — the workbench runs in **Strict** (each request approved on the terminal) and states why. Use `--mode strict` to ask for Strict outright, `--mode protected` to refuse to start where protection cannot be enforced, or `--confirm short` to approve non-attempt Strict requests with a four-character code shown on the terminal.
 
 1. Open the private loopback URL printed in the terminal (it lands directly on **Develop**) and pair it with the one-time code. Type `pair` in the terminal for a fresh code.
 2. Draft a **Prompt** when idle, or request **Steer** / **Queue** (Pi) or **Request stop** during an open run whenever the broker offers them.
@@ -181,7 +181,7 @@ endo codex session ./recordings --cwd /path/to/project --model <id> --effort low
 endo codex session ./recordings --cwd /path/to/project --workbench # same Strict-only browser workbench as endo develop --harness codex
 ```
 
-Spawns a local Codex App Server in an isolated conservative `CODEX_HOME` (inherited MCP servers disabled before startup, preserving read-only local auth). Every prompt, targeted `turn/interrupt` and native Codex approval request is confirmed on the controlling terminal; native approvals fail closed (deny-only). See [Codex live integration](designs/develop-codex-live.md) and [Codex in Studio](designs/develop-codex-studio.md).
+Spawns a local Codex App Server in an isolated conservative `CODEX_HOME` (inherited MCP servers disabled before startup, preserving read-only local auth). Every prompt, targeted `turn/interrupt` and native Codex approval request is confirmed on the controlling terminal; the terminal can allow a supported native request once, and anything unsupported or scope-widening is declined. See [Codex live integration](designs/develop-codex-live.md) and [Codex in Studio](designs/develop-codex-studio.md).
 
 </details>
 
@@ -200,7 +200,7 @@ endo candidate <declare|declare-protected|select|list> --root ./recordings ...
 endo worktree <register|unregister|list> --root ./recordings ...
 endo review <record|list|show> --root ./recordings ...
 
-# S1: zero-token observations and a durable schedule ledger (disabled by default)
+# S1: zero-token observations and a durable schedule ledger (no timer installed; add --disabled to create a schedule disabled)
 endo schedule <add|list|enable|disable|remove> --root ./recordings ...
 endo scheduler tick --root ./recordings [--pool pool.json]
 endo scheduler print-systemd-unit --root ./recordings      # prints an example timer; installs nothing
@@ -214,11 +214,12 @@ endo coordinator brief ./recordings --project endo.project.<id> [--pool pool.jso
 endo advisory <add|enable|disable|remove|authorize|revoke|tick|list|fires|briefings|proposals|ack|dismiss> --root ./recordings ...
 ```
 
-Every command above except `coordinator brief` and `advisory tick` works with no model at all. `coordinator pool check` and
-`scheduler tick` send zero-token `GET` health requests to the local endpoints a pool names, and nothing else. `coordinator brief`
+Three levels of contact are worth telling apart. Most commands above make **no HTTP contact** with any model endpoint.
+`coordinator pool check` (with or without `--pool`) and an S1 `scheduler tick` that claims a health action send **zero-token `GET` requests**
+(`/health`, `/props`, and `/models` or `/v1/models` where those apply) to the local endpoints named, and nothing else. Only two commands
+can run **inference**. `coordinator brief`
 runs one sandboxed OpenClaw turn against one local model. `advisory tick` does the same only for an enabled schedule holding a
-current, unexpired grant, within its turn, token and wall-clock ceilings. Both of those commands can contact a local model,
-so run them only against an endpoint you intend to use. Briefings and proposals are stored as untrusted model interpretation.
+current, unexpired grant, within its turn, token and wall-clock ceilings. Run any of the endpoint-contacting commands only against an endpoint you intend to use. Briefings and proposals are stored as untrusted model interpretation.
 They grant nothing: no Coordinator command dispatches a harness, claims an attempt route, moves a task or merges anything.
 
 An assignment records who is *intended* to do a task. It is not an authorisation. E2 adds a governed dispatcher for
@@ -311,7 +312,7 @@ Name the version explicitly: npm's `latest` tag pointed to the CLI-only `0.1.0-a
 - Workspace and workbench require separate one-time pairing and an expiring in-memory grant; the URL alone grants no write or request authority.
 - Live transcripts carry user/assistant text, structured model-provided reasoning where the harness emits it (preserving Pi's structured `thinking` blocks and Codex's explicit `Reasoning summary` vs raw-thinking provenance), and structured private activity (`tool`, `file-change`, `activity` rows) with policy-bounded previews and an explicit non-authorising capability descriptor (*"A description, not a permission"*). Literal `<think>` tags are never treated as authenticated reasoning. See [docs/private-activity.md](private-activity.md) and [docs/develop-reasoning.md](develop-reasoning.md).
 - Live transcript, reasoning and pending native Codex approval summaries stay bounded in process memory, are excluded from canonical evidence and the read-only Studio API, and clear immediately when the session ends or tears down. Pi's own session files and Codex's isolated `CODEX_HOME` are separate from the canonical event store.
-- Receipts always store a SHA-256 of stdout; `--keep-output` additionally retains the first 8 KiB for behavioural diffs, so avoid it on commands that print secrets.
+- Receipts store a SHA-256 of stdout when the stream was read completely (an incomplete stream records no digest and an inconclusive result); `--keep-output` additionally retains the first 8 KiB as text for behavioural diffs when it is valid UTF-8, so avoid it on commands that print secrets.
 - DEVELOP records are local, unsigned files under `<root>/develop/` — anything able to write the store can modify them.
 
 See [docs/studio.md](studio.md).

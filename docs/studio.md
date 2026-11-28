@@ -212,7 +212,10 @@ recording are not the same thing, and this page lists recordings.**
 Not in this slice: project or worktree association, Git changes, live process or attachment detection, live activity, steering, queueing,
 stopping or launching anything. Those are separate, later changes.
 
-## Live workbench (opt-in; the one writable boundary)
+## Live workbench (opt-in; the boundary that can request agent work)
+
+> **Note (28 November 2026):** the heading once called this "the one writable boundary". The paired `endo workspace open` host also
+> writes, but only operator task metadata, and it has no prompt, steer, stop or dispatch route. The workbench also serves Codex (`endo develop --harness codex`).
 
 `endo studio` is read-only and stays so: its server has no command route. A live session is worked with through a **separate,
 explicitly enabled** process, the one that owns the Pi child:
@@ -296,8 +299,8 @@ and pairing grant after its asynchronous reads, and runs one read at a time per 
 | **Advisory** (F1) | This project's S2 briefings and proposals | Briefings, refusals, withholding, model provenance, token charges, proposal standing | Accepts, dismisses or executes a proposal (deferred to F2), or lets a failed briefing hide deterministic state |
 
 Refresh is manual by default. An opt-in 30-second auto-refresh issues one read at a time, discards obsolete replies, pauses while
-the tab is hidden and stops on grant loss. There are no WebSockets or server push. Cross-project data is filtered out, and
-foreign project ids and absolute paths in detail strings and briefing answers are redacted. Design and limits:
+the tab is hidden and stops on grant loss. There are no WebSockets or server push. S2 history and per-project records are filtered to the launched project. Store-level S1 schedules and resources and whole-host counts
+of unlisted sessions are shown on purpose, and foreign project ids and absolute paths in detail strings and briefing answers are redacted. Design and limits:
 [Mission Board](designs/coordinator-board.md), [E2](designs/coordinator-assignment-e2-implementation.md) and [Studio F1](designs/coordinator-studio-f1-002.md).
 To see it with synthetic data and no model, run `node scripts/demo-coordinator-studio-f1.mjs`.
 
@@ -305,7 +308,7 @@ To see it with synthetic data and no model, run `node scripts/demo-coordinator-s
 
 ## Limits
 
-- Four workspaces — Observe, Compare, Develop, and Evolve — all read-only in `endo studio` (the Coordinator workspace is served only by the paired `endo workspace open` host, above) (Develop gains a live conversation and governed prompts only when served by `endo harness attach --control --workbench` or `endo develop`; Evolve reads only an explicitly configured `--protected-runs` directory). Capabilities remains an explicit placeholder. No steering, no attachment management, no push or live view: the frontend reads when it opens and
+- Four workspaces — Observe, Compare, Develop, and Evolve — all read-only in `endo studio` (the Coordinator workspace is served only by the paired `endo workspace open` host, above) (Develop gains a live conversation and governed prompts only when served by `endo harness attach --control --workbench` or `endo develop`; Evolve reads only an explicitly configured `--protected-runs` directory). Research and Hardware are explicit placeholders; there is no Capabilities workspace any more. No steering, no attachment management, no push or live view: the frontend reads when it opens and
   on explicit Observe refresh, Compare discovery/comparison, or Evolve refresh actions. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).

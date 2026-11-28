@@ -1,6 +1,11 @@
 # Endophasia Web (currently `endo studio`)
 
-Status: **implemented in the source tree, read-only, Observe, Compare and Develop workspaces.** This is the browser interface, proposed to be named **Endophasia Web**. The current UI and CLI still say Studio; Capabilities and Evolve workspaces (and WORK, DREAM, a project/worktree view and a model-internal OBSERVE view) remain future directions; **DEVELOP exists only as a read-only session desk over recorded sessions** (below). Source builds include a read-only
+> **Current surfaces (28 November 2026, `d2024ac51`).** Studio has Observe, Compare, Develop, Evolve and Coordinator workspaces.
+> `endo studio` is read-only across all of them. The paired `endo workspace open` host adds operator task metadata and the
+> [Coordinator Mission Board](#coordinator-mission-board-paired-workspace-read-only), and `endo develop` adds the live Pi or Codex
+> workbench. The paragraph that follows is the earlier status text, kept as history; the sections below it describe what ships.
+
+Status (earlier text): **implemented in the source tree, read-only, Observe, Compare and Develop workspaces.** This is the browser interface, proposed to be named **Endophasia Web**. The current UI and CLI still say Studio; Capabilities and Evolve workspaces (and WORK, DREAM, a project/worktree view and a model-internal OBSERVE view) remain future directions; **DEVELOP exists only as a read-only session desk over recorded sessions** (below). Source builds include a read-only
 **Observe workspace**: an overview of the recorded window, the runtime a Pi attachment recorded, the capability state with its reasons
 and limits, the session timeline in storage order with an evidence-first inspector, and the condition of each source, all as recorded and
 none of it inferred. Compare discovers and compares recorded Pi/DSH trajectories through the existing read-only APIs. Capabilities and Evolve remain marked "later" and show no records. It does not start,
@@ -275,9 +280,32 @@ scans `$HOME` or exposes historical research artifacts automatically, and Evolve
   relay secrets, and private model transcripts are never served. Studio never writes to `--protected-runs` (and refuses to start if
   `--key-file` resolves inside it).
 
+## Coordinator Mission Board (paired workspace, read-only)
+
+Served only by the paired `endo workspace open --project <id>` host, for the project bound to that launch. `endo studio` and the live
+workbench gain no Coordinator read grant. Every endpoint is `GET`, takes no query or project selector, re-checks the capability URL
+and pairing grant after its asynchronous reads, and runs one read at a time per host within fixed size caps.
+
+| View | Reads | Shows | Never |
+| :--- | :--- | :--- | :--- |
+| **List / Columns** | `endo.coordinator-status.v0` | Tasks by the operator's phase, latest verification and gaps, recorded sessions and their basis | Decides phase or verification meaning; shows check arguments, transcripts or command output |
+| **Lanes / Graph** (E2) | `endo.coordinator-coordination.v0` | Participants and roles, execution standing, offline liveness, operator-declared dependency edges, worktree conflicts, candidates, advisory reviews | Infers edges, claims live state, or offers drag-to-dispatch or any mutation |
+| **Attention** (F1) | Status, coordination and `endo.coordinator-studio-operations.v0` | Four tiers (hazard, blocker, verification, observation) from `endo.coordinator-attention-rules.v1`, each item split into Observed, Rule consequence and Not established | Calls a model; presents its ranking as an optimal plan |
+| **Resources** (F1) | Recorded S1 observations (`liveProbed: false`) | Endpoint readiness as recorded, self-reported model names, allowance windows, freshness | Probes endpoints or wakes or loads a model; equates reachable with ready, or unknown with zero |
+| **Schedules** (F1) | S1 ledger and this project's S2 schedules | Schedules, fires, lease, authorisation and budget standing | Executes a tick, acquires a lock or installs a timer (`executesSchedules: false`) |
+| **Advisory** (F1) | This project's S2 briefings and proposals | Briefings, refusals, withholding, model provenance, token charges, proposal standing | Accepts, dismisses or executes a proposal (deferred to F2), or lets a failed briefing hide deterministic state |
+
+Refresh is manual by default. An opt-in 30-second auto-refresh issues one read at a time, discards obsolete replies, pauses while
+the tab is hidden and stops on grant loss. There are no WebSockets or server push. Cross-project data is filtered out, and
+foreign project ids and absolute paths in detail strings and briefing answers are redacted. Design and limits:
+[Mission Board](designs/coordinator-board.md), [E2](designs/coordinator-assignment-e2-implementation.md) and [Studio F1](designs/coordinator-studio-f1-002.md).
+To see it with synthetic data and no model, run `node scripts/demo-coordinator-studio-f1.mjs`.
+
+![Coordinator Mission Board, Attention view at 768 px wide, synthetic fixture](images/coordinator-f1-attention-768.png)
+
 ## Limits
 
-- Four workspaces — Observe, Compare, Develop, and Evolve — all read-only in `endo studio` (Develop gains a live conversation and governed prompts only when served by `endo harness attach --control --workbench` or `endo develop`; Evolve reads only an explicitly configured `--protected-runs` directory). Capabilities remains an explicit placeholder. No steering, no attachment management, no push or live view: the frontend reads when it opens and
+- Four workspaces — Observe, Compare, Develop, and Evolve — all read-only in `endo studio` (the Coordinator workspace is served only by the paired `endo workspace open` host, above) (Develop gains a live conversation and governed prompts only when served by `endo harness attach --control --workbench` or `endo develop`; Evolve reads only an explicitly configured `--protected-runs` directory). Capabilities remains an explicit placeholder. No steering, no attachment management, no push or live view: the frontend reads when it opens and
   on explicit Observe refresh, Compare discovery/comparison, or Evolve refresh actions. A read re-validates the whole history ([cockpit.md](cockpit.md): about 1.3 s at 50,000 events).
 - Loopback only: it cannot be reached from another machine, and there is no option to change that.
 - No daemon, service or auto-start; no browser launcher (a future `--open` is possible and not present).

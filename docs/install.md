@@ -1,5 +1,9 @@
 # Installing the `endo` CLI and first run
 
+> **Build from source for current features (28 November 2026).** npm's `latest` tag is `0.1.0-alpha.1` and `alpha` is
+> `0.1.0-alpha.2` (22 October 2026), as read with `npm view endophasia`. Neither contains the live workbench, Codex, the
+> Coordinator or most of what the [README](../README.md) describes. The quickest current path is [quickstart.md](quickstart.md).
+
 Status: **experimental alpha.** Node >= 22.19.0 is required; Pi is installed separately. Three states are easy to confuse:
 
 | | Version | `endo studio` | State |
@@ -162,8 +166,9 @@ endo studio --root ./recordings --port 8085
 endo studio --help
 ```
 
-Studio is a read-only browser interface on `127.0.0.1` over a recorded store (today one observation page; the other modes are not
-built). It needs only what is installed: no checkout, TypeScript, build step, network or model provider. It never writes the
+Studio is a read-only browser interface on `127.0.0.1` over a recorded store. A source build has the Observe, Compare, Develop and
+Evolve workspaces; the paired `endo workspace open` and `endo develop` hosts add the Coordinator Mission Board and the live workbench.
+The published alpha.2 tarball has only the earlier observation page. It needs only what is installed: no checkout, TypeScript, build step, network or model provider. It never writes the
 store (a store that does not exist is shown as absent and stays absent); the first launch creates its own digest key
 (`cockpit-digest-key`, mode 0600, beside the installation key) and says so. The address it prints is a secret for that launch.
 Arguments, the key, the address, exit statuses and limits: [studio.md](studio.md).

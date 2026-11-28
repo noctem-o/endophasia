@@ -1,5 +1,7 @@
 # COORDINATOR-MODEL-POOL-001 (M1): a provider-agnostic local Coordinator Model Pool
 
+> **Merged (dated annotation, 28 November 2026):** merged to `main` as #188 on 26 November 2026 (`e62914bf9`). The status line below is the original.
+
 *   **Status:** implemented on branch `feat/coordinator-model-pool-001` (draft PR). Local, read-only, advisory only.
 *   **Baseline:** `origin/main` @ `7666b0842` (merge of #187; #184, #185 and #186 are ancestors, verified with `git merge-base --is-ancestor`).
 *   **Contract:** [S0 Appendix A](coordinator-automation.md#appendix-a-separately-actionable-implementation-brief--m1-coordinator-model-pool-001).

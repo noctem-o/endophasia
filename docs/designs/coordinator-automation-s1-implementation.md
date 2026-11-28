@@ -1,5 +1,7 @@
 # COORDINATOR-AUTOMATION-S1: Deterministic Coordinator Observations and Durable Schedule Ledger
 
+> **Merged (dated annotation, 28 November 2026):** merged to `main` as #189 on 26 November 2026 (`57e75cef3`). The status line below is the original.
+
 - **Mission:** `COORDINATOR-AUTOMATION-S1` (Milestone **S1**)
 - **Status:** Implemented on branch `feat/coordinator-automation-s1` (draft PR). Strictly read-only, zero-LLM observations and durable schedule bookkeeping; disabled by default.
 - **Baseline:** `origin/main` @ `e62914bf9ad59ca2555faa64e76cb4d687489ed5` (incorporates PR #184 E1, PR #186 E2, PR #187 S0, and PR #188 M1).

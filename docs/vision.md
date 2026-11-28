@@ -50,7 +50,7 @@ harnesses it attaches to, is in [upstream-boundaries.md](upstream-boundaries.md)
 
 | Project | Job |
 | :--- | :--- |
-| **Endophasia** | Observes, steers, and compares agent runs |
+| **Endophasia** | A local-first studio to develop with, coordinate, observe and experiment on coding agents, keeping evidence and authority apart |
 | [Magpie](https://github.com/noctem-o/magpie) | Records claims and evidence; derives standing under explicit policy |
 | [Deadbolt](https://github.com/noctem-o/deadbolt) | Decides whether a consequential action is authorised |
 | [Cogitator](https://github.com/noctem-o/cogitator) | Seals run records with verifiable witness roots |

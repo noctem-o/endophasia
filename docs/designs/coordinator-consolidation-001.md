@@ -1,5 +1,7 @@
 # COORDINATOR-CONSOLIDATION-001 — Research-to-Production Consolidation Record
 
+> **Merged (dated annotation, 28 November 2026):** merged to `main` as #195 on 27 November 2026 (`b8760fc51`). Research PRs #192–#194 remain open and unmerged. The status line below is the original.
+
 **Status:** Consolidation review package (branched from `origin/main` `2f730eb680e87d04d3a41bbb9d398e6b9a97794c`)  
 **Preserved Research Stack (open, unmerged, untouched):**
 - **PR #192** (`research/s2-live-001`): `6d8d164215b4e80ae2ba6ed3cc60b80da548c639`

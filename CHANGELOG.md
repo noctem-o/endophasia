@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Documentation
+- **ENDO-DOCUMENTATION-002: identity, documentation and artistic renewal.** A new README organised around four ways of working
+  (Develop, Coordinate, Observe & compare, Experiment & evolve), with an authority map, maturity labels, an original conceptual
+  title plate (`docs/images/source/plate.mjs`) and model-free screenshots of Studio F1, the Codex workbench and the Protected
+  Experiment Inspector ([provenance](docs/images/README.md)). The tour and entry points moved to [docs/quickstart.md](docs/quickstart.md),
+  and the earlier evidence-pipeline diagram to [docs/architecture.md](docs/architecture.md). The claim-to-evidence record is
+  [docs/audits/documentation-reconciliation-2026-11.md](docs/audits/documentation-reconciliation-2026-11.md). `status.md`, `roadmap.md`,
+  `studio.md` and `vision.md` were reconciled with E1, E2, M1, S1, S2, F1 and the November roadmap, and merged design records were
+  given dated merge annotations. The `package.json` description was updated; the version, files, scripts and dependencies are unchanged.
+- **Correction note.** The DEVELOP-UX-002 entry below says no provider attests an execution boundary, so Everyday is never in effect.
+  That was true when written. Since `7384d1c02`, Everyday runs through an attested workspace provider in one narrow configuration
+  (stock Pi 1.5.2, local `Ornith-1.5-9B-Q8_0` through the governed relay, no tools; `cli/everyday-pi.ts`). Everywhere else, Strict applies.
+
 ### Added
 - **COORDINATOR-MODEL-POOL-001 (M1): a local Coordinator Model Pool** ([design, evidence and limits](docs/designs/coordinator-model-pool-m1-implementation.md)).
   - `endo coordinator brief ... --pool <config.json> [--member <memberId>]`: the briefing's model is the highest-priority eligible member

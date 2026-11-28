@@ -1,5 +1,7 @@
 # COORDINATOR-AUTOMATION-S2: Scheduled Advisory Intelligence and the Persistent Operator Proposal Queue
 
+> **Merged (dated annotation, 28 November 2026):** merged to `main` as #191 on 27 November 2026 (`2f730eb68`), then hardened by #195. The status line below is the original.
+
 Status: implemented on branch `feat/coordinator-automation-s2` (draft PR against `main`). Builds on S0 ([design](coordinator-automation.md)), S1 ([implementation](coordinator-automation-s1-implementation.md)) and M1 ([implementation](coordinator-model-pool-m1-implementation.md)).
 
 S2 lets the Coordinator decide, deterministically, when a reasoning turn is warranted, run that turn through the existing M0/M1 briefing path against one eligible local model, record a durable provenance-bearing briefing, and optionally record one untrusted proposal for the operator. It adds advisory cognition, not operational authority: nothing in S2 can dispatch a harness, claim a route, touch a worktree or candidate, complete a task, merge, or retry an operational outcome.

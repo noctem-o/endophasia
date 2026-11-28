@@ -4,7 +4,42 @@ Status: **plans and research directions, not implemented capabilities.** Items m
 (linked); everything else is intent. The item numbers below (1-27) are cited by research notes and design documents and are kept.
 What runs today is in [status.md](status.md) and the [README](../README.md#what-works-today).
 
+## Current direction (November 2026)
+
+*Added 28 November 2026 at `d2024ac51`.* The delivery sequence further down predates the DEVELOP workbench, the Codex
+integration and the whole Coordinator programme. It is kept as dated history because research notes cite its item numbers.
+Current direction comes from the [November 2026 Coordinator roadmap](designs/coordinator-roadmap-2026-11.md) and
+[consolidation record](designs/coordinator-consolidation-001.md). There are three **independent** tracks, and the product track
+doesn't depend on neural cognition research succeeding.
+
+| Track | Item | Standing |
+| :--- | :--- | :--- |
+| Product | F1 deterministic operational visibility | Implemented (#196) |
+| Product | F2 guided operator actions: per-action confirmed proposal acknowledgement and dismissal, command preview, task triage with revision checks | Next product milestone; not started on `main` |
+| Intelligence research | Wiring grounding-failure diagnostics (`endo.coordinator-grounding-failure-diagnostic.v1`) into evaluation harnesses | Contract on `main` (#195); instrumentation under research |
+| Intelligence research | Candidate model and cognition-contract evaluation | Under research |
+| Intelligence research | Showing advisory value beyond deterministic rules | Unproven |
+| Intelligence research | Renewable lease heartbeats, revocation-responsive abort, S1 V1-pool parity, resource-policy remediation | Under research; required before any unattended long-budget use |
+| Execution & platform | E3/E4 structured event streaming and heterogeneous session infrastructure: per-attachment event logs, a store-format sentinel, push-based updates | Planned |
+| Execution & platform | An operator dispatch command for E2 assignment-linked attempts, and a first controlled heterogeneous builder/reviewer experiment | Planned |
+| Execution & platform | G1/G2 execution governance and workspace lifecycle safety | Planned |
+| Execution & platform | Continued trust-boundary hardening; workstation H0 | Ongoing; H0 blocked |
+
+**Separately gated (held):** the 24-hour naturalistic Coordinator trial, S3 higher-authority scheduling, hosted model pool M2,
+experimental `grounded-v1` cognition (open research PRs #192–#194) and unattended extended-resource leases. Each has a written
+entry gate in the documents above, and none is promoted by this roadmap.
+
+**Naming note.** The E2 record's handoff calls *E3* the first controlled heterogeneous builder/reviewer experiment. The November
+roadmap uses *E3/E4* for structured event streaming and heterogeneous session infrastructure. This page follows the roadmap and
+lists the experiment separately, without a number.
+
+**Longer-term, exploratory:** persistent agents with richer cognition (WORK and DREAM), hardware and robotics workflows, deeper
+systems integration, a dedicated Research workspace, live serving-time activation capture and a native client. These are
+directions, not commitments.
+
 ## Delivery sequence — current priority
+
+> **Dated (written before November 2026).** Kept for its item numbers; see [Current direction](#current-direction-november-2026) above.
 
 The numbered capability map below remains the long-term architecture. React Compare and the verified initial-state
 checkpoint APIs are on `main`. Single-turn governed Pi execution and bounded same-session two-turn continuation are

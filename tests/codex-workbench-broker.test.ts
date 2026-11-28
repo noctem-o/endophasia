@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,6 +24,7 @@ import { launchEndoCockpitV0 } from "../cockpit-http/host.ts";
 import { acquireEndoEventStoreWriterLockV0 } from "../storage/writer-lock.ts";
 import { presentLiveWorkbenchSession } from "../studio-ui/src/model/develop-session.ts";
 import { readWorkbenchStatus, readWorkbenchTranscript } from "../studio-ui/src/model/workbench-wire.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 const FAKE_CODEX = fileURLToPath(new URL("./fixtures/fake-codex-app-server.mjs", import.meta.url));
 let UI_DIR = "";
@@ -388,7 +389,7 @@ describe("CodexWorkbenchBrokerV0 — authority, privacy, wire validation, and ne
 		});
 
 		// Privacy boundary: canonical event log NEVER contains prompt/assistant/reasoning text.
-		const eventLog = readFileSync(join(root, "events", "events.log"), "utf8");
+		const eventLog = readEventLogBytesV0(root).toString("utf8");
 		expect(eventLog).not.toContain("PROMPT_PRIVATE_BROWSER_SECRET");
 		expect(eventLog).not.toContain("Streaming reply part 1");
 		expect(eventLog).not.toContain("Inspecting workspace");

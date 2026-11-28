@@ -1,5 +1,6 @@
 // The cockpit HTTP transport serves the bridge's contracts unchanged. These tests read real temporary stores through a real
 // loopback listener and compare every body with what the library returns directly, byte for byte.
+
 import { appendFileSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -26,6 +27,7 @@ import {
 } from "./cockpit-fixtures.ts";
 import { get, serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY } from "./cockpit-keyed.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 afterEach(stopServers);
 afterAll(() => removeTempRoots((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -39,7 +41,7 @@ function seeded(events = 5): string {
 		Array.from({ length: events }, () => event("agent.prompt-accepted")),
 	);
 	seedRegistry(root);
-	openEndoHarnessRegistryV0(root, "omp.default"); // a second attachment: opened, no records
+	mkdirSync(join(root, "harness", "omp.default")); // a second attachment directory with no records
 	return root;
 }
 
@@ -120,7 +122,7 @@ describe("text the privacy policy withholds never reaches a body", () => {
 			})),
 		});
 		// Non-vacuous: the hostile text is in the durable files the server reads.
-		const stored = readFileSync(join(root, "events", "events.log"), "utf8");
+		const stored = readEventLogBytesV0(root).toString("utf8");
 		for (const text of [CANARY, hostile[3]!]) expect(stored.includes(text), text).toBe(true);
 		expect(readFileSync(join(root, "harness", ATTACHMENT, "records.log"), "utf8").includes(CANARY)).toBe(true);
 
@@ -150,7 +152,7 @@ describe("a source field the presentation policy does not present never reaches 
 			}),
 			event("agent.prompt-accepted", { unlistedProbe: "plain-probe-value" }),
 		]);
-		const stored = readFileSync(join(root, "events", "events.log"), "utf8");
+		const stored = readEventLogBytesV0(root).toString("utf8");
 		for (const text of ["unlistedProbe", "plain-probe-value", "plain-nested-value"])
 			expect(stored.includes(text), text).toBe(true);
 

@@ -1,6 +1,7 @@
 // The DSH native cold importer (adapters/dsh-native/). Inputs are the committed REAL-runtime fixtures of the PR #70 study
 // (research/dsh-native/fixtures/real/, sanitised output of a real DSH 0.2.1-rc.2), plus SYNTHETIC variants built from them by code
 // (research/dsh-native/synthetic.ts). Each test says which, and the fixtures are never edited in place.
+
 import {
 	chmodSync,
 	cpSync,
@@ -41,6 +42,7 @@ import { createEndoEventStoreV0 } from "../runtime/contracts/event-store.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { compareEndoTrajectoriesV0, endoRecordDigestV0 } from "../runtime/contracts/trajectory.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const FIXTURES = join(ROOT, "research", "dsh-native", "fixtures", "real");
@@ -726,7 +728,7 @@ describe("no private content survives the whole path (SYNTHETIC canaries on a re
 		const outputs = [
 			canonicalEndoJsonV0(stored),
 			canonicalEndoJsonV0(t),
-			readFileSync(join(root, "events", "events.log")).toString("latin1"),
+			readEventLogBytesV0(root).toString("latin1"),
 		];
 		for (const canary of canaries) for (const output of outputs) expect(output, canary).not.toContain(canary);
 		store.close();

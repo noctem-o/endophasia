@@ -1,4 +1,5 @@
 // Isolated stores only. End-to-end identity assertions use the actual guarded HTTP comparison endpoint.
+
 import { appendFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { importDshSessionBytesV0 } from "../adapters/dsh-native/import.ts";
@@ -25,6 +26,7 @@ import { endoFrameBytesV0 } from "../storage/log.ts";
 import { event, ingestAll, removeTempRoots, tempRoot, treeHash } from "./cockpit-fixtures.ts";
 import { capabilityOf, get, raw, send, serve, stopServers } from "./cockpit-http-fixtures.ts";
 import { OTHER_KEY, TEST_KEY } from "./cockpit-keyed.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 const path = "/api/v0/compare/candidates";
 type Candidate = EndoCockpitCompareCandidatesV0["candidates"][number];
@@ -128,7 +130,7 @@ describe("recording evidence and public selection", () => {
 		const { record, response } = await discover(server);
 		const comparison = await get(server, selected(record.candidates[0]!));
 		expect(comparison.status).toBe(200);
-		expect(readFileSync(`${root}/events/events.log`, "utf8")).toContain(CANARY);
+		expect(readEventLogBytesV0(root).toString("utf8")).toContain(CANARY);
 		for (const r of [response, comparison])
 			for (const bytes of [r.body, JSON.stringify(r.headers)]) {
 				expect(bytes).not.toContain(CANARY);
@@ -220,7 +222,7 @@ describe("recording evidence and public selection", () => {
 		const root = seed([...pi(secret), ...pi(literalAlias)], `endo-${CANARY}-`);
 		const ds = dsh(root, `Tok_${CANARY}`);
 		const events = readEvents(root);
-		expect(readFileSync(`${root}/events/events.log`, "utf8")).toContain(CANARY);
+		expect(readEventLogBytesV0(root).toString("utf8")).toContain(CANARY);
 		const server = await serve(root, { readBudget: { duty: 1, burstMs: 1e6 } });
 		const { record, response } = await discover(server);
 		expect(record.candidates).toHaveLength(3);

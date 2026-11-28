@@ -306,7 +306,11 @@ export function createEndoFrameLogV0(path: string, options: EndoFrameLogOptionsV
 				);
 			}
 			const frame = frameOf(payload);
-			const fd = openSync(path, "a");
+			const fd = openSync(
+				path,
+				constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_NOFOLLOW,
+				0o666,
+			);
 			try {
 				writeExactSyncV0(fd, frame, path);
 				fsyncSync(fd);

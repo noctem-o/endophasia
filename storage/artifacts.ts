@@ -7,12 +7,12 @@
  * artifact that does not hash to its name is not that artifact. Reads re-verify on every
  * `get`, so a later tamper is detected, never served. Synchronous node:fs only.
  *
- * There is no log to recover: a crash mid-put leaves only `<digest>.tmp`, which is never
+ * There is no log to recover: a crash mid-put leaves only a unique temporary file, which is never
  * listed or served. Opened with `{ readOnly: true }`, the store creates no directory and
  * `put` throws.
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { type EndoDurableStoreOptionsV0, writeExactSyncV0 } from "./log.ts";
@@ -84,8 +84,8 @@ export function createEndoArtifactStoreV0(root: string, options: EndoDurableStor
 			if (sha256HexOfBytesV0(content) !== digest) {
 				throw new TypeError(`content does not hash to ${digest}; refusing to store it there`);
 			}
-			const tmp = `${file}.tmp`;
-			const fd = openSync(tmp, "w");
+			const tmp = `${file}.tmp-${randomUUID()}`;
+			const fd = openSync(tmp, "wx");
 			try {
 				writeExactSyncV0(fd, content, tmp);
 				fsyncSync(fd);

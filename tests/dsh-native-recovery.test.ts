@@ -4,6 +4,7 @@
 // Inputs: the REAL crash-resumed fixture of the PR #70 study, and SYNTHETIC variants built by code from the real tool-read fixture
 // (the variants say so). DSH recovery appends, with the last real event's time: error results for unanswered calls, a step/end for an
 // open step, and a turn/end of reason `interrupted` or `forked` (packages/core/session/src/repair.ts at the pinned commit).
+
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -24,6 +25,7 @@ import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
 import { createEndoEventStoreV0 } from "../runtime/contracts/event-store.ts";
 import { endoDigestKeyV0 } from "../runtime/contracts/keyed-digest.ts";
 import { createEndoDurableEventStoreV0 } from "../storage/event-store.ts";
+import { readEventLogBytesV0 } from "./helpers/event-log-bytes.ts";
 
 const FIXTURES = join(fileURLToPath(new URL("../", import.meta.url)), "research", "dsh-native", "fixtures", "real");
 const KEY = endoDigestKeyV0(Buffer.alloc(32, 0x51), "recovery-test");
@@ -257,7 +259,7 @@ describe("the historical header is verified, including the working directory, wi
 		dirs.push(root);
 		const durable = createEndoDurableEventStoreV0(root);
 		importDshSessionBytesV0(encodeFrames(withCwd, base, 4), durable, options);
-		expect(readFileSync(join(root, "events", "events.log")).toString("latin1")).not.toContain("CANARY-WORKDIR");
+		expect(readEventLogBytesV0(root).toString("latin1")).not.toContain("CANARY-WORKDIR");
 		durable.close();
 	});
 

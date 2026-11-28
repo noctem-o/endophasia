@@ -27,6 +27,7 @@ import { isWellFormedKindV0 } from "../protocol/identity.ts";
 import { isPlainJsonObjectV0 } from "../protocol/primitives.ts";
 import { EndoSchemaVersionErrorV0, endoFirstUnknownKeyV0, readEndoVersionedV0 } from "../protocol/versioned.ts";
 import { canonicalEndoJsonV0 } from "../runtime/contracts/canonical-json.ts";
+import { assertEndoAttachmentLockV0, type EndoAttachmentLockHandleV0 } from "./attachment-lock.ts";
 import {
 	createEndoFrameLogV0,
 	type EndoDurableStoreOptionsV0,
@@ -87,11 +88,14 @@ export function endoHarnessRegistryDirectoryV0(root: string, attachment: string)
 export function openEndoHarnessRegistryV0(
 	root: string,
 	attachment: string,
-	options: EndoDurableStoreOptionsV0 = {},
+	options: EndoDurableStoreOptionsV0 & { lock?: EndoAttachmentLockHandleV0 } = {},
 ): EndoHarnessRegistryV0 {
 	const readOnly = options.readOnly === true;
 	const directory = endoHarnessRegistryDirectoryV0(root, attachment);
-	if (!readOnly) mkdirSync(directory, { recursive: true });
+	const assertHeld = () => {
+		if (options.lock !== undefined) assertEndoAttachmentLockV0(root, attachment, options.lock);
+	};
+	if (!readOnly) assertHeld();
 	const log = createEndoFrameLogV0(`${directory}/records.log`, { readOnly });
 	const read = log.read();
 	const { frames } = read;
@@ -140,12 +144,14 @@ export function openEndoHarnessRegistryV0(
 		attachment,
 		append(kind, record) {
 			if (readOnly) throw new TypeError("the harness registry is open read-only");
+			assertHeld();
 			if (recovery.sealed) {
 				throw new TypeError(`the harness registry is sealed: frame ${recovery.corruptAt} failed verification`);
 			}
 			const entry = admit(kind, record);
 			// Stored as a plain JSON copy: later changes to the caller's object never reach the registry.
 			const copy = JSON.parse(canonicalEndoJsonV0(entry.record)) as { id?: string };
+			mkdirSync(directory, { recursive: true });
 			log.append(new TextEncoder().encode(canonicalEndoJsonV0({ kind, record: copy })));
 			records.push({ kind, record: copy });
 			if (copy.id !== undefined) ids.add(copy.id);

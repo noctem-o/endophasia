@@ -11,3 +11,7 @@ The shared storage adapter reads the same inputs and calls the same projection a
 ## Reading the board
 
 Counts reflect operator declarations. Completed is not verified. A failed receipt at a different HEAD is history; one surviving passing receipt doesn't establish complete history. Session activity names the evidence basis, and active refers to fresh recorded activity at the time shown, not liveness now. Explicit links come only from records; sessions with no known association aren't exposed by the project-scoped host. The board doesn't offer mutation or execution controls. It refreshes on demand and withdraws the reading on loss of pairing or scope.
+
+> **Later additions (dated annotation, 28 November 2026):** E2 (#186) added read-only Lanes and Graph views, and Studio F1 (#196)
+> added deterministic Attention, Resources, Schedules and Advisory views under the same launch boundary. See
+> [coordinator-studio-f1-002.md](coordinator-studio-f1-002.md) and the [Studio guide](../studio.md#coordinator-mission-board-paired-workspace-read-only).

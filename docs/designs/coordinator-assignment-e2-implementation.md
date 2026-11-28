@@ -1,5 +1,7 @@
 # Coordinator Assignment Integration — E2 Implementation Report & E3 Handoff
 
+> **Merged (dated annotation, 28 November 2026):** merged to `main` as #186 on 26 November 2026 (`00c431a2d`). The status line below is the original. The assignment dispatcher remains library-only on `main`; see §5 item 4.
+
 **Mission**: `COORDINATOR-ASSIGNMENT-003` (Primary milestone: **E2 — Governed assignment integration**)  
 **Branch**: `feat/coordinator-assignment-003`  
 **Baseline**: `origin/main` @ `c2b4d07e0` (PR #185 merged)  

@@ -1,8 +1,62 @@
 # What is implemented, in detail
 
-The README's [What works today](../README.md#what-works-today) summarizes the current source-tree state. This page keeps the
-implementation detail and its limitations. The real recordings and studies, with what each establishes and does not, are in
-[research/README.md](../research/README.md).
+The README's [What works today](../README.md#what-works-today) gives the short inventory with a maturity label per row. This page
+holds the evidence and limits behind each row, then the implementation detail for the older subsystems. The real recordings and
+studies, with what each establishes and does not, are in [research/README.md](../research/README.md). The claim-by-claim
+reconciliation from the November 2026 refresh is in [audits/documentation-reconciliation-2026-11.md](audits/documentation-reconciliation-2026-11.md).
+
+**Pinned tree for the sections marked "current":** `d2024ac51` (28 November 2026).
+
+## Maturity vocabulary
+
+| Label | Meaning |
+| :--- | :--- |
+| Implemented | On `main`, with an operator surface (CLI or Studio) and deterministic tests. |
+| Narrow | Implemented, but validated only in the configuration stated. |
+| Library | Implemented and tested, with no CLI or Studio entry point. |
+| Experimental | Works, and is explicitly non-authoritative, opt-in or disabled by default. |
+| Design only | A specification with no implementation. |
+| Under research | Open empirical question. Evidence may sit on unmerged research branches. |
+| Planned / exploratory | Intent, not capability. See [roadmap.md](roadmap.md). |
+| Gated | Held behind a written entry gate. Not to be promoted without meeting it. |
+
+## Current: evidence and limits, row by row
+
+<a id="develop"></a>
+<a id="coordinate"></a>
+
+| Capability | Evidence and limits |
+| :--- | :--- |
+| Projects, tasks, attempts and briefs | Atomic, locked, revisioned metadata under `<root>/develop/`, separate from the event store. Exercised by unit, multi-process, broker, HTTP, PTY and browser tests plus real work cycles ([WORK-CYCLE-001A/B](../research/work-cycle/README.md)); damaged authorisation records fail closed (`EVIDENCE-INTEGRITY-001`). |
+| Checks, receipts, plans, ledger & attention | Shell-free execution at clean commits with timeouts and lingering-process detection (Linux `/proc`; inconclusive where `/proc` is absent). Behavioural checks compare exit code and stdout only (no stdin, stderr, servers or browsers). Both `attempt evidence` and the cross-task attention overview read planned checks through the same acceptance ledger (`DEVELOP-ATTENTION-002`). Check environment variables are inherited and not attested. |
+| Protected attempt execution (`attempt protected-run`) | Terminal-approved execution of one prepared attempt through the Bubblewrap protected runner with controller binding, cross-route exclusivity (preventing dual live/protected dispatch of one attempt) and `attempt bridge` evidence inspection. Nothing is applied automatically to the live checkout and no task status moves. |
+| Working-tree provenance | Records Git blob ids and modes, never contents. Ignored paths are excluded; two equal states do not prove nothing happened between them; diffs never establish authorship. |
+| Workspace without an agent | Separate pairing; zero harness, session or command surface; hosts the read-only Coordinator Mission Board for the launched project. Covered by host, CLI and browser tests. |
+| Governed live Pi workbench | Terminal approval (or attested narrow Everyday grant on Linux with Pi 1.5.2 + local `Ornith-1.5-9B-Q8_0`), Course gauges, Field atmospheres, structured private activity (`tool` / `file-change` / `activity`) and non-authorising capability descriptor. Linux systemd user scopes confirm process cleanup where available. No general real-model workbench conformance claim. |
+| Governed live Codex CLI & workbench | Local Codex App Server behind `endo.develop-adapter.v0` in an isolated conservative `CODEX_HOME` (inherited MCP disabled at startup). Strict-only (no Everyday grants), targeted `turn/interrupt`, explicit `Reasoning summary` vs raw-thinking provenance, live usage with cached tokens, native tool and file approvals answered on the terminal only (allow once, cancel or decline; never session-wide; unsupported or permission-widening requests declined; read-only pending banner in Studio), and shared Pi/Codex single-writer store lock. Validated live against Codex CLI (`gpt-6.2-sol`) in CLI trials plus deterministic broker, PTY, HTTP and headless Chromium Studio tests. No `STEER` (`turn/steer` is wired, but its capability is `unverified` by default, so it isn't offered), no `QUEUE`, no prepared-attempt dispatch (`attempt/propose` is refused) and no concurrent Pi + Codex store sharing (E4) yet. |
+| Pi identity, recording & capability admission | Installed-package CI pins Pi 1.0.0 with a fake endpoint; real-model studies span Pi 1.0.1, 1.0.4, 1.5.0, 1.5.2 and 1.6.0. Not general-version conformance. |
+| Representation Explorer | Read-only offline TransformerLens 4.x `TransformerBridge` captures (`SmolLM2-135M-Instruct` verified with `9Q/3KV` GQA semantics), scale-invariant 2D Householder-QL PCA, explicit `UNAVAILABLE` gaps and strict CSP/wire gates. No live serving-time or GGUF internal-activation capture. |
+| DSH cold import & loss accounting | Five retained captures from pinned `dsh-v0.2.1-rc.2` (including failure/resume) plus adversarial tests. No live DSH control. |
+| Oh My Pi saved-session observer | Read-only metadata from OMP 18.x format-3 files, verified in place against local OMP 18.13.3/18.14.1 stores plus adversarial tests. No live observation or control. Claude Code, Hermes and Amp are not integrated. |
+| Capture & cassette replay | 40 exact replays across 4 recorded Pi sessions plus negative control with model responses held fixed. |
+| Sandboxed protected experiments (`v0`–`v3`) | Linux Bubblewrap with inside-sandbox preflight, confirmed scope termination before collection, controller-pinned baseline + verified staged change-set reconstruction (`v2`/`v3`), opt-in capability-consistent Pi prompt (`PI-RUNTIME-CONSISTENCY-001`), recording model relay and isolated hidden evaluator. Verified with real Pi 1.5.2 / 1.6.0 against local models (`DEVELOP-ACCEPTANCE-001`, protected real-repo studies). Re-hashing detects inconsistent records; a same-UID writer who rewrites a record and recomputes its digests is not detected, and nothing prevents host tampering. |
+| Initial scratch copies, continuation & A/A | Fresh tool-free Pi turns with separate approvals and independent receipt verification (`research/governed-initial-continuation/aa/operate.ts`). Not historical process restore or a general effect sandbox. |
+| Adapter contract, ACP v1 & v2 study | `endo.develop-adapter.v0` validated by conformance suites across Pi, synthetic Codex and real Codex App Server. ACP v1/v2 has deterministic tests plus opt-in OMP smoke path; no admitted ACP capability or real v2-agent conformance. |
+| Coordinator status, Mission Board & OpenClaw plugin (#174, #175) | Read-only projection (`endo.coordinator-status.v0`) of tasks, verification standing and recorded sessions, with freshness and an explicit basis per source. The board is project-scoped behind the paired workspace grant with bounded reads. The OpenClaw plugin (`integrations/openclaw-endophasia-status/`) reads the same projection. It never writes, moves tasks or dispatches. |
+| Coordination intent, E1 (#184) | `endo assign`, `dep`, `candidate` and `coordinator coordination`: atomic, revisioned `develop/coordination.json`. Every change names a revision, and dependency satisfaction is computed on read and never stored. Records intent only, and grants no execution authority. |
+| Governed assignment integration, E2 (#186) | `endo worktree register` (pointer-verified sibling worktrees, max 32) and `endo review` (project-scoped write-once advisory reviews, never receipts) are operator surfaces. Studio adds read-only Lanes and Graph views, and the offline liveness vocabulary never claims live state. One shared write-once route reservation (`develop/attempt-routes/`) covers the Pi workbench, protected and adapter dispatch. **The assignment dispatcher (`dispatchEndoAssignmentAttemptV0`) is library-only**: tests exercise AT01–AT24, but no CLI or Studio command calls it, and raw Pi and protected routes refuse assignment-linked attempts (`assignment-required`). Cross-file crash windows W1–W3 are handled conservatively and documented, and are not presented as transactions. |
+| S0 automation architecture (#187) | Design specification only. |
+| M1 local model pool (#188) | `endo.coordinator-model-pool.v0` with local `127.0.0.1` OpenAI-compatible members only. Health is zero-token `GET /health` and `/props` (plus `/models` on a single llama.cpp server, or `/v1/models` on a generic OpenAI-compatible server whose `/props` returns 404). Nothing sends `/slots` or `/metrics`, which can wake or load a llama.cpp model, so capacity is reported unknown. Fallback happens only before inference. Loopback does not attest which process or weights are listening. No hosted inference. |
+| S1 scheduler and resource observations (#189) | Durable schedule ledger under `develop/automation/` admitting only `observe-health` and `refresh-projection`. `endo scheduler tick` is one bounded, lease-fenced, zero-token pass. A tick writes resource observations, fire outcomes and schedule cursors, prunes retained fires and releases its lease; it never dispatches, claims a route or changes task or attempt records. Endophasia installs no timer (`print-systemd-unit` writes to stdout only). A schedule is enabled when added unless `--disabled` is passed, so it can fire when its trigger falls due on a tick that an operator-owned timer runs. |
+| Coordinator briefing (#178, hardened in #195) | One sandboxed OpenClaw turn with one read-only status tool, through a relay allowing one route, one model and two exchanges. The answer is capped at 4,096 bytes, with closed termination diagnostics and no raw reasoning stored. Marked non-authoritative model interpretation. Validated against OpenClaw 2026.11.7 and 2026.11.10. |
+| S2 scheduled advisory intelligence (#191, hardened in #195) | `endo advisory`. Schedules are created disabled and unauthorised. A grant binds schedule id, revision and incarnation, project, action, pool digest, uncertainty policy, budget and validity window. Deterministic semantic-digest wake gating, write-once turn ledger, reservations charged in full when usage is missing, and no automatic retry. Proposals are one of six closed kinds, stored untrusted, and grant nothing. Its durable advisory records are confined to `develop/automation/advisory/` (it also takes the shared automation lock beside it, and the OpenClaw runner uses temporary prompt, config and capture files outside the store); test S0-AT10 compares the rest of the store, excluding the lock, before and after. Live experiments (#192–#194, unmerged) found the mechanism sound, but Inkling 2 Mini achieved no grounded advisory competence under the experimental `grounded-v1`, and advisory value above deterministic rules is unproven ([consolidation](designs/coordinator-consolidation-001.md) §6). |
+| Studio F1 (#196) | Attention (`endo.coordinator-attention-rules.v1`, four tiers, observed / rule consequence / not established), Resources (recorded only, `liveProbed: false`), Schedules (`executesSchedules: false`) and Advisory (untrusted, `authority: none`, no accept, dismiss or execute controls). A project-scoped `GET` endpoint: S2 history and per-project data are filtered to the launched project, while store-level S1 schedules and resources, and whole-host counts of unlisted sessions, are shown deliberately; foreign project ids and absolute paths are redacted; zero locks held across I/O, and zero network or model probes, proven by a sentinel in the browser test. F2 actions are not delivered. |
+
+<a id="history-detail"></a>
+## Implementation detail by subsystem
+
+The sections below predate the Codex and Coordinator work and describe the older subsystems in depth. They remain accurate for what they cover; where a statement has since been overtaken it is marked with a dated note.
+
 
 **Implemented and tested here:**
 
@@ -135,6 +189,10 @@ implementation detail and its limitations. The real recordings and studies, with
 
 ## Browser interface (Endophasia Web, currently `endo studio`)
 
+> **Note (28 November 2026):** this section describes the browser interface as it stood before the Codex workbench (#183),
+> the Protected Experiment Inspector (#171), the Mission Board (#175), E2's Lanes and Graph views (#186) and Studio F1 (#196).
+> All of those are on `main`; see [studio.md](studio.md) and the rows above.
+
 **Endophasia Web** is the proposed user-facing name for the existing read-only browser interface (`endo studio`, [docs/studio.md](studio.md)): a read-only
 browser interface on `127.0.0.1`, behind a private per-launch address, over the observation bridge (`cockpit/`) and a local
 read-only server (`cockpit-http/`) ([design](cockpit.md), [the frontend](cockpit-ui.md)). It shows an Observe workspace: an overview of the recorded window, the
@@ -208,11 +266,18 @@ artifact contains the earlier browser page.
 
 ## Not yet built
 
-**Not yet built:** the proposed COGNITION, VERIFY and EVOLVE browser workspaces (DEVELOP is built for recorded sessions and for one attached Pi session; it does not yet start harnesses, open arbitrary projects, schedule work or coordinate agents); a
+> **Note (28 November 2026):** written before the Codex live integration and the Coordinator programme. DEVELOP now also
+> attaches a live Codex App Server, and coordination intent (E1/E2) and deterministic and advisory scheduling (S1/S2) exist as
+> described above. An Evolve workspace exists as the read-only Protected Experiment Inspector, and `coordinator brief` and
+> `advisory tick` reach one local model through a sandboxed OpenClaw agent. Still unbuilt: governed experiment execution from Evolve,
+> Studio F2 operator actions, concurrent heterogeneous sessions in one store (E4), live attachments for harnesses other than Pi and
+> Codex, and the remaining items below.
+
+**Not yet built:** the proposed COGNITION, VERIFY and EVOLVE browser workspaces (DEVELOP was then built for recorded sessions and for one attached Pi session); a
 model-internal OBSERVE view, observation providers and typed Observe scenes; the WebGPU browser renderer; an optional Pi
 extension for active-tool control; model-originated steering proposals and an external authority provider; any live provider
 integration wired into a command; the full trajectory / experience laboratory; RL training-provider integration;
-attachments for other harnesses; and the proposed Rust/GPUI native Endophasia application. WORK and DREAM are proposed
+live attachments for harnesses other than Pi and Codex; and the proposed Rust/GPUI native Endophasia application. WORK and DREAM are proposed
 cognition profiles within a possible COGNITION workspace, not existing top-level workspaces; no profile selector or policy
 compiler exists. A dedicated Research workspace, skill benchmarking, agent-hierarchy experiments and hardware workflows
 also remain proposals, not implemented capabilities.

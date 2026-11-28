@@ -1,5 +1,7 @@
 # COORDINATOR-STUDIO-F1-002 — Deterministic Coordinator Studio F1
 
+> **Merged (dated annotation, 28 November 2026):** merged to `main` as #196 on 28 November 2026 (`d2024ac51`). The status line below is the original.
+
 **Status:** Reviewable F1 product increment (branched from `origin/main` `2f730eb680e87d04d3a41bbb9d398e6b9a97794c`)  
 **Guiding Principle:** Build an evidence-aware coordination environment that is genuinely useful when every language model is unavailable.
 

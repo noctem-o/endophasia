@@ -1,47 +1,44 @@
 <a id="endophasia"></a>
 
-<div align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/endophasia-plate-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/endophasia-plate-light.svg">
+  <img src="docs/images/endophasia-plate-light.svg" width="100%" alt="Endophasia title plate, conceptual artwork. A wavering line labelled inner speech enters an instrument and continues only as the reported record (not evidence). Three other records run beside it from their own sources: observed, from the runtime (gaps stay gaps, with one gap marked unavailable); checked, from your command (a failure at an earlier commit and a pass at HEAD); and authorised, from the operator (a flat line with a single pulse).">
+</picture>
 
-<br>
-
-<h1>endophasia</h1>
-
-<p><strong>Work with agents. Inspect the evidence. Test what changes.</strong></p>
-
-<p>
-<em>An old word for inner speech — a local-first workbench and research instrument<br>
-for checking what coding agents actually did, and keeping the record for every claim.</em>
+<p align="center">
+<strong>A local-first, evidence-aware studio for coding agents.</strong><br>
+<sub>Develop with them · coordinate them · observe and compare them · experiment on them.</sub>
 </p>
 
-<p>
+<p align="center">
   <a href="#what-works-today"><img src="https://img.shields.io/badge/status-experimental-637d69?style=flat-square" alt="Status: experimental"></a>
-  <a href="#work-with-a-live-agent"><img src="https://img.shields.io/badge/runtimes-Pi%20%C2%B7%20Codex-536c85?style=flat-square" alt="Live runtimes: Pi and Codex"></a>
-  <a href="#quick-start"><img src="https://img.shields.io/badge/node-%E2%89%A522.19-4c5966?style=flat-square" alt="Node >= 22.19"></a>
+  <a href="#develop"><img src="https://img.shields.io/badge/live%20harnesses-Pi%20%C2%B7%20Codex-536c85?style=flat-square" alt="Live harnesses: Pi and Codex"></a>
+  <a href="#quick-start"><img src="https://img.shields.io/badge/node-%E2%89%A522.19-4c5966?style=flat-square" alt="Node 22.19 or later"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-94765e?style=flat-square" alt="License: Apache 2.0"></a>
 </p>
 
-<p>
+<p align="center">
+  <a href="#why-it-exists">Why</a> &nbsp;·&nbsp;
+  <a href="#four-ways-of-working">Capabilities</a> &nbsp;·&nbsp;
   <a href="#quick-start">Quick start</a> &nbsp;·&nbsp;
-  <a href="#how-develop-works">How it works</a> &nbsp;·&nbsp;
-  <a href="#endophasia-web">Browser instrument</a> &nbsp;·&nbsp;
-  <a href="#what-works-today">What works</a> &nbsp;·&nbsp;
+  <a href="#what-works-today">Status</a> &nbsp;·&nbsp;
   <a href="#architecture">Architecture</a> &nbsp;·&nbsp;
   <a href="#research-direction">Research</a> &nbsp;·&nbsp;
+  <a href="#roadmap">Roadmap</a> &nbsp;·&nbsp;
   <a href="#documentation">Docs</a>
 </p>
 
-<br>
-
-<img src="docs/images/readme-hero-field-storm-1440.png" alt="Endophasia Develop workbench in Field mode with Storm atmosphere: single-line session and worktree head with a graphite Request stop; folded model-provided reasoning; four Pi tool calls with the first opened to its reported arguments; measure-aligned Strict mode caption above a compact composer; Course gauges; and a Context column leading with staged, unstaged and untracked counts above changed files" width="100%">
-<p><sub><strong>Field (Storm)</strong> — live <em>Course</em> gauges, folded model-provided reasoning, inspectable tool calls with explicit safe-preview &amp; provenance labels, Git tree changes and terminal-gated Strict mode (synthetic fixture; weather is scenery).</sub></p>
-
-</div>
-
 ---
+
+*Endophasia* is an old word for inner speech. Coding agents produce a lot of it: plans, reasoning, progress notes, and the
+confident closing line that says the tests pass. Endophasia is a workbench for working alongside those agents, and an instrument
+for finding out what they actually did. It shows the reasoning and reports a runtime supplies, labelled by source and marked where they were redacted or truncated, and it never treats them as evidence. What counts is
+what was observed, what was checked at which commit, and what a person explicitly allowed.
 
 > **A coding agent says the work is done and the tests exit `0`.**
 > Is the program right? Is the code you are reading the code that was checked?
-> Endophasia answers from records — never from the agent's report.
+> Endophasia answers from records, never from the agent's report.
 
 ```console
 $ node calc.mjs '2+3*4'
@@ -59,29 +56,167 @@ $ endo attempt evidence --attempt <id>
   criterion [plan: precedence] 1. 2+3*4 is 14: A planned check failed at HEAD
 ```
 
-<p align="center"><sub>Real output from the <a href="#take-the-five-minute-tour">five-minute tour</a> below, abridged and re-wrapped. The comment on the second line is added.</sub></p>
+<p align="center"><sub>Real output from the <a href="docs/quickstart.md#take-the-five-minute-tour">five-minute tour</a>, abridged and re-wrapped. The comment on the second line is added.</sub></p>
 
-The command exited `0`, so its receipt records what ran. The plan stated what it should *print*, so the ledger marks the criterion failed and prints the first line that differs.
+The command exited `0`, so its receipt records what ran. The plan said what it should *print*, so the ledger marks the
+criterion failed and shows the first line that differs. The task stays open until you decide otherwise.
 
-| Develop | Observe & Compare | Experiment |
-| :--- | :--- | :--- |
-| Frame tasks, attempts and verification plans before work starts. Approve live [Pi](https://github.com/earendil-works/pi) or [Codex](docs/designs/develop-codex-studio.md) dispatches on your terminal, run your own checks, and read one ledger of what holds at `HEAD`. | Record Pi and Codex sessions, cold-import DeepSeek Harness runs, read Oh My Pi metadata in place, diff trajectories layer by layer, and explore offline activation captures without inventing missing signals. | Replay sessions against fixed model cassettes, or run untrusted agents inside verified Bubblewrap sandboxes with staged multi-file change sets and hidden evaluators. |
-| [Quick start](#quick-start) · [How DEVELOP works](#how-develop-works) | [Browser instrument](#endophasia-web) · [Representation Explorer](docs/designs/observe-representation-explorer.md) | [Protected runs](docs/protected-experiments.md) · [Research index](docs/research-index.md) |
+---
 
-Pi is the reference runtime and Codex (local App Server) is the second live integration behind the neutral `endo.develop-adapter.v0` contract; each harness still owns its own execution loop.
+## Why it exists
 
-> [!NOTE]
-> **Build from source for everything on this page.** `main` is well ahead of the npm releases. Published
-> `0.1.0-alpha.2` (22 October 2026) ships an earlier read-only browser page without the React workspaces, DSH import,
-> Representation Explorer, live workbench, staged protected runs or DEVELOP records described here. The source manifest
-> still reads `0.1.0-alpha.2`, so the version string alone does not distinguish a source build from the tarball. See
-> [CHANGELOG.md](CHANGELOG.md) and [docs/release-0.1.0-alpha.2.md](docs/release-0.1.0-alpha.2.md).
+Agents are getting more capable faster than our ability to tell what they did. A harness reports that a prompt was accepted,
+a model reports that it reasoned, a test suite exits zero, a reviewer agent approves. Each of those is a claim from
+someone. Endophasia is built on the view that a useful agent environment keeps those claims apart and labels each one,
+and that it has to stay useful when every model is switched off.
+
+These are the working rules. Each one is enforced somewhere in the code, not only stated here:
+
+| Rule | What it means in practice |
+| :--- | :--- |
+| **Intelligence is not authority.** | Model output can't create a schedule, a grant or a dispatch. Coordinator proposals carry `authority: none`. |
+| **Observation is not interpretation.** | Every record names its basis: controller-observed, agent-reported, derived, or interpreted by a model. |
+| **A passing check is not acceptance.** | A receipt records what *your* command did at one commit. It never moves a task. Only you do. |
+| **A model's report is not independent evidence.** | An agent-written review stays `advisory-agent-review` and can never become a host check receipt. |
+| **Missing stays missing.** | An unrun check reads *not run*, withheld reasoning reads *withheld*, and an unreadable source is named as unavailable or unreadable. None is ever rounded to zero or passed silently. |
+| **Accepted is not executed.** | A runtime accepting a request, consuming it, and the effect that followed are three separate records. |
+| **Capability is measured.** | Harness capabilities are admitted from conformance evidence. Changing the runtime invalidates the evidence that depended on it. |
+| **Harnesses stay themselves.** | Pi and Codex sit behind one adapter contract without being flattened. Each keeps its own loop, tools and control set. |
+| **Useful with every model off.** | The Coordinator's operational views make zero model calls. Neural advice is an optional layer on top. |
+| **Change is promoted by evidence.** | A candidate can win an evaluation and still lack permission to replace anything. Nothing promotes itself. |
+
+### Autonomy is not authority
+
+Endophasia can do some things without you watching, and it is worth being exact about which ones. Endophasia installs no
+timer or service itself (`endo scheduler print-systemd-unit` prints an example and writes nothing). But if *you* run its ticks from a
+timer, an S1 tick can observe local model health with zero-token `GET` requests and record what it saw. An S2 tick, for a schedule you
+have enabled and explicitly granted, can ask one local model for a briefing within fixed turn, token and time ceilings, if its wake gate admits a turn. Neither tick
+dispatches an agent, claims an attempt, moves a task, applies a change or merges anything, and nothing the model writes can change that.
+
+Authority comes from explicit operator acts, and they take different forms. These are worth telling apart:
+
+- **Per-send terminal confirmation.** In Strict mode, each dispatch the live workbench page requests needs confirmation on the
+  controlling terminal: a phrase, or a short code where `--confirm short` is enabled. Each prepared attempt and each protected attempt run
+  always needs its own phrase. Codex is always Strict.
+- **A bounded grant.** Pi's Everyday mode replaces per-send approval with one terminal-issued session grant, and only inside a narrow
+  attested configuration (described [below](#develop)). An S2 grant authorises advisory turns, not actions.
+- **An explicit command.** Running `endo harness attach --prompt …` or `endo task status …` is itself the operator's act, with no extra
+  confirmation step. A paired workspace page can likewise edit task metadata, but it cannot prompt, steer or stop an agent.
+
+---
+
+## Four ways of working
+
+These are four ways of working with the same local records, not four products. Each section says how mature each part is.
+Every screenshot is the real Studio rendering data from the repository's browser tests, with no model running. Session and run data are
+**synthetic fixtures**. The Representation Explorer shows a real offline capture of a small model, committed to the repository.
+How each was produced is recorded in [docs/images/README.md](docs/images/README.md).
+
+### Develop
+
+Work with an agent through the harness you already use. Frame a task and an attempt with a verification plan before work
+starts, approve each dispatch on your terminal, run your own checks, and read one ledger of what holds at `HEAD`.
+
+<img src="docs/images/readme-hero-field-storm-1440.png" width="100%" alt="Develop workbench in Field appearance with the Storm atmosphere: session and worktree header, folded model-provided reasoning, four Pi tool calls with the first opened to its reported arguments, a Strict mode caption above the composer, Course gauges, and a Context column with staged, unstaged and untracked counts.">
+<p><sub><strong>Pi live workbench, Field appearance, Storm atmosphere</strong> (synthetic fixture). Course gauges, folded model-provided reasoning, inspectable tool calls, Git changes and terminal-gated Strict mode. The weather is scenery: its renderer receives no session state.</sub></p>
+
+- **Live workbench.** [Pi](https://github.com/earendil-works/pi) is the reference runtime and Codex (local App Server) is the
+  second live integration, both behind the harness-neutral `endo.develop-adapter.v0` contract. The page can *ask*. Only the
+  controlling terminal approves. **Codex is Strict-only.** Pi can run in **Everyday** mode (one terminal grant for bounded
+  page-driven sends) only inside one narrow attested configuration: stock Pi 1.5.2, the local `Ornith-1.5-9B-Q8_0` model through
+  the governed relay (one model exchange, at most 128 completion tokens), no tools, a read-only workspace snapshot, no
+  credentials and no `--project`. Everywhere else it runs Strict. Codex's own native tool and file approvals are answered on the
+  terminal too: allowed once, cancelled or declined, never for a whole session. Over-long or unsupported requests are declined, and a
+  requested widening of scope or permissions is never granted.
+- **Tasks, attempts and verification.** Plans, operator-run checks at clean commits, receipts, behavioural diffs, an acceptance
+  ledger, working-tree provenance, and an attention overview across tasks.
+- **Protected attempts.** `endo attempt protected-run` sends one prepared attempt through the Bubblewrap protected runner once,
+  after a terminal phrase, and seals a candidate binding when termination is confirmed. It applies nothing.
+
+> [!WARNING]
+> Terminal approval governs **dispatch**. It does not sandbox the tools Pi or Codex runs. Codex's own `--sandbox` is
+> native to Codex and separate from Endophasia's gate, and `endo attempt check` runs your command with your permissions.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="docs/images/codex-workbench-strict-1280.png" alt="Codex live workbench in Instrument appearance after a completed turn: user prompt, a Reasoning summary labelled as relayed by the runtime and not raw thinking, command and file-change activity reported by codex-live, an Accepted by the runtime panel, a Strict mode caption, and Git changes in the Context column.">
+      <br><sub><strong>Codex workbench, Strict-only</strong> (synthetic fake App Server). The reasoning summary is labelled as relayed by the runtime, not raw thinking. Acceptance is shown as a reply, not a result.</sub>
+    </td>
+    <td width="50%" valign="top">
+      <img src="docs/images/readme-instrument-ledger-1440.png" alt="Develop workbench in Instrument appearance showing the six-stage Course rail, the acceptance ledger against HEAD, the Strict mode bar and Git changes.">
+      <br><sub><strong>Instrument appearance and acceptance ledger.</strong> Six record-backed stages (<code>Brief · Assent · Send · Run · Check · Judge</code>) and a per-criterion ledger against <code>HEAD</code>. Checks are observed. Acceptance stays yours.</sub>
+    </td>
+  </tr>
+</table>
+
+<a id="coordinator"></a>
+### Coordinate
+
+Organise tasks, participants, assignments, dependencies, worktrees, resources and schedules across agents. The Coordinator is
+built as a **deterministic operational environment first**. It ranks recorded facts with a published ruleset and shows what it
+does not know. **Advisory intelligence second**: optionally, a local model can read a bounded view and produce a briefing (on demand, printed to
+stdout) or, under an S2 schedule, a stored briefing and at most one proposal, kept as untrusted interpretation that grants nothing.
+
+<img src="docs/images/coordinator-f1-attention-1440.png" width="100%" alt="Coordinator Mission Board, Attention view, synthetic fixture. A banner names the ruleset endo.coordinator-attention-rules.v1 and says it is deterministic rule ranking with zero language models, not a verified optimal plan. Tier counts read 2 hazards, 4 blockers, 5 verification and 2 observation. The first item is an unverified session termination hazard, with separate Observed, Rule consequence and Not established lines.">
+<p><sub><strong>Mission Board → Attention</strong> (Studio F1, synthetic multi-agent fixture). Hazards, blockers, verification gaps and observations, each split into <em>Observed</em>, <em>Rule consequence</em> and <em>Not established</em>. Read-only, with zero inference calls.</sub></p>
+
+| Layer | What it does | Runs when | Model | Authority |
+| :--- | :--- | :--- | :--- | :--- |
+| **Status & Mission Board** | Tasks, verification standing and recorded sessions with freshness: across projects in the CLI, for the launched project on the board | On read | None | None |
+| **Coordination intent** (E1, E2) | Assignments, dependencies, candidates, registered sibling worktrees, agent-reported reviews, worktree conflicts and hazards; Lanes and Graph views | Operator CLI | None | Records intent only |
+| **Studio F1** | Deterministic Attention, Resources, Schedules and Advisory views in the paired workspace | On read or opt-in 30 s refresh | **Zero calls, zero wakes** | Read-only |
+| **S1 scheduler** | Durable schedule ledger, zero-token local health observations, operator-declared allowance windows | `endo scheduler tick`, run by you or a timer you own | Health `GET` only, 0 tokens | None |
+| **M1 model pool** | Chooses one eligible *local* member for a briefing. Fallback happens only before inference | Per briefing | Local only | None |
+| **Briefing** | One sandboxed OpenClaw turn with one read-only status tool; the answer goes to stdout and nothing is stored | `endo coordinator brief` | One local model | Advisory |
+| **S2 advisory schedules** | Wake-gated briefings and at most one untrusted proposal per turn, with budgets and crash-honest accounting | `endo advisory tick`, only for an enabled schedule with a current grant | One local model, bounded | Proposals grant nothing |
+
+**Disabled by default.** An S2 schedule is created disabled and unauthorised. A grant binds that exact revision, pool digest,
+budget and validity window, and any change voids it. **Assignment is not authorisation and readiness is not permission.** E2's
+governed dispatcher for assignment-linked attempts exists as a library with a full test matrix, but no CLI or Studio command
+reaches it yet. **F2** (guided operator actions such as acknowledging a proposal from the page) is the next product milestone and is not delivered.
+
+<table>
+  <tr>
+    <td width="33%" valign="top"><img src="docs/images/coordinator-f1-resources-1440.png" alt="Resources view, synthetic fixture: recorded S1 observations with liveProbed false, a stale local endpoint marked capacity-unknown with a self-reported, unauthenticated model name and free capacity not established."><br><sub><strong>Resources.</strong> Recorded, never probed. <code>reachable ≠ ready</code>, <code>unknown ≠ zero</code>.</sub></td>
+    <td width="33%" valign="top"><img src="docs/images/coordinator-f1-schedules-1440.png" alt="Schedules view, synthetic fixture: read-only ledger with executesSchedules false, an enabled S1 observe-health schedule, one claimed-incomplete and one completed zero-token fire."><br><sub><strong>Schedules.</strong> <code>executesSchedules: false</code>. Claimed, dispatched, completed and published are kept apart.</sub></td>
+    <td width="33%" valign="top"><img src="docs/images/coordinator-f1-advisory-1440.png" alt="Advisory view, synthetic fixture: banner reading Untrusted model interpretation, advisory only, authority none; one recorded briefing refused with generation-limit, its model provenance and a full-reservation token charge because usage was incomplete."><br><sub><strong>Advisory.</strong> Untrusted, <code>authority: none</code>. A refusal and its full-reservation charge, because missing usage is not zero.</sub></td>
+  </tr>
+</table>
+
+### Observe & compare
+
+Inspect what agents did after the fact, with every source labelled for what it is. Live Pi and Codex sessions are
+**recorded**. Saved DeepSeek Harness sessions are **cold-imported** with explicit mapping losses. Oh My Pi's saved files are
+**read in place** as metadata only. Neither of those two is a live integration. Pi trajectories are compared layer by layer
+(lifecycle, tool calls, tool results, outcome) as `EXACT`, `DIVERGED` or `UNAVAILABLE`. Studio's Compare workspace accepts
+Pi and DSH recordings.
+
+<img src="docs/images/observe-representation-explorer-1440.png" width="100%" alt="Observe Representation Explorer showing a 2D PCA projection of a SmolLM2 residual stream with Observed, Derived, Interpreted and Unavailable badges.">
+<p><sub><strong>Observe → Representation Explorer.</strong> Offline TransformerLens <code>TransformerBridge</code> captures (<code>endo studio --representations &lt;dir&gt;</code>) with strict <code>OBSERVED</code> / <code>DERIVED</code> / <code>INTERPRETED</code> / <code>UNAVAILABLE</code> separation. These are captures made offline, not live inspection of a serving model.</sub></p>
+
+Model-provided reasoning is relayed as emitted and labelled by provenance, for example Codex's *Reasoning summary* against raw
+thinking. It is never presented as a verified trace of the model's internal computation.
+
+### Experiment & evolve
+
+Run untrusted agents inside a Bubblewrap sandbox that is verified from the inside before execution. Collect staged multi-file
+change sets only after the agent's processes are confirmed ended, and grade them with hidden cases in a separate evaluator
+sandbox. Replay recorded sessions against fixed model cassettes to separate what the model did from what the harness and the
+environment did.
+
+<img src="docs/images/evolve-protected-inspector-1440.png" width="100%" alt="Evolve, Protected Experiment Inspector, synthetic fixture: four runs including one with refusals and one unsupported schema version; a refused-records panel listing an unfinalised attempt and a digest mismatch; a task-by-condition matrix; and per-trial evaluated outcomes shown separately from agent process completion.">
+<p><sub><strong>Evolve → Protected Experiment Inspector</strong> (synthetic runs). Refused and tampered records are counted as attrition, never as passes. Evaluated correctness and agent process completion are shown separately.</sub></p>
+
+The wider loop of observing, proposing, isolating, evaluating, comparing, admitting and promoting is a design direction ([vision](docs/vision.md),
+[Evolve](docs/evolve.md)). No self-improvement loop runs, and a measured improvement never promotes or deploys itself.
 
 ---
 
 ## Quick start
 
-Requires **Node.js >= 22.19.0** and Git with a configured identity (`user.name` and `user.email`): checks run only at a clean commit.
+Requires **Node.js ≥ 22.19.0** and Git with a configured identity (checks run only at a clean commit). Build from source:
+`main` is well ahead of the npm releases.
 
 ```sh
 git clone https://github.com/noctem-o/endophasia.git
@@ -91,267 +226,41 @@ npm run build
 alias endo="node $PWD/dist/cli/index.js"
 ```
 
-The alias runs the CLI built from this checkout ahead of any older global `endo`. Rebuild after pulling source changes.
+<a id="take-the-five-minute-tour"></a>
+**Take the five-minute tour.** No agent, no model, no cost: you play the agent in a throwaway repository, and one bug, one
+plan, one receipt and one ledger show the difference between *ran* and *right*. The tour is in [docs/quickstart.md](docs/quickstart.md#take-the-five-minute-tour).
 
-### Take the five-minute tour
-
-No agent, no model, no cost — you play the agent in a throwaway Git repo and store.
-
-<details open>
-<summary><strong>Walk through one bug, one plan, one receipt and one ledger</strong> (6 steps)</summary>
-
-**1. Create a small calculator with an operator-precedence bug.**
-
-```sh
-mkdir ~/endo-tour && cd ~/endo-tour
-export ENDO_STORE_ROOT=$PWD/store
-
-mkdir calc && cd calc && git init -q
-cat > calc.mjs <<'EOF'
-// Evaluates left to right, so 2+3*4 comes out as 20.
-const tokens = process.argv[2].match(/\d+|[+*]/g);
-let total = Number(tokens[0]);
-for (let i = 1; i < tokens.length; i += 2)
-  total = tokens[i] === "+" ? total + Number(tokens[i + 1]) : total * Number(tokens[i + 1]);
-console.log(total);
-EOF
-git add calc.mjs && git commit -qm "A calculator"
-```
-
-**2. Declare what a right answer looks like, before any work begins.**
-
-```sh
-cat > ../plan.json <<'EOF'
-{
-  "checks": [
-    {
-      "name": "precedence",
-      "argv": ["node", "calc.mjs", "2+3*4"],
-      "shows": "multiplication binds tighter than addition",
-      "expect": { "exitCode": 0, "stdout": "14\n" }
-    }
-  ],
-  "criteria": [{ "text": "2+3*4 is 14", "checks": ["precedence"] }]
-}
-EOF
-```
-
-**3. Register the project, add a task and prepare an attempt.** Each command prints the id the next one takes.
-
-```sh
-endo project add --name "Calculator" --path "$PWD"
-endo task add --project endo.project.<id> --title "Fix operator precedence"
-endo attempt prepare --project endo.project.<id> --task endo.task.<id> \
-  --objective "Make multiplication bind tighter than addition" --plan-file ../plan.json
-```
-
-Nothing has been sent anywhere. `endo attempt brief --attempt endo.attempt.<id>` prints the plain-text brief, plan included, ready to hand to any coding agent.
-
-**4. Run the check yourself, then read the ledger.**
-
-```sh
-endo attempt check --attempt endo.attempt.<id> --keep-output -- node calc.mjs '2+3*4'
-endo attempt evidence --attempt endo.attempt.<id>
-```
-
-The criterion reads *A planned check failed at HEAD*, as in the excerpt at the top.
-
-**5. Fix it, commit and check again.**
-
-```sh
-cat > calc.mjs <<'EOF'
-// Multiplication first, then addition.
-const terms = process.argv[2].split("+");
-const products = terms.map((term) => term.split("*").reduce((a, b) => a * Number(b), 1));
-console.log(products.reduce((a, b) => a + b, 0));
-EOF
-git commit -qam "Multiplication binds tighter"
-
-endo attempt check --attempt endo.attempt.<id> --keep-output -- node calc.mjs '2+3*4'
-endo attempt evidence --attempt endo.attempt.<id>
-endo attempt observe --attempt endo.attempt.<id>
-endo attempt provenance --attempt endo.attempt.<id>
-```
-
-The planned check now reads *Passed at HEAD*, followed by *at another commit … failed* — the earlier failure stays on record. `observe` captures what Git shows now, and `provenance` compares it against each checked commit. The task stays `open` until you decide with `endo task status`.
-
-**6. Open it in a browser.**
-
-```sh
-endo workspace open --project endo.project.<id>
-```
-
-Open the private loopback address it prints, enter the pairing code from the terminal and pick the task. Stop with **Ctrl-C** and delete `~/endo-tour` when done.
-
-</details>
-
-### Work with a live agent
-
-The live workbench attaches to [Pi](https://github.com/earendil-works/pi) (reference runtime) or **Codex** (local App Server), which you install and configure separately; Endophasia never installs, updates or patches either harness. It requires **Linux with `/proc` and a controlling terminal** — stdin and stderr must both be that terminal, and piped or redirected approval input is refused.
+<a id="work-with-a-live-agent"></a>
+**Work with a live agent.** Install and configure [Pi](https://github.com/earendil-works/pi) or Codex separately. Endophasia
+never installs, updates or patches either one. The workbench needs Linux with `/proc` and a controlling terminal.
 
 ```sh
 endo doctor
 cd /path/to/project
 endo develop                        # live Pi workbench (reference runtime)
-endo develop --harness codex        # live Codex workbench (Strict-only; alias: endo codex session --workbench)
+endo develop --harness codex        # live Codex workbench (Strict-only)
 ```
 
-For Pi, `endo develop` is `endo harness attach --control --workbench` in one word, without `--prompt` (every prompt is requested from the page and authorised on the terminal). For Codex, `endo develop --harness codex` (or `endo codex session --workbench`) starts an isolated local Codex App Server (`CODEX_HOME` with inherited MCP servers disabled at startup) behind the same paired workbench surface. A session needs neither a registered project nor a task; when you want tasks, attempts and receipts beside the conversation, register once and name it:
+Open the private loopback URL the terminal prints and pair it with the one-time code. Approved dispatches do real agent work
+and may cost money. Modes, controls and every other entry point (recording from the CLI, Coordinator commands, DSH import,
+Oh My Pi, representation captures, protected experiments, demo fixtures) are in [docs/quickstart.md](docs/quickstart.md#more-ways-in) and the
+[live workbench guide](docs/develop-workbench.md).
 
-```sh
-endo project add --name "My project" --path /path/to/project
-endo develop --project endo.project.<id>
-endo develop --harness codex --project endo.project.<id> --model <model-id>
-```
+**Browse the Coordinator with no agent and no model.** `node scripts/demo-coordinator-studio-f1.mjs` builds a synthetic multi-agent
+store in a temporary directory, serves the paired workspace and prints the URL and pairing code. A sentinel endpoint stands in for a model, and the script exits non-zero if anything contacts it.
 
-| Harness | Modes | Live controls | Current boundaries |
-| :--- | :--- | :--- | :--- |
-| **Pi** (`endo develop`) | Requests **Everyday** (narrow attested sandbox only); otherwise **Strict** | `PROMPT`, `STEER`, `QUEUE`, `STOP`, prepared-attempt send (`attempt <id>`) | Terminal approval governs dispatch, not Pi's tools |
-| **Codex** (`endo develop --harness codex`) | **Strict-only** (no Everyday grants; `--mode everyday\|protected` refused) | `PROMPT`, targeted `turn/interrupt` (`STOP`), read-only pending native approval banner | Native Codex approvals are terminal-handled (deny-only fail-closed); no `STEER`, `QUEUE` or prepared-attempt dispatch yet; shares a single-writer event-store lock with Pi |
-
-**Modes** ([DEVELOP-UX-002](research/develop-ux/DEVELOP-UX-002.md)). On Pi, `endo develop` *requests* **Everyday**: one terminal authorisation grants bounded page-driven prompts, steers, queues and stops for 30 minutes (up to 200 sends) in one workspace — *only* while Endophasia verifies an enforced sandboxed session. Today that attested configuration is narrow: stock Pi 1.5.2 with local `Ornith-1.5-9B-Q8_0` through the governed relay, no tools, ephemeral session, read-only workspace snapshot, no credentials and no unrestricted network. Everywhere else — and always on Codex — the workbench runs in **Strict** (each request approved on the terminal) and states why. Use `--mode strict` to ask for Strict outright, `--mode protected` to refuse to start where protection cannot be enforced, or `--confirm short` to approve non-attempt Strict requests with a four-character code shown on the terminal.
-
-1. Open the private loopback URL printed in the terminal (it lands directly on **Develop**) and pair it with the one-time code. Type `pair` in the terminal for a fresh code.
-2. Draft a **Prompt** when idle, or request **Steer** / **Queue** (Pi) or **Request stop** during an open run whenever the broker offers them.
-3. In Strict mode, approve on the controlling terminal (e.g. `APPROVE PROMPT <digest>`). **The page can ask; only the terminal approves.** When Codex emits a native tool or file approval request, the page shows an unmistakable read-only pending banner while the controlling terminal handles it fail-closed.
-4. On Pi, send a prepared attempt via `attempt <id>` on the terminal or from the **Task** view — its full brief is shown and requires its own `APPROVE ATTEMPT` phrase, at most once per attempt.
-5. Watch the conversation, folded model-provided reasoning (with explicit `Reasoning summary` vs raw-thinking provenance on Codex), **Course** gauges, live usage and Git worktree changes in **Conversation | Changes**. **Follow** starts on (bounded, paused when hidden, toggleable off), or click **Read session** for an explicit read. Stop with **Ctrl-C**.
-
-Choose Pi's provider, model or binary with `--provider`, `--model` and `--pi`; choose Codex's model, reasoning effort, sandbox mode or binary with `--model`, `--effort`, `--sandbox` and `--executable`. Approved dispatches perform real agent work and may incur provider costs.
-
-> [!WARNING]
-> Terminal approval governs *dispatch*. It **does not sandbox the tools Pi or Codex runs** (Codex's own `--sandbox` flag
-> is native to the Codex runtime, separate from Endophasia's dispatch gate). Likewise, `endo attempt check`
-> runs your command with your permissions, and a repository's test suite is that repository's code.
-
-Guides: [live workbench](docs/develop-workbench.md) · [adapter contract](docs/designs/develop-adapter-contract.md) · [Codex live](docs/designs/develop-codex-live.md) · [Codex in Studio](docs/designs/develop-codex-studio.md) · [projects and tasks](docs/develop-tasks.md) · [sending an attempt](docs/designs/develop-attempt-workbench.md) · [private activity](docs/private-activity.md) · [process containment](docs/live-process-containment.md).
-
-### More ways in
-
-<details>
-<summary><strong>Record and inspect a Pi session from the CLI</strong></summary>
-
-```sh
-endo harness check ./recordings       # local protocol checks; no model call
-endo harness attach ./recordings --cwd /path/to/project --prompt "Summarise this project"
-endo harness status ./recordings
-endo harness overview ./recordings
-endo trajectory show ./recordings <session-id>
-endo studio ./recordings
-```
-
-`--cwd` is Pi's project directory; `./recordings` is the separate evidence store. Omitting the store resolves `$ENDO_STORE_ROOT`, then `$XDG_DATA_HOME/endophasia/store`, then `~/.local/share/endophasia/store`.
-
-</details>
-
-<details>
-<summary><strong>Check and run a live Codex session from the CLI</strong></summary>
-
-```sh
-endo codex check ./recordings --cwd /path/to/project              # offline App Server protocol check; zero model turns
-endo codex session ./recordings --cwd /path/to/project --model <id> --effort low
-endo codex session ./recordings --cwd /path/to/project --workbench # same Strict-only browser workbench as endo develop --harness codex
-```
-
-Spawns a local Codex App Server in an isolated conservative `CODEX_HOME` (inherited MCP servers disabled before startup, preserving read-only local auth). Every prompt, targeted `turn/interrupt` and native Codex approval request is confirmed on the controlling terminal; native approvals fail closed (deny-only). See [Codex live integration](docs/designs/develop-codex-live.md) and [Codex in Studio](docs/designs/develop-codex-studio.md).
-
-</details>
-
-<details>
-<summary><strong>Inspect read-only Coordinator status and mission brief</strong></summary>
-
-```sh
-endo coordinator status ./recordings [--project endo.project.<id>]
-endo coordinator brief ./recordings --project endo.project.<id>
-endo coordinator brief ./recordings --project endo.project.<id> --pool pool.json [--member <id>]
-endo coordinator pool check --pool pool.json
-endo schedule <add|list|enable|disable|remove> --root ./recordings ...
-endo scheduler tick --root ./recordings [--pool pool.json]
-endo scheduler print-systemd-unit --root ./recordings
-endo resource declare-window --root ./recordings --provider <id> --reset-at <iso>
-```
-
-Reads project tasks, verification standing and recorded session evidence read-only without mutating the store, moving tasks or dispatching work. `endo coordinator status` also powers the read-only OpenClaw status plugin. `endo schedule`, `endo scheduler tick` and `endo resource` manage the store-local deterministic schedule ledger and zero-LLM resource observation runner (S1; disabled by default, never installs timers or calls inference). See [Coordinator status](docs/designs/coordinator-status.md), [Mission Board](docs/designs/coordinator-board.md), [Coordinator runtime](docs/designs/coordinator-runtime.md), [Coordinator model pool (M1)](docs/designs/coordinator-model-pool-m1-implementation.md) and [Deterministic scheduler & observations (S1)](docs/designs/coordinator-automation-s1-implementation.md).
-
-</details>
-
-<details>
-<summary><strong>Browse the interface with demo fixtures</strong> (no Pi, no model)</summary>
-
-```sh
-node scripts/seed-cockpit-demo.ts ./demo-store
-endo studio ./demo-store
-```
-
-Seeds a new or empty directory with fake-Pi lifecycle fixtures and a recorded Pi 1.0.0 conformance specimen.
-
-</details>
-
-<details>
-<summary><strong>Explore offline model activation captures</strong> (Observe → Representation Explorer)</summary>
-
-```sh
-endo studio ./recordings --representations /path/to/captures
-```
-
-Loads validated offline TransformerLens 4.x `TransformerBridge` captures (`endo.observe-representation-capture.v0`) read-only, computes a deterministic 2D PCA slice on the server, and renders observed stats, derived coordinates, isolated interpretations and explicit `UNAVAILABLE` gaps — with zero Python, PyTorch or GPU requirement in Studio itself. See [Representation Explorer](docs/designs/observe-representation-explorer.md).
-
-</details>
-
-<details>
-<summary><strong>Import a saved DeepSeek Harness (DSH) session</strong></summary>
-
-```sh
-endo dsh import --root ./recordings /path/to/session-directory
-endo dsh loss-accounting
-endo studio ./recordings
-```
-
-Pass one persisted **Session format-4 directory**. Import leaves the source untouched and writes validated evidence with explicit mapping losses; it never starts, watches or controls DSH. See [DSH native importer](docs/dsh-native-importer.md).
-
-</details>
-
-<details>
-<summary><strong>Read Oh My Pi saved sessions in place</strong></summary>
-
-```sh
-endo studio ./recordings --omp-sessions /path/to/omp/sessions
-```
-
-Read-only metadata from OMP's own format-3 files (counts, kinds, built-in tool names, model names, exit records) — no message text, no live view, no control. Link a saved session to a task with `endo task link`. See [OMP observer](docs/develop-omp-observer.md).
-
-</details>
-
-<details>
-<summary><strong>Run a sandboxed experiment</strong> (Linux, Bubblewrap)</summary>
-
-```sh
-endo experiment protected-run <spec.json> --out <dir>
-endo experiment protected-report <dir>
-```
-
-An untrusted agent works on a disposable tree inside a Bubblewrap sandbox verified from the inside before execution starts. Submissions — either fixed paths (spec `v0`/`v1`) or opt-in arbitrary multi-file **staged change sets** verified against a controller-pinned baseline (`v2`/`v3`) — are collected only after agent processes are confirmed ended, then graded inside a separate evaluator sandbox from hidden cases. Model-connected runs (`v1`/`v3`) reach one declared local endpoint through a recording relay and can opt into capability-consistent Pi runtime prompting ([runtime-prompt.ts](adapters/sandbox/runtime-prompt.ts)). Refuses rather than run unprotected. See [protected experiments](docs/protected-experiments.md), [protected model access](docs/protected-model-access.md) and [staged change sets](docs/designs/protected-staged-changeset.md).
-
-</details>
-
-<details>
-<summary><strong>Install the earlier packaged alpha</strong></summary>
-
-```sh
-npm install -g endophasia@0.1.0-alpha.2
-endo doctor
-endo studio
-```
-
-Name the version explicitly: npm's `latest` tag pointed to the CLI-only `0.1.0-alpha.1` when last checked. `0.1.0-alpha.2` contains the earlier read-only browser page without the DEVELOP features above. See [docs/install.md](docs/install.md).
-
-</details>
+> [!NOTE]
+> **npm lags far behind.** As checked on 28 November 2026, npm's `latest` tag is the CLI-only `0.1.0-alpha.1` and `alpha` is
+> `0.1.0-alpha.2` (22 October 2026), with an early read-only browser page. Both have the Pi recording, trajectory and replay CLI, but
+> the live workbench, Codex, the Coordinator and the newer Studio workspaces need a source build. The source manifest still reads `0.1.0-alpha.2`, so the version string doesn't distinguish a source build. See
+> [docs/install.md](docs/install.md).
 
 ---
 
-## How DEVELOP works
+<a id="how-develop-works"></a>
+## How a piece of work is recorded
 
-You stay the operator throughout. Endophasia keeps records; it does not decide, and nothing runs on its own.
+You stay the operator throughout. Endophasia keeps the records. It doesn't decide.
 
 ```mermaid
 flowchart TB
@@ -375,243 +284,209 @@ flowchart TB
 | Record | What it says | What it never says |
 | :--- | :--- | :--- |
 | **Task** | What you intend to get done, with a status only you move | That any work satisfies it |
-| **Attempt & brief** | One frozen request: objective, constraints and verification plan | That anything was sent — preparing sends nothing |
-| **Plan** | Your checks, what each should show, and optional expected exit code / exact stdout | That the checks are sufficient |
-| **Receipt** | What Endophasia observed when *you* ran a command at a clean commit: commit hash, exit status, stdout SHA-256 | Acceptance — no status moves |
-| **Ledger** | Every planned check at `HEAD` (`passed`, `failed`, `inconclusive`, `mixed`, `stale`, `not run`), prior-commit history and each criterion's standing | That a passing check proves the criterion |
-| **Provenance** | Git blob ids and modes before send, at run end and now — never file contents | Authorship — a diff between two states is not who wrote it |
+| **Attempt & brief** | One frozen request: objective, constraints and verification plan | That anything was sent (preparing sends nothing) |
+| **Plan** | Your checks, what each should show, and optionally the expected exit code and exact stdout | That the checks are sufficient |
+| **Receipt** | What Endophasia observed when *you* ran a command at a clean commit: commit, exit status, stdout SHA-256 if the stream was read completely | Acceptance (no status moves) |
+| **Ledger** | Each planned check at `HEAD` (`passed`, `failed`, `inconclusive`, `mixed`, `stale`, `not run`), with history | That a passing check proves the criterion |
+| **Provenance** | Git blob ids and modes before the send, at run end and now, never file contents | Authorship: a diff between two states doesn't say who wrote it |
 
-### Four laws of the instrument
-
-- **Only you run commands.** Checks run the exact arguments after `--` with no shell. Nothing stored in a plan, page or record is ever executed.
-- **Only the terminal approves.** A paired page drafts and requests; only the controlling terminal authorises dispatch.
-- **A passing check is not acceptance.** A receipt records an execution; a diff records Git blobs; only you move a task.
-- **Missing stays missing.** An unrun check, a damaged authorisation record, a withheld reasoning block or an absent signal is reported explicitly — never rounded to zero or silently passed.
-
-Design records: [work attempts](docs/designs/develop-work-attempts.md) · [receipts](docs/designs/develop-verification-receipts.md) · [attention overview](docs/designs/develop-attention.md) · [workspace host](docs/designs/workspace-host.md) · [attempt execution](docs/designs/develop-attempt-execution.md) · [attempt evidence](docs/designs/develop-attempt-evidence.md) · [plans and ledger](docs/designs/develop-verification-plans.md) · [provenance](docs/designs/develop-candidate-provenance.md) · [behavioural checks](docs/designs/develop-behavioural-checks.md).
+Design records: [work attempts](docs/designs/develop-work-attempts.md) · [receipts](docs/designs/develop-verification-receipts.md) · [plans and ledger](docs/designs/develop-verification-plans.md) · [behavioural checks](docs/designs/develop-behavioural-checks.md) · [provenance](docs/designs/develop-candidate-provenance.md) · [attempt execution](docs/designs/develop-attempt-execution.md) · [evidence bridge](docs/designs/develop-evidence-bridge.md).
 
 ---
 
 <a id="studio"></a>
 <a id="endophasia-web"></a>
-## Endophasia Web (Browser Instrument)
-
-The browser interface — **Endophasia Web**, served locally under the `endo` CLI — is a React and TypeScript application with **Observe**, **Compare**, **Develop** and **Evolve** workspaces. Every mode binds strictly to `127.0.0.1` behind a private per-launch capability URL, with no external requests.
-
-In a paired `endo workspace open` launch, the [Coordinator Mission Board](docs/designs/coordinator-board.md) shows read-only task, verification and recorded session evidence for that launch's project.
-
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <img src="docs/images/readme-instrument-ledger-1440.png" alt="Develop workbench in Instrument mode showing the six-stage Course rail, acceptance ledger against HEAD, Mode Strict bar, and Git changes">
-      <br>
-      <sub><strong>Instrument &amp; Acceptance Ledger</strong> — six-stage <em>Course</em> rail (<code>Brief · Assent · Send · Run · Check · Judge</code>), per-criterion ledger against <code>HEAD</code>, and live Git changes. Checks are observed; acceptance stays yours.</sub>
-    </td>
-    <td width="50%" valign="top">
-      <img src="docs/images/observe-representation-explorer-1440.png" alt="Observe Representation Explorer showing 2D PCA projection of SmolLM2 residual stream with Observed, Derived, Interpreted, and Unavailable badges">
-      <br>
-      <sub><strong>Observe → Representation Explorer</strong> — offline <code>TransformerBridge</code> activations (<code>endo studio --representations &lt;dir&gt;</code>) with strict <code>OBSERVED</code> / <code>DERIVED</code> / <code>INTERPRETED</code> / <code>UNAVAILABLE</code> separation.</sub>
-    </td>
-  </tr>
-</table>
-
-| Command | Needs | The page can | The page cannot |
-| :--- | :--- | :--- | :--- |
-| `endo studio [<root>]` | A store (`--representations`, `--omp-sessions`, `--protected-runs` optional) | Read recorded evidence in Observe (Timeline + Representation Explorer), Compare, recorded-session Develop and opt-in read-only Evolve | Write to the store, execute experiments or request any action |
-| `endo workspace open --project <id>` | A registered project (no Pi or model) | After pairing: create/edit tasks, move statuses, inspect attempts, receipts, ledgers, provenance and the attention overview | Prompt, steer, stop an agent or run commands |
-| `endo develop` (`harness attach --control --workbench`) / `endo develop --harness codex` (`codex session --workbench`) | Pi or Codex on Linux with a controlling terminal | After pairing: all of the above, plus live conversation, structured private activity, Course gauges, live usage, Git changes and *requests* for `PROMPT`, `STOP` (and `STEER`, `QUEUE`, attempt send on Pi); Codex also displays a read-only pending native approval banner | Approve its own request — authorisation belongs to the terminal (or an attested narrow Everyday grant on Pi); Codex is Strict-only and never approves native Codex prompts from the page |
-
-- **Instrument & Field.** **Instrument** is DEVELOP's crisp default sheet. **Field** is an OLED-oriented night-survey appearance with **Focus** mode and selectable **Atmospheres** (`None`, `Contours`, `Rain`, `Storm`). Weather is pure scenery: its renderer receives zero session state.
-- **Course.** Above the session rail, **Course** draws two gauges (`Run`, `Request`) and — when a task has a prepared attempt — six record-backed stages (`Brief · Assent · Send · Run · Check · Judge`). It visualises what the page holds; it is never a workflow engine or verifier ([docs/develop-course.md](docs/develop-course.md)).
-- **Not yet shipped.** `endo web`, a native desktop app, live serving-time activation capture, governed experiment execution from Evolve, embedded terminals, concurrent Pi + Codex sessions in one store, and live control of harnesses beyond Pi and Codex remain future directions. **Research** and **Hardware** stay explicit planned placeholders; **Coordinator** currently ships read-only status, brief and Mission Board views while governed multi-agent assignment remains architectural design ([COORDINATOR-ASSIGNMENT-001](docs/designs/coordinator-assignment.md)).
-
-<details>
-<summary><strong>Access, privacy and retention boundaries</strong></summary>
-
-- Keep the loopback Studio URL private: anyone holding it can read presented evidence. `endo studio` writes nothing to the store (first launch may create its own comparison digest key).
-- Workspace and workbench require separate one-time pairing and an expiring in-memory grant; the URL alone grants no write or request authority.
-- Live transcripts carry user/assistant text, structured model-provided reasoning where the harness emits it (preserving Pi's structured `thinking` blocks and Codex's explicit `Reasoning summary` vs raw-thinking provenance), and structured private activity (`tool`, `file-change`, `activity` rows) with policy-bounded previews and an explicit non-authorising capability descriptor (*"A description, not a permission"*). Literal `<think>` tags are never treated as authenticated reasoning. See [docs/private-activity.md](docs/private-activity.md) and [docs/develop-reasoning.md](docs/develop-reasoning.md).
-- Live transcript, reasoning and pending native Codex approval summaries stay bounded in process memory, are excluded from canonical evidence and the read-only Studio API, and clear immediately when the session ends or tears down. Pi's own session files and Codex's isolated `CODEX_HOME` are separate from the canonical event store.
-- Receipts always store a SHA-256 of stdout; `--keep-output` additionally retains the first 8 KiB for behavioural diffs, so avoid it on commands that print secrets.
-- DEVELOP records are local, unsigned files under `<root>/develop/` — anything able to write the store can modify them.
-
-See [docs/studio.md](docs/studio.md).
-
-</details>
-
----
-
+<a id="current-state"></a>
 ## What works today
 
-Endophasia is an experimental project. This table reflects **source-tree `main` as of 25 November 2026**.
+This table reflects source-tree `main` at `d2024ac51` (28 November 2026). Maturity labels mean different things and
+are not interchangeable:
 
-| Area | Capability | Entry point |
-| :--- | :--- | :--- |
-| **Develop** | Projects, tasks, work attempts and plain-text briefs | `project`, `task`, `attempt prepare\|brief\|handoff\|report\|abandon` |
-| | Operator-run checks, receipts, verification plans, behavioural diffs, evidence bridge and ledger-backed attention overview | `attempt check`, `attempt receipts`, `attempt evidence`, `attempt bridge` |
-| | Governed protected execution of a prepared attempt (controller-bound, cross-route exclusive) | `attempt protected-run` |
-| | Working-tree provenance around an attempt | `attempt observe`, `attempt provenance` |
-| | Agent-free project workspace & read-only Coordinator Mission Board in a browser | `workspace open --project <id>` |
-| | Governed live Pi workbench with Course, Field atmospheres, structured private activity and modes | `develop`, `harness attach --control --workbench` |
-| | Governed live Codex App Server integration (offline check, terminal session and Strict-only Studio workbench) | `codex check`, `codex session`, `develop --harness codex` |
-| **Coordinator (read-only)** | Canonical read-only status across projects/sessions, OpenClaw status plugin and restricted local mission brief | `coordinator status`, `coordinator brief` |
-| **Observe & Compare** | Pi identity, protocol checks, live recording and capability admission | `doctor`, `harness check`, `harness attach`, `harness status` |
-| | Durable sessions and Pi trajectory diffs | `harness overview`, `trajectory show`, `trajectory diff` |
-| | Read-only browser for Observe, Compare and recorded sessions | `studio` |
-| | Offline activation geometry & Representation Explorer | `studio --representations <dir>` |
-| | DSH cold import and static loss accounting | `dsh import`, `dsh loss-accounting` |
-| | Oh My Pi saved-session metadata observer | `studio --omp-sessions <dir>`, `task link` |
-| **Research & Experiments** | Model-boundary capture and cassette replay | `proxy record`, `proxy replay`, `replay` |
-| | Controlled Pi experiments with declared conditions | `experiment run`, `experiment report` |
-| | Bubblewrap-sandboxed experiments (`v0`–`v3`): fixed paths or staged change sets, model relay, capability-consistent Pi prompt, hidden evaluator and read-only Studio Evolve inspector | `experiment protected-run`, `experiment protected-report`, `studio --protected-runs <dir>` |
-| | Authorised STEER, QUEUE and STOP outside the workbench | `harness attach --control`, `steer` |
-| | Verified scratch copies, governed continuation and matched two-turn A/A workflow | Source-tree APIs & research scripts |
-| | Neutral `endo.develop-adapter.v0` operational adapter contract, ACP v1 adapter and ACP v2 conformance study | Library APIs & conformance suites |
+**Implemented**: on `main` with an operator surface and deterministic tests. **Narrow**: implemented, but validated only in the
+stated configuration. **Library**: implemented and tested with no CLI or Studio entry point. **Experimental**: works, explicitly
+non-authoritative or opt-in. **Design only**: specification without implementation. Research, planned and gated items are in the [roadmap](#roadmap).
 
-<details>
-<summary><strong>Evidence and limits, row by row</strong></summary>
+| Area | Capability | Maturity | Entry point |
+| :--- | :--- | :--- | :--- |
+| **Develop** | Projects, tasks, attempts, briefs, checks, receipts, plans, ledger, provenance, attention overview | Implemented | `project`, `task`, `attempt …` |
+| | Agent-free project workspace in a browser | Implemented | `workspace open --project <id>` |
+| | Live Pi workbench, Strict mode | Implemented | `develop` |
+| | Pi Everyday grants | Narrow (one attested configuration) | `develop --mode everyday` |
+| | Live Codex App Server: offline check, terminal session, Strict-only workbench | Implemented | `codex check\|session`, `develop --harness codex` |
+| | Prepared-attempt dispatch from the workbench | Implemented on Pi; not available on Codex | Workbench `attempt <id>` |
+| | Governed protected execution of a prepared attempt | Implemented (offline v2 template) | `attempt protected-run` |
+| **Coordinate** | Status projection, Mission Board, OpenClaw status plugin | Implemented | `coordinator status`, `workspace open` |
+| | Coordination intent: assignments, dependencies, candidates, worktrees, reviews | Implemented (records only) | `assign`, `dep`, `candidate`, `worktree`, `review` |
+| | Governed dispatch of assignment-linked attempts (E2) | Library | None yet |
+| | Studio F1 deterministic Attention, Resources, Schedules, Advisory | Implemented (read-only) | `workspace open` |
+| | S1 schedule ledger and zero-token resource observations | Implemented; no timer installed (a schedule is enabled when added unless `--disabled`) | `schedule`, `scheduler tick`, `resource` |
+| | M1 local model pool | Implemented (local endpoints only) | `coordinator pool check`, `coordinator brief --pool` |
+| | Coordinator briefing | Experimental (advisory) | `coordinator brief` |
+| | S2 scheduled advisory briefings and proposal queue | Experimental, disabled by default | `advisory …` |
+| | S0 persistent automation architecture | Design only | [design](docs/designs/coordinator-automation.md) |
+| **Observe** | Pi identity, protocol checks, recording, capability admission | Implemented | `doctor`, `harness …` |
+| | Trajectory projection and diff (Pi) | Implemented | `trajectory show\|diff` |
+| | Read-only Studio: Observe, Compare, recorded Develop | Implemented | `studio` |
+| | DSH cold import with loss accounting | Implemented (pinned DSH version) | `dsh import` |
+| | Oh My Pi saved-session metadata, read in place | Implemented (OMP 18.x format 3) | `studio --omp-sessions` |
+| | Offline representation captures | Implemented (offline only) | `studio --representations` |
+| **Experiment** | Model-boundary capture and cassette replay | Implemented | `proxy record\|replay`, `replay` |
+| | Controlled Pi experiments with declared conditions | Implemented | `experiment run\|report` |
+| | Bubblewrap protected experiments (`v0`–`v3`) and read-only inspector | Implemented (Linux); evaluation experimental | `experiment protected-run`, `experiment protected-report`, `studio --protected-runs` |
+| | Scratch copies, governed continuation, A/A workflow | Library and research scripts | Source-tree APIs |
 
-| Capability | Evidence and limits |
-| :--- | :--- |
-| Projects, tasks, attempts and briefs | Atomic, locked, revisioned metadata under `<root>/develop/`, separate from the event store. Exercised by unit, multi-process, broker, HTTP, PTY and browser tests plus real work cycles ([WORK-CYCLE-001A/B](research/work-cycle/README.md)); damaged authorisation records fail closed (`EVIDENCE-INTEGRITY-001`). |
-| Checks, receipts, plans, ledger & attention | Shell-free execution at clean commits with timeouts and lingering-process detection (Linux `/proc`; inconclusive where `/proc` is absent). Behavioural checks compare exit code and stdout only (no stdin, stderr, servers or browsers). Both `attempt evidence` and the cross-task attention overview read planned checks through the same acceptance ledger (`DEVELOP-ATTENTION-002`). Check environment variables are inherited and not attested. |
-| Protected attempt execution (`attempt protected-run`) | Terminal-approved execution of one prepared attempt through the Bubblewrap protected runner with controller binding, cross-route exclusivity (preventing dual live/protected dispatch of one attempt) and `attempt bridge` evidence inspection. Nothing is applied automatically to the live checkout and no task status moves. |
-| Working-tree provenance | Records Git blob ids and modes, never contents. Ignored paths are excluded; two equal states do not prove nothing happened between them; diffs never establish authorship. |
-| Workspace without an agent | Separate pairing; zero harness, session or command surface; hosts the read-only Coordinator Mission Board for the launched project. Covered by host, CLI and browser tests. |
-| Governed live Pi workbench | Terminal approval (or attested narrow Everyday grant on Linux with Pi 1.5.2 + local `Ornith-1.5-9B-Q8_0`), Course gauges, Field atmospheres, structured private activity (`tool` / `file-change` / `activity`) and non-authorising capability descriptor. Linux systemd user scopes confirm process cleanup where available. No general real-model workbench conformance claim. |
-| Governed live Codex CLI & workbench | Local Codex App Server behind `endo.develop-adapter.v0` in an isolated conservative `CODEX_HOME` (inherited MCP disabled at startup). Strict-only (no Everyday grants), targeted `turn/interrupt`, explicit `Reasoning summary` vs raw-thinking provenance, live usage with cached tokens, fail-closed deny-only native approval handling (read-only pending banner in Studio), and shared Pi/Codex single-writer store lock. Validated live against Codex CLI (`gpt-6.2-sol`) in CLI trials plus deterministic broker, PTY, HTTP and headless Chromium Studio tests. No `STEER`, `QUEUE`, prepared-attempt dispatch or concurrent Pi + Codex store sharing yet. |
-| Coordinator (read-only status, brief & Mission Board) | Strictly read-only: reads project tasks, verification standing and recorded sessions; never writes, moves tasks or dispatches work. `coordinator brief` is clearly marked as a non-authoritative model interpretation over canonical status. Governed multi-agent assignment is designed ([COORDINATOR-ASSIGNMENT-001](docs/designs/coordinator-assignment.md)); its first step, operator-controlled coordination metadata (`endo assign`, `endo dep`, `endo candidate`, `endo coordinator coordination`), records intent only and grants no execution authority ([COORDINATOR-ASSIGNMENT-002](docs/designs/coordinator-assignment-implementation.md)). |
-| Pi identity, recording & capability admission | Installed-package CI pins Pi 1.0.0 with a fake endpoint; real-model studies span Pi 1.0.1, 1.0.4, 1.5.0, 1.5.2 and 1.6.0. Not general-version conformance. |
-| Representation Explorer | Read-only offline TransformerLens 4.x `TransformerBridge` captures (`SmolLM2-135M-Instruct` verified with `9Q/3KV` GQA semantics), scale-invariant 2D Householder-QL PCA, explicit `UNAVAILABLE` gaps and strict CSP/wire gates. No live serving-time or GGUF internal-activation capture. |
-| DSH cold import & loss accounting | Five retained captures from pinned `dsh-v0.2.1-rc.2` (including failure/resume) plus adversarial tests. No live DSH control. |
-| Oh My Pi saved-session observer | Read-only metadata from OMP 18.x format-3 files, verified in place against local OMP 18.13.3/18.14.1 stores plus adversarial tests. No live observation or control. Claude Code, Hermes and Amp are not integrated. |
-| Capture & cassette replay | 40 exact replays across 4 recorded Pi sessions plus negative control with model responses held fixed. |
-| Sandboxed protected experiments (`v0`–`v3`) | Linux Bubblewrap with inside-sandbox preflight, confirmed scope termination before collection, controller-pinned baseline + verified staged change-set reconstruction (`v2`/`v3`), opt-in capability-consistent Pi prompt (`PI-RUNTIME-CONSISTENCY-001`), recording model relay and isolated hidden evaluator. Verified with real Pi 1.5.2 / 1.6.0 against local models (`DEVELOP-ACCEPTANCE-001`, protected real-repo studies). Same-uid host tampering is detected by re-hashing, not prevented. |
-| Initial scratch copies, continuation & A/A | Fresh tool-free Pi turns with separate approvals and independent receipt verification (`research/governed-initial-continuation/aa/operate.ts`). Not historical process restore or a general effect sandbox. |
-| Adapter contract, ACP v1 & v2 study | `endo.develop-adapter.v0` validated by conformance suites across Pi, synthetic Codex and real Codex App Server. ACP v1/v2 has deterministic tests plus opt-in OMP smoke path; no admitted ACP capability or real v2-agent conformance. |
+Evidence and limits for every row, plus the library-only surfaces, are in [docs/status.md](docs/status.md). The claim-by-claim
+reconciliation behind this table is in [docs/audits/documentation-reconciliation-2026-11.md](docs/audits/documentation-reconciliation-2026-11.md).
 
-</details>
-
-Cognition graphs, evolution records, model orchestration and mappings for Prime, REEF, Magpie, Deadbolt and Cogitator also exist as libraries without CLI or browser exposure. Full inventory: [docs/status.md](docs/status.md).
+**Not shipped:** Studio F2 operator actions, concurrent Pi and Codex sessions in one store (E4), live control of harnesses other
+than Pi and Codex, live serving-time activation capture, governed experiment execution from Evolve, an `endo web` command and a
+native desktop app. Studio's **Research** and **Hardware** tabs are explicit placeholders.
 
 ### What Endophasia does not claim
 
 | Distinction | Meaning |
 | :--- | :--- |
-| **Observation / interpretation** | An observation names its source; a report names its reporter; a derivation names its method. Missing evidence stays `UNAVAILABLE`, not zero. |
-| **Acceptance / completion** | A runtime accepting a request does not prove it executed, obeyed a steer or produced right code. |
-| **Evidence / authority** | A passing check, matching comparison or capability descriptor grants zero permission. Consequential actions require separate explicit authorisation. |
-| **Approval / containment** | Terminal approval governs what is dispatched; it does not sandbox an agent's tools. |
-| **Reasoning / cognition** | Model-provided reasoning is relayed verbatim as emitted — never as a verified trace of internal computation. |
-| **Replay / repeatability / invariance** | *Exact replay* fixes model responses; *live repeatability* tests new runs under declared conditions; *perturbation invariance* tests sensitivity to supposedly irrelevant changes. |
-
-No autonomous self-improvement loop is claimed, and measured improvement never auto-promotes or deploys a change. See [docs/vision.md](docs/vision.md) and [docs/cockpit.md](docs/cockpit.md#compare-candidate-discovery).
+| **Observation / interpretation** | An observation names its source, a report names its reporter, and a derivation names its method. |
+| **Acceptance / completion** | A runtime accepting a request doesn't prove it executed it, obeyed a steer or produced correct code. |
+| **Evidence / authority** | A passing check, a matching comparison, a capability descriptor or a model proposal grants no permission. |
+| **Approval / containment** | Terminal approval governs what is dispatched. It doesn't sandbox an agent's tools. |
+| **Reasoning / cognition** | Model-provided reasoning is relayed as emitted, within size bounds and with redaction marked, never as a verified trace of internal computation. |
+| **Captured / live** | Offline representation captures aren't inference-time activation inspection. |
+| **Mechanism / competence** | That a Coordinator mechanism works end to end doesn't show that its model output is reliable or useful. |
+| **Local / trusted** | Records are unsigned local files. Re-hashing detects records that are inconsistent with themselves. It can't detect a same-UID writer who rewrites a record and recomputes its digests. Workstation H0 remains blocked. |
 
 ---
 
 ## Architecture
 
-Endophasia keeps **execution**, **evidence acquisition** and **presentation** strictly separated — every reader validates on read and fails closed.
+The diagram below is an **authority map**, drawn from the implementation and simplified. Read the arrows literally. A solid arrow
+means records or requests travel along it. A **thick arrow** means authority is exercised or delegated along it, and every chain
+of thick arrows begins with the operator. A dotted arrow means advisory output, shown to a person and read by nothing that acts.
 
 ```mermaid
-flowchart LR
-    subgraph Inputs["Observed & Isolated Sources"]
-        P["Live Pi session<br/>(documented RPC)"]
-        K["Live Codex session<br/>(App Server, isolated home)"]
-        D["Saved DSH session<br/>(cold import)"]
-        O["Oh My Pi files<br/>(in-place metadata)"]
-        R["Activation captures<br/>(offline TransformerBridge)"]
-        X["Sandboxed agent<br/>(Bubblewrap + relay)"]
-        Y["Your commands<br/>(endo attempt check)"]
+flowchart TB
+    OP(["Operator"])
+
+    subgraph PAGES["Browser pages on 127.0.0.1"]
+        direction LR
+        BOARD["Studio and paired workspace<br/>read-only views · task metadata · Mission Board"]
+        WBP["Live workbench page<br/>drafts and requests only"]
     end
 
-    subgraph Records["Validated Local Records"]
-        S[("Evidence store")]
-        M[("DEVELOP records<br/>tasks · attempts · receipts")]
-        E[("Protected run<br/>staged changeset · evaluator")]
+    subgraph EXE["Execution"]
+        direction LR
+        GATE{"Dispatch gate<br/>controlling terminal"}
+        HAR["Pi · Codex<br/>own loop, tools, provider"]
+        PROT["Protected runner<br/>Bubblewrap + evaluator"]
     end
 
-    subgraph Surfaces["Read-Only Projections & Paired Surfaces"]
-        V["Validated readers<br/>(fail closed)"]
-        C["CLI reports"]
-        W["Browser<br/>studio · workspace · workbench"]
+    subgraph DET["Deterministic environment · no model required"]
+        direction LR
+        TICK["S1 tick<br/>zero-token health GETs"]
+        REC[("Local records<br/>events · develop/ · automation/")]
+        PROJ["Projections<br/>status · coordination · attention"]
     end
 
-    P --> S
-    K --> S
-    D --> S
-    Y --> M
-    X -->|"confirmed end + hidden eval"| E
-    S --> V
-    M --> V
-    O -.->|"read-only"| V
-    R -.->|"--representations"| V
-    V --> C
-    V --> W
-    E -->|"protected-report"| C
-    E -.->|"--protected-runs (read-only)"| V
+    subgraph ADV["Advisory intelligence · optional"]
+        direction LR
+        BRIEF["coordinator brief<br/>on demand · answer to stdout"]
+        TURN["S2 advisory turn<br/>only under a current grant"]
+        PROP[("S2 briefings · proposals<br/>authority: none")]
+    end
+
+    LM[("Local model endpoint")]
+
+    OP ==>|"approves on the terminal"| GATE
+    GATE ==>|"approved send"| HAR
+    GATE ==>|"approved run"| PROT
+    OP ==>|"enables and grants"| TURN
+    OP -->|"CLI: commands · intent · schedules"| REC
+    WBP -->|"requests"| GATE
+    HAR -->|"recorded events"| REC
+    PROT -->|"sealed run records"| REC
+    TICK -->|"observations"| REC
+    TICK -->|"health GET"| LM
+    REC --> PROJ
+    PROJ --> BOARD
+    PROJ -->|"bounded view"| BRIEF
+    PROJ -->|"bounded view"| TURN
+    BRIEF -->|"one route, two exchanges"| LM
+    TURN -->|"one route, two exchanges"| LM
+    TURN --> PROP
+    PROP -.->|"shown as untrusted"| BOARD
 ```
 
-- **Recording, adapter contract & admission.** Live Pi and Codex sessions implement the harness-neutral `endo.develop-adapter.v0` operational contract and share a single-writer lock on the canonical event store. An optional recording proxy captures the HTTP model boundary for cassette replay and controlled experiments. Harness capabilities are admitted from live transport, identity and conformance evidence; changing runtime or configuration invalidates dependent evidence.
-- **DEVELOP records** live under `<root>/develop/`, separate from the canonical event store — atomic, locked, revisioned and re-validated on every read.
-- **The live workbench** runs inside the process owning the attached Pi or Codex child. Its paired loopback broker keeps transcripts, reasoning and pending native approval summaries memory-only, re-checks every operation against session state and active grants before dispatch, and leaves read-only `endo studio` with zero execution authority.
-- **Protected experiments** isolate untrusted coding agents inside Bubblewrap, verify the boundary from inside before execution, wait for confirmed process termination before staging changes against a controller-pinned baseline, and grade reconstructed candidates inside an independent evaluator sandbox.
-
-Contracts: [adapter contract](docs/designs/develop-adapter-contract.md) · [Pi attachment](docs/attachment.md) · [Codex live](docs/designs/develop-codex-live.md) · [Codex in Studio](docs/designs/develop-codex-studio.md) · [capture & replay](docs/replay.md) · [DSH importer](docs/dsh-native-importer.md) · [observation bridge](docs/cockpit.md) · [workbench](docs/develop-workbench.md) · [workspace service](docs/develop-workspace-service.md) · [protected experiments](docs/protected-experiments.md) · [coordinator assignment](docs/designs/coordinator-assignment.md) · [initial-state continuation](docs/initial-continuation.md).
+Advisory output has no automatic path to execution or authorisation. S2 briefings and proposals are displayed on the read-only board,
+which has no prompt or dispatch route, and only a person can act on what they read there. The live workbench page is a separate
+host that can draft and request; approval comes from the controlling terminal, or from a terminal-issued Pi Everyday grant inside
+the narrow attested configuration above. In ordinary Strict operation Pi and Codex call their own model providers along their own
+routes, and Endophasia records what they report. In Everyday mode, Endophasia's recording relay does stand in that path, and it
+enforces the attested limits.
+The evidence pipeline, the Coordinator layering and the storage layout are in [docs/architecture.md](docs/architecture.md).
 
 ---
 
 ## Research direction
 
-The research programme separates how **model**, **harness**, **tools** and **environment** contribute to agent behaviour, then tests changes under declared, independently verified conditions.
-
-### Selected findings
+The research programme separates how the **model**, the **harness**, the **tools** and the **environment** each contribute to agent
+behaviour, then tests changes under declared, independently verified conditions. Negative results are kept on the record.
 
 | Study | Finding | Scope |
 | :--- | :--- | :--- |
 | [Cassette replay](research/README.md#cassette-replays) | 40/40 exact replays; mutating the workspace triggered the expected divergence | Pi 1.0.1, 4 recorded sessions, fixed model responses |
-| [Variance & pinned environment](research/README.md#pinned-environment-study-e3) | Pinning environment, sampling and prompt cache made all judged layers and requests match across 20/20 trials | 3 small tasks, Pi 1.0.1 + qwen3.8-27b; not a universal determinism claim |
-| [Path sensitivity](research/README.md#path-sensitivity-study) | Working-directory path changed whether `STEER` was followed, and altered baseline output on one task | 2 tasks × 30 paths; acceptance, consumption and obedience measured separately |
-| [Completion cap](research/README.md#completion-cap-study) | Raising Pi's cap from 16,384 to 32,768 lifted pass rate from 10/24 to 19/23 | 2 discriminating tasks, 4 paths, small samples |
-| [Matched two-turn A/A](research/governed-initial-continuation/aa/RESULTS.md) | 4 fresh Pi sessions and 8 approved requests verified end-to-end with confirmed server cleanup | Pi 1.0.4 / Nanbeige4.3-33B, tool-free; one run under declared assumptions |
+| [Pinned environment](research/README.md#pinned-environment-study-e3) | Pinning environment, sampling and prompt cache made all judged layers and requests match across 20/20 trials | 3 small tasks, Pi 1.0.1 + qwen3.8-27b; not a universal determinism claim |
+| [Path sensitivity](research/README.md#path-sensitivity-study) | The working-directory path changed whether `STEER` was followed, and altered baseline output on one task | 2 tasks × 30 paths; acceptance, consumption and obedience measured separately |
+| [Completion cap](research/README.md#completion-cap-study) | Raising Pi's cap from 16,384 to 32,768 lifted the pass rate from 10/24 to 19/23 | 2 discriminating tasks, 4 paths, small samples |
+| [Matched two-turn A/A](research/governed-initial-continuation/aa/RESULTS.md) | 4 fresh Pi sessions and 8 approved requests verified end to end with confirmed server cleanup | Pi 1.0.4 / Nanbeige4.3-33B, tool-free; one run |
 | [CPU numerical probe](research/numerical-execution-probe/FIRST-RESULT.md) | Logits matched bitwise within each token-submission schedule and differed across schedules | SmolLM2-135M f16, 4 CPU processes |
 | [Evidence eligibility (MEM-000)](research/evidence-eligibility/RESULTS.md) | Audited recorded evidence before building any selector: 143 causally usable trials, memory selector judged not ready | Cross-study evidence audit |
-| [DEVELOP work cycle & validation](research/work-cycle/README.md) | End-to-end real work cycle + human-governed run ([001B](research/work-cycle/WORK-CYCLE-001B.md)), followed by ledger-vs-overview validation ([VALIDATION-001](research/develop-validation/DEVELOP-VALIDATION-001.md) / [002](research/develop-validation/DEVELOP-VALIDATION-002.md)) | Exposed and fixed attention-overview drift and orphan-process gaps |
-| [Isolated acceptance & trust](research/develop-acceptance-001/README.md) | Real Pi 1.5.2 + local Ornith inside verified sandbox scored 5/5 on hidden evaluator; tamper/timeout fixtures failed closed; QEMU guest verification ([TRUST-004](research/develop-verify-trust-004/PROTOCOL.md)) | Linux Arch host; host same-uid writer remains outside reader authority |
-| [Counterfactual replay feasibility](research/counterfactual-replay/COUNTERFACTUAL-REPLAY-001.md) | Replay missed at exchange 2 on file mtimes; 4 live runs from identical first requests took 4 paths to the same answer | Distributional attribution only; no causal trace claims |
+| [DEVELOP work cycle & validation](research/work-cycle/README.md) | End-to-end real work cycle and human-governed run, then ledger-vs-overview validation ([001](research/develop-validation/DEVELOP-VALIDATION-001.md), [002](research/develop-validation/DEVELOP-VALIDATION-002.md)) | Exposed and fixed attention-overview drift and orphan-process gaps |
+| [Isolated acceptance & trust](research/develop-acceptance-001/README.md) | Real Pi 1.5.2 + local Ornith inside a verified sandbox scored 5/5 on a hidden evaluator; tamper and timeout fixtures failed closed | Linux host; same-UID writer remains outside reader authority |
+| [Counterfactual replay](research/counterfactual-replay/COUNTERFACTUAL-REPLAY-001.md) | Replay missed at exchange 2 on file mtimes; 4 live runs from identical first requests took 4 paths to the same answer | Distributional attribution only; no causal trace claims |
+| [Coordinator consolidation](docs/designs/coordinator-consolidation-001.md) | The advisory machinery worked end to end on real hardware, but Inkling 2 Mini published 0/6 turns under the experimental `grounded-v1` contract, even at 16,384 completion tokens with clean stops. Advisory value above deterministic rules was not demonstrated | One local model; evidence archived in open research PRs #192–#194; `grounded-v1` not promoted |
 
-Full catalog of studies, designs and limits: [research/README.md](research/README.md), [docs/research-index.md](docs/research-index.md) (protected-experiment & reasoning programme), [docs/thread-results-summary.md](docs/thread-results-summary.md) and [research/DATA.md](research/DATA.md).
+The last row is why the Coordinator is built deterministic-first. Full catalogues: [research/README.md](research/README.md),
+[docs/research-index.md](docs/research-index.md), [docs/thread-results-summary.md](docs/thread-results-summary.md) and [research/DATA.md](research/DATA.md).
 
 <a id="roadmap"></a>
-### Delivery direction
+## Roadmap
 
-- **Concurrent heterogeneous sessions (E4):** introduce per-attachment event logs with a unified read-only projection so Pi and Codex (and future harnesses) can run concurrently against one project without contending on a single-writer store lock ([coordinator-assignment.md](docs/designs/coordinator-assignment.md)).
-- **Coordinator assignment & Codex parity:** implement governed multi-agent assignment proposals (`COORDINATOR-ASSIGNMENT-001`), add prepared-attempt dispatch to Codex, and keep hardening DEVELOP checks beyond exit code + stdout (stdin, stderr, servers, browsers).
-- **Research & verification:** keep governed continuation, effect isolation, offline/reference-replay representation analysis and sandboxed evaluation as separate, explicitly bounded threads.
-- **Exploratory / not current requirements:** Cognition (`WORK`/`DREAM`), live serving-time activation capture, embedded terminals, live control of additional harnesses beyond Pi and Codex, governed experiment execution from Studio Evolve and a native Rust/GPUI client remain future design directions ([docs/roadmap.md](docs/roadmap.md), [docs/evolve.md](docs/evolve.md), [docs/vision.md](docs/vision.md)).
+Three independent tracks, set by the [November 2026 Coordinator roadmap](docs/designs/coordinator-roadmap-2026-11.md). The product
+track doesn't wait on neural cognition research succeeding.
+
+| Product | Intelligence research | Execution and platform |
+| :--- | :--- | :--- |
+| **F1** deterministic operational visibility (*implemented*) | Grounding-failure diagnostics (*contract on `main`, instrumentation under research*) | **E3/E4** structured event streaming and heterogeneous session infrastructure (*planned*) |
+| **F2** guided operator actions (*next product milestone*) | Candidate model and cognition-contract evaluation (*under research*) | **G1/G2** execution governance and workspace lifecycle safety (*planned*) |
+| | Showing advisory value beyond deterministic rules (*unproven*) | Continued trust-boundary hardening (*ongoing*) |
+| | Renewable leases, revocation-responsive abort, resource-policy remediation (*under research*) | |
+
+**Separately gated, not promoted:** experimental `grounded-v1` cognition, unattended extended-resource leases, hosted model pool
+M2, the 24-hour naturalistic Coordinator trial and S3 higher-authority scheduling. Each has a written entry gate.
+
+**Exploratory, not commitments:** persistent agents with richer cognition (WORK and DREAM profiles), live serving-time activation
+capture, a dedicated Research workspace, hardware and robotics workflows, deeper systems integration and a native client.
+See [docs/roadmap.md](docs/roadmap.md) and [docs/vision.md](docs/vision.md).
 
 ---
 
-## Documentation
-
-<a id="current-state"></a>
 <a id="try-it"></a>
+## Documentation
 
 | Need | Start here |
 | :--- | :--- |
-| Install & browser usage | [Installation](docs/install.md) · [Testing & CI](docs/testing.md) · [Studio & workbench](docs/studio.md) · [Changelog](CHANGELOG.md) |
-| Run the DEVELOP loop | [Projects & tasks](docs/develop-tasks.md) · [Attempts](docs/designs/develop-work-attempts.md) · [Protected attempts](docs/designs/protected-attempt-execution.md) · [Receipts](docs/designs/develop-verification-receipts.md) · [Plans & ledger](docs/designs/develop-verification-plans.md) · [Behavioural checks](docs/designs/develop-behavioural-checks.md) · [Provenance](docs/designs/develop-candidate-provenance.md) · [Attempt evidence](docs/designs/develop-attempt-evidence.md) · [Evidence bridge](docs/designs/develop-evidence-bridge.md) |
-| Work with a live agent | [Live workbench](docs/develop-workbench.md) · [Adapter contract](docs/designs/develop-adapter-contract.md) · [Codex live](docs/designs/develop-codex-live.md) · [Codex in Studio](docs/designs/develop-codex-studio.md) · [Sending an attempt](docs/designs/develop-attempt-workbench.md) · [Private activity](docs/private-activity.md) · [Reasoning & privacy](docs/develop-reasoning.md) · [Git review](docs/develop-project-review.md) · [Process containment](docs/live-process-containment.md) · [Course](docs/develop-course.md) · [Field](docs/develop-field.md) · [Atmospheres](docs/develop-atmospheres.md) |
-| Coordinator (read-only & design) | [Coordinator status](docs/designs/coordinator-status.md) · [Mission Board](docs/designs/coordinator-board.md) · [Coordinator runtime & brief](docs/designs/coordinator-runtime.md) · [Coordinator model pool (M1)](docs/designs/coordinator-model-pool-m1-implementation.md) · [Automation architecture (S0)](docs/designs/coordinator-automation.md) · [Deterministic scheduler & observations (S1)](docs/designs/coordinator-automation-s1-implementation.md) · [Assignment architecture](docs/designs/coordinator-assignment.md) · [Coordination metadata (E1)](docs/designs/coordinator-assignment-implementation.md) · [Governed assignment integration (E2)](docs/designs/coordinator-assignment-e2-implementation.md) |
-| Workspace without an agent | [Workspace host](docs/designs/workspace-host.md) · [Attention overview](docs/designs/develop-attention.md) · [Workspace service](docs/develop-workspace-service.md) · [OMP observer](docs/develop-omp-observer.md) |
-| Observe, replay & compare | [Attachment](docs/attachment.md) · [Replay](docs/replay.md) · [Trajectories](docs/trajectory.md) · [Representation Explorer](docs/designs/observe-representation-explorer.md) · [Experiments](docs/experiments.md) · [Steering](docs/steering.md) |
-| Sandboxed experiments | [Protected experiments](docs/protected-experiments.md) · [Protected model access](docs/protected-model-access.md) · [Staged change sets](docs/designs/staged-changeset.md) · [Protected staged runs](docs/designs/protected-staged-changeset.md) |
-| Browser & contract internals | [Observation bridge & Compare API](docs/cockpit.md) · [Frontend architecture](docs/studio-ui-architecture.md) · [Session surface](docs/develop-session-surface.md) · [Schema compatibility](docs/schema-compatibility.md) · [Deadbolt contract](docs/deadbolt-intervention-contract.md) · [Migration ledger](docs/migration-ledger.md) |
-| Initial-state research APIs | [Checkpoint candidate](docs/checkpoint-candidate.md) · [Scratch materialization](docs/checkpoint-materialization.md) · [Sibling set](docs/initial-branch-set.md) · [Initial-child execution](docs/initial-child-execution.md) · [Continuation](docs/initial-continuation.md) |
-| Adapter & status records | [Detailed status](docs/status.md) · [Thread summary](docs/thread-results-summary.md) · [Pi inventory](docs/pi-attach-inventory.md) · [Pi audit](docs/pi-attach-audit.md) · [Pi 1.4.0 upgrade](docs/pi-1.4.0-upgrade.md) · [DSH study](docs/dsh-native-attachment.md) · [DSH importer](docs/dsh-native-importer.md) · [ACP v1](docs/acp-v1-slice.md) · [ACP v2 study](docs/acp-v2-study.md) |
-| Research & vision | [Studies](research/README.md) · [Protected-experiment index](docs/research-index.md) · [Vision](docs/vision.md) · [Observe/Verify](docs/observe.md) · [Evolve](docs/evolve.md) · [Roadmap](docs/roadmap.md) |
+| Get going | [Quick start and tour](docs/quickstart.md) · [Installation](docs/install.md) · [Studio guide](docs/studio.md) · [Changelog](CHANGELOG.md) |
+| Develop | [Live workbench](docs/develop-workbench.md) · [Projects & tasks](docs/develop-tasks.md) · [Adapter contract](docs/designs/develop-adapter-contract.md) · [Codex live](docs/designs/develop-codex-live.md) · [Codex in Studio](docs/designs/develop-codex-studio.md) · [Protected attempts](docs/designs/protected-attempt-execution.md) · [Private activity](docs/private-activity.md) · [Reasoning](docs/develop-reasoning.md) · [Course](docs/develop-course.md) · [Field](docs/develop-field.md) · [Atmospheres](docs/develop-atmospheres.md) |
+| Coordinate | [Roadmap (Nov 2026)](docs/designs/coordinator-roadmap-2026-11.md) · [Status](docs/designs/coordinator-status.md) · [Mission Board](docs/designs/coordinator-board.md) · [Studio F1](docs/designs/coordinator-studio-f1-002.md) · [Runtime](docs/designs/coordinator-runtime.md) · [Assignment architecture](docs/designs/coordinator-assignment.md) · [E1](docs/designs/coordinator-assignment-implementation.md) · [E2](docs/designs/coordinator-assignment-e2-implementation.md) · [S0](docs/designs/coordinator-automation.md) · [M1](docs/designs/coordinator-model-pool-m1-implementation.md) · [S1](docs/designs/coordinator-automation-s1-implementation.md) · [S2](docs/designs/coordinator-automation-s2-implementation.md) · [Consolidation](docs/designs/coordinator-consolidation-001.md) |
+| Observe & compare | [Attachment](docs/attachment.md) · [Trajectories](docs/trajectory.md) · [Replay](docs/replay.md) · [Representation Explorer](docs/designs/observe-representation-explorer.md) · [DSH importer](docs/dsh-native-importer.md) · [OMP observer](docs/develop-omp-observer.md) · [Steering](docs/steering.md) |
+| Experiment & evolve | [Experiments](docs/experiments.md) · [Protected experiments](docs/protected-experiments.md) · [Protected model access](docs/protected-model-access.md) · [Staged change sets](docs/designs/protected-staged-changeset.md) · [Evolve](docs/evolve.md) |
+| Architecture & internals | [Architecture](docs/architecture.md) · [Observation bridge](docs/cockpit.md) · [Frontend architecture](docs/studio-ui-architecture.md) · [Session surface](docs/develop-session-surface.md) · [Schema compatibility](docs/schema-compatibility.md) · [Upstream boundaries](docs/upstream-boundaries.md) · [Migration ledger](docs/migration-ledger.md) |
+| Status & research | [Detailed status](docs/status.md) · [Roadmap](docs/roadmap.md) · [Vision](docs/vision.md) · [Studies](research/README.md) · [Research index](docs/research-index.md) · [Thread summary](docs/thread-results-summary.md) · [Reconciliation record](docs/audits/documentation-reconciliation-2026-11.md) |
 
-Neighbouring projects keep separate authorities: [Magpie](https://github.com/noctem-o/magpie) (claims, evidence and derived standing), [Deadbolt](https://github.com/noctem-o/deadbolt) (authorising consequential actions), [Cogitator](https://github.com/noctem-o/cogitator) (sealed run records) and [Buzz](https://github.com/noctem-o/buzz-prime) (shared workspace for people and agents). A record in one never grants authority in another. The earlier Pi-fork codebase is archived at [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
+Neighbouring projects keep separate authorities: [Magpie](https://github.com/noctem-o/magpie) (claims, evidence and derived standing),
+[Deadbolt](https://github.com/noctem-o/deadbolt) (authorising consequential actions), [Cogitator](https://github.com/noctem-o/cogitator)
+(sealed run records) and [Buzz](https://github.com/noctem-o/buzz-prime) (a shared workspace for people and agents). A record in one never grants
+authority in another. The earlier Pi-fork codebase is archived at [endophasia-pi-legacy-deprecated](https://github.com/noctem-o/endophasia-pi-legacy-deprecated).
 
 ---
 
@@ -628,10 +503,15 @@ npm run build
 npm run test:package
 ```
 
-The deterministic suite requires only Node and Git (no API keys or model calls). Browser tests use Chromium (`CHROME_BIN` to select it; `ENDO_REQUIRE_BROWSER=1` to fail instead of skip). CI partitions general tests into `fast`, `browser`, and four duration-balanced `process` shards alongside specialist verification jobs (real Bubblewrap sandbox, systemd live scopes, coreutils `mv --exchange`, Node 22.19.0 floor, and installed-package acceptance against pinned Pi 1.0.0 and a fake model endpoint). See [docs/testing.md](docs/testing.md) and [docs/install.md](docs/install.md#running-the-tests).
+The deterministic suite needs only Node and Git: no API keys and no model calls. Browser tests use Chromium (set `CHROME_BIN` to choose
+it, or `ENDO_REQUIRE_BROWSER=1` to fail instead of skip). Host-capability suites (`ENDO_REAL_SCOPES=1`, `ENDO_REQUIRE_ISOLATION=1`) are
+opt-in, one suite at a time. See [docs/testing.md](docs/testing.md).
 
 ## License
 
-Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 George Gallagher. Upstream components such as Pi retain their own licenses.
+Apache License 2.0 ([LICENSE](LICENSE)). Copyright 2026 George Gallagher. Upstream components such as Pi keep their own licences.
+The README artwork in `docs/images/endophasia-plate-*.svg` is original to this repository, generated by
+[docs/images/source/plate.mjs](docs/images/source/plate.mjs), and covered by the same licence.
 
-Published `0.1.0-alpha.1` and `0.1.0-alpha.2` were released under MIT, and that grant remains with those versions. The Apache License applies to the source from the license-change commit onward.
+Published `0.1.0-alpha.1` and `0.1.0-alpha.2` were released under MIT, and that grant remains with those versions. The Apache
+License applies to the source from the license-change commit onward.

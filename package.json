@@ -1,7 +1,7 @@
 {
 	"name": "endophasia",
 	"version": "0.1.0-alpha.2",
-	"description": "Endophasia: an experimental research instrument that attaches to an existing agent harness and records what it observes.",
+	"description": "Endophasia: an experimental, local-first, evidence-aware studio for developing with, coordinating, observing and experimenting on coding agents.",
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",
